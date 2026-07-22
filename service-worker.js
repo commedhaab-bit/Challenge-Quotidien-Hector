@@ -1,4 +1,4 @@
-const CACHE_NAME = 'defi-du-jour-v1';
+const CACHE_NAME = 'defi-du-jour-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -28,9 +28,27 @@ self.addEventListener('fetch', (event) => {
   if (event.request.url.includes('firebaseio.com') ||
       event.request.url.includes('googleapis.com') ||
       event.request.url.includes('firestore') ||
+      event.request.url.includes('gstatic.com') ||
       event.request.url.includes('accounts.google.com')) {
     return;
   }
+
+  // Pages HTML : toujours essayer le réseau en premier (pour avoir la dernière version),
+  // et ne se rabattre sur le cache que si hors-ligne.
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Autres fichiers statiques (icônes, manifest) : cache d'abord, réseau en secours
   event.respondWith(
     caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
