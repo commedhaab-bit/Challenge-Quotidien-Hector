@@ -294,18 +294,6 @@
     margin-left: 12px;
     text-align: right;
   }
-  .picker-item.active {
-    border-color: var(--accent);
-    box-shadow: inset 0 0 0 1px rgba(242, 193, 78, 0.2);
-  }
-  .picker-status {
-    font-size: 10.5px;
-    color: var(--accent);
-    font-weight: 700;
-    margin-top: 5px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
   .last-done {
     font-size: 10.5px;
     color: var(--accent);
@@ -313,6 +301,12 @@
     margin-top: 3px;
     text-transform: none;
     letter-spacing: 0;
+  }
+  .last-done.status-progress {
+    color: var(--accent);
+  }
+  .last-done.status-done {
+    color: var(--good);
   }
   .picker-item.done {
     opacity: 0.45;
@@ -914,33 +908,21 @@ function formatDateLabel(d) {
   return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
 }
 
-function getDefaultState(dayKey = todayKey) {
-  return { challengeId: null, sets: [], targetOverride: null, done: false, dayKey };
+let currentChallengeId = null;
+
+function emptyDayState() {
+  return { challenges: {} };
 }
 
-function normalizeStateForDay(rawState, dayKey) {
-  if (!rawState || typeof rawState !== 'object') {
-    return getDefaultState(dayKey);
-  }
-  if (rawState.dayKey && rawState.dayKey !== dayKey) {
-    return getDefaultState(dayKey);
-  }
-  return {
-    challengeId: rawState.challengeId ?? null,
-    sets: Array.isArray(rawState.sets) ? rawState.sets : [],
-    targetOverride: rawState.targetOverride ?? null,
-    done: !!rawState.done,
-    dayKey
-  };
+function emptyChallengeEntry() {
+  return { sets: [], targetOverride: null, done: false };
 }
 
-async function refreshForCurrentDay() {
-  const currentKey = dateKey(new Date());
-  if (todayKey === currentKey) return;
-  todayKey = currentKey;
-  state = getDefaultState(todayKey);
-  await saveState();
-  await loadState();
+function getEntry(id) {
+  if (!state.challenges[id]) {
+    state.challenges[id] = emptyChallengeEntry();
+  }
+  return state.challenges[id];
 }
 
 async function loadState() {
@@ -948,9 +930,10 @@ async function loadState() {
   todayKey = dateKey(today);
   try {
     const res = await dbGet('day:' + todayKey);
-    state = normalizeStateForDay(JSON.parse(res.value), todayKey);
+    state = JSON.parse(res.value);
+    if (!state.challenges) state = emptyDayState(); // migration depuis l'ancien format
   } catch (e) {
-    state = getDefaultState(todayKey);
+    state = emptyDayState();
   }
   // load last 7 days for streak strip
   weekData = {};
@@ -961,7 +944,8 @@ async function loadState() {
     try {
       const res = await dbGet('day:' + k);
       const s = JSON.parse(res.value);
-      weekData[k] = !!s.done;
+      const anyDone = s.challenges ? Object.values(s.challenges).some(e => e.done) : !!s.done;
+      weekData[k] = anyDone;
     } catch (e) {
       weekData[k] = false;
     }
@@ -970,8 +954,6 @@ async function loadState() {
 }
 
 async function saveState() {
-  if (!todayKey) return;
-  state = { ...state, dayKey: todayKey };
   try {
     await dbSet('day:' + todayKey, JSON.stringify(state));
   } catch (e) {
@@ -980,41 +962,43 @@ async function saveState() {
 }
 
 function getChallenge() {
-  return CHALLENGES.find(c => c.id === state.challengeId);
+  return CHALLENGES.find(c => c.id === currentChallengeId);
 }
 
 function getTarget() {
   const c = getChallenge();
-  return state.targetOverride || (c ? c.target : 0);
+  const entry = getEntry(currentChallengeId);
+  return entry.targetOverride || (c ? c.target : 0);
 }
 
 function getTotal() {
-  return state.sets.reduce((a,b) => a+b, 0);
+  const entry = getEntry(currentChallengeId);
+  return entry.sets.reduce((a,b) => a+b, 0);
 }
 
 async function pickChallenge(id) {
   clearTimerState();
-  state = { challengeId: id, sets: [], targetOverride: null, done: false, dayKey: todayKey };
-  await saveState();
+  currentChallengeId = id;
+  getEntry(id); // s'assure qu'une entrée existe (reprend celle du jour si déjà commencée)
   render();
 }
 
 async function changeChallenge() {
   clearTimerState();
-  state = getDefaultState(todayKey);
-  await saveState();
+  currentChallengeId = null;
   render();
 }
 
 async function addSet(amount) {
   if (amount <= 0) return;
-  state.sets.push(amount);
+  const entry = getEntry(currentChallengeId);
+  entry.sets.push(amount);
   const total = getTotal();
   const target = getTarget();
-  if (total >= target && !state.done) {
-    state.done = true;
+  if (total >= target && !entry.done) {
+    entry.done = true;
     weekData[todayKey] = true;
-    lastCompleted[state.challengeId] = Date.now();
+    lastCompleted[currentChallengeId] = Date.now();
     await saveLastCompleted();
     if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
   }
@@ -1023,11 +1007,12 @@ async function addSet(amount) {
 }
 
 async function undoLast() {
-  state.sets.pop();
+  const entry = getEntry(currentChallengeId);
+  entry.sets.pop();
   const total = getTotal();
   if (total < getTarget()) {
-    state.done = false;
-    weekData[todayKey] = false;
+    entry.done = false;
+    weekData[todayKey] = Object.values(state.challenges).some(e => e.done);
   }
   await saveState();
   render();
@@ -1035,14 +1020,15 @@ async function undoLast() {
 
 async function editTarget() {
   const c = getChallenge();
+  const entry = getEntry(currentChallengeId);
   const current = getTarget();
   const input = prompt(`Objectif du jour (${c.unit === 'sec' ? 'secondes' : 'répétitions'}) :`, current);
   if (input === null) return;
   const val = parseInt(input, 10);
   if (isNaN(val) || val <= 0) return;
-  state.targetOverride = val;
+  entry.targetOverride = val;
   const total = getTotal();
-  state.done = total >= val;
+  entry.done = total >= val;
   await saveState();
   render();
 }
@@ -1090,7 +1076,7 @@ function render() {
     </div>
   `;
 
-  if (!state.challengeId) {
+  if (!currentChallengeId) {
     html += `
       <h1 class="title">Défi du jour</h1>
       <div class="subtitle">Choisis ton défi pour aujourd'hui</div>
@@ -1099,18 +1085,27 @@ function render() {
     for (const cat of cats) {
       html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
       for (const c of CHALLENGES.filter(x => x.cat === cat)) {
+        const todayEntry = state.challenges[c.id];
         const rel = formatRelative(lastCompleted[c.id]);
-        const hasStarted = state && state.challengeId === c.id && state.dayKey === todayKey && (state.sets.length > 0 || state.done || state.targetOverride !== null);
+        let statusHtml = '';
+        if (todayEntry && todayEntry.done) {
+          statusHtml = `<div class="last-done status-done">✓ Terminé aujourd'hui</div>`;
+        } else if (todayEntry && todayEntry.sets.length > 0) {
+          const t = todayEntry.sets.reduce((a,b)=>a+b,0);
+          const tgt = todayEntry.targetOverride || c.target;
+          statusHtml = `<div class="last-done status-progress">● En cours — ${t}/${tgt}</div>`;
+        } else if (rel) {
+          statusHtml = `<div class="last-done">${rel}</div>`;
+        }
         html += `
-          <div class="picker-item${hasStarted ? ' active' : ''}" onclick="pickChallenge(${c.id})">
+          <div class="picker-item" onclick="pickChallenge(${c.id})">
             <div>
               <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
               <span class="name">${c.name}</span>
-              ${hasStarted ? '<div class="picker-status">En cours</div>' : ''}
             </div>
             <div class="goal">
               ${c.target} ${c.unit === 'sec' ? 'sec' : ''}
-              ${rel ? `<div class="last-done">${rel}</div>` : ''}
+              ${statusHtml}
             </div>
           </div>
         `;
@@ -1119,6 +1114,7 @@ function render() {
     }
   } else {
     const c = getChallenge();
+    const entry = getEntry(currentChallengeId);
     const total = getTotal();
     const target = getTarget();
     const pct = Math.min(100, Math.round((total/target)*100));
@@ -1150,7 +1146,7 @@ function render() {
         </div>
 
         <div class="bar-track">
-          <div class="bar-fill${state.done ? ' complete' : ''}" style="width:${pct}%"></div>
+          <div class="bar-fill${entry.done ? ' complete' : ''}" style="width:${pct}%"></div>
         </div>
 
         <div class="tally-wrap">${renderTally(total, target, c.unit)}</div>
@@ -1180,13 +1176,13 @@ function render() {
           <button class="custom-add-btn" onclick="customAddSubmit()">Ajouter</button>
         </div>
 
-        ${state.sets.length > 0 ? `
+        ${entry.sets.length > 0 ? `
           <div class="undo-row">
-            <button class="undo-btn" onclick="undoLast()">Annuler la dernière série (${state.sets[state.sets.length-1]})</button>
+            <button class="undo-btn" onclick="undoLast()">Annuler la dernière série (${entry.sets[entry.sets.length-1]})</button>
           </div>
         ` : ''}
 
-        ${state.done ? `<div class="done-banner">✓ Défi complété aujourd'hui</div>` : ''}
+        ${entry.done ? `<div class="done-banner">✓ Défi complété aujourd'hui</div>` : ''}
       </div>
     `;
   }
@@ -1242,18 +1238,21 @@ async function loadHistoryEntries() {
     try {
       const res = await dbGet('day:' + k);
       const s = JSON.parse(res.value);
-      if (s.challengeId) {
-        const c = CHALLENGES.find(x => x.id === s.challengeId);
-        entries.push({
-          key: k,
-          date: d,
-          challengeName: c ? c.name : 'Défi supprimé',
-          cat: c ? c.cat : '',
-          total: s.sets ? s.sets.reduce((a,b)=>a+b,0) : 0,
-          target: s.targetOverride || (c ? c.target : 0),
-          unit: c ? c.unit : 'reps',
-          done: !!s.done,
-        });
+      if (s.challenges) {
+        for (const [cid, entry] of Object.entries(s.challenges)) {
+          if (entry.sets && entry.sets.length === 0) continue;
+          const c = CHALLENGES.find(x => x.id === Number(cid));
+          entries.push({
+            key: k,
+            date: d,
+            challengeName: c ? c.name : 'Défi supprimé',
+            cat: c ? c.cat : '',
+            total: entry.sets ? entry.sets.reduce((a,b)=>a+b,0) : 0,
+            target: entry.targetOverride || (c ? c.target : 0),
+            unit: c ? c.unit : 'reps',
+            done: !!entry.done,
+          });
+        }
       }
     } catch (e) {
       // no entry for this day
@@ -1279,9 +1278,9 @@ function renderHistoryScreen() {
   for (let i = 0; i < firstDow; i++) calHtml += `<div class="cal-cell empty"></div>`;
   for (const d of days) {
     const k = dateKey(d);
-    const entry = historyEntries.find(e => e.key === k);
+    const dayEntries = historyEntries.filter(e => e.key === k);
     const isToday = k === todayKey;
-    const done = entry && entry.done;
+    const done = dayEntries.some(e => e.done);
     calHtml += `<div class="cal-cell${done ? ' done' : ''}${isToday ? ' today' : ''}">${done ? '✓' : d.getDate()}</div>`;
   }
   calHtml += `</div>`;
@@ -1336,16 +1335,6 @@ async function startApp() {
   await loadWeights();
   await loadLastCompleted();
   await loadState();
-
-  setInterval(() => {
-    refreshForCurrentDay().catch(console.error);
-  }, 60000);
-
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      refreshForCurrentDay().catch(console.error);
-    }
-  });
 }
 </script>
 
