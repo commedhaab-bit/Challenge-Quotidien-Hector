@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Défi du Jour</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1e1d1b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Défi du Jour">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+
+<!-- Firebase (gratuit, plan Spark) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+
+<style>
+  @font-face {
+    font-family: 'system-condensed';
+    src: local('Arial Narrow');
+  }
+
+  :root {
+    --bg: #1e1d1b;
+    --bg-raised: #262421;
+    --bg-card: #2b2926;
+    --chalk: #ede7db;
+    --chalk-dim: #a39d8f;
+    --accent: #f2c14e;
+    --accent-dim: #a9863a;
+    --line: #3d3a35;
+    --good: #7fb069;
+    --danger: #d9634f;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--chalk);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    overscroll-behavior-y: contain;
+  }
+
+  body {
+    background-image:
+      radial-gradient(ellipse at top left, rgba(255,255,255,0.03), transparent 50%),
+      radial-gradient(ellipse at bottom right, rgba(255,255,255,0.02), transparent 50%);
+  }
+
+  .app {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px 18px 40px;
+    min-height: 100vh;
+  }
+
+  /* HEADER */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 22px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .header .date {
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--chalk-dim);
+    font-weight: 600;
+  }
+  .header .streak {
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .header .streak:active { background: var(--bg-raised); }
+
+  /* HISTORY SCREEN */
+  .history-back {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--chalk-dim);
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    margin-bottom: 18px;
+  }
+  .history-back:active { background: var(--bg-raised); }
+
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    margin-bottom: 26px;
+  }
+  .cal-dow {
+    text-align: center;
+    font-size: 10px;
+    color: var(--chalk-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 2px;
+  }
+  .cal-cell {
+    aspect-ratio: 1;
+    border-radius: 7px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--chalk-dim);
+    position: relative;
+  }
+  .cal-cell.done {
+    background: var(--good);
+    border-color: var(--good);
+    color: #1e1d1b;
+    font-weight: 800;
+  }
+  .cal-cell.today {
+    border-color: var(--accent);
+    border-width: 2px;
+  }
+  .cal-cell.empty {
+    background: none;
+    border: none;
+  }
+
+  .history-list-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--chalk-dim);
+    font-weight: 700;
+    margin: 0 0 10px;
+  }
+  .history-entry {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .history-entry .hdate {
+    font-size: 11px;
+    color: var(--chalk-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 2px;
+  }
+  .history-entry .hname {
+    font-size: 14.5px;
+    font-weight: 700;
+  }
+  .history-entry .hprogress {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--chalk-dim);
+    white-space: nowrap;
+    margin-left: 10px;
+  }
+  .history-entry .hprogress.done {
+    color: var(--good);
+    font-weight: 700;
+  }
+  .history-empty {
+    text-align: center;
+    color: var(--chalk-dim);
+    padding: 30px 0;
+    font-size: 14px;
+  }
+
+  /* LOGIN SCREEN */
+  .login-screen {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 24px;
+  }
+  .login-screen .emoji { font-size: 48px; margin-bottom: 18px; }
+  .login-screen h1 {
+    font-size: 30px;
+    font-weight: 900;
+    text-transform: uppercase;
+    margin: 0 0 8px;
+  }
+  .login-screen p {
+    color: var(--chalk-dim);
+    font-size: 14px;
+    margin: 0 0 28px;
+    max-width: 300px;
+  }
+  .google-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--chalk);
+    color: #1e1d1b;
+    border: none;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 14px 24px;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  .google-btn:active { transform: scale(0.97); }
+  .login-error {
+    margin-top: 16px;
+    color: var(--danger);
+    font-size: 13px;
+    max-width: 300px;
+  }
+
+  h1.title {
+    font-family: 'Arial Narrow', system-condensed, sans-serif;
+    font-size: 42px;
+    font-weight: 900;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    margin: 0 0 4px;
+    line-height: 0.95;
+  }
+  .subtitle {
+    color: var(--chalk-dim);
+    font-size: 14px;
+    margin-bottom: 26px;
+  }
+
+  /* PICKER (no challenge chosen yet) */
+  .picker-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .picker-item {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .picker-item:active { transform: scale(0.98); }
+  .picker-item:hover { border-color: var(--accent-dim); }
+  .picker-item .name {
+    font-size: 15.5px;
+    font-weight: 600;
+  }
+  .picker-item .cat {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    font-weight: 700;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .picker-item .goal {
+    font-size: 13px;
+    color: var(--chalk-dim);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    margin-left: 12px;
+    text-align: right;
+  }
+  .last-done {
+    font-size: 10.5px;
+    color: var(--accent);
+    font-weight: 700;
+    margin-top: 3px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .picker-item.done {
+    opacity: 0.45;
+  }
+  .picker-item.done .name::after {
+    content: " ✓";
+    color: var(--good);
+  }
+
+  /* SECTION LABELS in picker */
+  .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--chalk-dim);
+    margin: 20px 0 8px;
+    font-weight: 700;
+  }
+  .section-label:first-child { margin-top: 0; }
+
+  /* ACTIVE CHALLENGE VIEW */
+  .active-card {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 22px 20px 20px;
+    position: relative;
+  }
+  .active-cat {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .weight-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: -8px 0 18px;
+  }
+  .weight-pill {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .weight-pill button {
+    background: none;
+    border: none;
+    color: var(--chalk-dim);
+    text-decoration: underline;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .active-name {
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.1;
+    margin-bottom: 18px;
+  }
+  .change-btn {
+    position: absolute;
+    top: 20px;
+    right: 18px;
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--chalk-dim);
+    font-size: 11px;
+    padding: 6px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+  }
+  .change-btn:active { background: var(--bg-raised); }
+
+  /* PROGRESS */
+  .progress-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .progress-numbers {
+    font-variant-numeric: tabular-nums;
+  }
+  .progress-current {
+    font-size: 40px;
+    font-weight: 900;
+    color: var(--accent);
+  }
+  .progress-target {
+    font-size: 18px;
+    color: var(--chalk-dim);
+    font-weight: 600;
+  }
+  .progress-unit {
+    font-size: 13px;
+    color: var(--chalk-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .progress-pct {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--chalk-dim);
+  }
+
+  .bar-track {
+    height: 10px;
+    background: var(--bg);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    border: 1px solid var(--line);
+  }
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    border-radius: 6px 0 0 6px;
+    transition: width 0.35s cubic-bezier(.2,.8,.2,1);
+  }
+  .bar-fill.complete {
+    background: linear-gradient(90deg, #5f9a4d, var(--good));
+  }
+
+  /* TALLY MARKS */
+  .tally-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-bottom: 22px;
+    min-height: 24px;
+  }
+  .tally-group {
+    display: flex;
+    align-items: flex-end;
+    margin-right: 8px;
+    height: 22px;
+  }
+  .tally-mark {
+    width: 3px;
+    height: 20px;
+    background: var(--chalk-dim);
+    margin-right: 3px;
+    border-radius: 1px;
+  }
+  .tally-mark.strike {
+    position: relative;
+    margin-right: 6px;
+  }
+  .tally-mark.strike::after {
+    content: '';
+    position: absolute;
+    left: -14px;
+    top: 9px;
+    width: 20px;
+    height: 3px;
+    background: var(--accent);
+    transform: rotate(-35deg);
+    border-radius: 1px;
+  }
+
+  /* QUICK ADD BUTTONS */
+  .add-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--chalk-dim);
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .quick-add-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .qa-btn {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    color: var(--chalk);
+    font-size: 15px;
+    font-weight: 700;
+    padding: 14px 4px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: transform 0.08s, background 0.1s;
+  }
+  .qa-btn:active {
+    transform: scale(0.94);
+    background: var(--accent-dim);
+  }
+
+  /* TIMER */
+  .timer-box {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .timer-display {
+    font-size: 48px;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    color: var(--chalk);
+    margin-bottom: 14px;
+    line-height: 1;
+  }
+  .timer-display.running {
+    color: var(--accent);
+  }
+  .timer-btn {
+    border: none;
+    font-weight: 800;
+    font-size: 16px;
+    padding: 14px 0;
+    border-radius: 12px;
+    cursor: pointer;
+    width: 100%;
+    transition: transform 0.08s;
+  }
+  .timer-btn:active { transform: scale(0.97); }
+  .timer-btn.start {
+    background: var(--accent);
+    color: #1e1d1b;
+  }
+  .timer-btn.stop {
+    background: var(--danger);
+    color: #fff8f0;
+  }
+  .timer-hint {
+    font-size: 12px;
+    color: var(--chalk-dim);
+    margin-top: 10px;
+  }
+  .or-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--chalk-dim);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 4px 0 12px;
+  }
+  .or-divider::before, .or-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  .custom-add-row {
+    display: flex;
+    gap: 8px;
+  }
+  .custom-add-row input {
+    flex: 1;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    color: var(--chalk);
+    font-size: 16px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .custom-add-row input:focus { outline: 1px solid var(--accent); }
+  .custom-add-btn {
+    background: var(--accent);
+    color: #1e1d1b;
+    border: none;
+    font-weight: 800;
+    font-size: 14px;
+    padding: 0 18px;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .custom-add-btn:active { transform: scale(0.96); }
+
+  .undo-row {
+    text-align: center;
+    margin-top: 14px;
+  }
+  .undo-btn {
+    background: none;
+    border: none;
+    color: var(--chalk-dim);
+    font-size: 12.5px;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 6px;
+  }
+
+  .done-banner {
+    text-align: center;
+    padding: 16px;
+    background: rgba(127, 176, 105, 0.12);
+    border: 1px solid var(--good);
+    border-radius: 12px;
+    color: var(--good);
+    font-weight: 700;
+    font-size: 15px;
+    margin-top: 16px;
+  }
+
+  /* TARGET EDIT */
+  .target-edit {
+    font-size: 12px;
+    color: var(--chalk-dim);
+    text-decoration: underline;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    margin-left: 8px;
+  }
+
+  /* WEEK STRIP */
+  .week-strip {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 28px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+  .week-day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+  }
+  .week-day .dow {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--chalk-dim);
+    letter-spacing: 0.05em;
+  }
+  .week-dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 1.5px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+  }
+  .week-dot.done {
+    background: var(--good);
+    border-color: var(--good);
+    color: #1e1d1b;
+    font-weight: 900;
+  }
+  .week-dot.today {
+    border-color: var(--accent);
+    border-width: 2px;
+  }
+
+  .loading {
+    text-align: center;
+    padding: 60px 0;
+    color: var(--chalk-dim);
+  }
+
+  ::-webkit-scrollbar { display: none; }
+</style>
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen" style="display:none;">
+  <div class="emoji">💪</div>
+  <h1>Défi du Jour</h1>
+  <p>Connecte-toi avec Google pour retrouver tes défis et ta progression sur tous tes appareils.</p>
+  <button class="google-btn" onclick="signIn()">
+    <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72A5.4 5.4 0 0 1 3.68 9c0-.6.1-1.18.29-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.59-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
+    Se connecter avec Google
+  </button>
+  <div id="loginError" class="login-error"></div>
+</div>
+
+<div class="app" id="app" style="display:none;">
+  <div class="loading">Chargement…</div>
+</div>
+
+<script>
+// ==== CONFIGURATION FIREBASE ====
+// Remplace ces valeurs par celles de TON projet Firebase (voir guide fourni)
+const firebaseConfig = {
+  apiKey: "AIzaSyBE0DL8Q6y8Md4R2aM0D1imx_cTUlHP5c4",
+  authDomain: "challenge-quotidien-hector.firebaseapp.com",
+  projectId: "challenge-quotidien-hector",
+  storageBucket: "challenge-quotidien-hector.firebasestorage.app",
+  messagingSenderId: "613473786890",
+  appId: "1:613473786890:web:c77ccf3c2d99857df9d3f3",
+  measurementId: "G-CXQPEGDHW7"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+let currentUser = null;
+
+async function dbGet(key) {
+  const doc = await db.collection('users').doc(currentUser.uid).collection('kv').doc(key).get();
+  if (!doc.exists) throw new Error('not found: ' + key);
+  return { key, value: doc.data().value };
+}
+
+async function dbSet(key, value) {
+  await db.collection('users').doc(currentUser.uid).collection('kv').doc(key).set({ value });
+  return { key, value };
+}
+
+function signIn() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  document.getElementById('loginError').textContent = '';
+  auth.signInWithPopup(provider).catch(err => {
+    document.getElementById('loginError').textContent = "Connexion impossible : " + err.message;
+  });
+}
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    currentUser = user;
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    startApp();
+  } else {
+    currentUser = null;
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+  }
+});
+
+// Enregistrement du service worker (mode PWA hors-ligne pour l'interface)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+  });
+}
+
+const CHALLENGES = [
+  { id: 1,  cat: 'Haut du corps', name: 'Pompes classiques', target: 100, unit: 'reps' },
+  { id: 2,  cat: 'Haut du corps', name: 'Pompes (grosse série)', target: 150, unit: 'reps' },
+  { id: 3,  cat: 'Haut du corps', name: 'Dips', target: 100, unit: 'reps' },
+  { id: 4,  cat: 'Haut du corps', name: 'Pompes isométrie (position basse)', target: 180, unit: 'sec' },
+  { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps' },
+  { id: 6,  cat: 'Haltères', name: 'Biceps', target: 150, unit: 'reps' },
+  { id: 7,  cat: 'Haltères', name: 'Épaule lateral raise', target: 100, unit: 'reps' },
+  { id: 8,  cat: 'Haltères', name: 'Cuban press', target: 180, unit: 'reps' },
+  { id: 9,  cat: 'Gainage / Core', name: 'Planche cumulée', target: 300, unit: 'sec' },
+  { id: 10, cat: 'Gainage / Core', name: 'Crunchs', target: 100, unit: 'reps' },
+  { id: 11, cat: 'Gainage / Core', name: 'Gainage latéral (2 côtés)', target: 300, unit: 'sec' },
+  { id: 12, cat: 'Gainage / Core', name: 'Mountain climbers', target: 150, unit: 'reps' },
+  { id: 13, cat: 'Gainage / Core', name: 'Leg raises', target: 100, unit: 'reps' },
+  { id: 14, cat: 'Bas du corps', name: 'Squats', target: 200, unit: 'reps' },
+  { id: 15, cat: 'Bas du corps', name: 'Fentes (2 jambes)', target: 100, unit: 'reps' },
+  { id: 16, cat: 'Bas du corps', name: 'Chaise (wall sit) cumulée', target: 180, unit: 'sec' },
+  { id: 17, cat: 'Bas du corps', name: 'Mollets (calf raises)', target: 150, unit: 'reps' },
+];
+
+const QUICK_ADD = { reps: [5, 10, 15, 20, 25, 30], sec: [15, 30, 60, 120] };
+const DOW_LABELS = ['D','L','M','M','J','V','S'];
+
+let state = null;
+let todayKey = null;
+let weekData = {};
+let weights = {};
+let lastCompleted = {};
+let showHistory = false;
+let historyEntries = [];
+let historyLoading = false;
+
+async function loadLastCompleted() {
+  try {
+    const res = await dbGet('lastCompleted');
+    lastCompleted = JSON.parse(res.value);
+  } catch (e) {
+    lastCompleted = {};
+  }
+}
+
+async function saveLastCompleted() {
+  try {
+    await dbSet('lastCompleted', JSON.stringify(lastCompleted));
+  } catch (e) {
+    console.error('save lastCompleted failed', e);
+  }
+}
+
+function formatRelative(ms) {
+  if (!ms) return null;
+  const diff = Date.now() - ms;
+  const min = diff / 60000;
+  if (min < 1) return "à l'instant";
+  if (min < 60) return `il y a ${Math.round(min)}min`;
+  const hrs = diff / 3600000;
+  if (hrs < 24) return `il y a ${Math.round(hrs)}h`;
+  const days = diff / 86400000;
+  return `il y a ${Math.round(days)}j`;
+}
+
+async function loadWeights() {
+  try {
+    const res = await dbGet('weights');
+    weights = JSON.parse(res.value);
+  } catch (e) {
+    weights = {};
+  }
+  // default 8kg for any Haltères exercise not yet set
+  for (const c of CHALLENGES) {
+    if (c.cat === 'Haltères' && weights[c.id] === undefined) {
+      weights[c.id] = 8;
+    }
+  }
+}
+
+async function saveWeights() {
+  try {
+    await dbSet('weights', JSON.stringify(weights));
+  } catch (e) {
+    console.error('save weights failed', e);
+  }
+}
+
+async function editWeight() {
+  const c = getChallenge();
+  const current = weights[c.id] ?? 8;
+  const input = prompt(`Poids de l'haltère pour "${c.name}" (kg) :`, current);
+  if (input === null) return;
+  const val = parseFloat(input.replace(',', '.'));
+  if (isNaN(val) || val <= 0) return;
+  weights[c.id] = val;
+  await saveWeights();
+  render();
+}
+let timerRunning = false;
+let timerStartMs = null;
+let timerIntervalId = null;
+
+function formatTimer(totalSec) {
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${pad(s)}`;
+}
+
+function clearTimerState() {
+  if (timerIntervalId) clearInterval(timerIntervalId);
+  timerIntervalId = null;
+  timerRunning = false;
+  timerStartMs = null;
+}
+
+function startTimer() {
+  timerRunning = true;
+  timerStartMs = Date.now();
+  timerIntervalId = setInterval(tickTimer, 250);
+  render();
+}
+
+function tickTimer() {
+  const el = document.getElementById('timerDisplay');
+  if (!el) return;
+  const elapsed = Math.floor((Date.now() - timerStartMs) / 1000);
+  el.textContent = formatTimer(elapsed);
+}
+
+async function stopTimer() {
+  const elapsed = Math.round((Date.now() - timerStartMs) / 1000);
+  clearTimerState();
+  if (elapsed > 0) {
+    await addSet(elapsed);
+  } else {
+    render();
+  }
+}
+
+function pad(n) { return n < 10 ? '0' + n : '' + n; }
+function dateKey(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+
+function formatDateLabel(d) {
+  const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const months = ['jan','fév','mar','avr','mai','juin','juil','août','sep','oct','nov','déc'];
+  return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+}
+
+async function loadState() {
+  const today = new Date();
+  todayKey = dateKey(today);
+  try {
+    const res = await dbGet('day:' + todayKey);
+    state = JSON.parse(res.value);
+  } catch (e) {
+    state = { challengeId: null, sets: [], targetOverride: null, done: false };
+  }
+  // load last 7 days for streak strip
+  weekData = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const k = dateKey(d);
+    try {
+      const res = await dbGet('day:' + k);
+      const s = JSON.parse(res.value);
+      weekData[k] = !!s.done;
+    } catch (e) {
+      weekData[k] = false;
+    }
+  }
+  render();
+}
+
+async function saveState() {
+  try {
+    await dbSet('day:' + todayKey, JSON.stringify(state));
+  } catch (e) {
+    console.error('save failed', e);
+  }
+}
+
+function getChallenge() {
+  return CHALLENGES.find(c => c.id === state.challengeId);
+}
+
+function getTarget() {
+  const c = getChallenge();
+  return state.targetOverride || (c ? c.target : 0);
+}
+
+function getTotal() {
+  return state.sets.reduce((a,b) => a+b, 0);
+}
+
+async function pickChallenge(id) {
+  clearTimerState();
+  state = { challengeId: id, sets: [], targetOverride: null, done: false };
+  await saveState();
+  render();
+}
+
+async function changeChallenge() {
+  clearTimerState();
+  state.challengeId = null;
+  render();
+}
+
+async function addSet(amount) {
+  if (amount <= 0) return;
+  state.sets.push(amount);
+  const total = getTotal();
+  const target = getTarget();
+  if (total >= target && !state.done) {
+    state.done = true;
+    weekData[todayKey] = true;
+    lastCompleted[state.challengeId] = Date.now();
+    await saveLastCompleted();
+    if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
+  }
+  await saveState();
+  render();
+}
+
+async function undoLast() {
+  state.sets.pop();
+  const total = getTotal();
+  if (total < getTarget()) {
+    state.done = false;
+    weekData[todayKey] = false;
+  }
+  await saveState();
+  render();
+}
+
+async function editTarget() {
+  const c = getChallenge();
+  const current = getTarget();
+  const input = prompt(`Objectif du jour (${c.unit === 'sec' ? 'secondes' : 'répétitions'}) :`, current);
+  if (input === null) return;
+  const val = parseInt(input, 10);
+  if (isNaN(val) || val <= 0) return;
+  state.targetOverride = val;
+  const total = getTotal();
+  state.done = total >= val;
+  await saveState();
+  render();
+}
+
+function customAddSubmit() {
+  const input = document.getElementById('customAddInput');
+  const val = parseInt(input.value, 10);
+  if (!isNaN(val) && val > 0) {
+    addSet(val);
+    input.value = '';
+  }
+}
+
+function renderTally(total, target, unit) {
+  // represent progress in tally groups of 5, scaled so it doesn't explode for "sec" units
+  const scale = unit === 'sec' ? Math.max(1, Math.round(target / 40)) : 1;
+  const marks = Math.min(60, Math.round(total / scale));
+  let html = '';
+  const groups = Math.ceil(marks / 5) || 0;
+  for (let g = 0; g < groups; g++) {
+    html += '<div class="tally-group">';
+    const inGroup = Math.min(5, marks - g*5);
+    for (let i = 0; i < inGroup; i++) {
+      const isStrike = i === 4;
+      html += `<div class="tally-mark${isStrike ? ' strike' : ''}"></div>`;
+    }
+    html += '</div>';
+  }
+  return html;
+}
+
+function render() {
+  const app = document.getElementById('app');
+  const today = new Date();
+
+  if (showHistory) {
+    app.innerHTML = renderHistoryScreen();
+    return;
+  }
+
+  let html = `
+    <div class="header">
+      <div class="date">${formatDateLabel(today)}</div>
+      <button class="streak" onclick="openHistory()">🔥 ${computeStreak()} j</button>
+    </div>
+  `;
+
+  if (!state.challengeId) {
+    html += `
+      <h1 class="title">Défi du jour</h1>
+      <div class="subtitle">Choisis ton défi pour aujourd'hui</div>
+    `;
+    const cats = [...new Set(CHALLENGES.map(c => c.cat))];
+    for (const cat of cats) {
+      html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
+      for (const c of CHALLENGES.filter(x => x.cat === cat)) {
+        const rel = formatRelative(lastCompleted[c.id]);
+        html += `
+          <div class="picker-item" onclick="pickChallenge(${c.id})">
+            <div>
+              <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
+              <span class="name">${c.name}</span>
+            </div>
+            <div class="goal">
+              ${c.target} ${c.unit === 'sec' ? 'sec' : ''}
+              ${rel ? `<div class="last-done">${rel}</div>` : ''}
+            </div>
+          </div>
+        `;
+      }
+      html += `</div>`;
+    }
+  } else {
+    const c = getChallenge();
+    const total = getTotal();
+    const target = getTarget();
+    const pct = Math.min(100, Math.round((total/target)*100));
+    const unitLabel = c.unit === 'sec' ? 'sec' : 'reps';
+    const quicks = QUICK_ADD[c.unit];
+
+    html += `
+      <div class="active-card">
+        <button class="change-btn" onclick="changeChallenge()">‹ Retour</button>
+        <div class="active-cat">${c.cat}</div>
+        <div class="active-name">${c.name}</div>
+
+        ${c.cat === 'Haltères' ? `
+          <div class="weight-row">
+            <div class="weight-pill">
+              🏋️ ${weights[c.id] ?? 8} kg
+              <button onclick="editWeight()">modifier</button>
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="progress-row">
+          <div class="progress-numbers">
+            <span class="progress-current">${total}</span><span class="progress-target"> / ${target}</span>
+            <span class="progress-unit"> ${unitLabel}</span>
+            <button class="target-edit" onclick="editTarget()">modifier</button>
+          </div>
+          <div class="progress-pct">${pct}%</div>
+        </div>
+
+        <div class="bar-track">
+          <div class="bar-fill${state.done ? ' complete' : ''}" style="width:${pct}%"></div>
+        </div>
+
+        <div class="tally-wrap">${renderTally(total, target, c.unit)}</div>
+
+        ${c.unit === 'sec' ? `
+          <div class="add-label">Chronométrer une série</div>
+          <div class="timer-box">
+            <div class="timer-display${timerRunning ? ' running' : ''}" id="timerDisplay">${timerRunning ? formatTimer(Math.floor((Date.now()-timerStartMs)/1000)) : '0:00'}</div>
+            ${timerRunning
+              ? `<button class="timer-btn stop" onclick="stopTimer()">⏹ Stop — ajouter au compteur</button>`
+              : `<button class="timer-btn start" onclick="startTimer()">▶ Démarrer le chrono</button>`
+            }
+            <div class="timer-hint">${timerRunning ? 'Chrono en cours… reste sur cette page' : 'Lance le chrono pendant ton gainage / ta série'}</div>
+          </div>
+          <div class="or-divider">ou ajoute un temps manuellement</div>
+          <div class="quick-add-grid">
+            ${quicks.map(q => `<button class="qa-btn" onclick="addSet(${q})">+${q}s</button>`).join('')}
+          </div>
+        ` : `
+          <div class="add-label">Ajouter une série</div>
+          <div class="quick-add-grid">
+            ${quicks.map(q => `<button class="qa-btn" onclick="addSet(${q})">+${q}</button>`).join('')}
+          </div>
+        `}
+        <div class="custom-add-row">
+          <input type="number" id="customAddInput" placeholder="Nombre personnalisé" inputmode="numeric">
+          <button class="custom-add-btn" onclick="customAddSubmit()">Ajouter</button>
+        </div>
+
+        ${state.sets.length > 0 ? `
+          <div class="undo-row">
+            <button class="undo-btn" onclick="undoLast()">Annuler la dernière série (${state.sets[state.sets.length-1]})</button>
+          </div>
+        ` : ''}
+
+        ${state.done ? `<div class="done-banner">✓ Défi complété aujourd'hui</div>` : ''}
+      </div>
+    `;
+  }
+
+  // week strip
+  html += `<div class="week-strip">`;
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const k = dateKey(d);
+    const isToday = k === todayKey;
+    const done = weekData[k];
+    html += `
+      <div class="week-day">
+        <div class="dow">${DOW_LABELS[d.getDay()]}</div>
+        <div class="week-dot${done ? ' done' : ''}${isToday ? ' today' : ''}">${done ? '✓' : ''}</div>
+      </div>
+    `;
+  }
+  html += `</div>`;
+
+  app.innerHTML = html;
+
+  const input = document.getElementById('customAddInput');
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') customAddSubmit();
+    });
+  }
+}
+
+async function openHistory() {
+  showHistory = true;
+  historyLoading = true;
+  render();
+  await loadHistoryEntries();
+  historyLoading = false;
+  render();
+}
+
+function closeHistory() {
+  showHistory = false;
+  render();
+}
+
+async function loadHistoryEntries() {
+  const DAYS_BACK = 28;
+  const entries = [];
+  for (let i = 0; i < DAYS_BACK; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const k = dateKey(d);
+    try {
+      const res = await dbGet('day:' + k);
+      const s = JSON.parse(res.value);
+      if (s.challengeId) {
+        const c = CHALLENGES.find(x => x.id === s.challengeId);
+        entries.push({
+          key: k,
+          date: d,
+          challengeName: c ? c.name : 'Défi supprimé',
+          cat: c ? c.cat : '',
+          total: s.sets ? s.sets.reduce((a,b)=>a+b,0) : 0,
+          target: s.targetOverride || (c ? c.target : 0),
+          unit: c ? c.unit : 'reps',
+          done: !!s.done,
+        });
+      }
+    } catch (e) {
+      // no entry for this day
+    }
+  }
+  historyEntries = entries;
+}
+
+function renderHistoryScreen() {
+  const today = new Date();
+  const cells = [];
+  const DAYS_BACK = 28;
+  // build calendar: oldest first, pad to full weeks starting Monday
+  const days = [];
+  for (let i = DAYS_BACK - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(d);
+  }
+  const firstDow = (days[0].getDay() + 6) % 7; // Monday=0
+  let calHtml = `<div class="cal-grid">`;
+  ['L','M','M','J','V','S','D'].forEach(l => calHtml += `<div class="cal-dow">${l}</div>`);
+  for (let i = 0; i < firstDow; i++) calHtml += `<div class="cal-cell empty"></div>`;
+  for (const d of days) {
+    const k = dateKey(d);
+    const entry = historyEntries.find(e => e.key === k);
+    const isToday = k === todayKey;
+    const done = entry && entry.done;
+    calHtml += `<div class="cal-cell${done ? ' done' : ''}${isToday ? ' today' : ''}">${done ? '✓' : d.getDate()}</div>`;
+  }
+  calHtml += `</div>`;
+
+  let listHtml = `<div class="history-list-label">Défis effectués</div>`;
+  const withChallenge = historyEntries.filter(e => e.challengeName);
+  if (historyLoading) {
+    listHtml += `<div class="history-empty">Chargement…</div>`;
+  } else if (withChallenge.length === 0) {
+    listHtml += `<div class="history-empty">Pas encore d'historique</div>`;
+  } else {
+    for (const e of withChallenge) {
+      const label = e.key === todayKey ? "Aujourd'hui" : formatDateLabel(e.date);
+      listHtml += `
+        <div class="history-entry">
+          <div>
+            <div class="hdate">${label}</div>
+            <div class="hname">${e.challengeName}</div>
+          </div>
+          <div class="hprogress${e.done ? ' done' : ''}">${e.total}/${e.target} ${e.unit === 'sec' ? 'sec' : ''}${e.done ? ' ✓' : ''}</div>
+        </div>
+      `;
+    }
+  }
+
+  return `
+    <button class="history-back" onclick="closeHistory()">‹ Retour</button>
+    <h1 class="title">Historique</h1>
+    <div class="subtitle">Tes 28 derniers jours</div>
+    ${calHtml}
+    ${listHtml}
+  `;
+}
+
+function computeStreak() {
+  let streak = 0;
+  for (let i = 0; i <= 6; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const k = dateKey(d);
+    if (weekData[k]) {
+      streak++;
+    } else {
+      if (i === 0) continue; // today not done yet doesn't break streak display
+      break;
+    }
+  }
+  return streak;
+}
+
+async function startApp() {
+  await loadWeights();
+  await loadLastCompleted();
+  await loadState();
+}
+</script>
+
+</body>
+</html>
