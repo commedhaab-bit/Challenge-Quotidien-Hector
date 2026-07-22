@@ -195,6 +195,237 @@
     font-size: 14px;
   }
 
+  /* WEEKLY CHART */
+  .chart-wrap {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    height: 120px;
+    margin-bottom: 26px;
+    gap: 6px;
+  }
+  .chart-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    justify-content: flex-end;
+  }
+  .chart-bar-track {
+    width: 100%;
+    max-width: 26px;
+    height: 80px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .chart-bar {
+    width: 100%;
+    background: var(--accent-dim);
+    border-radius: 4px 4px 0 0;
+    transition: height 0.3s ease;
+  }
+  .chart-bar.today { background: var(--accent); }
+  .chart-val {
+    font-size: 10px;
+    color: var(--chalk-dim);
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+    height: 12px;
+  }
+  .chart-dow {
+    font-size: 10px;
+    color: var(--chalk-dim);
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* HEATMAP */
+  .heatmap-scroll {
+    overflow-x: auto;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+  }
+  .heatmap-grid {
+    display: grid;
+    grid-template-rows: repeat(7, 12px);
+    grid-auto-flow: column;
+    grid-auto-columns: 12px;
+    gap: 3px;
+    width: max-content;
+  }
+  .heat-cell {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+  }
+  .heat-cell.lvl1 { background: #4a4025; border-color: #4a4025; }
+  .heat-cell.lvl2 { background: var(--accent-dim); border-color: var(--accent-dim); }
+  .heat-cell.lvl3 { background: var(--accent); border-color: var(--accent); }
+  .heat-cell.future { visibility: hidden; }
+  .heat-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-end;
+    font-size: 10px;
+    color: var(--chalk-dim);
+    margin-bottom: 26px;
+  }
+  .heat-legend .heat-cell { width: 10px; height: 10px; }
+
+  /* TROPHY GRID (history screen, locked + unlocked) */
+  .trophy-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 26px;
+  }
+  .trophy-item {
+    background: var(--bg-card);
+    border: 1px solid var(--accent-dim);
+    border-radius: 12px;
+    padding: 12px 4px;
+    text-align: center;
+  }
+  .trophy-item.locked {
+    border-color: var(--line);
+    opacity: 0.5;
+  }
+
+  /* MANAGE LINK + BADGES STRIP */
+  .manage-link {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 1px dashed var(--line);
+    color: var(--chalk-dim);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-top: 22px;
+  }
+  .manage-link:active { background: var(--bg-raised); }
+
+  .badges-empty {
+    color: var(--chalk-dim);
+    font-size: 13px;
+    text-align: center;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .badges-strip {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .badge-chip {
+    flex: 0 0 auto;
+    width: 76px;
+    background: var(--bg-card);
+    border: 1px solid var(--accent-dim);
+    border-radius: 12px;
+    padding: 12px 6px;
+    text-align: center;
+  }
+  .badge-icon { font-size: 26px; margin-bottom: 4px; }
+  .badge-label {
+    font-size: 9.5px;
+    color: var(--chalk-dim);
+    line-height: 1.2;
+  }
+
+  /* MANAGE SCREEN */
+  .add-challenge-btn {
+    display: block;
+    width: 100%;
+    background: var(--accent);
+    color: #1e1d1b;
+    border: none;
+    font-weight: 800;
+    font-size: 14px;
+    padding: 13px;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-bottom: 22px;
+  }
+  .add-challenge-btn:active { transform: scale(0.98); }
+
+  .manage-item {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .manage-item .goal-inline {
+    font-size: 12px;
+    color: var(--chalk-dim);
+    margin-top: 2px;
+  }
+  .manage-actions { display: flex; gap: 6px; }
+  .icon-btn {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-size: 15px;
+    padding: 7px 9px;
+    cursor: pointer;
+  }
+  .icon-btn.danger { border-color: var(--danger); }
+  .icon-btn:active { transform: scale(0.94); }
+
+  .form-field { margin-bottom: 16px; }
+  .form-field label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--chalk-dim);
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .form-field input, .form-field select {
+    width: 100%;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    color: var(--chalk);
+    font-size: 15px;
+    padding: 12px 14px;
+    border-radius: 10px;
+  }
+  .form-field input:focus, .form-field select:focus { outline: 1px solid var(--accent); }
+  .form-row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .save-challenge-btn {
+    display: block;
+    width: 100%;
+    background: var(--accent);
+    color: #1e1d1b;
+    border: none;
+    font-weight: 800;
+    font-size: 15px;
+    padding: 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .save-challenge-btn:active { transform: scale(0.98); }
+
   /* LOGIN SCREEN */
   .login-screen {
     min-height: 100vh;
@@ -370,6 +601,54 @@
     font-weight: 600;
     cursor: pointer;
     padding: 0;
+  }
+
+  .stats-row {
+    display: flex;
+    gap: 8px;
+    margin: -6px 0 18px;
+    flex-wrap: wrap;
+  }
+  .stat-chip {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--chalk-dim);
+  }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translate(-50%, 20px);
+    background: var(--chalk);
+    color: #1e1d1b;
+    font-weight: 800;
+    font-size: 14px;
+    padding: 14px 22px;
+    border-radius: 30px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 999;
+    max-width: 88vw;
+    text-align: center;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  .confetti-canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    pointer-events: none;
+    z-index: 998;
   }
 
   .active-name {
@@ -763,7 +1042,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-const CHALLENGES = [
+const DEFAULT_CHALLENGES = [
   { id: 1,  cat: 'Haut du corps', name: 'Pompes classiques', target: 100, unit: 'reps' },
   { id: 2,  cat: 'Haut du corps', name: 'Pompes (grosse série)', target: 150, unit: 'reps' },
   { id: 3,  cat: 'Haut du corps', name: 'Dips', target: 100, unit: 'reps' },
@@ -785,6 +1064,83 @@ const CHALLENGES = [
 
 const QUICK_ADD = { reps: [5, 10, 15, 20, 25, 30], sec: [15, 30, 60, 120] };
 const DOW_LABELS = ['D','L','M','M','J','V','S'];
+
+let CHALLENGES = DEFAULT_CHALLENGES.map(c => ({ ...c }));
+let nextChallengeId = Math.max(...DEFAULT_CHALLENGES.map(c => c.id)) + 1;
+let showManage = false;
+let editingChallengeId = null; // null = liste, 'new' = création, id = édition
+
+async function loadChallenges() {
+  try {
+    const res = await dbGet('userChallenges');
+    const saved = JSON.parse(res.value);
+    if (Array.isArray(saved) && saved.length > 0) {
+      CHALLENGES = saved;
+      nextChallengeId = Math.max(...CHALLENGES.map(c => c.id), 0) + 1;
+    }
+  } catch (e) {
+    // pas encore de liste perso, on garde les défauts
+  }
+}
+
+async function saveChallenges() {
+  try {
+    await dbSet('userChallenges', JSON.stringify(CHALLENGES));
+  } catch (e) {
+    console.error('save challenges failed', e);
+  }
+}
+
+function openManage() {
+  showManage = true;
+  editingChallengeId = null;
+  render();
+}
+
+function closeManage() {
+  showManage = false;
+  editingChallengeId = null;
+  render();
+}
+
+function openNewChallengeForm() {
+  editingChallengeId = 'new';
+  render();
+}
+
+function openEditChallengeForm(id) {
+  editingChallengeId = id;
+  render();
+}
+
+async function submitChallengeForm() {
+  const name = document.getElementById('cfName').value.trim();
+  const cat = document.getElementById('cfCat').value.trim();
+  const target = parseInt(document.getElementById('cfTarget').value, 10);
+  const unit = document.getElementById('cfUnit').value;
+
+  if (!name || !cat || isNaN(target) || target <= 0) {
+    alert('Merci de remplir tous les champs correctement.');
+    return;
+  }
+
+  if (editingChallengeId === 'new') {
+    CHALLENGES.push({ id: nextChallengeId++, cat, name, target, unit });
+  } else {
+    const c = CHALLENGES.find(x => x.id === editingChallengeId);
+    if (c) { c.name = name; c.cat = cat; c.target = target; c.unit = unit; }
+  }
+  await saveChallenges();
+  editingChallengeId = null;
+  render();
+}
+
+async function deleteChallenge(id) {
+  if (!confirm('Supprimer ce défi ? (ton historique passé pour ce défi sera conservé mais il n\'apparaîtra plus dans la liste)')) return;
+  CHALLENGES = CHALLENGES.filter(c => c.id !== id);
+  await saveChallenges();
+  render();
+}
 
 let state = null;
 let todayKey = null;
@@ -822,6 +1178,137 @@ function formatRelative(ms) {
   if (hrs < 24) return `il y a ${Math.round(hrs)}h`;
   const days = diff / 86400000;
   return `il y a ${Math.round(days)}j`;
+}
+
+let stats = {}; // { [challengeId]: { lifetimeTotal, bestDay:{total,date} } }
+let badges = { totalCompletions: 0, unlocked: [] };
+let dailyActivity = {}; // { 'YYYY-MM-DD': count }
+
+const BADGE_DEFS = [
+  { id: 'streak_3',   label: '3 jours de suite',   icon: '🔥', check: () => computeStreak() >= 3 },
+  { id: 'streak_7',   label: '7 jours de suite',    icon: '🔥', check: () => computeStreak() >= 7 },
+  { id: 'streak_30',  label: '30 jours de suite',   icon: '🔥', check: () => computeStreak() >= 30 },
+  { id: 'streak_100', label: '100 jours de suite',  icon: '🔥', check: () => computeStreak() >= 100 },
+  { id: 'comp_10',    label: '10 défis complétés',  icon: '🏅', check: () => badges.totalCompletions >= 10 },
+  { id: 'comp_50',    label: '50 défis complétés',  icon: '🏅', check: () => badges.totalCompletions >= 50 },
+  { id: 'comp_100',   label: '100 défis complétés', icon: '🏆', check: () => badges.totalCompletions >= 100 },
+  { id: 'comp_250',   label: '250 défis complétés', icon: '👑', check: () => badges.totalCompletions >= 250 },
+];
+
+async function loadStats() {
+  try { const res = await dbGet('stats'); stats = JSON.parse(res.value); }
+  catch (e) { stats = {}; }
+}
+async function saveStats() {
+  try { await dbSet('stats', JSON.stringify(stats)); }
+  catch (e) { console.error('save stats failed', e); }
+}
+
+async function loadBadges() {
+  try { const res = await dbGet('badges'); badges = JSON.parse(res.value); }
+  catch (e) { badges = { totalCompletions: 0, unlocked: [] }; }
+}
+async function saveBadges() {
+  try { await dbSet('badges', JSON.stringify(badges)); }
+  catch (e) { console.error('save badges failed', e); }
+}
+
+async function loadDailyActivity() {
+  try { const res = await dbGet('dailyActivity'); dailyActivity = JSON.parse(res.value); }
+  catch (e) { dailyActivity = {}; }
+}
+async function saveDailyActivity() {
+  try { await dbSet('dailyActivity', JSON.stringify(dailyActivity)); }
+  catch (e) { console.error('save dailyActivity failed', e); }
+}
+
+function checkNewBadges() {
+  const freshlyUnlocked = [];
+  for (const b of BADGE_DEFS) {
+    if (!badges.unlocked.includes(b.id) && b.check()) {
+      badges.unlocked.push(b.id);
+      freshlyUnlocked.push(b);
+    }
+  }
+  return freshlyUnlocked;
+}
+
+function showToast(html, duration = 2600) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = html;
+  el.classList.remove('show');
+  void el.offsetWidth; // force reflow pour rejouer l'anim si déjà visible
+  el.classList.add('show');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), duration);
+}
+
+function fireConfetti() {
+  const colors = ['#f2c14e', '#7fb069', '#e8dfc8', '#d9634f', '#a9863a'];
+  const canvas = document.createElement('canvas');
+  canvas.className = 'confetti-canvas';
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  const particles = Array.from({ length: 70 }, () => ({
+    x: Math.random() * canvas.width,
+    y: -20 - Math.random() * canvas.height * 0.3,
+    r: 3 + Math.random() * 4,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    vx: (Math.random() - 0.5) * 3,
+    vy: 2 + Math.random() * 3,
+    rot: Math.random() * 360,
+    vrot: (Math.random() - 0.5) * 10,
+  }));
+  let frame = 0;
+  function tick() {
+    frame++;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const p of particles) {
+      p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.rot += p.vrot;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.r, -p.r * 0.6, p.r * 2, p.r * 1.2);
+      ctx.restore();
+    }
+    if (frame < 110) {
+      requestAnimationFrame(tick);
+    } else {
+      canvas.remove();
+    }
+  }
+  tick();
+}
+
+function playSuccessSound() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioCtx();
+    const notes = [523.25, 659.25, 783.99]; // do-mi-sol
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const start = ctx.currentTime + i * 0.09;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.18, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+      osc.start(start);
+      osc.stop(start + 0.4);
+    });
+  } catch (e) { /* audio non disponible, tant pis */ }
 }
 
 async function loadWeights() {
@@ -995,12 +1482,43 @@ async function addSet(amount) {
   entry.sets.push(amount);
   const total = getTotal();
   const target = getTarget();
+
+  // Records & totaux à vie
+  if (!stats[currentChallengeId]) {
+    stats[currentChallengeId] = { lifetimeTotal: 0, bestDay: { total: 0, date: null } };
+  }
+  const s = stats[currentChallengeId];
+  s.lifetimeTotal += amount;
+  let newRecord = false;
+  if (total > s.bestDay.total) {
+    s.bestDay = { total, date: todayKey };
+    newRecord = true;
+  }
+  await saveStats();
+
   if (total >= target && !entry.done) {
     entry.done = true;
     weekData[todayKey] = true;
     lastCompleted[currentChallengeId] = Date.now();
     await saveLastCompleted();
+
+    dailyActivity[todayKey] = (dailyActivity[todayKey] || 0) + 1;
+    await saveDailyActivity();
+
+    badges.totalCompletions += 1;
+    const freshBadges = checkNewBadges();
+    await saveBadges();
+
     if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
+    fireConfetti();
+    playSuccessSound();
+
+    if (freshBadges.length > 0) {
+      const b = freshBadges[0];
+      setTimeout(() => showToast(`${b.icon} Trophée débloqué — ${b.label}`, 3200), 500);
+    } else {
+      showToast(`✓ Défi complété${newRecord ? ' — nouveau record ! 🏆' : ' !'}`);
+    }
   }
   await saveState();
   render();
@@ -1008,8 +1526,16 @@ async function addSet(amount) {
 
 async function undoLast() {
   const entry = getEntry(currentChallengeId);
-  entry.sets.pop();
+  const popped = entry.sets.pop();
   const total = getTotal();
+
+  if (popped && stats[currentChallengeId]) {
+    const s = stats[currentChallengeId];
+    s.lifetimeTotal = Math.max(0, s.lifetimeTotal - popped);
+    if (s.bestDay.date === todayKey) s.bestDay.total = total;
+    await saveStats();
+  }
+
   if (total < getTarget()) {
     entry.done = false;
     weekData[todayKey] = Object.values(state.challenges).some(e => e.done);
@@ -1069,6 +1595,11 @@ function render() {
     return;
   }
 
+  if (showManage) {
+    app.innerHTML = renderManageScreen();
+    return;
+  }
+
   let html = `
     <div class="header">
       <div class="date">${formatDateLabel(today)}</div>
@@ -1112,6 +1643,10 @@ function render() {
       }
       html += `</div>`;
     }
+    html += `
+      <button class="manage-link" onclick="openManage()">⚙️ Gérer mes défis</button>
+    `;
+    html += renderBadgesStrip();
   } else {
     const c = getChallenge();
     const entry = getEntry(currentChallengeId);
@@ -1133,6 +1668,13 @@ function render() {
               🏋️ ${weights[c.id] ?? 8} kg
               <button onclick="editWeight()">modifier</button>
             </div>
+          </div>
+        ` : ''}
+
+        ${stats[c.id] ? `
+          <div class="stats-row">
+            <div class="stat-chip">🏆 Record : ${stats[c.id].bestDay.total}${unitLabel === 'sec' ? 's' : ''}</div>
+            <div class="stat-chip">Σ ${stats[c.id].lifetimeTotal.toLocaleString('fr-FR')} à vie</div>
           </div>
         ` : ''}
 
@@ -1261,6 +1803,198 @@ async function loadHistoryEntries() {
   historyEntries = entries;
 }
 
+function renderBadgesStrip() {
+  const unlocked = BADGE_DEFS.filter(b => badges.unlocked.includes(b.id));
+  if (unlocked.length === 0) {
+    return `
+      <div class="section-label">Trophées</div>
+      <div class="badges-empty">Termine des défis pour débloquer tes premiers trophées 🏆</div>
+    `;
+  }
+  return `
+    <div class="section-label">Trophées (${unlocked.length}/${BADGE_DEFS.length})</div>
+    <div class="badges-strip">
+      ${unlocked.map(b => `
+        <div class="badge-chip" title="${b.label}">
+          <div class="badge-icon">${b.icon}</div>
+          <div class="badge-label">${b.label}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderManageScreen() {
+  let html = `<button class="history-back" onclick="closeManage()">‹ Retour</button>`;
+
+  if (editingChallengeId !== null) {
+    const isNew = editingChallengeId === 'new';
+    const c = isNew ? null : CHALLENGES.find(x => x.id === editingChallengeId);
+    const existingCats = [...new Set(CHALLENGES.map(x => x.cat))];
+
+    html += `
+      <h1 class="title">${isNew ? 'Nouveau défi' : 'Modifier le défi'}</h1>
+      <div class="subtitle">${isNew ? 'Ajoute ton propre défi personnalisé' : c.name}</div>
+
+      <div class="form-field">
+        <label>Nom du défi</label>
+        <input type="text" id="cfName" value="${c ? c.name.replace(/"/g,'&quot;') : ''}" placeholder="Ex : Pompes diamant">
+      </div>
+
+      <div class="form-field">
+        <label>Catégorie</label>
+        <input type="text" id="cfCat" value="${c ? c.cat.replace(/"/g,'&quot;') : ''}" list="catList" placeholder="Ex : Haut du corps">
+        <datalist id="catList">
+          ${existingCats.map(cat => `<option value="${cat}">`).join('')}
+        </datalist>
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-field">
+          <label>Objectif</label>
+          <input type="number" id="cfTarget" value="${c ? c.target : ''}" inputmode="numeric" placeholder="100">
+        </div>
+        <div class="form-field">
+          <label>Unité</label>
+          <select id="cfUnit">
+            <option value="reps" ${c && c.unit==='reps' ? 'selected' : ''}>Répétitions</option>
+            <option value="sec" ${c && c.unit==='sec' ? 'selected' : ''}>Chrono (secondes)</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="save-challenge-btn" onclick="submitChallengeForm()">Enregistrer</button>
+    `;
+  } else {
+    html += `
+      <h1 class="title">Gérer mes défis</h1>
+      <div class="subtitle">Ajoute, modifie ou supprime des défis</div>
+      <button class="add-challenge-btn" onclick="openNewChallengeForm()">+ Ajouter un défi</button>
+    `;
+    const cats = [...new Set(CHALLENGES.map(c => c.cat))];
+    for (const cat of cats) {
+      html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
+      for (const c of CHALLENGES.filter(x => x.cat === cat)) {
+        html += `
+          <div class="manage-item">
+            <div>
+              <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
+              <span class="name">${c.name}</span>
+              <div class="goal-inline">${c.target} ${c.unit === 'sec' ? 'sec' : 'reps'}</div>
+            </div>
+            <div class="manage-actions">
+              <button class="icon-btn" onclick="openEditChallengeForm(${c.id})">✏️</button>
+              <button class="icon-btn danger" onclick="deleteChallenge(${c.id})">🗑️</button>
+            </div>
+          </div>
+        `;
+      }
+      html += `</div>`;
+    }
+  }
+
+  return html;
+}
+
+function renderWeeklyChart() {
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(d);
+  }
+  const totals = days.map(d => {
+    const k = dateKey(d);
+    return historyEntries.filter(e => e.key === k).reduce((sum, e) => sum + e.total, 0);
+  });
+  const max = Math.max(1, ...totals);
+
+  let bars = '';
+  days.forEach((d, i) => {
+    const h = Math.round((totals[i] / max) * 100);
+    const isToday = dateKey(d) === todayKey;
+    bars += `
+      <div class="chart-col">
+        <div class="chart-bar-track">
+          <div class="chart-bar${isToday ? ' today' : ''}" style="height:${Math.max(h, totals[i] > 0 ? 6 : 0)}%"></div>
+        </div>
+        <div class="chart-val">${totals[i] || ''}</div>
+        <div class="chart-dow">${DOW_LABELS[d.getDay()]}</div>
+      </div>
+    `;
+  });
+
+  return `
+    <div class="section-label">Volume des 7 derniers jours</div>
+    <div class="chart-wrap">${bars}</div>
+  `;
+}
+
+function renderHeatmap() {
+  const WEEKS = 26; // ~6 mois, plus lisible sur mobile qu'une année complète
+  const totalDays = WEEKS * 7;
+  const days = [];
+  for (let i = totalDays - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(d);
+  }
+  // aligner sur Lundi pour la première colonne
+  while ((days[0].getDay() + 6) % 7 !== 0) {
+    const d = new Date(days[0]);
+    d.setDate(d.getDate() - 1);
+    days.unshift(d);
+  }
+
+  function levelFor(count) {
+    if (!count) return 0;
+    if (count === 1) return 1;
+    if (count <= 2) return 2;
+    return 3;
+  }
+
+  let cells = '';
+  for (const d of days) {
+    const k = dateKey(d);
+    const count = dailyActivity[k] || 0;
+    const lvl = levelFor(count);
+    const isFuture = d > new Date();
+    cells += `<div class="heat-cell lvl${lvl}${isFuture ? ' future' : ''}" title="${k} — ${count} défi(s)"></div>`;
+  }
+
+  return `
+    <div class="section-label">Activité (6 derniers mois)</div>
+    <div class="heatmap-scroll">
+      <div class="heatmap-grid">${cells}</div>
+    </div>
+    <div class="heat-legend">
+      <span>Moins</span>
+      <div class="heat-cell lvl0"></div>
+      <div class="heat-cell lvl1"></div>
+      <div class="heat-cell lvl2"></div>
+      <div class="heat-cell lvl3"></div>
+      <span>Plus</span>
+    </div>
+  `;
+}
+
+function renderTrophiesGrid() {
+  return `
+    <div class="section-label">Trophées (${badges.unlocked.length}/${BADGE_DEFS.length})</div>
+    <div class="trophy-grid">
+      ${BADGE_DEFS.map(b => {
+        const unlocked = badges.unlocked.includes(b.id);
+        return `
+          <div class="trophy-item${unlocked ? '' : ' locked'}">
+            <div class="badge-icon">${unlocked ? b.icon : '🔒'}</div>
+            <div class="badge-label">${b.label}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function renderHistoryScreen() {
   const today = new Date();
   const cells = [];
@@ -1309,11 +2043,16 @@ function renderHistoryScreen() {
   return `
     <button class="history-back" onclick="closeHistory()">‹ Retour</button>
     <h1 class="title">Historique</h1>
-    <div class="subtitle">Tes 28 derniers jours</div>
+    <div class="subtitle">Ta progression dans le temps</div>
+    ${renderWeeklyChart()}
+    ${renderHeatmap()}
+    ${renderTrophiesGrid()}
+    <div class="section-label">Calendrier du mois</div>
     ${calHtml}
     ${listHtml}
   `;
 }
+
 
 function computeStreak() {
   let streak = 0;
@@ -1332,8 +2071,12 @@ function computeStreak() {
 }
 
 async function startApp() {
+  await loadChallenges();
   await loadWeights();
   await loadLastCompleted();
+  await loadStats();
+  await loadBadges();
+  await loadDailyActivity();
   await loadState();
 }
 </script>
