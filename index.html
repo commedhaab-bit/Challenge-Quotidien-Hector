@@ -294,6 +294,18 @@
     margin-left: 12px;
     text-align: right;
   }
+  .picker-item.active {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px rgba(242, 193, 78, 0.2);
+  }
+  .picker-status {
+    font-size: 10.5px;
+    color: var(--accent);
+    font-weight: 700;
+    margin-top: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
   .last-done {
     font-size: 10.5px;
     color: var(--accent);
@@ -902,14 +914,43 @@ function formatDateLabel(d) {
   return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
 }
 
+function getDefaultState(dayKey = todayKey) {
+  return { challengeId: null, sets: [], targetOverride: null, done: false, dayKey };
+}
+
+function normalizeStateForDay(rawState, dayKey) {
+  if (!rawState || typeof rawState !== 'object') {
+    return getDefaultState(dayKey);
+  }
+  if (rawState.dayKey && rawState.dayKey !== dayKey) {
+    return getDefaultState(dayKey);
+  }
+  return {
+    challengeId: rawState.challengeId ?? null,
+    sets: Array.isArray(rawState.sets) ? rawState.sets : [],
+    targetOverride: rawState.targetOverride ?? null,
+    done: !!rawState.done,
+    dayKey
+  };
+}
+
+async function refreshForCurrentDay() {
+  const currentKey = dateKey(new Date());
+  if (todayKey === currentKey) return;
+  todayKey = currentKey;
+  state = getDefaultState(todayKey);
+  await saveState();
+  await loadState();
+}
+
 async function loadState() {
   const today = new Date();
   todayKey = dateKey(today);
   try {
     const res = await dbGet('day:' + todayKey);
-    state = JSON.parse(res.value);
+    state = normalizeStateForDay(JSON.parse(res.value), todayKey);
   } catch (e) {
-    state = { challengeId: null, sets: [], targetOverride: null, done: false };
+    state = getDefaultState(todayKey);
   }
   // load last 7 days for streak strip
   weekData = {};
@@ -929,6 +970,8 @@ async function loadState() {
 }
 
 async function saveState() {
+  if (!todayKey) return;
+  state = { ...state, dayKey: todayKey };
   try {
     await dbSet('day:' + todayKey, JSON.stringify(state));
   } catch (e) {
@@ -951,14 +994,15 @@ function getTotal() {
 
 async function pickChallenge(id) {
   clearTimerState();
-  state = { challengeId: id, sets: [], targetOverride: null, done: false };
+  state = { challengeId: id, sets: [], targetOverride: null, done: false, dayKey: todayKey };
   await saveState();
   render();
 }
 
 async function changeChallenge() {
   clearTimerState();
-  state.challengeId = null;
+  state = getDefaultState(todayKey);
+  await saveState();
   render();
 }
 
@@ -1056,11 +1100,13 @@ function render() {
       html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
       for (const c of CHALLENGES.filter(x => x.cat === cat)) {
         const rel = formatRelative(lastCompleted[c.id]);
+        const hasStarted = state && state.challengeId === c.id && state.dayKey === todayKey && (state.sets.length > 0 || state.done || state.targetOverride !== null);
         html += `
-          <div class="picker-item" onclick="pickChallenge(${c.id})">
+          <div class="picker-item${hasStarted ? ' active' : ''}" onclick="pickChallenge(${c.id})">
             <div>
               <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
               <span class="name">${c.name}</span>
+              ${hasStarted ? '<div class="picker-status">En cours</div>' : ''}
             </div>
             <div class="goal">
               ${c.target} ${c.unit === 'sec' ? 'sec' : ''}
@@ -1290,6 +1336,16 @@ async function startApp() {
   await loadWeights();
   await loadLastCompleted();
   await loadState();
+
+  setInterval(() => {
+    refreshForCurrentDay().catch(console.error);
+  }, 60000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      refreshForCurrentDay().catch(console.error);
+    }
+  });
 }
 </script>
 
