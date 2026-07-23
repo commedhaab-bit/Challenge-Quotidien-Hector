@@ -61,6 +61,11 @@
     margin: 0 auto;
     padding: 20px 18px 40px;
     min-height: 100vh;
+    opacity: 1;
+    transition: opacity 0.14s ease;
+  }
+  .app.fade-out {
+    opacity: 0;
   }
 
   /* HEADER */
@@ -92,7 +97,7 @@
     padding: 6px 12px;
     cursor: pointer;
   }
-  .header .streak:active { background: var(--bg-raised); }
+  .header .streak:active { background: var(--bg-raised); transform: scale(0.95); }
 
   /* HISTORY SCREEN */
   .history-back {
@@ -105,7 +110,22 @@
     cursor: pointer;
     margin-bottom: 18px;
   }
-  .history-back:active { background: var(--bg-raised); }
+  .history-back:active { background: var(--bg-raised); transform: scale(0.95); }
+
+  .share-stats-btn {
+    display: block;
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent-dim), var(--accent));
+    color: #1e1d1b;
+    border: none;
+    font-weight: 800;
+    font-size: 14.5px;
+    padding: 14px;
+    border-radius: 12px;
+    cursor: pointer;
+    margin-bottom: 24px;
+  }
+  .share-stats-btn:active { transform: scale(0.98); }
 
   .cal-grid {
     display: grid;
@@ -310,7 +330,7 @@
     cursor: pointer;
     margin-top: 22px;
   }
-  .manage-link:active { background: var(--bg-raised); }
+  .manage-link:active { background: var(--bg-raised); transform: scale(0.98); }
 
   .badges-empty {
     color: var(--chalk-dim);
@@ -539,6 +559,24 @@
   .last-done.status-done {
     color: var(--good);
   }
+
+  .suggestion-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(242, 193, 78, 0.1);
+    border: 1px solid var(--accent-dim);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+  }
+  .suggestion-icon { font-size: 18px; flex-shrink: 0; }
+  .suggestion-text {
+    font-size: 13px;
+    color: var(--chalk);
+    line-height: 1.35;
+  }
+  .suggestion-text strong { color: var(--accent); }
   .picker-item.done {
     opacity: 0.45;
   }
@@ -651,6 +689,42 @@
     z-index: 998;
   }
 
+  /* PULL TO REFRESH */
+  .ptr-indicator {
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%) translateY(0px);
+    opacity: 0;
+    width: 40px;
+    height: 40px;
+    background: var(--bg-card);
+    border: 1px solid var(--accent-dim);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 997;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+  }
+  .ptr-spinner {
+    font-size: 18px;
+    color: var(--chalk-dim);
+    transition: transform 0.15s ease, color 0.15s ease;
+  }
+  .ptr-indicator.ready .ptr-spinner {
+    color: var(--accent);
+    transform: rotate(180deg);
+  }
+  .ptr-indicator.spinning .ptr-spinner {
+    animation: ptr-spin 0.7s linear infinite;
+  }
+  @keyframes ptr-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
   .active-name {
     font-size: 26px;
     font-weight: 800;
@@ -669,7 +743,7 @@
     border-radius: 20px;
     cursor: pointer;
   }
-  .change-btn:active { background: var(--bg-raised); }
+  .change-btn:active { background: var(--bg-raised); transform: scale(0.95); }
 
   /* PROGRESS */
   .progress-row {
@@ -834,6 +908,79 @@
     color: var(--chalk-dim);
     margin-top: 10px;
   }
+  .focus-btn {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--chalk-dim);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .focus-btn:active { background: var(--bg-raised); transform: scale(0.98); }
+
+  /* FOCUS FULLSCREEN MODE */
+  .focus-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 24px;
+  }
+  .focus-exit {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    color: var(--chalk-dim);
+    font-size: 18px;
+    cursor: pointer;
+  }
+  .focus-exit:active { transform: scale(0.92); }
+  .focus-name {
+    font-size: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 18px;
+  }
+  .focus-timer {
+    font-size: 88px;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    color: var(--chalk);
+    line-height: 1;
+    margin-bottom: 14px;
+  }
+  .focus-target {
+    font-size: 14px;
+    color: var(--chalk-dim);
+    margin-bottom: 40px;
+  }
+  .focus-stop-btn {
+    background: var(--danger);
+    color: #fff8f0;
+    border: none;
+    font-weight: 800;
+    font-size: 16px;
+    padding: 16px 32px;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+  .focus-stop-btn:active { transform: scale(0.96); }
   .or-divider {
     display: flex;
     align-items: center;
@@ -1094,23 +1241,23 @@ async function saveChallenges() {
 function openManage() {
   showManage = true;
   editingChallengeId = null;
-  render();
+  render(true);
 }
 
 function closeManage() {
   showManage = false;
   editingChallengeId = null;
-  render();
+  render(true);
 }
 
 function openNewChallengeForm() {
   editingChallengeId = 'new';
-  render();
+  render(true);
 }
 
 function openEditChallengeForm(id) {
   editingChallengeId = id;
-  render();
+  render(true);
 }
 
 async function submitChallengeForm() {
@@ -1132,14 +1279,14 @@ async function submitChallengeForm() {
   }
   await saveChallenges();
   editingChallengeId = null;
-  render();
+  render(true);
 }
 
 async function deleteChallenge(id) {
   if (!confirm('Supprimer ce défi ? (ton historique passé pour ce défi sera conservé mais il n\'apparaîtra plus dans la liste)')) return;
   CHALLENGES = CHALLENGES.filter(c => c.id !== id);
   await saveChallenges();
-  render();
+  render(true);
 }
 
 let state = null;
@@ -1311,6 +1458,110 @@ function playSuccessSound() {
   } catch (e) { /* audio non disponible, tant pis */ }
 }
 
+function getLifetimeSummary() {
+  let totalReps = 0, totalSeconds = 0;
+  const catVolume = {};
+  for (const c of CHALLENGES) {
+    const s = stats[c.id];
+    if (!s) continue;
+    if (c.unit === 'reps') totalReps += s.lifetimeTotal;
+    else totalSeconds += s.lifetimeTotal;
+    catVolume[c.cat] = (catVolume[c.cat] || 0) + s.lifetimeTotal;
+  }
+  let favCat = null, favVal = -1;
+  for (const [cat, val] of Object.entries(catVolume)) {
+    if (val > favVal) { favVal = val; favCat = cat; }
+  }
+  return { totalReps, totalSeconds, favCat };
+}
+
+async function shareStatsImage() {
+  showToast('🖼️ Génération de l\'image…', 1500);
+  const summary = getLifetimeSummary();
+  const streak = computeStreak();
+  const completions = badges.totalCompletions;
+  const unlockedCount = badges.unlocked.length;
+
+  const W = 1080, H = 1350;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#232120');
+  grad.addColorStop(1, '#171615');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.beginPath();
+  ctx.arc(W - 80, 140, 240, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(242,193,78,0.08)';
+  ctx.fill();
+
+  ctx.fillStyle = '#f2c14e';
+  ctx.font = '700 32px sans-serif';
+  ctx.fillText('DÉFI DU JOUR', 64, 100);
+
+  ctx.fillStyle = '#ede7db';
+  ctx.font = '900 66px sans-serif';
+  ctx.fillText('Mes stats', 64, 178);
+
+  ctx.fillStyle = '#a39d8f';
+  ctx.font = '400 26px sans-serif';
+  ctx.fillText(new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }), 64, 216);
+
+  ctx.strokeStyle = 'rgba(237,231,220,0.12)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(64, 250); ctx.lineTo(W - 64, 250); ctx.stroke();
+
+  function drawStat(y, label, value, color) {
+    ctx.fillStyle = color || '#f2c14e';
+    ctx.font = '900 92px sans-serif';
+    ctx.fillText(value, 64, y);
+    ctx.fillStyle = '#a39d8f';
+    ctx.font = '600 27px sans-serif';
+    ctx.fillText(label, 64, y + 38);
+  }
+
+  let y = 380;
+  drawStat(y, 'jours de suite 🔥', String(streak)); y += 160;
+  drawStat(y, 'défis complétés', String(completions)); y += 160;
+  drawStat(y, 'répétitions totales', summary.totalReps.toLocaleString('fr-FR')); y += 160;
+  if (summary.totalSeconds > 0) {
+    drawStat(y, 'minutes chronométrées', String(Math.round(summary.totalSeconds / 60)));
+    y += 160;
+  }
+
+  if (summary.favCat) {
+    ctx.fillStyle = '#7fb069';
+    ctx.font = '700 30px sans-serif';
+    ctx.fillText(`💪 Catégorie favorite : ${summary.favCat}`, 64, y + 10);
+  }
+
+  ctx.fillStyle = '#ede7db';
+  ctx.font = '600 26px sans-serif';
+  ctx.fillText(`🏆 ${unlockedCount}/${BADGE_DEFS.length} trophées débloqués`, 64, H - 70);
+
+  canvas.toBlob(async (blob) => {
+    if (!blob) return;
+    const file = new File([blob], 'mes-stats-defi-du-jour.png', { type: 'image/png' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Mes stats — Défi du Jour' });
+        return;
+      } catch (e) { /* annulé par l'utilisateur ou échec, on tente le téléchargement */ }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mes-stats-defi-du-jour.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }, 'image/png');
+}
+
 async function loadWeights() {
   try {
     const res = await dbGet('weights');
@@ -1346,6 +1597,7 @@ async function editWeight() {
   render();
 }
 let timerRunning = false;
+let focusMode = false;
 let timerStartMs = null;
 let timerIntervalId = null;
 
@@ -1369,6 +1621,17 @@ function startTimer() {
   render();
 }
 
+function enterFocusMode() {
+  focusMode = true;
+  if (navigator.vibrate) navigator.vibrate(10);
+  render(true);
+}
+
+function exitFocusMode() {
+  focusMode = false;
+  render(true);
+}
+
 function tickTimer() {
   const el = document.getElementById('timerDisplay');
   if (!el) return;
@@ -1379,6 +1642,7 @@ function tickTimer() {
 async function stopTimer() {
   const elapsed = Math.round((Date.now() - timerStartMs) / 1000);
   clearTimerState();
+  focusMode = false;
   if (elapsed > 0) {
     await addSet(elapsed);
   } else {
@@ -1467,13 +1731,13 @@ async function pickChallenge(id) {
   clearTimerState();
   currentChallengeId = id;
   getEntry(id); // s'assure qu'une entrée existe (reprend celle du jour si déjà commencée)
-  render();
+  render(true);
 }
 
 async function changeChallenge() {
   clearTimerState();
   currentChallengeId = null;
-  render();
+  render(true);
 }
 
 async function addSet(amount) {
@@ -1482,21 +1746,27 @@ async function addSet(amount) {
   entry.sets.push(amount);
   const total = getTotal();
   const target = getTarget();
+  const willComplete = total >= target && !entry.done;
 
   // Records & totaux à vie
   if (!stats[currentChallengeId]) {
-    stats[currentChallengeId] = { lifetimeTotal: 0, bestDay: { total: 0, date: null } };
+    stats[currentChallengeId] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   }
   const s = stats[currentChallengeId];
+  if (s.recordStreak === undefined) s.recordStreak = 0;
   s.lifetimeTotal += amount;
   let newRecord = false;
   if (total > s.bestDay.total) {
     s.bestDay = { total, date: todayKey };
     newRecord = true;
   }
+
+  if (willComplete) {
+    s.recordStreak = newRecord ? s.recordStreak + 1 : 0;
+  }
   await saveStats();
 
-  if (total >= target && !entry.done) {
+  if (willComplete) {
     entry.done = true;
     weekData[todayKey] = true;
     lastCompleted[currentChallengeId] = Date.now();
@@ -1509,7 +1779,7 @@ async function addSet(amount) {
     const freshBadges = checkNewBadges();
     await saveBadges();
 
-    if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
+    if (navigator.vibrate) navigator.vibrate([45, 35, 45, 35, 90]);
     fireConfetti();
     playSuccessSound();
 
@@ -1518,6 +1788,24 @@ async function addSet(amount) {
       setTimeout(() => showToast(`${b.icon} Trophée débloqué — ${b.label}`, 3200), 500);
     } else {
       showToast(`✓ Défi complété${newRecord ? ' — nouveau record ! 🏆' : ' !'}`);
+    }
+
+    // Progression automatique : 3 records consécutifs -> proposer d'augmenter l'objectif par défaut
+    if (s.recordStreak >= 3) {
+      const c = getChallenge();
+      const suggestedTarget = Math.ceil((total * 1.15) / 5) * 5;
+      setTimeout(async () => {
+        const accept = confirm(
+          `🚀 Tu bats ton record 3 fois de suite sur "${c.name}" !\n\nVeux-tu augmenter l'objectif par défaut de ${c.target} à ${suggestedTarget} ${c.unit === 'sec' ? 'sec' : 'reps'} ?`
+        );
+        if (accept) {
+          c.target = suggestedTarget;
+          await saveChallenges();
+          showToast(`🎯 Objectif mis à jour : ${suggestedTarget} ${c.unit === 'sec' ? 'sec' : 'reps'}`);
+        }
+        s.recordStreak = 0;
+        await saveStats();
+      }, 1400);
     }
   }
   await saveState();
@@ -1568,6 +1856,22 @@ function customAddSubmit() {
   }
 }
 
+function renderFocusScreen() {
+  const c = getChallenge();
+  const entry = getEntry(currentChallengeId);
+  const target = getTarget();
+  const elapsed = timerStartMs ? Math.floor((Date.now() - timerStartMs) / 1000) : 0;
+  return `
+    <div class="focus-screen">
+      <button class="focus-exit" onclick="exitFocusMode()">✕</button>
+      <div class="focus-name">${c.name}</div>
+      <div class="focus-timer" id="timerDisplay">${formatTimer(elapsed)}</div>
+      <div class="focus-target">Objectif : ${target} sec</div>
+      <button class="focus-stop-btn" onclick="stopTimer()">⏹ Terminer la série</button>
+    </div>
+  `;
+}
+
 function renderTally(total, target, unit) {
   // represent progress in tally groups of 5, scaled so it doesn't explode for "sec" units
   const scale = unit === 'sec' ? Math.max(1, Math.round(target / 40)) : 1;
@@ -1586,17 +1890,39 @@ function renderTally(total, target, unit) {
   return html;
 }
 
-function render() {
+function applyContent(app, html, animate, afterRender) {
+  if (animate) {
+    app.classList.add('fade-out');
+    setTimeout(() => {
+      app.innerHTML = html;
+      app.classList.remove('fade-out');
+      if (afterRender) afterRender();
+    }, 140);
+  } else {
+    app.innerHTML = html;
+    if (afterRender) afterRender();
+  }
+}
+
+function render(animate) {
   const app = document.getElementById('app');
   const today = new Date();
 
   if (showHistory) {
-    app.innerHTML = renderHistoryScreen();
+    applyContent(app, renderHistoryScreen(), animate);
     return;
   }
 
   if (showManage) {
-    app.innerHTML = renderManageScreen();
+    applyContent(app, renderManageScreen(), animate);
+    return;
+  }
+
+  if (focusMode && timerRunning && currentChallengeId) {
+    applyContent(app, renderFocusScreen(), animate, () => {
+      const el = document.getElementById('timerDisplay');
+      if (el && timerRunning) el.textContent = formatTimer(Math.floor((Date.now()-timerStartMs)/1000));
+    });
     return;
   }
 
@@ -1612,6 +1938,15 @@ function render() {
       <h1 class="title">Défi du jour</h1>
       <div class="subtitle">Choisis ton défi pour aujourd'hui</div>
     `;
+    const suggestion = getSuggestion();
+    if (suggestion) {
+      html += `
+        <div class="suggestion-banner">
+          <div class="suggestion-icon">💡</div>
+          <div class="suggestion-text">${suggestion}</div>
+        </div>
+      `;
+    }
     const cats = [...new Set(CHALLENGES.map(c => c.cat))];
     for (const cat of cats) {
       html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
@@ -1698,7 +2033,8 @@ function render() {
           <div class="timer-box">
             <div class="timer-display${timerRunning ? ' running' : ''}" id="timerDisplay">${timerRunning ? formatTimer(Math.floor((Date.now()-timerStartMs)/1000)) : '0:00'}</div>
             ${timerRunning
-              ? `<button class="timer-btn stop" onclick="stopTimer()">⏹ Stop — ajouter au compteur</button>`
+              ? `<button class="timer-btn stop" onclick="stopTimer()">⏹ Stop — ajouter au compteur</button>
+                 <button class="focus-btn" onclick="enterFocusMode()">⛶ Mode plein écran</button>`
               : `<button class="timer-btn start" onclick="startTimer()">▶ Démarrer le chrono</button>`
             }
             <div class="timer-hint">${timerRunning ? 'Chrono en cours… reste sur cette page' : 'Lance le chrono pendant ton gainage / ta série'}</div>
@@ -1746,20 +2082,20 @@ function render() {
   }
   html += `</div>`;
 
-  app.innerHTML = html;
-
-  const input = document.getElementById('customAddInput');
-  if (input) {
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') customAddSubmit();
-    });
-  }
+  applyContent(app, html, animate, () => {
+    const input = document.getElementById('customAddInput');
+    if (input) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') customAddSubmit();
+      });
+    }
+  });
 }
 
 async function openHistory() {
   showHistory = true;
   historyLoading = true;
-  render();
+  render(true);
   await loadHistoryEntries();
   historyLoading = false;
   render();
@@ -1767,7 +2103,7 @@ async function openHistory() {
 
 function closeHistory() {
   showHistory = false;
-  render();
+  render(true);
 }
 
 async function loadHistoryEntries() {
@@ -2044,6 +2380,7 @@ function renderHistoryScreen() {
     <button class="history-back" onclick="closeHistory()">‹ Retour</button>
     <h1 class="title">Historique</h1>
     <div class="subtitle">Ta progression dans le temps</div>
+    <button class="share-stats-btn" onclick="shareStatsImage()">📤 Partager mes stats</button>
     ${renderWeeklyChart()}
     ${renderHeatmap()}
     ${renderTrophiesGrid()}
@@ -2053,6 +2390,111 @@ function renderHistoryScreen() {
   `;
 }
 
+
+// ==== PULL TO REFRESH ====
+let ptrStartY = null;
+let ptrCurrentY = 0;
+let ptrActive = false;
+let ptrRefreshing = false;
+const PTR_THRESHOLD = 70;
+
+function initPullToRefresh() {
+  const indicator = document.createElement('div');
+  indicator.id = 'ptrIndicator';
+  indicator.className = 'ptr-indicator';
+  indicator.innerHTML = '<div class="ptr-spinner">↻</div>';
+  document.body.appendChild(indicator);
+
+  document.addEventListener('touchstart', (e) => {
+    if (ptrRefreshing) return;
+    if (window.scrollY <= 0 && !timerRunning) {
+      ptrStartY = e.touches[0].clientY;
+      ptrActive = true;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!ptrActive || ptrStartY === null || ptrRefreshing) return;
+    ptrCurrentY = e.touches[0].clientY;
+    const delta = ptrCurrentY - ptrStartY;
+    if (delta > 0 && window.scrollY <= 0) {
+      const pulled = Math.min(delta * 0.5, 100);
+      indicator.style.transform = `translateX(-50%) translateY(${pulled}px)`;
+      indicator.style.opacity = Math.min(pulled / PTR_THRESHOLD, 1);
+      if (pulled >= PTR_THRESHOLD) {
+        indicator.classList.add('ready');
+      } else {
+        indicator.classList.remove('ready');
+      }
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', async () => {
+    if (!ptrActive || ptrStartY === null) return;
+    const delta = ptrCurrentY - ptrStartY;
+    ptrActive = false;
+    ptrStartY = null;
+
+    if (delta * 0.5 >= PTR_THRESHOLD && !ptrRefreshing) {
+      ptrRefreshing = true;
+      indicator.classList.add('spinning', 'ready');
+      indicator.style.transform = `translateX(-50%) translateY(56px)`;
+      indicator.style.opacity = '1';
+      if (navigator.vibrate) navigator.vibrate(15);
+      await refreshApp();
+      await new Promise(r => setTimeout(r, 350));
+      indicator.classList.remove('spinning', 'ready');
+      indicator.style.transform = `translateX(-50%) translateY(0px)`;
+      indicator.style.opacity = '0';
+      ptrRefreshing = false;
+    } else {
+      indicator.classList.remove('ready');
+      indicator.style.transform = `translateX(-50%) translateY(0px)`;
+      indicator.style.opacity = '0';
+    }
+  }, { passive: true });
+}
+
+async function refreshApp() {
+  await loadChallenges();
+  await loadWeights();
+  await loadLastCompleted();
+  await loadStats();
+  await loadBadges();
+  await loadDailyActivity();
+  if (showHistory) {
+    await loadHistoryEntries();
+  } else {
+    await loadState();
+  }
+  render(true);
+}
+
+function getSuggestion() {
+  // Pas assez d'historique pour être pertinent, on évite de harceler un nouvel utilisateur
+  if (badges.totalCompletions < 3) return null;
+
+  const cats = [...new Set(CHALLENGES.map(c => c.cat))];
+  let worstCat = null;
+  let worstDays = -1;
+
+  for (const cat of cats) {
+    const idsInCat = CHALLENGES.filter(c => c.cat === cat).map(c => c.id);
+    const timestamps = idsInCat.map(id => lastCompleted[id]).filter(Boolean);
+    if (timestamps.length === 0) continue; // jamais fait du tout, on ne harcèle pas dès le début
+    const mostRecent = Math.max(...timestamps);
+    const daysSince = (Date.now() - mostRecent) / 86400000;
+    if (daysSince > worstDays) {
+      worstDays = daysSince;
+      worstCat = cat;
+    }
+  }
+
+  if (!worstCat || worstDays < 3) return null;
+
+  const days = Math.floor(worstDays);
+  return `Tu n'as pas fait <strong>${worstCat}</strong> depuis ${days} jour${days > 1 ? 's' : ''}`;
+}
 
 function computeStreak() {
   let streak = 0;
@@ -2079,6 +2521,17 @@ async function startApp() {
   await loadDailyActivity();
   await loadState();
 }
+
+// Micro-interaction : légère vibration sur chaque tap d'élément interactif
+document.addEventListener('click', (e) => {
+  const target = e.target.closest('button, .picker-item, .manage-item, .qa-btn, .timer-btn');
+  if (target && navigator.vibrate) {
+    navigator.vibrate(8);
+  }
+}, true);
+
+initPullToRefresh();
+
 </script>
 
 </body>
