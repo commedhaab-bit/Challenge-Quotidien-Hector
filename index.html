@@ -416,6 +416,13 @@
     font-weight: 700;
     margin-bottom: 6px;
   }
+  .field-hint {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+    color: var(--chalk-dim);
+    opacity: 0.7;
+  }
   .form-field input, .form-field select {
     width: 100%;
     background: var(--bg-raised);
@@ -558,6 +565,10 @@
   }
   .last-done.status-done {
     color: var(--good);
+  }
+  .last-done.status-hardcore {
+    color: #ff6b35;
+    font-weight: 800;
   }
 
   .suggestion-banner {
@@ -793,6 +804,64 @@
   }
   .bar-fill.complete {
     background: linear-gradient(90deg, #5f9a4d, var(--good));
+  }
+
+  /* HARDCORE MODE */
+  .hardcore-locked {
+    font-size: 12px;
+    color: var(--chalk-dim);
+    text-align: center;
+    padding: 10px;
+    background: var(--bg-raised);
+    border: 1px dashed var(--line);
+    border-radius: 10px;
+    margin-bottom: 20px;
+  }
+  .hardcore-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .hardcore-label {
+    font-size: 13px;
+    font-weight: 800;
+    color: #ff6b35;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .hardcore-nums {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--chalk-dim);
+    text-transform: none;
+    letter-spacing: 0;
+    margin-left: 8px;
+  }
+  .hardcore-pct {
+    font-size: 13px;
+    font-weight: 700;
+    color: #ff6b35;
+  }
+  .hardcore-track {
+    border-color: #6b3420;
+  }
+  .hardcore-fill {
+    background: linear-gradient(90deg, #b8451f, #ff6b35);
+  }
+  .hardcore-fill.complete {
+    background: linear-gradient(90deg, #ff6b35, #ffb347);
+  }
+  .hardcore-banner {
+    text-align: center;
+    padding: 14px;
+    background: rgba(255, 107, 53, 0.12);
+    border: 1px solid #ff6b35;
+    border-radius: 12px;
+    color: #ff8c5c;
+    font-weight: 800;
+    font-size: 14px;
+    margin-bottom: 16px;
   }
 
   /* TALLY MARKS */
@@ -1190,23 +1259,23 @@ if ('serviceWorker' in navigator) {
 }
 
 const DEFAULT_CHALLENGES = [
-  { id: 1,  cat: 'Haut du corps', name: 'Pompes classiques', target: 100, unit: 'reps' },
-  { id: 2,  cat: 'Haut du corps', name: 'Pompes (grosse série)', target: 150, unit: 'reps' },
-  { id: 3,  cat: 'Haut du corps', name: 'Dips', target: 100, unit: 'reps' },
-  { id: 4,  cat: 'Haut du corps', name: 'Pompes isométrie (position basse)', target: 180, unit: 'sec' },
-  { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps' },
-  { id: 6,  cat: 'Haltères', name: 'Biceps', target: 150, unit: 'reps' },
-  { id: 7,  cat: 'Haltères', name: 'Épaule lateral raise', target: 100, unit: 'reps' },
-  { id: 8,  cat: 'Haltères', name: 'Cuban press', target: 180, unit: 'reps' },
-  { id: 9,  cat: 'Gainage / Core', name: 'Planche cumulée', target: 300, unit: 'sec' },
-  { id: 10, cat: 'Gainage / Core', name: 'Crunchs', target: 100, unit: 'reps' },
-  { id: 11, cat: 'Gainage / Core', name: 'Gainage latéral (2 côtés)', target: 300, unit: 'sec' },
-  { id: 12, cat: 'Gainage / Core', name: 'Mountain climbers', target: 150, unit: 'reps' },
-  { id: 13, cat: 'Gainage / Core', name: 'Leg raises', target: 100, unit: 'reps' },
-  { id: 14, cat: 'Bas du corps', name: 'Squats', target: 200, unit: 'reps' },
-  { id: 15, cat: 'Bas du corps', name: 'Fentes (2 jambes)', target: 100, unit: 'reps' },
-  { id: 16, cat: 'Bas du corps', name: 'Chaise (wall sit) cumulée', target: 180, unit: 'sec' },
-  { id: 17, cat: 'Bas du corps', name: 'Mollets (calf raises)', target: 150, unit: 'reps' },
+  { id: 1,  cat: 'Haut du corps', name: 'Pompes classiques', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 2,  cat: 'Haut du corps', name: 'Pompes (grosse série)', target: 150, unit: 'reps', hardcoreTarget: 300 },
+  { id: 3,  cat: 'Haut du corps', name: 'Dips', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 4,  cat: 'Haut du corps', name: 'Pompes isométrie (position basse)', target: 180, unit: 'sec', hardcoreTarget: 360 },
+  { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 6,  cat: 'Haltères', name: 'Biceps', target: 150, unit: 'reps', hardcoreTarget: 300 },
+  { id: 7,  cat: 'Haltères', name: 'Épaule lateral raise', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 8,  cat: 'Haltères', name: 'Cuban press', target: 180, unit: 'reps', hardcoreTarget: 360 },
+  { id: 9,  cat: 'Gainage / Core', name: 'Planche cumulée', target: 300, unit: 'sec', hardcoreTarget: 600 },
+  { id: 10, cat: 'Gainage / Core', name: 'Crunchs', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 11, cat: 'Gainage / Core', name: 'Gainage latéral (2 côtés)', target: 300, unit: 'sec', hardcoreTarget: 600 },
+  { id: 12, cat: 'Gainage / Core', name: 'Mountain climbers', target: 150, unit: 'reps', hardcoreTarget: 300 },
+  { id: 13, cat: 'Gainage / Core', name: 'Leg raises', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 14, cat: 'Bas du corps', name: 'Squats', target: 200, unit: 'reps', hardcoreTarget: 400 },
+  { id: 15, cat: 'Bas du corps', name: 'Fentes (2 jambes)', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 16, cat: 'Bas du corps', name: 'Chaise (wall sit) cumulée', target: 180, unit: 'sec', hardcoreTarget: 360 },
+  { id: 17, cat: 'Bas du corps', name: 'Mollets (calf raises)', target: 150, unit: 'reps', hardcoreTarget: 300 },
 ];
 
 const QUICK_ADD = { reps: [5, 10, 15, 20, 25, 30], sec: [15, 30, 60, 120] };
@@ -1265,17 +1334,23 @@ async function submitChallengeForm() {
   const cat = document.getElementById('cfCat').value.trim();
   const target = parseInt(document.getElementById('cfTarget').value, 10);
   const unit = document.getElementById('cfUnit').value;
+  const hcRaw = document.getElementById('cfHardcore').value;
+  const hardcoreTarget = hcRaw.trim() === '' ? target * 2 : parseInt(hcRaw, 10);
 
   if (!name || !cat || isNaN(target) || target <= 0) {
     alert('Merci de remplir tous les champs correctement.');
     return;
   }
+  if (isNaN(hardcoreTarget) || hardcoreTarget <= target) {
+    alert("L'objectif hardcore doit être supérieur à l'objectif normal.");
+    return;
+  }
 
   if (editingChallengeId === 'new') {
-    CHALLENGES.push({ id: nextChallengeId++, cat, name, target, unit });
+    CHALLENGES.push({ id: nextChallengeId++, cat, name, target, unit, hardcoreTarget });
   } else {
     const c = CHALLENGES.find(x => x.id === editingChallengeId);
-    if (c) { c.name = name; c.cat = cat; c.target = target; c.unit = unit; }
+    if (c) { c.name = name; c.cat = cat; c.target = target; c.unit = unit; c.hardcoreTarget = hardcoreTarget; }
   }
   await saveChallenges();
   editingChallengeId = null;
@@ -1328,7 +1403,7 @@ function formatRelative(ms) {
 }
 
 let stats = {}; // { [challengeId]: { lifetimeTotal, bestDay:{total,date} } }
-let badges = { totalCompletions: 0, unlocked: [] };
+let badges = { totalCompletions: 0, unlocked: [], totalHardcore: 0 };
 let dailyActivity = {}; // { 'YYYY-MM-DD': count }
 
 const BADGE_DEFS = [
@@ -1340,6 +1415,9 @@ const BADGE_DEFS = [
   { id: 'comp_50',    label: '50 défis complétés',  icon: '🏅', check: () => badges.totalCompletions >= 50 },
   { id: 'comp_100',   label: '100 défis complétés', icon: '🏆', check: () => badges.totalCompletions >= 100 },
   { id: 'comp_250',   label: '250 défis complétés', icon: '👑', check: () => badges.totalCompletions >= 250 },
+  { id: 'hardcore_1',  label: 'Premier Hardcore',    icon: '🔥', check: () => badges.totalHardcore >= 1 },
+  { id: 'hardcore_10', label: '10 défis Hardcore',   icon: '💀', check: () => badges.totalHardcore >= 10 },
+  { id: 'hardcore_50', label: '50 défis Hardcore',   icon: '☠️', check: () => badges.totalHardcore >= 50 },
 ];
 
 async function loadStats() {
@@ -1352,8 +1430,12 @@ async function saveStats() {
 }
 
 async function loadBadges() {
-  try { const res = await dbGet('badges'); badges = JSON.parse(res.value); }
-  catch (e) { badges = { totalCompletions: 0, unlocked: [] }; }
+  try {
+    const res = await dbGet('badges');
+    badges = JSON.parse(res.value);
+    if (badges.totalHardcore === undefined) badges.totalHardcore = 0; // migration
+  }
+  catch (e) { badges = { totalCompletions: 0, unlocked: [], totalHardcore: 0 }; }
 }
 async function saveBadges() {
   try { await dbSet('badges', JSON.stringify(badges)); }
@@ -1396,8 +1478,10 @@ function showToast(html, duration = 2600) {
   el._timer = setTimeout(() => el.classList.remove('show'), duration);
 }
 
-function fireConfetti() {
-  const colors = ['#f2c14e', '#7fb069', '#e8dfc8', '#d9634f', '#a9863a'];
+function fireConfetti(variant) {
+  const colors = variant === 'hardcore'
+    ? ['#ff6b35', '#d9634f', '#ede7db', '#a9863a', '#ff9d5c']
+    : ['#f2c14e', '#7fb069', '#e8dfc8', '#d9634f', '#a9863a'];
   const canvas = document.createElement('canvas');
   canvas.className = 'confetti-canvas';
   canvas.width = window.innerWidth;
@@ -1666,12 +1750,15 @@ function emptyDayState() {
 }
 
 function emptyChallengeEntry() {
-  return { sets: [], targetOverride: null, done: false };
+  return { sets: [], targetOverride: null, done: false, hardcoreDone: false };
 }
 
 function getEntry(id) {
   if (!state.challenges[id]) {
     state.challenges[id] = emptyChallengeEntry();
+  }
+  if (state.challenges[id].hardcoreDone === undefined) {
+    state.challenges[id].hardcoreDone = false; // migration
   }
   return state.challenges[id];
 }
@@ -1720,6 +1807,12 @@ function getTarget() {
   const c = getChallenge();
   const entry = getEntry(currentChallengeId);
   return entry.targetOverride || (c ? c.target : 0);
+}
+
+function getHardcoreTarget(c) {
+  if (!c) return 0;
+  const base = c.hardcoreTarget || c.target * 2;
+  return Math.max(base, c.target + 1);
 }
 
 function getTotal() {
@@ -1808,6 +1901,31 @@ async function addSet(amount) {
       }, 1400);
     }
   }
+
+  // Mode Hardcore : détection indépendante de la complétion normale
+  const cForHardcore = getChallenge();
+  const hcTarget = getHardcoreTarget(cForHardcore);
+  const willCompleteHardcore = total >= hcTarget && !entry.hardcoreDone;
+  if (willCompleteHardcore) {
+    entry.hardcoreDone = true;
+    badges.totalHardcore += 1;
+    const freshHardcoreBadges = checkNewBadges();
+    await saveBadges();
+
+    if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 60, 40, 140]);
+    fireConfetti('hardcore');
+    playSuccessSound();
+
+    setTimeout(() => {
+      if (freshHardcoreBadges.length > 0) {
+        const b = freshHardcoreBadges[0];
+        showToast(`${b.icon} Trophée débloqué — ${b.label}`, 3200);
+      } else {
+        showToast('🔥 MODE HARDCORE complété !', 3000);
+      }
+    }, willComplete ? 900 : 400);
+  }
+
   await saveState();
   render();
 }
@@ -1954,7 +2072,9 @@ function render(animate) {
         const todayEntry = state.challenges[c.id];
         const rel = formatRelative(lastCompleted[c.id]);
         let statusHtml = '';
-        if (todayEntry && todayEntry.done) {
+        if (todayEntry && todayEntry.hardcoreDone) {
+          statusHtml = `<div class="last-done status-hardcore">🔥 Hardcore complété</div>`;
+        } else if (todayEntry && todayEntry.done) {
           statusHtml = `<div class="last-done status-done">✓ Terminé aujourd'hui</div>`;
         } else if (todayEntry && todayEntry.sets.length > 0) {
           const t = todayEntry.sets.reduce((a,b)=>a+b,0);
@@ -2025,6 +2145,31 @@ function render(animate) {
         <div class="bar-track">
           <div class="bar-fill${entry.done ? ' complete' : ''}" style="width:${pct}%"></div>
         </div>
+
+        ${(() => {
+          const hcTarget = getHardcoreTarget(c);
+          const hcRange = hcTarget - target;
+          const hcProgress = Math.max(0, total - target);
+          const hcPct = Math.min(100, Math.round((hcProgress / hcRange) * 100));
+          if (!entry.done) {
+            return `
+              <div class="hardcore-locked">🔒 Mode Hardcore débloqué à ${target} ${unitLabel} — objectif ${hcTarget} ${unitLabel}</div>
+            `;
+          }
+          return `
+            <div class="hardcore-row">
+              <div class="hardcore-label">
+                🔥 Hardcore
+                <span class="hardcore-nums">${Math.min(total, hcTarget)} / ${hcTarget} ${unitLabel}</span>
+              </div>
+              <div class="hardcore-pct">${hcPct}%</div>
+            </div>
+            <div class="bar-track hardcore-track">
+              <div class="bar-fill hardcore-fill${entry.hardcoreDone ? ' complete' : ''}" style="width:${hcPct}%"></div>
+            </div>
+            ${entry.hardcoreDone ? `<div class="hardcore-banner">🔥 MODE HARDCORE complété !</div>` : ''}
+          `;
+        })()}
 
         <div class="tally-wrap">${renderTally(total, target, c.unit)}</div>
 
@@ -2199,6 +2344,11 @@ function renderManageScreen() {
         </div>
       </div>
 
+      <div class="form-field">
+        <label>🔥 Objectif Hardcore <span class="field-hint">(laisser vide = objectif × 2)</span></label>
+        <input type="number" id="cfHardcore" value="${c && c.hardcoreTarget ? c.hardcoreTarget : ''}" inputmode="numeric" placeholder="${c ? c.target * 2 : '200'}">
+      </div>
+
       <button class="save-challenge-btn" onclick="submitChallengeForm()">Enregistrer</button>
     `;
   } else {
@@ -2216,7 +2366,7 @@ function renderManageScreen() {
             <div>
               <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
               <span class="name">${c.name}</span>
-              <div class="goal-inline">${c.target} ${c.unit === 'sec' ? 'sec' : 'reps'}</div>
+              <div class="goal-inline">${c.target} ${c.unit === 'sec' ? 'sec' : 'reps'} · 🔥 ${getHardcoreTarget(c)}</div>
             </div>
             <div class="manage-actions">
               <button class="icon-btn" onclick="openEditChallengeForm(${c.id})">✏️</button>
