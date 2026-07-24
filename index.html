@@ -316,6 +316,77 @@
     opacity: 0.5;
   }
 
+  /* ACCOUNT SECTION */
+  .account-card {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 30px;
+  }
+  .account-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .account-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--line);
+  }
+  .account-avatar-fallback {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    color: #1e1d1b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+  }
+  .account-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--chalk);
+  }
+  .account-email {
+    font-size: 12.5px;
+    color: var(--chalk-dim);
+    margin-top: 1px;
+  }
+  .signout-btn {
+    display: block;
+    width: 100%;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    color: var(--chalk);
+    font-weight: 700;
+    font-size: 14px;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+  .signout-btn:active { transform: scale(0.98); }
+  .delete-account-btn {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    font-weight: 700;
+    font-size: 13px;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .delete-account-btn:active { background: rgba(217, 99, 79, 0.1); transform: scale(0.98); }
+
   /* MANAGE LINK + BADGES STRIP */
   .manage-link {
     display: block;
@@ -1238,6 +1309,56 @@ function signIn() {
   });
 }
 
+function signOutUser() {
+  auth.signOut();
+}
+
+async function deleteMyAccount() {
+  if (!currentUser) return;
+
+  const step1 = confirm(
+    '⚠️ ATTENTION\n\nCeci va supprimer DÉFINITIVEMENT toutes tes données : défis, historique, statistiques, records et trophées.\n\nCette action est irréversible. Continuer ?'
+  );
+  if (!step1) return;
+
+  const step2 = confirm(
+    'Es-tu vraiment certain ? Il n\'y aura aucun moyen de récupérer ces données ensuite.'
+  );
+  if (!step2) return;
+
+  try {
+    const uid = currentUser.uid;
+
+    // Supprime tous les documents de données de l'utilisateur (kv store)
+    const snap = await db.collection('users').doc(uid).collection('kv').get();
+    const batch = db.batch();
+    snap.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+
+    // Tente de supprimer le compte Google Auth lui-même
+    try {
+      await currentUser.delete();
+    } catch (e) {
+      if (e.code === 'auth/requires-recent-login') {
+        try {
+          const provider = new firebase.auth.GoogleAuthProvider();
+          await currentUser.reauthenticateWithPopup(provider);
+          await currentUser.delete();
+        } catch (e2) {
+          console.error('Suppression du compte Auth impossible (données déjà effacées) :', e2);
+        }
+      } else {
+        console.error('Suppression du compte Auth impossible (données déjà effacées) :', e);
+      }
+    }
+
+    alert('Ton compte et toutes tes données ont été supprimés.');
+    await auth.signOut();
+  } catch (e) {
+    alert('Une erreur est survenue pendant la suppression : ' + e.message);
+  }
+}
+
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
@@ -1246,6 +1367,12 @@ auth.onAuthStateChanged(user => {
     startApp();
   } else {
     currentUser = null;
+    // Réinitialise la navigation pour que le prochain compte connecté reparte de l'accueil
+    showHistory = false;
+    showManage = false;
+    currentChallengeId = null;
+    editingChallengeId = null;
+    focusMode = false;
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
@@ -2537,6 +2664,27 @@ function renderHistoryScreen() {
     <div class="section-label">Calendrier du mois</div>
     ${calHtml}
     ${listHtml}
+    ${renderAccountSection()}
+  `;
+}
+
+function renderAccountSection() {
+  const name = currentUser?.displayName || 'Compte';
+  const email = currentUser?.email || '';
+  const photo = currentUser?.photoURL || '';
+  return `
+    <div class="section-label">Compte</div>
+    <div class="account-card">
+      <div class="account-info">
+        ${photo ? `<img src="${photo}" class="account-avatar" referrerpolicy="no-referrer">` : `<div class="account-avatar-fallback">${name.charAt(0).toUpperCase()}</div>`}
+        <div>
+          <div class="account-name">${name}</div>
+          ${email ? `<div class="account-email">${email}</div>` : ''}
+        </div>
+      </div>
+      <button class="signout-btn" onclick="signOutUser()">🚪 Se déconnecter</button>
+      <button class="delete-account-btn" onclick="deleteMyAccount()">🗑️ Supprimer mon compte et mes données</button>
+    </div>
   `;
 }
 
