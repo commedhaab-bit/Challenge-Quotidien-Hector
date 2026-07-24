@@ -490,6 +490,19 @@
   .check-item.checked {
     border-color: var(--accent-dim);
   }
+  .rec-badge {
+    display: inline-block;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 800;
+    color: #1e1d1b;
+    background: var(--accent);
+    padding: 2px 6px;
+    border-radius: 5px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
 
   .onboarding-header {
     text-align: center;
@@ -1444,56 +1457,47 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-const DEFAULT_CHALLENGES = [
-  { id: 1,  cat: 'Haut du corps', name: 'Pompes classiques', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 2,  cat: 'Haut du corps', name: 'Pompes (grosse série)', target: 150, unit: 'reps', hardcoreTarget: 300 },
-  { id: 3,  cat: 'Haut du corps', name: 'Dips', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 4,  cat: 'Haut du corps', name: 'Pompes isométrie (position basse)', target: 180, unit: 'sec', hardcoreTarget: 360 },
-  { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 6,  cat: 'Haltères', name: 'Biceps', target: 150, unit: 'reps', hardcoreTarget: 300 },
-  { id: 7,  cat: 'Haltères', name: 'Épaule lateral raise', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 8,  cat: 'Haltères', name: 'Cuban press', target: 180, unit: 'reps', hardcoreTarget: 360 },
-  { id: 9,  cat: 'Gainage / Core', name: 'Planche cumulée', target: 300, unit: 'sec', hardcoreTarget: 600 },
-  { id: 10, cat: 'Gainage / Core', name: 'Crunchs', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 11, cat: 'Gainage / Core', name: 'Gainage latéral (2 côtés)', target: 300, unit: 'sec', hardcoreTarget: 600 },
-  { id: 12, cat: 'Gainage / Core', name: 'Mountain climbers', target: 150, unit: 'reps', hardcoreTarget: 300 },
-  { id: 13, cat: 'Gainage / Core', name: 'Leg raises', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 14, cat: 'Bas du corps', name: 'Squats', target: 200, unit: 'reps', hardcoreTarget: 400 },
-  { id: 15, cat: 'Bas du corps', name: 'Fentes (2 jambes)', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 16, cat: 'Bas du corps', name: 'Chaise (wall sit) cumulée', target: 180, unit: 'sec', hardcoreTarget: 360 },
-  { id: 17, cat: 'Bas du corps', name: 'Mollets (calf raises)', target: 150, unit: 'reps', hardcoreTarget: 300 },
-];
+const CHALLENGE_LIBRARY = [
+  // ==== Haut du corps ====
+  { id: 1,  cat: 'Haut du corps', name: 'Pompes', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
+  { id: 3,  cat: 'Haut du corps', name: 'Dips', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
+  { id: 4,  cat: 'Haut du corps', name: 'Pompes isométrie (position basse)', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: true },
+  { id: 1000, cat: 'Haut du corps', name: 'Pompes larges', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false },
+  { id: 1001, cat: 'Haut du corps', name: 'Pompes diamant', target: 60,  unit: 'reps', hardcoreTarget: 120, isDefault: false },
+  { id: 1002, cat: 'Haut du corps', name: 'Pompes déclinées (pieds surélevés)', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false },
+  { id: 1003, cat: 'Haut du corps', name: 'Pike push-ups (épaules)', target: 50, unit: 'reps', hardcoreTarget: 100, isDefault: false },
+  { id: 1004, cat: 'Haut du corps', name: 'Superman (extension dos)', target: 60, unit: 'reps', hardcoreTarget: 120, isDefault: false },
 
-const EXTRA_LIBRARY_CHALLENGES = [
-  { id: 1000, cat: 'Haut du corps', name: 'Pompes larges', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 1001, cat: 'Haut du corps', name: 'Pompes diamant', target: 60,  unit: 'reps', hardcoreTarget: 120 },
-  { id: 1002, cat: 'Haut du corps', name: 'Pompes déclinées (pieds surélevés)', target: 80, unit: 'reps', hardcoreTarget: 160 },
-  { id: 1003, cat: 'Haut du corps', name: 'Pike push-ups (épaules)', target: 50, unit: 'reps', hardcoreTarget: 100 },
-  { id: 1004, cat: 'Haut du corps', name: 'Superman (extension dos)', target: 60, unit: 'reps', hardcoreTarget: 120 },
-  { id: 1005, cat: 'Haltères', name: 'Rowing haltère', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 1006, cat: 'Haltères', name: 'Développé épaules haltères', target: 80, unit: 'reps', hardcoreTarget: 160 },
-  { id: 1007, cat: 'Haltères', name: 'Curl marteau', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 1008, cat: 'Haltères', name: 'Extension triceps nuque', target: 80, unit: 'reps', hardcoreTarget: 160 },
-  { id: 1009, cat: 'Haltères', name: 'Soulevé de terre roumain (RDL)', target: 80, unit: 'reps', hardcoreTarget: 160 },
-  { id: 1010, cat: 'Haltères', name: 'Squat goblet', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 1011, cat: 'Gainage / Core', name: 'Russian twists', target: 150, unit: 'reps', hardcoreTarget: 300 },
-  { id: 1012, cat: 'Gainage / Core', name: 'Hollow hold cumulé', target: 180, unit: 'sec', hardcoreTarget: 360 },
-  { id: 1013, cat: 'Gainage / Core', name: 'V-ups', target: 60, unit: 'reps', hardcoreTarget: 120 },
-  { id: 1014, cat: 'Gainage / Core', name: 'Bicycle crunches', target: 150, unit: 'reps', hardcoreTarget: 300 },
-  { id: 1015, cat: 'Gainage / Core', name: 'Dead bug', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 1016, cat: 'Bas du corps', name: 'Fentes bulgares', target: 100, unit: 'reps', hardcoreTarget: 200 },
-  { id: 1017, cat: 'Bas du corps', name: 'Squats sumo', target: 150, unit: 'reps', hardcoreTarget: 300 },
-  { id: 1018, cat: 'Bas du corps', name: 'Step-ups', target: 120, unit: 'reps', hardcoreTarget: 240 },
-  { id: 1019, cat: 'Bas du corps', name: 'Pont fessier (glute bridge)', target: 150, unit: 'reps', hardcoreTarget: 300 },
-  { id: 1020, cat: 'Bas du corps', name: 'Squats pistol assistés', target: 40, unit: 'reps', hardcoreTarget: 80 },
-  { id: 1021, cat: 'Cardio / Explosif', name: 'Burpees', target: 80, unit: 'reps', hardcoreTarget: 160 },
-  { id: 1022, cat: 'Cardio / Explosif', name: 'Jumping jacks', target: 200, unit: 'reps', hardcoreTarget: 400 },
-  { id: 1023, cat: 'Cardio / Explosif', name: 'High knees', target: 150, unit: 'reps', hardcoreTarget: 300 },
-  { id: 1024, cat: 'Cardio / Explosif', name: 'Corde à sauter cumulée', target: 600, unit: 'sec', hardcoreTarget: 1200 },
-  { id: 1025, cat: 'Cardio / Explosif', name: 'Squats sautés', target: 100, unit: 'reps', hardcoreTarget: 200 },
-];
+  // ==== Haltères ====
+  { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
+  { id: 6,  cat: 'Haltères', name: 'Biceps', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true },
+  { id: 7,  cat: 'Haltères', name: 'Épaule lateral raise', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
+  { id: 8,  cat: 'Haltères', name: 'Cuban press', target: 180, unit: 'reps', hardcoreTarget: 360, isDefault: true },
+  { id: 1005, cat: 'Haltères', name: 'Rowing haltère', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false },
+  { id: 1006, cat: 'Haltères', name: 'Développé épaules haltères', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false },
+  { id: 1008, cat: 'Haltères', name: 'Extension triceps nuque', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false },
+  { id: 1010, cat: 'Haltères', name: 'Squat goblet', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false },
 
-const CHALLENGE_LIBRARY = [...DEFAULT_CHALLENGES, ...EXTRA_LIBRARY_CHALLENGES];
+  // ==== Gainage / Core ====
+  { id: 9,  cat: 'Gainage / Core', name: 'Planche cumulée', target: 300, unit: 'sec', hardcoreTarget: 600, isDefault: true },
+  { id: 10, cat: 'Gainage / Core', name: 'Crunchs', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
+  { id: 11, cat: 'Gainage / Core', name: 'Gainage latéral (2 côtés)', target: 300, unit: 'sec', hardcoreTarget: 600, isDefault: true },
+  { id: 13, cat: 'Gainage / Core', name: 'Leg raises', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
+  { id: 12, cat: 'Gainage / Core', name: 'Mountain climbers', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false },
+  { id: 1012, cat: 'Gainage / Core', name: 'Hollow hold cumulé', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: false },
+  { id: 1013, cat: 'Gainage / Core', name: 'V-ups', target: 60, unit: 'reps', hardcoreTarget: 120, isDefault: false },
+  { id: 1014, cat: 'Gainage / Core', name: 'Bicycle crunches', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false },
+  { id: 1015, cat: 'Gainage / Core', name: 'Dead bug', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false },
+
+  // ==== Bas du corps ====
+  { id: 14, cat: 'Bas du corps', name: 'Squats', target: 200, unit: 'reps', hardcoreTarget: 400, isDefault: true },
+  { id: 15, cat: 'Bas du corps', name: 'Fentes (2 jambes)', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
+  { id: 16, cat: 'Bas du corps', name: 'Chaise (wall sit) cumulée', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: true },
+  { id: 17, cat: 'Bas du corps', name: 'Mollets (calf raises)', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true },
+  { id: 1016, cat: 'Bas du corps', name: 'Fentes bulgares', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false },
+  { id: 1017, cat: 'Bas du corps', name: 'Squats sumo', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false },
+  { id: 1019, cat: 'Bas du corps', name: 'Pont fessier (glute bridge)', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false },
+];
 
 const QUICK_ADD = { reps: [5, 10, 15, 20, 25, 30], sec: [15, 30, 60, 120] };
 const DOW_LABELS = ['D','L','M','M','J','V','S'];
@@ -1534,28 +1538,74 @@ async function saveChallenges() {
   }
 }
 
+// ==== NAVIGATION ARRIÈRE (bouton/geste retour Android) ====
+// Chaque écran/overlay ouvert pousse une entrée d'historique. Le bouton retour
+// du téléphone déclenche alors un popstate qu'on intercepte pour fermer
+// l'écran interne au lieu de quitter l'application.
+function pushNavState() {
+  history.pushState({ appNav: true }, '');
+}
+
+function goBackOneLevel() {
+  if (focusMode) {
+    focusMode = false;
+    render(true);
+    return;
+  }
+  if (editingChallengeId !== null) {
+    editingChallengeId = null;
+    render(true);
+    return;
+  }
+  if (showLibraryPicker) {
+    showLibraryPicker = false;
+    render(true);
+    return;
+  }
+  if (showManage) {
+    showManage = false;
+    render(true);
+    return;
+  }
+  if (showHistory) {
+    showHistory = false;
+    render(true);
+    return;
+  }
+  if (currentChallengeId) {
+    clearTimerState();
+    currentChallengeId = null;
+    render(true);
+    return;
+  }
+  // On est déjà à l'accueil : rien à fermer côté app, on laisse le
+  // comportement par défaut du navigateur/de la PWA s'appliquer (quitter).
+}
+
+window.addEventListener('popstate', () => {
+  goBackOneLevel();
+});
+
 function openManage() {
   showManage = true;
   editingChallengeId = null;
+  pushNavState();
   render(true);
 }
 
 function closeManage() {
-  showManage = false;
-  editingChallengeId = null;
-  showLibraryPicker = false;
-  render(true);
+  history.back();
 }
 
 function openLibraryPicker() {
   showLibraryPicker = true;
   librarySelection = new Set();
+  pushNavState();
   render(true);
 }
 
 function closeLibraryPicker() {
-  showLibraryPicker = false;
-  render(true);
+  history.back();
 }
 
 function toggleLibrarySelection(id) {
@@ -1570,19 +1620,20 @@ async function addSelectedFromLibrary() {
   const toAdd = CHALLENGE_LIBRARY.filter(c => librarySelection.has(c.id) && !existingIds.has(c.id));
   CHALLENGES.push(...toAdd.map(c => ({ ...c })));
   await saveChallenges();
-  showLibraryPicker = false;
   librarySelection = new Set();
   showToast(`✓ ${toAdd.length} défi${toAdd.length > 1 ? 's' : ''} ajouté${toAdd.length > 1 ? 's' : ''} !`);
-  render(true);
+  history.back(); // referme le niveau "bibliothèque" (showLibraryPicker) via goBackOneLevel, retour à la liste de gestion
 }
 
 function openNewChallengeForm() {
   editingChallengeId = 'new';
+  pushNavState();
   render(true);
 }
 
 function openEditChallengeForm(id) {
   editingChallengeId = id;
+  pushNavState();
   render(true);
 }
 
@@ -1610,8 +1661,7 @@ async function submitChallengeForm() {
     if (c) { c.name = name; c.cat = cat; c.target = target; c.unit = unit; c.hardcoreTarget = hardcoreTarget; }
   }
   await saveChallenges();
-  editingChallengeId = null;
-  render(true);
+  history.back(); // referme le formulaire (editingChallengeId) via goBackOneLevel, retour à la liste de gestion
 }
 
 async function deleteChallenge(id) {
@@ -1965,12 +2015,12 @@ function startTimer() {
 function enterFocusMode() {
   focusMode = true;
   if (navigator.vibrate) navigator.vibrate(10);
+  pushNavState();
   render(true);
 }
 
 function exitFocusMode() {
-  focusMode = false;
-  render(true);
+  history.back();
 }
 
 function tickTimer() {
@@ -1983,10 +2033,13 @@ function tickTimer() {
 async function stopTimer() {
   const elapsed = Math.round((Date.now() - timerStartMs) / 1000);
   clearTimerState();
-  focusMode = false;
+  const wasFocus = focusMode;
   if (elapsed > 0) {
     await addSet(elapsed);
-  } else {
+  }
+  if (wasFocus) {
+    history.back(); // ferme le mode focus via goBackOneLevel, reste cohérent avec la pile de navigation
+  } else if (elapsed <= 0) {
     render();
   }
 }
@@ -2081,13 +2134,12 @@ async function pickChallenge(id) {
   clearTimerState();
   currentChallengeId = id;
   getEntry(id); // s'assure qu'une entrée existe (reprend celle du jour si déjà commencée)
+  pushNavState();
   render(true);
 }
 
 async function changeChallenge() {
-  clearTimerState();
-  currentChallengeId = null;
-  render(true);
+  history.back();
 }
 
 async function addSet(amount) {
@@ -2506,6 +2558,7 @@ function render(animate) {
 async function openHistory() {
   showHistory = true;
   historyLoading = true;
+  pushNavState();
   render(true);
   await loadHistoryEntries();
   historyLoading = false;
@@ -2513,8 +2566,7 @@ async function openHistory() {
 }
 
 function closeHistory() {
-  showHistory = false;
-  render(true);
+  history.back();
 }
 
 async function loadHistoryEntries() {
@@ -2577,6 +2629,7 @@ function renderChallengeCheckItem(c, selectedSet, toggleFnName) {
     <div class="picker-item check-item${checked ? ' checked' : ''}" onclick="${toggleFnName}(${c.id})">
       <div>
         <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
+        ${c.isDefault ? '<span class="rec-badge">Recommandé</span>' : ''}
         <span class="name">${c.name}</span>
         <div class="goal-inline">${c.target} ${c.unit === 'sec' ? 'sec' : 'reps'} · 🔥 ${c.hardcoreTarget || c.target * 2}</div>
       </div>
@@ -3025,7 +3078,7 @@ function computeStreak() {
 async function startApp() {
   await loadChallenges();
   if (showOnboarding) {
-    onboardingSelection = new Set();
+    onboardingSelection = new Set(CHALLENGE_LIBRARY.filter(c => c.isDefault).map(c => c.id));
     render();
     return;
   }
