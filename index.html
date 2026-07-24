@@ -435,20 +435,79 @@
   }
 
   /* MANAGE SCREEN */
+  .manage-btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 22px;
+  }
   .add-challenge-btn {
-    display: block;
-    width: 100%;
+    background: var(--bg-raised);
+    border: 1px solid var(--accent-dim);
+    color: var(--chalk);
+    font-weight: 800;
+    font-size: 13px;
+    padding: 13px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .add-challenge-btn:active { transform: scale(0.98); }
+  .library-btn {
     background: var(--accent);
     color: #1e1d1b;
     border: none;
     font-weight: 800;
-    font-size: 14px;
-    padding: 13px;
+    font-size: 13px;
+    padding: 13px 8px;
     border-radius: 10px;
     cursor: pointer;
-    margin-bottom: 22px;
   }
-  .add-challenge-btn:active { transform: scale(0.98); }
+  .library-btn:active { transform: scale(0.98); }
+
+  /* CHECKBOX ITEMS (onboarding + bibliothèque) */
+  .check-item {
+    align-items: center;
+  }
+  .check-box {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    border: 1.5px solid var(--line);
+    background: var(--bg-raised);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    color: var(--accent);
+    flex-shrink: 0;
+    margin-left: 12px;
+  }
+  .check-item.checked .check-box {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #1e1d1b;
+  }
+  .check-item.checked {
+    border-color: var(--accent-dim);
+  }
+
+  .onboarding-header {
+    text-align: center;
+    margin-bottom: 26px;
+  }
+  .onboarding-header .emoji { font-size: 44px; margin-bottom: 10px; }
+  .onboarding-header .title { font-size: 34px; }
+  .onboarding-header .subtitle { line-height: 1.5; }
+  .onboarding-footer {
+    position: sticky;
+    bottom: 12px;
+    margin-top: 16px;
+    padding-top: 10px;
+  }
+  .save-challenge-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
 
   .manage-item {
     background: var(--bg-card);
@@ -1405,13 +1464,51 @@ const DEFAULT_CHALLENGES = [
   { id: 17, cat: 'Bas du corps', name: 'Mollets (calf raises)', target: 150, unit: 'reps', hardcoreTarget: 300 },
 ];
 
+const EXTRA_LIBRARY_CHALLENGES = [
+  { id: 1000, cat: 'Haut du corps', name: 'Pompes larges', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 1001, cat: 'Haut du corps', name: 'Pompes diamant', target: 60,  unit: 'reps', hardcoreTarget: 120 },
+  { id: 1002, cat: 'Haut du corps', name: 'Pompes déclinées (pieds surélevés)', target: 80, unit: 'reps', hardcoreTarget: 160 },
+  { id: 1003, cat: 'Haut du corps', name: 'Pike push-ups (épaules)', target: 50, unit: 'reps', hardcoreTarget: 100 },
+  { id: 1004, cat: 'Haut du corps', name: 'Superman (extension dos)', target: 60, unit: 'reps', hardcoreTarget: 120 },
+  { id: 1005, cat: 'Haltères', name: 'Rowing haltère', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 1006, cat: 'Haltères', name: 'Développé épaules haltères', target: 80, unit: 'reps', hardcoreTarget: 160 },
+  { id: 1007, cat: 'Haltères', name: 'Curl marteau', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 1008, cat: 'Haltères', name: 'Extension triceps nuque', target: 80, unit: 'reps', hardcoreTarget: 160 },
+  { id: 1009, cat: 'Haltères', name: 'Soulevé de terre roumain (RDL)', target: 80, unit: 'reps', hardcoreTarget: 160 },
+  { id: 1010, cat: 'Haltères', name: 'Squat goblet', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 1011, cat: 'Gainage / Core', name: 'Russian twists', target: 150, unit: 'reps', hardcoreTarget: 300 },
+  { id: 1012, cat: 'Gainage / Core', name: 'Hollow hold cumulé', target: 180, unit: 'sec', hardcoreTarget: 360 },
+  { id: 1013, cat: 'Gainage / Core', name: 'V-ups', target: 60, unit: 'reps', hardcoreTarget: 120 },
+  { id: 1014, cat: 'Gainage / Core', name: 'Bicycle crunches', target: 150, unit: 'reps', hardcoreTarget: 300 },
+  { id: 1015, cat: 'Gainage / Core', name: 'Dead bug', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 1016, cat: 'Bas du corps', name: 'Fentes bulgares', target: 100, unit: 'reps', hardcoreTarget: 200 },
+  { id: 1017, cat: 'Bas du corps', name: 'Squats sumo', target: 150, unit: 'reps', hardcoreTarget: 300 },
+  { id: 1018, cat: 'Bas du corps', name: 'Step-ups', target: 120, unit: 'reps', hardcoreTarget: 240 },
+  { id: 1019, cat: 'Bas du corps', name: 'Pont fessier (glute bridge)', target: 150, unit: 'reps', hardcoreTarget: 300 },
+  { id: 1020, cat: 'Bas du corps', name: 'Squats pistol assistés', target: 40, unit: 'reps', hardcoreTarget: 80 },
+  { id: 1021, cat: 'Cardio / Explosif', name: 'Burpees', target: 80, unit: 'reps', hardcoreTarget: 160 },
+  { id: 1022, cat: 'Cardio / Explosif', name: 'Jumping jacks', target: 200, unit: 'reps', hardcoreTarget: 400 },
+  { id: 1023, cat: 'Cardio / Explosif', name: 'High knees', target: 150, unit: 'reps', hardcoreTarget: 300 },
+  { id: 1024, cat: 'Cardio / Explosif', name: 'Corde à sauter cumulée', target: 600, unit: 'sec', hardcoreTarget: 1200 },
+  { id: 1025, cat: 'Cardio / Explosif', name: 'Squats sautés', target: 100, unit: 'reps', hardcoreTarget: 200 },
+];
+
+const CHALLENGE_LIBRARY = [...DEFAULT_CHALLENGES, ...EXTRA_LIBRARY_CHALLENGES];
+
 const QUICK_ADD = { reps: [5, 10, 15, 20, 25, 30], sec: [15, 30, 60, 120] };
 const DOW_LABELS = ['D','L','M','M','J','V','S'];
 
-let CHALLENGES = DEFAULT_CHALLENGES.map(c => ({ ...c }));
-let nextChallengeId = Math.max(...DEFAULT_CHALLENGES.map(c => c.id)) + 1;
+let CHALLENGES = [];
 let showManage = false;
 let editingChallengeId = null; // null = liste, 'new' = création, id = édition
+let showOnboarding = false;
+let onboardingSelection = new Set();
+let showLibraryPicker = false;
+let librarySelection = new Set();
+
+function getNextChallengeId() {
+  return Math.max(0, ...CHALLENGE_LIBRARY.map(c => c.id), ...CHALLENGES.map(c => c.id)) + 1;
+}
 
 async function loadChallenges() {
   try {
@@ -1419,11 +1516,14 @@ async function loadChallenges() {
     const saved = JSON.parse(res.value);
     if (Array.isArray(saved) && saved.length > 0) {
       CHALLENGES = saved;
-      nextChallengeId = Math.max(...CHALLENGES.map(c => c.id), 0) + 1;
+      showOnboarding = false;
+      return;
     }
   } catch (e) {
-    // pas encore de liste perso, on garde les défauts
+    // pas encore de choix enregistré -> premier lancement
   }
+  CHALLENGES = [];
+  showOnboarding = true;
 }
 
 async function saveChallenges() {
@@ -1443,6 +1543,36 @@ function openManage() {
 function closeManage() {
   showManage = false;
   editingChallengeId = null;
+  showLibraryPicker = false;
+  render(true);
+}
+
+function openLibraryPicker() {
+  showLibraryPicker = true;
+  librarySelection = new Set();
+  render(true);
+}
+
+function closeLibraryPicker() {
+  showLibraryPicker = false;
+  render(true);
+}
+
+function toggleLibrarySelection(id) {
+  if (librarySelection.has(id)) librarySelection.delete(id);
+  else librarySelection.add(id);
+  render();
+}
+
+async function addSelectedFromLibrary() {
+  if (librarySelection.size === 0) return;
+  const existingIds = new Set(CHALLENGES.map(c => c.id));
+  const toAdd = CHALLENGE_LIBRARY.filter(c => librarySelection.has(c.id) && !existingIds.has(c.id));
+  CHALLENGES.push(...toAdd.map(c => ({ ...c })));
+  await saveChallenges();
+  showLibraryPicker = false;
+  librarySelection = new Set();
+  showToast(`✓ ${toAdd.length} défi${toAdd.length > 1 ? 's' : ''} ajouté${toAdd.length > 1 ? 's' : ''} !`);
   render(true);
 }
 
@@ -1474,7 +1604,7 @@ async function submitChallengeForm() {
   }
 
   if (editingChallengeId === 'new') {
-    CHALLENGES.push({ id: nextChallengeId++, cat, name, target, unit, hardcoreTarget });
+    CHALLENGES.push({ id: getNextChallengeId(), cat, name, target, unit, hardcoreTarget });
   } else {
     const c = CHALLENGES.find(x => x.id === editingChallengeId);
     if (c) { c.name = name; c.cat = cat; c.target = target; c.unit = unit; c.hardcoreTarget = hardcoreTarget; }
@@ -2153,13 +2283,22 @@ function render(animate) {
   const app = document.getElementById('app');
   const today = new Date();
 
+  if (showOnboarding) {
+    applyContent(app, renderOnboardingScreen(), animate);
+    return;
+  }
+
   if (showHistory) {
     applyContent(app, renderHistoryScreen(), animate);
     return;
   }
 
   if (showManage) {
-    applyContent(app, renderManageScreen(), animate);
+    if (showLibraryPicker) {
+      applyContent(app, renderLibraryPickerScreen(), animate);
+    } else {
+      applyContent(app, renderManageScreen(), animate);
+    }
     return;
   }
 
@@ -2432,6 +2571,76 @@ function renderBadgesStrip() {
   `;
 }
 
+function renderChallengeCheckItem(c, selectedSet, toggleFnName) {
+  const checked = selectedSet.has(c.id);
+  return `
+    <div class="picker-item check-item${checked ? ' checked' : ''}" onclick="${toggleFnName}(${c.id})">
+      <div>
+        <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
+        <span class="name">${c.name}</span>
+        <div class="goal-inline">${c.target} ${c.unit === 'sec' ? 'sec' : 'reps'} · 🔥 ${c.hardcoreTarget || c.target * 2}</div>
+      </div>
+      <div class="check-box">${checked ? '✓' : ''}</div>
+    </div>
+  `;
+}
+
+function renderOnboardingScreen() {
+  const cats = [...new Set(CHALLENGE_LIBRARY.map(c => c.cat))];
+  let html = `
+    <div class="onboarding-header">
+      <div class="emoji">👋</div>
+      <h1 class="title">Bienvenue !</h1>
+      <div class="subtitle">Choisis les défis qui t'intéressent pour commencer.<br>Tu pourras en ajouter d'autres plus tard depuis "Gérer mes défis".</div>
+    </div>
+  `;
+  for (const cat of cats) {
+    html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
+    for (const c of CHALLENGE_LIBRARY.filter(x => x.cat === cat)) {
+      html += renderChallengeCheckItem(c, onboardingSelection, 'toggleOnboardingChallenge');
+    }
+    html += `</div>`;
+  }
+  html += `
+    <div class="onboarding-footer">
+      <button class="save-challenge-btn" onclick="finishOnboarding()">
+        Commencer avec ${onboardingSelection.size} défi${onboardingSelection.size > 1 ? 's' : ''}
+      </button>
+    </div>
+  `;
+  return html;
+}
+
+function renderLibraryPickerScreen() {
+  const existingIds = new Set(CHALLENGES.map(c => c.id));
+  const available = CHALLENGE_LIBRARY.filter(c => !existingIds.has(c.id));
+  let html = `<button class="history-back" onclick="closeLibraryPicker()">‹ Retour</button>`;
+  html += `
+    <h1 class="title">Bibliothèque</h1>
+    <div class="subtitle">Coche les défis à ajouter à ta liste</div>
+  `;
+  if (available.length === 0) {
+    html += `<div class="history-empty">Tu as déjà ajouté tous les défis de la bibliothèque 🎉</div>`;
+  } else {
+    const cats = [...new Set(available.map(c => c.cat))];
+    for (const cat of cats) {
+      html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
+      for (const c of available.filter(x => x.cat === cat)) {
+        html += renderChallengeCheckItem(c, librarySelection, 'toggleLibrarySelection');
+      }
+      html += `</div>`;
+    }
+    html += `
+      <div class="onboarding-footer">
+        <button class="save-challenge-btn" onclick="addSelectedFromLibrary()" ${librarySelection.size === 0 ? 'disabled' : ''}>
+          Ajouter ${librarySelection.size > 0 ? `(${librarySelection.size})` : ''}
+        </button>
+      </div>
+    `;
+  }
+  return html;
+}
+
 function renderManageScreen() {
   let html = `<button class="history-back" onclick="closeManage()">‹ Retour</button>`;
 
@@ -2482,7 +2691,10 @@ function renderManageScreen() {
     html += `
       <h1 class="title">Gérer mes défis</h1>
       <div class="subtitle">Ajoute, modifie ou supprime des défis</div>
-      <button class="add-challenge-btn" onclick="openNewChallengeForm()">+ Ajouter un défi</button>
+      <div class="manage-btn-row">
+        <button class="library-btn" onclick="openLibraryPicker()">📚 Depuis la bibliothèque</button>
+        <button class="add-challenge-btn" onclick="openNewChallengeForm()">✏️ Défi personnalisé</button>
+      </div>
     `;
     const cats = [...new Set(CHALLENGES.map(c => c.cat))];
     for (const cat of cats) {
@@ -2812,12 +3024,41 @@ function computeStreak() {
 
 async function startApp() {
   await loadChallenges();
+  if (showOnboarding) {
+    onboardingSelection = new Set();
+    render();
+    return;
+  }
+  await continueStartApp();
+}
+
+async function continueStartApp() {
   await loadWeights();
   await loadLastCompleted();
   await loadStats();
   await loadBadges();
   await loadDailyActivity();
   await loadState();
+}
+
+async function finishOnboarding() {
+  if (onboardingSelection.size === 0) {
+    alert('Sélectionne au moins un défi pour commencer !');
+    return;
+  }
+  CHALLENGES = CHALLENGE_LIBRARY
+    .filter(c => onboardingSelection.has(c.id))
+    .map(c => ({ ...c }));
+  await saveChallenges();
+  showOnboarding = false;
+  await continueStartApp();
+  render(true);
+}
+
+function toggleOnboardingChallenge(id) {
+  if (onboardingSelection.has(id)) onboardingSelection.delete(id);
+  else onboardingSelection.add(id);
+  render();
 }
 
 // Micro-interaction : légère vibration sur chaque tap d'élément interactif
