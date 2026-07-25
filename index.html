@@ -504,6 +504,168 @@
     vertical-align: middle;
   }
 
+  /* PROFILE ONBOARDING (coach virtuel) */
+  .profile-onboarding {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 22px 32px;
+  }
+  .pf-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .pf-header > div:empty {
+    width: 34px;
+  }
+  .pf-back {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    color: var(--chalk-dim);
+    font-size: 18px;
+    cursor: pointer;
+  }
+  .pf-back:active { transform: scale(0.92); }
+  .pf-progress {
+    display: flex;
+    gap: 6px;
+  }
+  .pf-dot {
+    width: 22px;
+    height: 4px;
+    border-radius: 3px;
+    background: var(--line);
+  }
+  .pf-dot.active { background: var(--accent); }
+  .pf-dot.done { background: var(--accent-dim); }
+
+  .pf-step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    max-width: 420px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .pf-emoji { font-size: 46px; margin-bottom: 14px; }
+  .pf-question {
+    font-size: 26px;
+    font-weight: 800;
+    margin: 0 0 20px;
+    line-height: 1.2;
+  }
+  .pf-subtitle {
+    font-size: 13.5px;
+    color: var(--chalk-dim);
+    line-height: 1.5;
+    margin: -10px 0 22px;
+  }
+  .pf-number-input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1.5px solid var(--line);
+    color: var(--chalk);
+    font-size: 32px;
+    font-weight: 800;
+    text-align: center;
+    padding: 18px;
+    border-radius: 14px;
+    margin-bottom: 20px;
+    font-variant-numeric: tabular-nums;
+  }
+  .pf-number-input:focus { outline: none; border-color: var(--accent); }
+  .pf-number-input.small { font-size: 24px; padding: 14px; margin-bottom: 0; }
+
+  .pf-two-inputs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+    margin-bottom: 22px;
+  }
+  .pf-input-group label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--chalk-dim);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .pf-next-btn {
+    width: 100%;
+    background: var(--accent);
+    color: #1e1d1b;
+    border: none;
+    font-weight: 800;
+    font-size: 16px;
+    padding: 16px;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+  .pf-next-btn:active { transform: scale(0.97); }
+
+  .pf-choice-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
+  .pf-choice {
+    background: var(--bg-card);
+    border: 1.5px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .pf-choice:active { transform: scale(0.98); }
+  .pf-choice.selected {
+    border-color: var(--accent);
+    background: rgba(242, 193, 78, 0.08);
+  }
+  .pf-choice-emoji { font-size: 26px; }
+  .pf-choice-label { font-size: 15px; font-weight: 700; }
+
+  .pf-level-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
+  .pf-level-card {
+    background: var(--bg-card);
+    border: 1.5px solid var(--line);
+    border-radius: 14px;
+    padding: 18px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .pf-level-card:active { transform: scale(0.98); }
+  .pf-level-card.selected {
+    border-color: var(--accent);
+    background: rgba(242, 193, 78, 0.08);
+  }
+  .pf-level-title { font-size: 16px; font-weight: 800; margin-bottom: 3px; }
+  .pf-level-desc { font-size: 12.5px; color: var(--chalk-dim); }
+
   .onboarding-header {
     text-align: center;
     margin-bottom: 26px;
@@ -1458,46 +1620,123 @@ if ('serviceWorker' in navigator) {
 }
 
 const CHALLENGE_LIBRARY = [
-  // ==== Haut du corps ====
-  { id: 1,  cat: 'Haut du corps', name: 'Pompes', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
-  { id: 3,  cat: 'Haut du corps', name: 'Dips', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
-  { id: 4,  cat: 'Haut du corps', name: 'Pompes isométrie (position basse)', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: true },
-  { id: 1000, cat: 'Haut du corps', name: 'Pompes larges', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false },
-  { id: 1001, cat: 'Haut du corps', name: 'Pompes diamant', target: 60,  unit: 'reps', hardcoreTarget: 120, isDefault: false },
-  { id: 1002, cat: 'Haut du corps', name: 'Pompes déclinées (pieds surélevés)', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false },
-  { id: 1003, cat: 'Haut du corps', name: 'Pike push-ups (épaules)', target: 50, unit: 'reps', hardcoreTarget: 100, isDefault: false },
-  { id: 1004, cat: 'Haut du corps', name: 'Superman (extension dos)', target: 60, unit: 'reps', hardcoreTarget: 120, isDefault: false },
+  // ==== Haut du corps (bmiImpact élevé : mouvements qui portent tout le poids du corps) ====
+  { id: 1,  cat: 'Haut du corps', name: 'Pompes', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 1.0 },
+  { id: 3,  cat: 'Haut du corps', name: 'Dips', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 1.0 },
+  { id: 4,  cat: 'Haut du corps', name: 'Pompes isométrie (position basse)', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: true, bmiImpact: 0.9 },
+  { id: 1000, cat: 'Haut du corps', name: 'Pompes larges', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 1.0 },
+  { id: 1001, cat: 'Haut du corps', name: 'Pompes diamant', target: 60,  unit: 'reps', hardcoreTarget: 120, isDefault: false, bmiImpact: 1.0 },
+  { id: 1002, cat: 'Haut du corps', name: 'Pompes déclinées (pieds surélevés)', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 1.0 },
+  { id: 1003, cat: 'Haut du corps', name: 'Pike push-ups (épaules)', target: 50, unit: 'reps', hardcoreTarget: 100, isDefault: false, bmiImpact: 0.9 },
+  { id: 1004, cat: 'Haut du corps', name: 'Superman (extension dos)', target: 60, unit: 'reps', hardcoreTarget: 120, isDefault: false, bmiImpact: 0.4 },
 
-  // ==== Haltères ====
-  { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
-  { id: 6,  cat: 'Haltères', name: 'Biceps', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true },
-  { id: 7,  cat: 'Haltères', name: 'Épaule lateral raise', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
-  { id: 8,  cat: 'Haltères', name: 'Cuban press', target: 180, unit: 'reps', hardcoreTarget: 360, isDefault: true },
-  { id: 1005, cat: 'Haltères', name: 'Rowing haltère', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false },
-  { id: 1006, cat: 'Haltères', name: 'Développé épaules haltères', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false },
-  { id: 1008, cat: 'Haltères', name: 'Extension triceps nuque', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false },
-  { id: 1010, cat: 'Haltères', name: 'Squat goblet', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false },
+  // ==== Haltères (bmiImpact ~nul : le poids déplacé est celui de l'haltère, pas du corps) ====
+  { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8 },
+  { id: 6,  cat: 'Haltères', name: 'Biceps', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0, standardWeightKg: 8 },
+  { id: 7,  cat: 'Haltères', name: 'Épaule lateral raise', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 5 },
+  { id: 8,  cat: 'Haltères', name: 'Cuban press', target: 180, unit: 'reps', hardcoreTarget: 360, isDefault: true, bmiImpact: 0, standardWeightKg: 5 },
+  { id: 1005, cat: 'Haltères', name: 'Rowing haltère', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0, standardWeightKg: 10 },
+  { id: 1006, cat: 'Haltères', name: 'Développé épaules haltères', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 8 },
+  { id: 1008, cat: 'Haltères', name: 'Extension triceps nuque', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 6 },
+  { id: 1010, cat: 'Haltères', name: 'Squat goblet', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.15, standardWeightKg: 12 },
 
-  // ==== Gainage / Core ====
-  { id: 9,  cat: 'Gainage / Core', name: 'Planche cumulée', target: 300, unit: 'sec', hardcoreTarget: 600, isDefault: true },
-  { id: 10, cat: 'Gainage / Core', name: 'Crunchs', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
-  { id: 11, cat: 'Gainage / Core', name: 'Gainage latéral (2 côtés)', target: 300, unit: 'sec', hardcoreTarget: 600, isDefault: true },
-  { id: 13, cat: 'Gainage / Core', name: 'Leg raises', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
-  { id: 12, cat: 'Gainage / Core', name: 'Mountain climbers', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false },
-  { id: 1012, cat: 'Gainage / Core', name: 'Hollow hold cumulé', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: false },
-  { id: 1013, cat: 'Gainage / Core', name: 'V-ups', target: 60, unit: 'reps', hardcoreTarget: 120, isDefault: false },
-  { id: 1014, cat: 'Gainage / Core', name: 'Bicycle crunches', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false },
-  { id: 1015, cat: 'Gainage / Core', name: 'Dead bug', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false },
+  // ==== Gainage / Core (bmiImpact modéré : la planche/hollow tiennent le poids du corps, les crunchs moins) ====
+  { id: 9,  cat: 'Gainage / Core', name: 'Planche cumulée', target: 300, unit: 'sec', hardcoreTarget: 600, isDefault: true, bmiImpact: 0.7 },
+  { id: 10, cat: 'Gainage / Core', name: 'Crunchs', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0.3 },
+  { id: 11, cat: 'Gainage / Core', name: 'Gainage latéral (2 côtés)', target: 300, unit: 'sec', hardcoreTarget: 600, isDefault: true, bmiImpact: 0.7 },
+  { id: 13, cat: 'Gainage / Core', name: 'Leg raises', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0.4 },
+  { id: 12, cat: 'Gainage / Core', name: 'Mountain climbers', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false, bmiImpact: 0.6 },
+  { id: 1012, cat: 'Gainage / Core', name: 'Hollow hold cumulé', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: false, bmiImpact: 0.5 },
+  { id: 1013, cat: 'Gainage / Core', name: 'V-ups', target: 60, unit: 'reps', hardcoreTarget: 120, isDefault: false, bmiImpact: 0.4 },
+  { id: 1014, cat: 'Gainage / Core', name: 'Bicycle crunches', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false, bmiImpact: 0.3 },
+  { id: 1015, cat: 'Gainage / Core', name: 'Dead bug', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.2 },
 
-  // ==== Bas du corps ====
-  { id: 14, cat: 'Bas du corps', name: 'Squats', target: 200, unit: 'reps', hardcoreTarget: 400, isDefault: true },
-  { id: 15, cat: 'Bas du corps', name: 'Fentes (2 jambes)', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true },
-  { id: 16, cat: 'Bas du corps', name: 'Chaise (wall sit) cumulée', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: true },
-  { id: 17, cat: 'Bas du corps', name: 'Mollets (calf raises)', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true },
-  { id: 1016, cat: 'Bas du corps', name: 'Fentes bulgares', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false },
-  { id: 1017, cat: 'Bas du corps', name: 'Squats sumo', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false },
-  { id: 1019, cat: 'Bas du corps', name: 'Pont fessier (glute bridge)', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false },
+  // ==== Bas du corps (bmiImpact modéré : les jambes sont naturellement conçues pour porter le poids du corps) ====
+  { id: 14, cat: 'Bas du corps', name: 'Squats', target: 200, unit: 'reps', hardcoreTarget: 400, isDefault: true, bmiImpact: 0.5 },
+  { id: 15, cat: 'Bas du corps', name: 'Fentes (2 jambes)', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0.5 },
+  { id: 16, cat: 'Bas du corps', name: 'Chaise (wall sit) cumulée', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: true, bmiImpact: 0.6 },
+  { id: 17, cat: 'Bas du corps', name: 'Mollets (calf raises)', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0.4 },
+  { id: 1016, cat: 'Bas du corps', name: 'Fentes bulgares', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.55 },
+  { id: 1017, cat: 'Bas du corps', name: 'Squats sumo', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false, bmiImpact: 0.5 },
+  { id: 1019, cat: 'Bas du corps', name: 'Pont fessier (glute bridge)', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false, bmiImpact: 0.3 },
 ];
+
+// ==== MOTEUR DE PERSONNALISATION (coach virtuel) ====
+// Objectif Final = Objectif Standard × Coef(Niveau) × Coef(Âge) × Coef(Sexe) × Coef(IMC)
+// Poids Final    = Poids Standard    × Coef(Niveau) × Coef(Âge) × Coef(Sexe, haltères)
+//
+// Les "Objectifs Standards" ci-dessus (target/hardcoreTarget/standardWeightKg) sont calibrés
+// pour un homme de 30 ans, niveau intermédiaire, IMC normal — volontairement exigeants.
+// Sources de calibration (normes ACSM/CSEP pompes) : écart hommes/femmes ~2x en max sur
+// un set, écart d'environ -10 à -15% par décennie après 40 ans.
+
+const COEF_LEVEL = {
+  debutant: 0.6,      // remise en forme
+  intermediaire: 1.0, // 2 séances de sport / semaine (référence)
+  avance: 1.35,        // 3+ séances de sport / semaine
+};
+
+function getAgeCoef(age) {
+  if (age < 30) return 1.0;
+  if (age < 40) return 1.0;   // tranche de référence (30 ans)
+  if (age < 50) return 0.88;
+  if (age < 60) return 0.75;
+  if (age < 70) return 0.60;
+  return 0.45;
+}
+
+function getBmi(heightCm, weightKg) {
+  if (!heightCm || !weightKg) return 22; // valeur neutre par défaut
+  const heightM = heightCm / 100;
+  return weightKg / (heightM * heightM);
+}
+
+// Coefficient IMC "brut" (avant pondération par l'impact spécifique à l'exercice)
+function getBmiCoefRaw(bmi) {
+  if (bmi < 18.5) return 0.9;   // maigreur : masse musculaire souvent moindre
+  if (bmi < 25)   return 1.0;   // corpulence normale (référence)
+  if (bmi < 30)   return 0.85;  // surpoids : plus dur de déplacer son propre poids
+  return 0.65;                  // obésité : impact plus marqué sur les mouvements au poids du corps
+}
+
+// Coefficient sexe appliqué aux répétitions/secondes, dépend de la catégorie du défi
+function getSexRepsCoef(sex, cat) {
+  if (sex !== 'femme') return 1.0;
+  if (cat === 'Haut du corps') return 0.65; // écart le plus marqué, cohérent avec les normes ACSM pompes
+  return 1.0; // Gainage/Core et Bas du corps : pas de malus (endurance/mobilité comparables)
+}
+
+// Coefficient sexe appliqué au poids d'haltère suggéré (mouvements du haut du corps)
+function getSexWeightCoef(sex) {
+  if (sex === 'femme') return 0.6;
+  if (sex === 'autre') return 0.8; // valeur neutre intermédiaire
+  return 1.0;
+}
+
+function computeStandardTarget(c, profile) {
+  if (!profile) return c.target;
+  const levelCoef = COEF_LEVEL[profile.level] ?? 1;
+  const ageCoef = getAgeCoef(profile.age);
+  const bmi = getBmi(profile.heightCm, profile.weightKg);
+  const bmiRaw = getBmiCoefRaw(bmi);
+  const impact = c.bmiImpact ?? 0;
+  const bmiEffective = 1 + (bmiRaw - 1) * impact; // pondère l'effet IMC selon l'exercice
+  const sexCoef = getSexRepsCoef(profile.sex, c.cat);
+  const raw = c.target * levelCoef * ageCoef * sexCoef * bmiEffective;
+  const stepped = Math.round(raw / 5) * 5;
+  return Math.max(c.unit === 'sec' ? 15 : 10, stepped);
+}
+
+function computeStandardWeight(c, profile) {
+  if (c.cat !== 'Haltères' || !c.standardWeightKg) return null;
+  if (!profile) return c.standardWeightKg;
+  const levelCoef = COEF_LEVEL[profile.level] ?? 1;
+  const ageCoef = getAgeCoef(profile.age);
+  const sexCoef = getSexWeightCoef(profile.sex);
+  const raw = c.standardWeightKg * levelCoef * ageCoef * sexCoef;
+  return Math.max(1, Math.round(raw * 2) / 2); // arrondi au 0,5 kg le plus proche
+}
+
 
 const QUICK_ADD = { reps: [5, 10, 15, 20, 25, 30], sec: [15, 30, 60, 120] };
 const DOW_LABELS = ['D','L','M','M','J','V','S'];
@@ -1510,8 +1749,104 @@ let onboardingSelection = new Set();
 let showLibraryPicker = false;
 let librarySelection = new Set();
 
+let userProfile = null; // { age, sex, heightCm, weightKg, level }
+let showProfileOnboarding = false;
+let profileStep = 0;
+let profileDraft = { age: null, sex: null, heightCm: null, weightKg: null, level: null };
+
+async function loadProfile() {
+  try {
+    const res = await dbGet('profile');
+    userProfile = JSON.parse(res.value);
+    return true;
+  } catch (e) {
+    userProfile = null;
+    return false;
+  }
+}
+
+async function saveProfile() {
+  try {
+    await dbSet('profile', JSON.stringify(userProfile));
+  } catch (e) {
+    console.error('save profile failed', e);
+  }
+}
+
 function getNextChallengeId() {
   return Math.max(0, ...CHALLENGE_LIBRARY.map(c => c.id), ...CHALLENGES.map(c => c.id)) + 1;
+}
+
+// ==== ONBOARDING PROFIL (coach virtuel) ====
+const PROFILE_STEPS_COUNT = 4;
+
+function selectProfileSex(sex) {
+  profileDraft.sex = sex;
+  if (navigator.vibrate) navigator.vibrate(10);
+  render();
+  setTimeout(() => profileNext(), 250);
+}
+
+function selectProfileLevel(level) {
+  profileDraft.level = level;
+  if (navigator.vibrate) navigator.vibrate(10);
+  render();
+  setTimeout(() => profileNext(), 250);
+}
+
+function profileNext() {
+  if (profileStep === 0) {
+    const input = document.getElementById('pfAge');
+    const val = parseInt(input?.value, 10);
+    if (isNaN(val) || val < 12 || val > 100) {
+      alert("Merci d'indiquer un âge valide (12 à 100 ans).");
+      return;
+    }
+    profileDraft.age = val;
+  } else if (profileStep === 1) {
+    if (!profileDraft.sex) {
+      alert('Merci de sélectionner une option.');
+      return;
+    }
+  } else if (profileStep === 2) {
+    const hInput = document.getElementById('pfHeight');
+    const wInput = document.getElementById('pfWeight');
+    const h = parseInt(hInput?.value, 10);
+    const w = parseFloat(wInput?.value);
+    if (isNaN(h) || h < 100 || h > 250) {
+      alert('Merci d\'indiquer une taille valide (100 à 250 cm).');
+      return;
+    }
+    if (isNaN(w) || w < 30 || w > 300) {
+      alert('Merci d\'indiquer un poids valide (30 à 300 kg).');
+      return;
+    }
+    profileDraft.heightCm = h;
+    profileDraft.weightKg = w;
+  } else if (profileStep === 3) {
+    if (!profileDraft.level) {
+      alert('Merci de sélectionner ton niveau.');
+      return;
+    }
+    finishProfileOnboarding();
+    return;
+  }
+  profileStep++;
+  render(true);
+}
+
+function profilePrev() {
+  if (profileStep > 0) {
+    profileStep--;
+    render(true);
+  }
+}
+
+async function finishProfileOnboarding() {
+  userProfile = { ...profileDraft };
+  await saveProfile();
+  showProfileOnboarding = false;
+  await proceedAfterProfile();
 }
 
 async function loadChallenges() {
@@ -1618,7 +1953,7 @@ async function addSelectedFromLibrary() {
   if (librarySelection.size === 0) return;
   const existingIds = new Set(CHALLENGES.map(c => c.id));
   const toAdd = CHALLENGE_LIBRARY.filter(c => librarySelection.has(c.id) && !existingIds.has(c.id));
-  CHALLENGES.push(...toAdd.map(c => ({ ...c })));
+  CHALLENGES.push(...toAdd.map(c => personalizeChallengeCopy(c)));
   await saveChallenges();
   librarySelection = new Set();
   showToast(`✓ ${toAdd.length} défi${toAdd.length > 1 ? 's' : ''} ajouté${toAdd.length > 1 ? 's' : ''} !`);
@@ -1960,10 +2295,10 @@ async function loadWeights() {
   } catch (e) {
     weights = {};
   }
-  // default 8kg for any Haltères exercise not yet set
+  // poids par défaut calculé selon le profil (niveau/âge/sexe) pour toute haltère pas encore réglée
   for (const c of CHALLENGES) {
     if (c.cat === 'Haltères' && weights[c.id] === undefined) {
-      weights[c.id] = 8;
+      weights[c.id] = computeStandardWeight(c, userProfile) ?? 8;
     }
   }
 }
@@ -2335,6 +2670,11 @@ function render(animate) {
   const app = document.getElementById('app');
   const today = new Date();
 
+  if (showProfileOnboarding) {
+    applyContent(app, renderProfileOnboardingScreen(), animate);
+    return;
+  }
+
   if (showOnboarding) {
     applyContent(app, renderOnboardingScreen(), animate);
     return;
@@ -2625,15 +2965,108 @@ function renderBadgesStrip() {
 
 function renderChallengeCheckItem(c, selectedSet, toggleFnName) {
   const checked = selectedSet.has(c.id);
+  const personalTarget = computeStandardTarget(c, userProfile);
+  const weightHint = c.cat === 'Haltères' ? ` · 🏋️ ${computeStandardWeight(c, userProfile)}kg` : '';
   return `
     <div class="picker-item check-item${checked ? ' checked' : ''}" onclick="${toggleFnName}(${c.id})">
       <div>
         <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
         ${c.isDefault ? '<span class="rec-badge">Recommandé</span>' : ''}
         <span class="name">${c.name}</span>
-        <div class="goal-inline">${c.target} ${c.unit === 'sec' ? 'sec' : 'reps'} · 🔥 ${c.hardcoreTarget || c.target * 2}</div>
+        <div class="goal-inline">${personalTarget} ${c.unit === 'sec' ? 'sec' : 'reps'} · 🔥 ${personalTarget * 2}${weightHint}</div>
       </div>
       <div class="check-box">${checked ? '✓' : ''}</div>
+    </div>
+  `;
+}
+
+function renderProfileProgressDots() {
+  let dots = '';
+  for (let i = 0; i < PROFILE_STEPS_COUNT; i++) {
+    dots += `<div class="pf-dot${i === profileStep ? ' active' : ''}${i < profileStep ? ' done' : ''}"></div>`;
+  }
+  return `<div class="pf-progress">${dots}</div>`;
+}
+
+function renderProfileOnboardingScreen() {
+  const backBtn = profileStep > 0 ? `<button class="pf-back" onclick="profilePrev()">‹</button>` : '<div></div>';
+
+  let stepHtml = '';
+
+  if (profileStep === 0) {
+    stepHtml = `
+      <div class="pf-emoji">🎂</div>
+      <h1 class="pf-question">Quel âge as-tu ?</h1>
+      <input type="number" id="pfAge" class="pf-number-input" inputmode="numeric" placeholder="30" value="${profileDraft.age ?? ''}" autofocus>
+      <button class="pf-next-btn" onclick="profileNext()">Suivant</button>
+    `;
+  } else if (profileStep === 1) {
+    stepHtml = `
+      <div class="pf-emoji">🚻</div>
+      <h1 class="pf-question">Tu es...</h1>
+      <div class="pf-choice-grid">
+        <div class="pf-choice${profileDraft.sex === 'homme' ? ' selected' : ''}" onclick="selectProfileSex('homme')">
+          <div class="pf-choice-emoji">🙋‍♂️</div>
+          <div class="pf-choice-label">Un homme</div>
+        </div>
+        <div class="pf-choice${profileDraft.sex === 'femme' ? ' selected' : ''}" onclick="selectProfileSex('femme')">
+          <div class="pf-choice-emoji">🙋‍♀️</div>
+          <div class="pf-choice-label">Une femme</div>
+        </div>
+        <div class="pf-choice${profileDraft.sex === 'autre' ? ' selected' : ''}" onclick="selectProfileSex('autre')">
+          <div class="pf-choice-emoji">🙋</div>
+          <div class="pf-choice-label">Autre / je préfère ne pas dire</div>
+        </div>
+      </div>
+    `;
+  } else if (profileStep === 2) {
+    stepHtml = `
+      <div class="pf-emoji">📏</div>
+      <h1 class="pf-question">Taille et poids</h1>
+      <div class="pf-subtitle">Ça nous permet de calibrer tes objectifs pour que ce soit un vrai défi, ni trop facile ni impossible.</div>
+      <div class="pf-two-inputs">
+        <div class="pf-input-group">
+          <label>Taille (cm)</label>
+          <input type="number" id="pfHeight" class="pf-number-input small" inputmode="numeric" placeholder="175" value="${profileDraft.heightCm ?? ''}">
+        </div>
+        <div class="pf-input-group">
+          <label>Poids (kg)</label>
+          <input type="number" id="pfWeight" class="pf-number-input small" inputmode="numeric" placeholder="75" value="${profileDraft.weightKg ?? ''}">
+        </div>
+      </div>
+      <button class="pf-next-btn" onclick="profileNext()">Suivant</button>
+    `;
+  } else if (profileStep === 3) {
+    stepHtml = `
+      <div class="pf-emoji">💪</div>
+      <h1 class="pf-question">Ton niveau actuel ?</h1>
+      <div class="pf-level-list">
+        <div class="pf-level-card${profileDraft.level === 'debutant' ? ' selected' : ''}" onclick="selectProfileLevel('debutant')">
+          <div class="pf-level-title">Débutant</div>
+          <div class="pf-level-desc">Remise en forme, je reprends le sport</div>
+        </div>
+        <div class="pf-level-card${profileDraft.level === 'intermediaire' ? ' selected' : ''}" onclick="selectProfileLevel('intermediaire')">
+          <div class="pf-level-title">Intermédiaire</div>
+          <div class="pf-level-desc">Environ 2 séances de sport par semaine</div>
+        </div>
+        <div class="pf-level-card${profileDraft.level === 'avance' ? ' selected' : ''}" onclick="selectProfileLevel('avance')">
+          <div class="pf-level-title">Avancé</div>
+          <div class="pf-level-desc">3 séances de sport par semaine ou plus</div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="profile-onboarding">
+      <div class="pf-header">
+        ${backBtn}
+        ${renderProfileProgressDots()}
+        <div></div>
+      </div>
+      <div class="pf-step">
+        ${stepHtml}
+      </div>
     </div>
   `;
 }
@@ -2644,7 +3077,7 @@ function renderOnboardingScreen() {
     <div class="onboarding-header">
       <div class="emoji">👋</div>
       <h1 class="title">Bienvenue !</h1>
-      <div class="subtitle">Choisis les défis qui t'intéressent pour commencer.<br>Tu pourras en ajouter d'autres plus tard depuis "Gérer mes défis".</div>
+      <div class="subtitle">Choisis les défis qui t'intéressent pour commencer.<br>Les objectifs affichés sont déjà calculés pour ton profil 🎯</div>
     </div>
   `;
   for (const cat of cats) {
@@ -3076,6 +3509,18 @@ function computeStreak() {
 }
 
 async function startApp() {
+  const hasProfile = await loadProfile();
+  if (!hasProfile) {
+    profileStep = 0;
+    profileDraft = { age: null, sex: null, heightCm: null, weightKg: null, level: null };
+    showProfileOnboarding = true;
+    render();
+    return;
+  }
+  await proceedAfterProfile();
+}
+
+async function proceedAfterProfile() {
   await loadChallenges();
   if (showOnboarding) {
     onboardingSelection = new Set(CHALLENGE_LIBRARY.filter(c => c.isDefault).map(c => c.id));
@@ -3094,6 +3539,11 @@ async function continueStartApp() {
   await loadState();
 }
 
+function personalizeChallengeCopy(c) {
+  const target = computeStandardTarget(c, userProfile);
+  return { ...c, target, hardcoreTarget: target * 2 };
+}
+
 async function finishOnboarding() {
   if (onboardingSelection.size === 0) {
     alert('Sélectionne au moins un défi pour commencer !');
@@ -3101,7 +3551,7 @@ async function finishOnboarding() {
   }
   CHALLENGES = CHALLENGE_LIBRARY
     .filter(c => onboardingSelection.has(c.id))
-    .map(c => ({ ...c }));
+    .map(c => personalizeChallengeCopy(c));
   await saveChallenges();
   showOnboarding = false;
   await continueStartApp();
