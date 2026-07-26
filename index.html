@@ -59,13 +59,63 @@
   .app {
     max-width: 480px;
     margin: 0 auto;
-    padding: 20px 18px 40px;
+    padding: 20px 18px 100px;
     min-height: 100vh;
     opacity: 1;
     transition: opacity 0.14s ease;
   }
   .app.fade-out {
     opacity: 0;
+  }
+
+  /* BARRE DE NAVIGATION PERSISTANTE (bas d'écran) */
+  .tab-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-width: 480px;
+    margin: 0 auto;
+    display: flex;
+    background: var(--bg-raised);
+    border-top: 1px solid var(--line);
+    padding: 8px 4px calc(8px + env(safe-area-inset-bottom, 0px));
+    z-index: 500;
+  }
+  .tab-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    color: var(--chalk-dim);
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 6px 2px;
+    cursor: pointer;
+    border-radius: 12px;
+    transition: color 0.15s ease;
+  }
+  .tab-btn:active {
+    background: var(--bg-card);
+    transform: scale(0.96);
+  }
+  .tab-icon {
+    font-size: 21px;
+    line-height: 1;
+    transition: transform 0.15s ease;
+  }
+  .tab-btn.active {
+    color: var(--accent);
+  }
+  .tab-btn.active .tab-icon {
+    transform: scale(1.12);
+  }
+  .tab-label {
+    letter-spacing: 0.01em;
   }
 
   /* HEADER */
@@ -388,21 +438,6 @@
   .delete-account-btn:active { background: rgba(217, 99, 79, 0.1); transform: scale(0.98); }
 
   /* MANAGE LINK + BADGES STRIP */
-  .manage-link {
-    display: block;
-    width: 100%;
-    background: none;
-    border: 1px dashed var(--line);
-    color: var(--chalk-dim);
-    font-size: 13px;
-    font-weight: 600;
-    padding: 12px;
-    border-radius: 10px;
-    cursor: pointer;
-    margin-top: 22px;
-  }
-  .manage-link:active { background: var(--bg-raised); transform: scale(0.98); }
-
   .badges-empty {
     color: var(--chalk-dim);
     font-size: 13px;
@@ -1692,10 +1727,10 @@ auth.onAuthStateChanged(user => {
     lastAuthUid = null;
     currentUser = null;
     // Réinitialise la navigation pour que le prochain compte connecté reparte de l'accueil
-    showHistory = false;
-    showManage = false;
+    activeTab = 'today';
     currentChallengeId = null;
     editingChallengeId = null;
+    showLibraryPicker = false;
     focusMode = false;
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
@@ -1832,7 +1867,7 @@ const QUICK_ADD = { reps: [5, 10, 15, 20, 25, 30], sec: [15, 30, 60, 120] };
 const DOW_LABELS = ['D','L','M','M','J','V','S'];
 
 let CHALLENGES = [];
-let showManage = false;
+let activeTab = 'today'; // 'today' | 'history' | 'library' | 'account'
 let editingChallengeId = null; // null = liste, 'new' = création, id = édition
 let showOnboarding = false;
 let onboardingSelection = new Set();
@@ -1989,23 +2024,13 @@ function goBackOneLevel() {
     render(true);
     return;
   }
-  if (showManage) {
-    showManage = false;
-    render(true);
-    return;
-  }
-  if (showHistory) {
-    showHistory = false;
-    render(true);
-    return;
-  }
   if (currentChallengeId) {
     clearTimerState();
     currentChallengeId = null;
     render(true);
     return;
   }
-  // On est déjà à l'accueil : rien à fermer côté app, on laisse le
+  // On est déjà à la racine d'un onglet : rien à fermer côté app, on laisse le
   // comportement par défaut du navigateur/de la PWA s'appliquer (quitter).
 }
 
@@ -2013,15 +2038,30 @@ window.addEventListener('popstate', () => {
   goBackOneLevel();
 });
 
-function openManage() {
-  showManage = true;
-  editingChallengeId = null;
-  pushNavState();
+// Bascule vers un autre onglet de la barre de navigation. Chaque onglet repart
+// toujours de son écran racine (pas de pile d'historique entre onglets, pour
+// une navigation simple et prévisible).
+function switchTab(tab) {
+  if (tab === activeTab) return;
+  if (activeTab === 'today') {
+    clearTimerState();
+    currentChallengeId = null;
+  } else if (activeTab === 'library') {
+    editingChallengeId = null;
+    showLibraryPicker = false;
+  }
+  if (navigator.vibrate) navigator.vibrate(8);
+  activeTab = tab;
+  if (tab === 'history') {
+    historyLoading = true;
+  }
   render(true);
-}
-
-function closeManage() {
-  history.back();
+  if (tab === 'history') {
+    loadHistoryEntries().then(() => {
+      historyLoading = false;
+      render();
+    });
+  }
 }
 
 function openLibraryPicker() {
@@ -2103,7 +2143,6 @@ let todayKey = null;
 let weekData = {};
 let weights = {};
 let lastCompleted = {};
-let showHistory = false;
 let historyEntries = [];
 let historyLoading = false;
 
@@ -2828,17 +2867,19 @@ function render(animate) {
     return;
   }
 
-  if (showHistory) {
-    applyContent(app, renderHistoryScreen(), animate);
+  if (activeTab === 'history') {
+    applyContent(app, renderHistoryScreen() + renderTabBar(), animate);
     return;
   }
 
-  if (showManage) {
-    if (showLibraryPicker) {
-      applyContent(app, renderLibraryPickerScreen(), animate);
-    } else {
-      applyContent(app, renderManageScreen(), animate);
-    }
+  if (activeTab === 'library') {
+    const libraryContent = showLibraryPicker ? renderLibraryPickerScreen() : renderManageScreen();
+    applyContent(app, libraryContent + renderTabBar(), animate);
+    return;
+  }
+
+  if (activeTab === 'account') {
+    applyContent(app, renderAccountTabScreen() + renderTabBar(), animate);
     return;
   }
 
@@ -2853,7 +2894,7 @@ function render(animate) {
   let html = `
     <div class="header">
       <div class="date">${formatDateLabel(today)}</div>
-      <button class="streak" onclick="openHistory()">🔥 ${computeStreak()} j</button>
+      <button class="streak" onclick="switchTab('history')">🔥 ${computeStreak()} j</button>
     </div>
   `;
 
@@ -2904,9 +2945,6 @@ function render(animate) {
       }
       html += `</div>`;
     }
-    html += `
-      <button class="manage-link" onclick="openManage()">⚙️ Gérer mes défis</button>
-    `;
     html += renderBadgesStrip();
   } else {
     const c = getChallenge();
@@ -3034,6 +3072,7 @@ function render(animate) {
     `;
   }
   html += `</div>`;
+  html += renderTabBar();
 
   applyContent(app, html, animate, () => {
     const input = document.getElementById('customAddInput');
@@ -3043,20 +3082,6 @@ function render(animate) {
       });
     }
   });
-}
-
-async function openHistory() {
-  showHistory = true;
-  historyLoading = true;
-  pushNavState();
-  render(true);
-  await loadHistoryEntries();
-  historyLoading = false;
-  render();
-}
-
-function closeHistory() {
-  history.back();
 }
 
 async function loadHistoryEntries() {
@@ -3298,7 +3323,9 @@ function renderLibraryPickerScreen() {
 }
 
 function renderManageScreen() {
-  let html = `<button class="history-back" onclick="closeManage()">‹ Retour</button>`;
+  let html = editingChallengeId !== null
+    ? `<button class="history-back" onclick="history.back()">‹ Retour</button>`
+    : '';
 
   if (editingChallengeId !== null) {
     const isNew = editingChallengeId === 'new';
@@ -3531,7 +3558,6 @@ function renderHistoryScreen() {
   }
 
   return `
-    <button class="history-back" onclick="closeHistory()">‹ Retour</button>
     <h1 class="title">Historique</h1>
     <div class="subtitle">Ta progression dans le temps</div>
     <button class="share-stats-btn" onclick="shareStatsImage()">📤 Partager mes stats</button>
@@ -3541,7 +3567,6 @@ function renderHistoryScreen() {
     <div class="section-label">Calendrier du mois</div>
     ${calHtml}
     ${listHtml}
-    ${renderAccountSection()}
   `;
 }
 
@@ -3562,6 +3587,35 @@ function renderAccountSection() {
       <button class="signout-btn" onclick="signOutUser()">🚪 Se déconnecter</button>
       <button class="delete-account-btn" onclick="deleteMyAccount()">🗑️ Supprimer mon compte et mes données</button>
     </div>
+  `;
+}
+
+function renderAccountTabScreen() {
+  return `
+    <h1 class="title">Compte</h1>
+    <div class="subtitle">Tes infos et la gestion de ton compte</div>
+    ${renderAccountSection()}
+  `;
+}
+
+// Barre de navigation persistante en bas de l'écran (masquée pendant les
+// écrans plein écran : onboarding, connexion, mode focus).
+function renderTabBar() {
+  const tabs = [
+    { id: 'today',   icon: '🎯', label: "Aujourd'hui" },
+    { id: 'history',  icon: '📊', label: 'Historique' },
+    { id: 'library',  icon: '📚', label: 'Bibliothèque' },
+    { id: 'account',  icon: '👤', label: 'Compte' },
+  ];
+  return `
+    <nav class="tab-bar">
+      ${tabs.map(t => `
+        <button class="tab-btn${activeTab === t.id ? ' active' : ''}" onclick="switchTab('${t.id}')">
+          <span class="tab-icon">${t.icon}</span>
+          <span class="tab-label">${t.label}</span>
+        </button>
+      `).join('')}
+    </nav>
   `;
 }
 
@@ -3637,7 +3691,7 @@ async function refreshApp() {
   await loadStats();
   await loadBadges();
   await loadDailyActivity();
-  if (showHistory) {
+  if (activeTab === 'history') {
     await loadHistoryEntries();
   } else {
     await loadState();
