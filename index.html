@@ -1012,19 +1012,21 @@
     cursor: pointer;
     padding: 0;
   }
-  .arm-mode-pill {
-    background: var(--bg-raised);
-    border: 1px solid var(--line);
-    border-radius: 20px;
-    padding: 5px 12px;
+  .arm-mode-sentence {
+    background: rgba(255, 107, 53, 0.1);
+    border: 1px solid #6b3420;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #ff8c5c;
+    margin: -6px 0 18px;
+  }
+  .arm-mode-sentence-inline {
     font-size: 11px;
     font-weight: 700;
-    color: var(--chalk-dim);
-    letter-spacing: 0.02em;
-  }
-  .arm-mode-pill.per-arm {
     color: #ff6b35;
-    border-color: #6b3420;
+    margin-top: 3px;
   }
 
   .stats-row {
@@ -1163,11 +1165,12 @@
     color: var(--chalk-dim);
   }
 
-  .progress-readable {
-    font-size: 12px;
+  .progress-readable-inline {
+    font-size: 13px;
+    font-weight: 600;
     color: var(--chalk-dim);
-    margin: -14px 0 16px;
     font-variant-numeric: tabular-nums;
+    margin-left: 2px;
   }
 
   .bar-track {
@@ -2430,12 +2433,20 @@ function formatSecToReadable(totalSec) {
   return `${m} min ${s} s`;
 }
 
-// Affichage complet d'une valeur cible selon son unité, ex: "335 sec (5 min 35 s)" ou "100 reps"
+// Affichage complet d'une valeur cible selon son unité, ex: "335 SEC (5 min 35 s)" ou "100 reps"
 function formatTargetLabel(value, unit) {
   if (unit === 'sec') {
-    return `${value} sec (${formatSecToReadable(value)})`;
+    return `${value} SEC (${formatSecToReadable(value)})`;
   }
   return `${value} reps`;
+}
+
+// Phrase claire pour les exercices unilatéraux (haltère tenu à un seul bras).
+// Ne retourne rien si l'exercice n'est pas concerné.
+function armModeSentence(target, unit, armMode) {
+  if (armMode !== 'perArm') return '';
+  const u = unit === 'sec' ? 'sec' : 'reps';
+  return `Chaque bras doit faire ${target} ${u}.`;
 }
 
 // ==== WAKE LOCK (empêche l'écran de s'éteindre pendant un chrono) ====
@@ -2918,10 +2929,8 @@ function render(animate) {
               🏋️ ${weights[c.id] ?? 8} kg
               <button onclick="editWeight()">modifier</button>
             </div>
-            <div class="arm-mode-pill${c.armMode === 'perArm' ? ' per-arm' : ''}">
-              ${c.armMode === 'perArm' ? '💪 Reps comptées PAR BRAS' : '🙌 Reps comptées AU TOTAL (2 bras)'}
-            </div>
           </div>
+          ${armModeSentence(target, c.unit, c.armMode) ? `<div class="arm-mode-sentence">💪 ${armModeSentence(target, c.unit, c.armMode)}</div>` : ''}
         ` : ''}
 
         ${stats[c.id] ? `
@@ -2934,12 +2943,12 @@ function render(animate) {
         <div class="progress-row">
           <div class="progress-numbers">
             <span class="progress-current">${total}</span><span class="progress-target"> / ${target}</span>
-            <span class="progress-unit"> ${unitLabel}</span>
+            <span class="progress-unit"> ${c.unit === 'sec' ? 'SEC' : 'reps'}</span>
+            ${c.unit === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(target)})</span>` : ''}
             <button class="target-edit" onclick="editTarget()">modifier</button>
           </div>
           <div class="progress-pct">${pct}%</div>
         </div>
-        ${c.unit === 'sec' ? `<div class="progress-readable">${formatSecToReadable(total)} / ${formatSecToReadable(target)}</div>` : ''}
 
         <div class="bar-track">
           <div class="bar-fill${entry.done ? ' complete' : ''}" style="width:${pct}%"></div>
@@ -3107,15 +3116,16 @@ function renderBadgesStrip() {
 function renderChallengeCheckItem(c, selectedSet, toggleFnName) {
   const checked = selectedSet.has(c.id);
   const personalTarget = computeStandardTarget(c, userProfile);
-  const weightHint = c.cat === 'Haltères' ? ` · 🏋️ ${computeStandardWeight(c, userProfile)}kg${c.armMode === 'perArm' ? '/bras' : ''}` : '';
-  const armHint = c.cat === 'Haltères' ? (c.armMode === 'perArm' ? ' (par bras)' : ' (au total)') : '';
+  const weightHint = c.cat === 'Haltères' ? ` · 🏋️ ${computeStandardWeight(c, userProfile)}kg` : '';
+  const armSentence = armModeSentence(personalTarget, c.unit, c.armMode);
   return `
     <div class="picker-item check-item${checked ? ' checked' : ''}" onclick="${toggleFnName}(${c.id})">
       <div>
         <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
         ${c.isDefault ? '<span class="rec-badge">Recommandé</span>' : ''}
         <span class="name">${c.name}</span>
-        <div class="goal-inline">${formatTargetLabel(personalTarget, c.unit)}${armHint} · 🔥 ${personalTarget * 2}${c.unit === 'sec' ? ' sec' : ' reps'}${weightHint}</div>
+        <div class="goal-inline">${formatTargetLabel(personalTarget, c.unit)} · 🔥 ${personalTarget * 2}${c.unit === 'sec' ? ' sec' : ' reps'}${weightHint}</div>
+        ${armSentence ? `<div class="arm-mode-sentence-inline">💪 ${armSentence}</div>` : ''}
       </div>
       <div class="check-box">${checked ? '✓' : ''}</div>
     </div>
@@ -3336,7 +3346,7 @@ function renderManageScreen() {
   } else {
     html += `
       <h1 class="title">Gérer mes défis</h1>
-      <div class="subtitle">Voici les défis actuellement dans ta liste (actifs sur ton accueil)</div>
+      <div class="subtitle">Tu veux ajouter de nouveaux défis ?</div>
       <div class="manage-btn-row">
         <button class="manage-action-btn" onclick="openLibraryPicker()">
           <span class="manage-action-icon">📚</span>
@@ -3347,18 +3357,20 @@ function renderManageScreen() {
           <span>Défi personnalisé</span>
         </button>
       </div>
+      <div class="section-label">Voici les défis actuellement dans ta liste (actifs sur ton accueil)</div>
     `;
     const cats = [...new Set(CHALLENGES.map(c => c.cat))];
     for (const cat of cats) {
       html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
       for (const c of CHALLENGES.filter(x => x.cat === cat)) {
-        const armHint = c.cat === 'Haltères' ? (c.armMode === 'perArm' ? ' · par bras' : ' · au total') : '';
+        const armSentence = armModeSentence(c.target, c.unit, c.armMode);
         html += `
           <div class="manage-item">
             <div>
               <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
               <span class="name">${c.name}</span>
-              <div class="goal-inline">${formatTargetLabel(c.target, c.unit)}${armHint} · 🔥 ${getHardcoreTarget(c)}${c.unit === 'sec' ? ' sec' : ' reps'}</div>
+              <div class="goal-inline">${formatTargetLabel(c.target, c.unit)} · 🔥 ${getHardcoreTarget(c)}${c.unit === 'sec' ? ' sec' : ' reps'}</div>
+              ${armSentence ? `<div class="arm-mode-sentence-inline">💪 ${armSentence}</div>` : ''}
             </div>
             <div class="manage-actions">
               <button class="icon-btn" onclick="openEditChallengeForm(${c.id})">✏️</button>
