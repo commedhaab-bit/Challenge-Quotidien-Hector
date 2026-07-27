@@ -2605,20 +2605,14 @@ async function loadState() {
   } catch (e) {
     state = emptyDayState();
   }
-  // load last 7 days for streak strip
+  // Pastilles des 7 derniers jours : calculées à partir de dailyActivity (déjà chargé en
+  // parallèle), au lieu de 7 appels Firestore séquentiels supplémentaires (un par jour).
   weekData = {};
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const k = dateKey(d);
-    try {
-      const res = await dbGet('day:' + k);
-      const s = JSON.parse(res.value);
-      const anyDone = s.challenges ? Object.values(s.challenges).some(e => e.done) : !!s.done;
-      weekData[k] = anyDone;
-    } catch (e) {
-      weekData[k] = false;
-    }
+    weekData[k] = (dailyActivity[k] || 0) > 0;
   }
   render();
 }
@@ -3638,6 +3632,7 @@ function initPullToRefresh() {
     if (ptrRefreshing) return;
     if (window.scrollY <= 0 && !timerRunning) {
       ptrStartY = e.touches[0].clientY;
+      ptrCurrentY = e.touches[0].clientY; // reset : un tap sans touchmove ne doit jamais hériter d'une ancienne valeur
       ptrActive = true;
     }
   }, { passive: true });
@@ -3685,16 +3680,18 @@ function initPullToRefresh() {
 }
 
 async function refreshApp() {
-  await loadChallenges();
-  await loadWeights();
-  await loadLastCompleted();
-  await loadStats();
-  await loadBadges();
-  await loadDailyActivity();
+  await loadChallenges(); // doit rester en premier : loadWeights en dépend pour les poids par défaut
+  await Promise.all([
+    loadWeights(),
+    loadLastCompleted(),
+    loadStats(),
+    loadBadges(),
+    loadDailyActivity(),
+  ]);
   if (activeTab === 'history') {
     await loadHistoryEntries();
   } else {
-    await loadState();
+    await loadState(); // dépend de dailyActivity, chargé juste avant
   }
   render(true);
 }
@@ -3769,12 +3766,16 @@ async function proceedAfterProfile() {
 }
 
 async function continueStartApp() {
-  await loadWeights();
-  await loadLastCompleted();
-  await loadStats();
-  await loadBadges();
-  await loadDailyActivity();
-  await loadState();
+  // Ces 5 chargements sont indépendants les uns des autres : on les lance
+  // en parallèle plutôt qu'en série pour diviser le temps d'attente par ~5.
+  await Promise.all([
+    loadWeights(),
+    loadLastCompleted(),
+    loadStats(),
+    loadBadges(),
+    loadDailyActivity(),
+  ]);
+  await loadState(); // vient après : dépend de dailyActivity pour les pastilles de la semaine
 }
 
 function personalizeChallengeCopy(c) {
