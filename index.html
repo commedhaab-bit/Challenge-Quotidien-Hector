@@ -7,7 +7,7 @@
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1e1d1b">
+<meta name="theme-color" content="#0a0d0b">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Défi du Jour">
@@ -26,16 +26,19 @@
   }
 
   :root {
-    --bg: #1e1d1b;
-    --bg-raised: #262421;
-    --bg-card: #2b2926;
-    --chalk: #ede7db;
-    --chalk-dim: #a39d8f;
-    --accent: #f2c14e;
-    --accent-dim: #a9863a;
-    --line: #3d3a35;
-    --good: #7fb069;
-    --danger: #d9634f;
+    --bg: #0a0d0b;
+    --bg-raised: #121613;
+    --bg-card: #171c18;
+    --chalk: #eef2ef;
+    --chalk-dim: #8a958e;
+    --accent: #39e97a;
+    --accent-soft: #1f6b3e;
+    --accent-dim: #235c39;
+    --accent-glow: rgba(57, 233, 122, 0.35);
+    --line: #212a23;
+    --good: #5fbf7a;
+    --danger: #ef5350;
+    --hardcore: #ff6b35;
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -113,6 +116,7 @@
   }
   .tab-btn.active .tab-icon {
     transform: scale(1.12);
+    filter: drop-shadow(0 0 6px var(--accent-glow));
   }
   .tab-label {
     letter-spacing: 0.01em;
@@ -166,7 +170,7 @@
     display: block;
     width: 100%;
     background: linear-gradient(135deg, var(--accent-dim), var(--accent));
-    color: #1e1d1b;
+    color: #0a0d0b;
     border: none;
     font-weight: 800;
     font-size: 14.5px;
@@ -206,7 +210,7 @@
   .cal-cell.done {
     background: var(--good);
     border-color: var(--good);
-    color: #1e1d1b;
+    color: #0a0d0b;
     font-weight: 800;
   }
   .cal-cell.today {
@@ -332,7 +336,7 @@
     background: var(--bg-card);
     border: 1px solid var(--line);
   }
-  .heat-cell.lvl1 { background: #4a4025; border-color: #4a4025; }
+  .heat-cell.lvl1 { background: #1a2e20; border-color: #1a2e20; }
   .heat-cell.lvl2 { background: var(--accent-dim); border-color: var(--accent-dim); }
   .heat-cell.lvl3 { background: var(--accent); border-color: var(--accent); }
   .heat-cell.future { visibility: hidden; }
@@ -392,7 +396,7 @@
     height: 44px;
     border-radius: 50%;
     background: var(--accent-dim);
-    color: #1e1d1b;
+    color: #0a0d0b;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -516,7 +520,7 @@
   .check-item.checked .check-box {
     background: var(--accent);
     border-color: var(--accent);
-    color: #1e1d1b;
+    color: #0a0d0b;
   }
   .check-item.checked {
     border-color: var(--accent-dim);
@@ -527,7 +531,7 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     font-weight: 800;
-    color: #1e1d1b;
+    color: #0a0d0b;
     background: var(--accent);
     padding: 2px 6px;
     border-radius: 5px;
@@ -638,7 +642,7 @@
   .pf-next-btn {
     width: 100%;
     background: var(--accent);
-    color: #1e1d1b;
+    color: #0a0d0b;
     border: none;
     font-weight: 800;
     font-size: 16px;
@@ -730,7 +734,7 @@
     display: flex;
     align-items: flex-start;
     gap: 14px;
-    background: linear-gradient(135deg, rgba(242,193,78,0.10), rgba(242,193,78,0.03));
+    background: linear-gradient(135deg, rgba(57,233,122,0.10), rgba(57,233,122,0.03));
     border: 1px solid var(--accent-dim);
     border-radius: 16px;
     padding: 18px;
@@ -740,7 +744,7 @@
   .pf-algo-icon {
     font-size: 28px;
     flex-shrink: 0;
-    filter: drop-shadow(0 2px 8px rgba(242,193,78,0.3));
+    filter: drop-shadow(0 2px 8px rgba(57,233,122,0.3));
   }
   .pf-algo-title {
     font-size: 14px;
@@ -777,9 +781,10 @@
   .manage-item {
     background: var(--bg-card);
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: 14px;
     padding: 12px 14px;
     display: flex;
+    gap: 12px;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 8px;
@@ -837,7 +842,7 @@
     display: block;
     width: 100%;
     background: var(--accent);
-    color: #1e1d1b;
+    color: #0a0d0b;
     border: none;
     font-weight: 800;
     font-size: 15px;
@@ -845,6 +850,7 @@
     border-radius: 10px;
     cursor: pointer;
     margin-top: 8px;
+    box-shadow: 0 4px 20px var(--accent-glow);
   }
   .save-challenge-btn:active { transform: scale(0.98); }
 
@@ -876,7 +882,7 @@
     align-items: center;
     gap: 10px;
     background: var(--chalk);
-    color: #1e1d1b;
+    color: #0a0d0b;
     border: none;
     font-size: 15px;
     font-weight: 700;
@@ -916,16 +922,39 @@
   .picker-item {
     background: var(--bg-card);
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: 14px;
     padding: 14px 16px;
     display: flex;
+    gap: 12px;
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
-    transition: border-color 0.15s, transform 0.1s;
+    transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
   }
   .picker-item:active { transform: scale(0.98); }
   .picker-item:hover { border-color: var(--accent-dim); }
+
+  .picker-item-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .exercise-picto {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(57, 233, 122, 0.08);
+    border: 1px solid var(--accent-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+  }
+  .exercise-picto svg {
+    width: 20px;
+    height: 20px;
+  }
   .picker-item .name {
     font-size: 15.5px;
     font-weight: 600;
@@ -1006,9 +1035,10 @@
   .active-card {
     background: var(--bg-card);
     border: 1px solid var(--line);
-    border-radius: 16px;
+    border-radius: 18px;
     padding: 22px 20px 20px;
     position: relative;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
   }
   .active-cat {
     font-size: 11px;
@@ -1086,7 +1116,7 @@
     bottom: 28px;
     transform: translate(-50%, 20px);
     background: var(--chalk);
-    color: #1e1d1b;
+    color: #0a0d0b;
     font-weight: 800;
     font-size: 14px;
     padding: 14px 22px;
@@ -1221,9 +1251,10 @@
     background: linear-gradient(90deg, var(--accent-dim), var(--accent));
     border-radius: 6px 0 0 6px;
     transition: width 0.35s cubic-bezier(.2,.8,.2,1);
+    box-shadow: 0 0 10px var(--accent-glow);
   }
   .bar-fill.complete {
-    background: linear-gradient(90deg, #5f9a4d, var(--good));
+    background: linear-gradient(90deg, #3f8f5c, var(--good));
   }
 
   /* HARDCORE MODE */
@@ -1356,22 +1387,70 @@
   .timer-box {
     background: var(--bg-raised);
     border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 20px;
+    border-radius: 20px;
+    padding: 24px 20px;
     text-align: center;
     margin-bottom: 12px;
   }
+
+  /* ANNEAU DE PROGRESSION CIRCULAIRE — élément visuel central du chrono */
+  .timer-ring-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 18px;
+  }
+  .timer-ring {
+    transform: rotate(-90deg);
+    overflow: visible;
+  }
+  .timer-ring-bg {
+    fill: none;
+    stroke: var(--bg);
+    stroke-width: 10;
+  }
+  .timer-ring-fill {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 10;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.25s linear, stroke 0.25s ease;
+    filter: drop-shadow(0 0 8px var(--accent-glow));
+  }
+  .timer-ring-fill.complete {
+    stroke: var(--good);
+    filter: drop-shadow(0 0 12px var(--accent-glow));
+  }
+  .timer-ring-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .timer-ring-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    font-weight: 800;
+    margin-top: 4px;
+  }
+
   .timer-display {
-    font-size: 48px;
+    font-size: 40px;
     font-weight: 900;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
     color: var(--chalk);
-    margin-bottom: 14px;
     line-height: 1;
   }
   .timer-display.running {
     color: var(--accent);
+    text-shadow: 0 0 18px var(--accent-glow);
   }
   .timer-btn {
     border: none;
@@ -1386,7 +1465,8 @@
   .timer-btn:active { transform: scale(0.97); }
   .timer-btn.start {
     background: var(--accent);
-    color: #1e1d1b;
+    color: #0a0d0b;
+    box-shadow: 0 4px 20px var(--accent-glow);
   }
   .timer-btn.stop {
     background: var(--danger);
@@ -1446,13 +1526,16 @@
     font-weight: 700;
     margin-bottom: 18px;
   }
+  .focus-ring-wrap {
+    margin: 0 auto 32px;
+  }
   .focus-timer {
-    font-size: 88px;
+    font-size: 56px;
     font-weight: 900;
     font-variant-numeric: tabular-nums;
-    color: var(--chalk);
+    color: var(--accent);
     line-height: 1;
-    margin-bottom: 14px;
+    text-shadow: 0 0 24px var(--accent-glow);
   }
   .focus-target {
     font-size: 14px;
@@ -1504,7 +1587,7 @@
   .custom-add-row input:focus { outline: 1px solid var(--accent); }
   .custom-add-btn {
     background: var(--accent);
-    color: #1e1d1b;
+    color: #0a0d0b;
     border: none;
     font-weight: 800;
     font-size: 14px;
@@ -1587,7 +1670,7 @@
   .week-dot.done {
     background: var(--good);
     border-color: var(--good);
-    color: #1e1d1b;
+    color: #0a0d0b;
     font-weight: 900;
   }
   .week-dot.today {
@@ -2253,8 +2336,8 @@ function showToast(html, duration = 2600) {
 
 function fireConfetti(variant) {
   const colors = variant === 'hardcore'
-    ? ['#ff6b35', '#d9634f', '#ede7db', '#a9863a', '#ff9d5c']
-    : ['#f2c14e', '#7fb069', '#e8dfc8', '#d9634f', '#a9863a'];
+    ? ['#ff6b35', '#ef5350', '#ffb347', '#ff9d5c', '#eef2ef']
+    : ['#39e97a', '#5fbf7a', '#eaffef', '#1f6b3e', '#eef2ef'];
   const canvas = document.createElement('canvas');
   canvas.className = 'confetti-canvas';
   canvas.width = window.innerWidth;
@@ -2345,37 +2428,37 @@ async function shareStatsImage() {
   const ctx = canvas.getContext('2d');
 
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#232120');
-  grad.addColorStop(1, '#171615');
+  grad.addColorStop(0, '#0f1310');
+  grad.addColorStop(1, '#0a0d0b');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
   ctx.beginPath();
   ctx.arc(W - 80, 140, 240, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(242,193,78,0.08)';
+  ctx.fillStyle = 'rgba(57,233,122,0.10)';
   ctx.fill();
 
-  ctx.fillStyle = '#f2c14e';
+  ctx.fillStyle = '#39e97a';
   ctx.font = '700 32px sans-serif';
   ctx.fillText('DÉFI DU JOUR', 64, 100);
 
-  ctx.fillStyle = '#ede7db';
+  ctx.fillStyle = '#eef2ef';
   ctx.font = '900 66px sans-serif';
   ctx.fillText('Mes stats', 64, 178);
 
-  ctx.fillStyle = '#a39d8f';
+  ctx.fillStyle = '#8a958e';
   ctx.font = '400 26px sans-serif';
   ctx.fillText(new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }), 64, 216);
 
-  ctx.strokeStyle = 'rgba(237,231,220,0.12)';
+  ctx.strokeStyle = 'rgba(238,242,239,0.12)';
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(64, 250); ctx.lineTo(W - 64, 250); ctx.stroke();
 
   function drawStat(y, label, value, color) {
-    ctx.fillStyle = color || '#f2c14e';
+    ctx.fillStyle = color || '#39e97a';
     ctx.font = '900 92px sans-serif';
     ctx.fillText(value, 64, y);
-    ctx.fillStyle = '#a39d8f';
+    ctx.fillStyle = '#8a958e';
     ctx.font = '600 27px sans-serif';
     ctx.fillText(label, 64, y + 38);
   }
@@ -2390,12 +2473,12 @@ async function shareStatsImage() {
   }
 
   if (summary.favCat) {
-    ctx.fillStyle = '#7fb069';
+    ctx.fillStyle = '#5fbf7a';
     ctx.font = '700 30px sans-serif';
     ctx.fillText(`💪 Catégorie favorite : ${summary.favCat}`, 64, y + 10);
   }
 
-  ctx.fillStyle = '#ede7db';
+  ctx.fillStyle = '#eef2ef';
   ctx.font = '600 26px sans-serif';
   ctx.fillText(`🏆 ${unlockedCount}/${BADGE_DEFS.length} trophées débloqués`, 64, H - 70);
 
@@ -2464,6 +2547,36 @@ function formatTimer(totalSec) {
   return `${m}:${pad(s)}`;
 }
 
+const TIMER_RING_RADIUS = 90;
+const TIMER_RING_CIRCUMFERENCE = 2 * Math.PI * TIMER_RING_RADIUS;
+
+// Anneau de progression circulaire vert néon autour du chrono. `pct` de 0 à 1.
+function renderTimerRingSVG(pct, sizePx) {
+  const clamped = Math.min(1, Math.max(0, pct));
+  const offset = TIMER_RING_CIRCUMFERENCE * (1 - clamped);
+  const size = sizePx || 180;
+  return `
+    <svg class="timer-ring" viewBox="0 0 200 200" width="${size}" height="${size}">
+      <circle class="timer-ring-bg" cx="100" cy="100" r="${TIMER_RING_RADIUS}"></circle>
+      <circle class="timer-ring-fill${clamped >= 1 ? ' complete' : ''}" id="timerRingFill"
+        cx="100" cy="100" r="${TIMER_RING_RADIUS}"
+        style="stroke-dasharray:${TIMER_RING_CIRCUMFERENCE}; stroke-dashoffset:${offset};"></circle>
+    </svg>
+  `;
+}
+
+// Met à jour l'anneau déjà présent dans le DOM (appelé à chaque tick, sans re-render complet)
+function updateTimerRingDOM(elapsedSec) {
+  const ring = document.getElementById('timerRingFill');
+  if (!ring || !currentChallengeId) return;
+  const target = getTarget();
+  const total = getTotal();
+  const pct = target > 0 ? Math.min(1, (total + elapsedSec) / target) : 0;
+  const offset = TIMER_RING_CIRCUMFERENCE * (1 - pct);
+  ring.style.strokeDashoffset = String(offset);
+  ring.classList.toggle('complete', pct >= 1);
+}
+
 function formatSecToReadable(totalSec) {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
@@ -2478,6 +2591,39 @@ function formatTargetLabel(value, unit) {
     return `${value} SEC (${formatSecToReadable(value)})`;
   }
   return `${value} reps`;
+}
+
+// ==== PICTOGRAMMES D'EXERCICES ====
+// Petites silhouettes vectorielles minimalistes (style pictogramme sportif),
+// une par famille de mouvement, pour repérer un défi visuellement au premier coup d'œil.
+const EXERCISE_PICTOGRAMS = {
+  pushup: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="8" r="2"/><path d="M7 9 L17 11"/><path d="M10 9.5 L9 16 L6 18"/><path d="M17 11 L20 15"/><path d="M14 10.3 L15 16 L18 18"/></svg>`,
+  squat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4" r="2"/><path d="M12 6 L12 12"/><path d="M12 8 L8 10"/><path d="M12 8 L16 10"/><path d="M12 12 L8 14 L8 19"/><path d="M12 12 L16 14 L16 19"/></svg>`,
+  plank: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="9" r="2"/><path d="M6 10 L19 13"/><path d="M9 10.5 L9 17"/><path d="M19 13 L21 17"/></svg>`,
+  run: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="4" r="2"/><path d="M13 6 L10 12"/><path d="M10 12 L6 10"/><path d="M10 12 L14 15"/><path d="M10 12 L6 17"/><path d="M14 15 L18 13"/></svg>`,
+  pullup: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4 L20 4"/><path d="M8 4 L12 8"/><path d="M16 4 L12 8"/><circle cx="12" cy="10" r="2"/><path d="M12 12 L12 16"/><path d="M12 16 L9 20"/><path d="M12 16 L15 20"/></svg>`,
+  situp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="16" cy="9" r="2"/><path d="M15 11 L9 13"/><path d="M9 13 L9 18"/><path d="M9 13 L5 15"/><path d="M15 11 L18 8"/></svg>`,
+  dumbbell: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="4" height="6" rx="1"/><rect x="18" y="9" width="4" height="6" rx="1"/><path d="M6 12 L18 12"/></svg>`,
+  generic: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4" r="2"/><path d="M12 6 L12 14"/><path d="M12 8 L7 6"/><path d="M12 8 L17 10"/><path d="M12 14 L8 20"/><path d="M12 14 L16 19"/></svg>`,
+};
+
+function getExercisePictogramKey(c) {
+  const name = (c.name || '').toLowerCase();
+  const cat = (c.cat || '').toLowerCase();
+  if (cat === 'haltères') return 'dumbbell';
+  if (name.includes('traction') || name.includes('pull-up') || name.includes('pull up')) return 'pullup';
+  if (name.includes('pompe') || name.includes('push-up') || name.includes('push up') || name.includes('pike') || name.includes('dip')) return 'pushup';
+  if (name.includes('squat') || name.includes('fente') || name.includes('pistol') || name.includes('mollet') || name.includes('pont') || name.includes('bridge') || name.includes('step')) return 'squat';
+  if (name.includes('planche') || name.includes('gainage') || name.includes('hollow') || name.includes('wall sit') || name.includes('chaise') || name.includes('superman')) return 'plank';
+  if (name.includes('crunch') || name.includes('abdo') || name.includes('v-up') || name.includes('bicycle') || name.includes('leg raise') || name.includes('dead bug') || name.includes('twist') || name.includes('sit-up')) return 'situp';
+  if (name.includes('course') || name.includes('running') || name.includes('sprint') || name.includes('corde') || name.includes('jumping') || name.includes('burpee') || name.includes('high knee') || name.includes('mountain climber') || name.includes('sauté')) return 'run';
+  return 'generic';
+}
+
+function renderExercisePicto(c) {
+  const key = getExercisePictogramKey(c);
+  const svg = EXERCISE_PICTOGRAMS[key] || EXERCISE_PICTOGRAMS.generic;
+  return `<div class="exercise-picto">${svg}</div>`;
 }
 
 // Phrase claire pour les exercices unilatéraux (haltère tenu à un seul bras).
@@ -2546,10 +2692,10 @@ function exitFocusMode() {
 }
 
 function tickTimer() {
-  const el = document.getElementById('timerDisplay');
-  if (!el) return;
   const elapsed = Math.floor((Date.now() - timerStartMs) / 1000);
-  el.textContent = formatTimer(elapsed);
+  const el = document.getElementById('timerDisplay');
+  if (el) el.textContent = formatTimer(elapsed);
+  updateTimerRingDOM(elapsed);
 }
 
 async function stopTimer() {
@@ -2803,13 +2949,20 @@ function renderFocusScreen() {
   const c = getChallenge();
   const entry = getEntry(currentChallengeId);
   const target = getTarget();
+  const total = getTotal();
   const elapsed = timerStartMs ? Math.floor((Date.now() - timerStartMs) / 1000) : 0;
+  const pct = target > 0 ? (total + elapsed) / target : 0;
   return `
     <div class="focus-screen">
       <button class="focus-exit" onclick="exitFocusMode()">✕</button>
       <div class="focus-name">${c.name}</div>
-      <div class="focus-timer" id="timerDisplay">${formatTimer(elapsed)}</div>
-      <div class="focus-target">Objectif : ${target} sec</div>
+      <div class="timer-ring-wrap focus-ring-wrap">
+        ${renderTimerRingSVG(pct, 280)}
+        <div class="timer-ring-center">
+          <div class="focus-timer" id="timerDisplay">${formatTimer(elapsed)}</div>
+        </div>
+      </div>
+      <div class="focus-target">Objectif : ${formatTargetLabel(target, 'sec')}</div>
       <button class="focus-stop-btn" onclick="stopTimer()">⏹ Terminer la série</button>
     </div>
   `;
@@ -2880,7 +3033,9 @@ function render(animate) {
   if (focusMode && timerRunning && currentChallengeId) {
     applyContent(app, renderFocusScreen(), animate, () => {
       const el = document.getElementById('timerDisplay');
-      if (el && timerRunning) el.textContent = formatTimer(Math.floor((Date.now()-timerStartMs)/1000));
+      const elapsed = Math.floor((Date.now()-timerStartMs)/1000);
+      if (el && timerRunning) el.textContent = formatTimer(elapsed);
+      updateTimerRingDOM(elapsed);
     });
     return;
   }
@@ -2926,7 +3081,8 @@ function render(animate) {
         }
         html += `
           <div class="picker-item" onclick="pickChallenge(${c.id})">
-            <div>
+            ${renderExercisePicto(c)}
+            <div class="picker-item-body">
               <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
               <span class="name">${c.name}</span>
             </div>
@@ -3016,7 +3172,13 @@ function render(animate) {
         ${c.unit === 'sec' ? `
           <div class="add-label">Chronométrer une série</div>
           <div class="timer-box">
-            <div class="timer-display${timerRunning ? ' running' : ''}" id="timerDisplay">${timerRunning ? formatTimer(Math.floor((Date.now()-timerStartMs)/1000)) : '0:00'}</div>
+            <div class="timer-ring-wrap">
+              ${renderTimerRingSVG(timerRunning ? (total + Math.floor((Date.now()-timerStartMs)/1000)) / target : total / target, 190)}
+              <div class="timer-ring-center">
+                <div class="timer-display${timerRunning ? ' running' : ''}" id="timerDisplay">${timerRunning ? formatTimer(Math.floor((Date.now()-timerStartMs)/1000)) : '0:00'}</div>
+                ${timerRunning ? '<div class="timer-ring-label">en cours</div>' : ''}
+              </div>
+            </div>
             ${timerRunning
               ? `<button class="timer-btn stop" onclick="stopTimer()">⏹ Stop — ajouter au compteur</button>
                  <button class="focus-btn" onclick="enterFocusMode()">⛶ Mode plein écran</button>`
@@ -3139,7 +3301,8 @@ function renderChallengeCheckItem(c, selectedSet, toggleFnName) {
   const armSentence = armModeSentence(personalTarget, c.unit, c.armMode);
   return `
     <div class="picker-item check-item${checked ? ' checked' : ''}" onclick="${toggleFnName}(${c.id})">
-      <div>
+      ${renderExercisePicto(c)}
+      <div class="picker-item-body">
         <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
         ${c.isDefault ? '<span class="rec-badge">Recommandé</span>' : ''}
         <span class="name">${c.name}</span>
@@ -3387,7 +3550,8 @@ function renderManageScreen() {
         const armSentence = armModeSentence(c.target, c.unit, c.armMode);
         html += `
           <div class="manage-item">
-            <div>
+            ${renderExercisePicto(c)}
+            <div class="picker-item-body">
               <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
               <span class="name">${c.name}</span>
               <div class="goal-inline">${formatTargetLabel(c.target, c.unit)} · 🔥 ${getHardcoreTarget(c)}${c.unit === 'sec' ? ' sec' : ' reps'}</div>
