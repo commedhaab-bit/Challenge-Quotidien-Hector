@@ -923,7 +923,7 @@
     background: var(--bg-card);
     border: 1px solid var(--line);
     border-radius: 14px;
-    padding: 0 16px;
+    padding: 2px 16px;
     display: flex;
     gap: 12px;
     justify-content: space-between;
@@ -2605,10 +2605,10 @@ function playTimerBeep() {
     gain.connect(timerAudioCtx.destination);
     const start = timerAudioCtx.currentTime;
     gain.gain.setValueAtTime(0, start);
-    gain.gain.linearRampToValueAtTime(0.2, start + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.18);
+    gain.gain.linearRampToValueAtTime(0.9, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.3);
     osc.start(start);
-    osc.stop(start + 0.2);
+    osc.stop(start + 0.32);
   } catch (e) { /* audio non disponible, tant pis */ }
 }
 
