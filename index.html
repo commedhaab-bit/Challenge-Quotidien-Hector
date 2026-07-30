@@ -923,7 +923,7 @@
     background: var(--bg-card);
     border: 1px solid var(--line);
     border-radius: 14px;
-    padding: 14px 16px;
+    padding: 0 16px;
     display: flex;
     gap: 12px;
     justify-content: space-between;
@@ -2284,6 +2284,15 @@ let stats = {}; // { [challengeId]: { lifetimeTotal, bestDay:{total,date} } }
 let badges = { totalCompletions: 0, unlocked: [], totalHardcore: 0 };
 let dailyActivity = {}; // { 'YYYY-MM-DD': count }
 
+// Familles d'exercices pour les trophées cumulatifs : ids CHALLENGE_LIBRARY
+// des variantes de pompes (reps) et des exercices de gainage chronometres (sec).
+const PUSHUP_FAMILY_IDS = [1, 1001, 1002, 1003]; // Pompes, diamant, declinees, pike push-ups
+const CORE_TIME_FAMILY_IDS = [9, 11, 1012]; // Planche cumulee, gainage lateral, hollow hold
+
+function sumLifetime(ids) {
+  return ids.reduce((sum, id) => sum + (stats[id]?.lifetimeTotal || 0), 0);
+}
+
 const BADGE_DEFS = [
   { id: 'streak_3',   label: '3 jours de suite',   icon: '🔥', check: () => computeStreak() >= 3 },
   { id: 'streak_7',   label: '7 jours de suite',    icon: '🔥', check: () => computeStreak() >= 7 },
@@ -2296,6 +2305,15 @@ const BADGE_DEFS = [
   { id: 'hardcore_1',  label: 'Premier Hardcore',    icon: '🔥', check: () => badges.totalHardcore >= 1 },
   { id: 'hardcore_10', label: '10 défis Hardcore',   icon: '💀', check: () => badges.totalHardcore >= 10 },
   { id: 'hardcore_50', label: '50 défis Hardcore',   icon: '☠️', check: () => badges.totalHardcore >= 50 },
+  { id: 'pushups_100',   label: '100 pompes cumulées',    icon: '💪', check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 100 },
+  { id: 'pushups_500',   label: '500 pompes cumulées',    icon: '💪', check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 500 },
+  { id: 'pushups_1000',  label: '1 000 pompes cumulées',  icon: '🦾', check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 1000 },
+  { id: 'pushups_5000',  label: '5 000 pompes cumulées',  icon: '🦾', check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 5000 },
+  { id: 'pushups_10000', label: '10 000 pompes cumulées', icon: '🏆', check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 10000 },
+  { id: 'core_15min', label: '15 min de gainage cumulées',   icon: '🧘', check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 900 },
+  { id: 'core_1h',    label: '1 heure de gainage cumulée',   icon: '🧘', check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 3600 },
+  { id: 'core_6h',    label: '6 heures de gainage cumulées', icon: '🗿', check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 21600 },
+  { id: 'core_24h',   label: '24 heures de gainage cumulées', icon: '🏆', check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 86400 },
 ];
 
 async function loadStats() {
@@ -2562,6 +2580,37 @@ let timerRunning = false;
 let focusMode = false;
 let timerStartMs = null;
 let timerIntervalId = null;
+let lastBeepSecond = 0;
+let timerAudioCtx = null;
+
+// Cree (ou reprend) l'AudioContext dans le geste utilisateur qui demarre le
+// chrono : certains navigateurs (Safari/iOS) bloquent l'audio s'il n'est pas
+// initialise depuis un clic direct.
+function unlockTimerAudio() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!timerAudioCtx) timerAudioCtx = new AudioCtx();
+    if (timerAudioCtx.state === 'suspended') timerAudioCtx.resume();
+  } catch (e) { /* audio non disponible, tant pis */ }
+}
+
+function playTimerBeep() {
+  if (!timerAudioCtx) return;
+  try {
+    const osc = timerAudioCtx.createOscillator();
+    const gain = timerAudioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    osc.connect(gain);
+    gain.connect(timerAudioCtx.destination);
+    const start = timerAudioCtx.currentTime;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.2, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.18);
+    osc.start(start);
+    osc.stop(start + 0.2);
+  } catch (e) { /* audio non disponible, tant pis */ }
+}
 
 function formatTimer(totalSec) {
   const m = Math.floor(totalSec / 60);
@@ -2759,12 +2808,15 @@ function clearTimerState() {
   timerIntervalId = null;
   timerRunning = false;
   timerStartMs = null;
+  lastBeepSecond = 0;
   releaseWakeLock();
 }
 
 function startTimer() {
   timerRunning = true;
   timerStartMs = Date.now();
+  lastBeepSecond = 0;
+  unlockTimerAudio();
   timerIntervalId = setInterval(tickTimer, 250);
   requestWakeLock();
   render();
@@ -2786,6 +2838,10 @@ function tickTimer() {
   const el = document.getElementById('timerDisplay');
   if (el) el.textContent = formatTimer(elapsed);
   updateTimerRingDOM(elapsed);
+  if (elapsed > 0 && elapsed % 30 === 0 && elapsed !== lastBeepSecond) {
+    lastBeepSecond = elapsed;
+    playTimerBeep();
+  }
 }
 
 async function stopTimer() {
