@@ -480,6 +480,7 @@
     gap: 10px;
     margin-bottom: 22px;
   }
+  .manage-btn-row.single { grid-template-columns: 1fr; }
   .manage-action-btn {
     display: flex;
     flex-direction: column;
@@ -805,6 +806,126 @@
   }
   .icon-btn.danger { border-color: var(--danger); }
   .icon-btn:active { transform: scale(0.94); }
+
+  /* BIBLIOTHÈQUE — accordéons par catégorie */
+  .accordion { margin-bottom: 10px; }
+  .accordion-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+    color: var(--chalk);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: left;
+  }
+  .accordion-header:active { transform: scale(0.99); }
+  .accordion-chevron {
+    display: inline-block;
+    color: var(--accent);
+    font-size: 19px;
+    flex-shrink: 0;
+    transition: transform 0.18s ease;
+  }
+  .accordion.open .accordion-chevron { transform: rotate(90deg); }
+  .accordion-title { flex: 1; }
+  .accordion-count {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--chalk-dim);
+    background: var(--bg-raised);
+    padding: 3px 9px;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .accordion-count.has-active {
+    color: #9dff00;
+    background: rgba(157, 255, 0, 0.12);
+  }
+  .accordion-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 2px 4px;
+  }
+
+  /* BIBLIOTHÈQUE — carte d'exercice avec effet néon actif/inactif */
+  .library-item {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, transform 0.1s;
+  }
+  .library-item:active { transform: scale(0.98); }
+  .library-item.active {
+    border: 2px solid #9dff00;
+    box-shadow: 0 0 12px rgba(157, 255, 0, 0.4);
+    background: rgba(157, 255, 0, 0.07);
+  }
+  .library-item-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .library-active-badge {
+    display: none;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: #0a0d0b;
+    background: #9dff00;
+    padding: 3px 8px;
+    border-radius: 999px;
+    box-shadow: 0 0 8px rgba(157, 255, 0, 0.55);
+    white-space: nowrap;
+  }
+  .library-item.active .library-active-badge { display: inline-flex; }
+
+  /* AUJOURD'HUI — écran vide (aucun défi actif) */
+  .today-empty-state {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 40px 26px;
+    text-align: center;
+    margin-top: 12px;
+  }
+  .today-empty-icon { font-size: 44px; margin-bottom: 14px; }
+  .today-empty-title { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
+  .today-empty-text {
+    font-size: 13.5px;
+    color: var(--chalk-dim);
+    line-height: 1.5;
+    margin-bottom: 22px;
+  }
+  .today-empty-btn {
+    background: var(--accent);
+    color: #0a0d0b;
+    border: none;
+    font-weight: 800;
+    font-size: 14.5px;
+    padding: 14px 20px;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  .today-empty-btn:active { transform: scale(0.97); }
 
   .form-field { margin-bottom: 16px; }
   .form-field label {
@@ -1838,7 +1959,7 @@ auth.onAuthStateChanged(user => {
     activeTab = 'today';
     currentChallengeId = null;
     editingChallengeId = null;
-    showLibraryPicker = false;
+    libraryOpenCats = new Set();
     focusMode = false;
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
@@ -1971,13 +2092,22 @@ function computeStandardWeight(c, profile) {
 const QUICK_ADD = { reps: [5, 10, 15, 20, 25, 30], sec: [15, 30, 60, 120] };
 const DOW_LABELS = ['D','L','M','M','J','V','S'];
 
+// CHALLENGES = catalogue complet (CHALLENGE_LIBRARY figé + customChallenges de l'utilisateur),
+// recalculé par rebuildChallenges(). Ne représente PAS la sélection du jour : voir activeToday.
+let customChallenges = [];
 let CHALLENGES = [];
+let activeToday = new Set(); // ids actifs pour aujourd'hui (todayKey), persistés par date
+let manualTargetOverrides = {}; // { [id]: target } objectif par défaut ajusté manuellement (ex: 3 records de suite) pour un défi de la bibliothèque
+let libraryOpenCats = new Set(); // catégories actuellement dépliées dans l'accordéon Bibliothèque
+let migratedLegacyActiveIds = null; // ids à activer une seule fois pour aujourd'hui juste après une migration depuis l'ancien modèle
 let activeTab = 'today'; // 'today' | 'history' | 'library' | 'account'
-let editingChallengeId = null; // null = liste, 'new' = création, id = édition
+let editingChallengeId = null; // null = liste, 'new' = création, id = édition (défis personnalisés uniquement)
 let showOnboarding = false;
 let onboardingSelection = new Set();
-let showLibraryPicker = false;
-let librarySelection = new Set();
+
+function rebuildChallenges() {
+  CHALLENGES = [...CHALLENGE_LIBRARY, ...customChallenges];
+}
 
 let userProfile = null; // { age, sex, heightCm, weightKg, level }
 let showProfileOnboarding = false;
@@ -2082,27 +2212,87 @@ async function finishProfileOnboarding() {
 }
 
 async function loadChallenges() {
+  let onboardingDone = false;
   try {
-    const res = await dbGet('userChallenges');
-    const saved = JSON.parse(res.value);
-    if (Array.isArray(saved) && saved.length > 0) {
-      CHALLENGES = saved;
-      showOnboarding = false;
-      return;
-    }
+    const res = await dbGet('customChallenges');
+    customChallenges = JSON.parse(res.value).map(c => ({ ...c, isCustom: true }));
+    onboardingDone = true;
   } catch (e) {
-    // pas encore de choix enregistré -> premier lancement
+    // Pas encore de 'customChallenges' : migration depuis l'ancien modèle où
+    // 'userChallenges' contenait à la fois les copies de bibliothèque ajoutées
+    // ET les défis personnalisés, en une seule liste permanente.
+    try {
+      const res = await dbGet('userChallenges');
+      const saved = JSON.parse(res.value);
+      if (Array.isArray(saved)) {
+        const libraryIds = new Set(CHALLENGE_LIBRARY.map(x => x.id));
+        customChallenges = saved.filter(x => !libraryIds.has(x.id)).map(x => ({ ...x, isCustom: true }));
+        // Ancienne liste = active en permanence -> on la reprend une seule fois comme
+        // sélection d'aujourd'hui, pour ne pas laisser l'utilisateur avec un accueil vide.
+        migratedLegacyActiveIds = saved.map(x => x.id);
+        await saveCustomChallenges();
+        onboardingDone = true;
+      } else {
+        customChallenges = [];
+      }
+    } catch (e2) {
+      customChallenges = [];
+    }
   }
-  CHALLENGES = [];
-  showOnboarding = true;
+  rebuildChallenges();
+  showOnboarding = !onboardingDone;
 }
 
-async function saveChallenges() {
+async function saveCustomChallenges() {
   try {
-    await dbSet('userChallenges', JSON.stringify(CHALLENGES));
+    await dbSet('customChallenges', JSON.stringify(customChallenges));
   } catch (e) {
-    console.error('save challenges failed', e);
+    console.error('save customChallenges failed', e);
   }
+}
+
+async function loadManualTargetOverrides() {
+  try {
+    const res = await dbGet('manualTargetOverrides');
+    manualTargetOverrides = JSON.parse(res.value);
+  } catch (e) {
+    manualTargetOverrides = {};
+  }
+}
+async function saveManualTargetOverrides() {
+  try {
+    await dbSet('manualTargetOverrides', JSON.stringify(manualTargetOverrides));
+  } catch (e) {
+    console.error('save manualTargetOverrides failed', e);
+  }
+}
+
+async function loadActiveToday() {
+  try {
+    const res = await dbGet('activeToday:' + todayKey);
+    activeToday = new Set(JSON.parse(res.value));
+  } catch (e) {
+    activeToday = new Set(migratedLegacyActiveIds || []);
+    await saveActiveToday();
+  }
+  migratedLegacyActiveIds = null;
+}
+async function saveActiveToday() {
+  try {
+    await dbSet('activeToday:' + todayKey, JSON.stringify([...activeToday]));
+  } catch (e) {
+    console.error('save activeToday failed', e);
+  }
+}
+
+// Objectif/hardcore réellement affichés pour un défi : ceux saisis tels quels pour
+// un défi personnalisé, ou l'objectif standard personnalisé (profil) éventuellement
+// ajusté manuellement (ex: après 3 records de suite) pour un défi de la bibliothèque.
+function resolveChallenge(c) {
+  if (!c) return c;
+  if (c.isCustom) return c;
+  const target = manualTargetOverrides[c.id] ?? computeStandardTarget(c, userProfile);
+  return { ...c, target, hardcoreTarget: target * 2 };
 }
 
 // ==== NAVIGATION ARRIÈRE (bouton/geste retour Android) ====
@@ -2121,11 +2311,6 @@ function goBackOneLevel() {
   }
   if (editingChallengeId !== null) {
     editingChallengeId = null;
-    render(true);
-    return;
-  }
-  if (showLibraryPicker) {
-    showLibraryPicker = false;
     render(true);
     return;
   }
@@ -2153,7 +2338,6 @@ function switchTab(tab) {
     currentChallengeId = null;
   } else if (activeTab === 'library') {
     editingChallengeId = null;
-    showLibraryPicker = false;
   }
   if (navigator.vibrate) navigator.vibrate(8);
   activeTab = tab;
@@ -2169,32 +2353,20 @@ function switchTab(tab) {
   }
 }
 
-function openLibraryPicker() {
-  showLibraryPicker = true;
-  librarySelection = new Set();
-  pushNavState();
-  render(true);
-}
-
-function closeLibraryPicker() {
-  history.back();
-}
-
-function toggleLibrarySelection(id) {
-  if (librarySelection.has(id)) librarySelection.delete(id);
-  else librarySelection.add(id);
+// Active/désactive un défi pour aujourd'hui uniquement (persisté par date, cf activeToday).
+// La progression déjà enregistrée (state.challenges[id]) n'est jamais touchée ici.
+async function toggleActiveToday(id) {
+  if (activeToday.has(id)) activeToday.delete(id);
+  else activeToday.add(id);
+  await saveActiveToday();
+  if (navigator.vibrate) navigator.vibrate(10);
   render();
 }
 
-async function addSelectedFromLibrary() {
-  if (librarySelection.size === 0) return;
-  const existingIds = new Set(CHALLENGES.map(c => c.id));
-  const toAdd = CHALLENGE_LIBRARY.filter(c => librarySelection.has(c.id) && !existingIds.has(c.id));
-  CHALLENGES.push(...toAdd.map(c => personalizeChallengeCopy(c)));
-  await saveChallenges();
-  librarySelection = new Set();
-  showToast(`✓ ${toAdd.length} défi${toAdd.length > 1 ? 's' : ''} ajouté${toAdd.length > 1 ? 's' : ''} !`);
-  history.back(); // referme le niveau "bibliothèque" (showLibraryPicker) via goBackOneLevel, retour à la liste de gestion
+function toggleLibraryCategory(cat) {
+  if (libraryOpenCats.has(cat)) libraryOpenCats.delete(cat);
+  else libraryOpenCats.add(cat);
+  render();
 }
 
 function openNewChallengeForm() {
@@ -2227,19 +2399,25 @@ async function submitChallengeForm() {
   }
 
   if (editingChallengeId === 'new') {
-    CHALLENGES.push({ id: getNextChallengeId(), cat, name, target, unit, hardcoreTarget });
+    customChallenges.push({ id: getNextChallengeId(), cat, name, target, unit, hardcoreTarget, isCustom: true });
   } else {
-    const c = CHALLENGES.find(x => x.id === editingChallengeId);
+    const c = customChallenges.find(x => x.id === editingChallengeId);
     if (c) { c.name = name; c.cat = cat; c.target = target; c.unit = unit; c.hardcoreTarget = hardcoreTarget; }
   }
-  await saveChallenges();
-  history.back(); // referme le formulaire (editingChallengeId) via goBackOneLevel, retour à la liste de gestion
+  rebuildChallenges();
+  await saveCustomChallenges();
+  history.back(); // referme le formulaire (editingChallengeId) via goBackOneLevel, retour à la bibliothèque
 }
 
 async function deleteChallenge(id) {
-  if (!confirm('Supprimer ce défi ? (ton historique passé pour ce défi sera conservé mais il n\'apparaîtra plus dans la liste)')) return;
-  CHALLENGES = CHALLENGES.filter(c => c.id !== id);
-  await saveChallenges();
+  if (!confirm('Supprimer ce défi personnalisé ? (ton historique passé sera conservé mais il n\'apparaîtra plus dans la liste)')) return;
+  customChallenges = customChallenges.filter(c => c.id !== id);
+  rebuildChallenges();
+  await saveCustomChallenges();
+  activeToday.delete(id);
+  await saveActiveToday();
+  delete manualTargetOverrides[id];
+  await saveManualTargetOverrides();
   render(true);
 }
 
@@ -2918,7 +3096,7 @@ async function saveState() {
 }
 
 function getChallenge() {
-  return CHALLENGES.find(c => c.id === currentChallengeId);
+  return resolveChallenge(CHALLENGES.find(c => c.id === currentChallengeId));
 }
 
 function getTarget() {
@@ -3009,8 +3187,15 @@ async function addSet(amount) {
           `🚀 Tu bats ton record 3 fois de suite sur "${c.name}" !\n\nVeux-tu augmenter l'objectif par défaut de ${formatTargetLabel(c.target, c.unit)} à ${formatTargetLabel(suggestedTarget, c.unit)} ?`
         );
         if (accept) {
-          c.target = suggestedTarget;
-          await saveChallenges();
+          if (c.isCustom) {
+            const custom = customChallenges.find(x => x.id === c.id);
+            if (custom) custom.target = suggestedTarget;
+            rebuildChallenges();
+            await saveCustomChallenges();
+          } else {
+            manualTargetOverrides[c.id] = suggestedTarget;
+            await saveManualTargetOverrides();
+          }
           showToast(`🎯 Objectif mis à jour : ${formatTargetLabel(suggestedTarget, c.unit)}`);
         }
         s.recordStreak = 0;
@@ -3166,8 +3351,7 @@ function render(animate) {
   }
 
   if (activeTab === 'library') {
-    const libraryContent = showLibraryPicker ? renderLibraryPickerScreen() : renderManageScreen();
-    applyContent(app, libraryContent + renderTabBar(), animate);
+    applyContent(app, renderLibraryScreen() + renderTabBar(), animate);
     return;
   }
 
@@ -3198,6 +3382,10 @@ function render(animate) {
       <h1 class="title">Défi du jour</h1>
       <div class="subtitle">Choisis ton défi pour aujourd'hui</div>
     `;
+    const activeChallenges = CHALLENGES.filter(c => activeToday.has(c.id)).map(resolveChallenge);
+    if (activeChallenges.length === 0) {
+      html += renderTodayEmptyState();
+    } else {
     const suggestion = getSuggestion();
     if (suggestion) {
       html += `
@@ -3207,10 +3395,10 @@ function render(animate) {
         </div>
       `;
     }
-    const cats = [...new Set(CHALLENGES.map(c => c.cat))];
+    const cats = [...new Set(activeChallenges.map(c => c.cat))];
     for (const cat of cats) {
       html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
-      for (const c of CHALLENGES.filter(x => x.cat === cat)) {
+      for (const c of activeChallenges.filter(x => x.cat === cat)) {
         const todayEntry = state.challenges[c.id];
         const rel = formatRelative(lastCompleted[c.id]);
         let statusHtml = '';
@@ -3242,6 +3430,7 @@ function render(animate) {
       html += `</div>`;
     }
     html += renderBadgesStrip();
+    }
   } else {
     const c = getChallenge();
     const entry = getEntry(currentChallengeId);
@@ -3421,6 +3610,17 @@ async function loadHistoryEntries() {
   historyEntries = entries;
 }
 
+function renderTodayEmptyState() {
+  return `
+    <div class="today-empty-state">
+      <div class="today-empty-icon">🗓️</div>
+      <div class="today-empty-title">Aucun défi sélectionné pour aujourd'hui</div>
+      <div class="today-empty-text">Rendez-vous dans la Bibliothèque pour choisir tes défis du jour !</div>
+      <button class="today-empty-btn" onclick="switchTab('library')">📚 Aller à la Bibliothèque</button>
+    </div>
+  `;
+}
+
 function renderBadgesStrip() {
   const unlocked = BADGE_DEFS.filter(b => badges.unlocked.includes(b.id));
   if (unlocked.length === 0) {
@@ -3597,126 +3797,111 @@ function renderOnboardingScreen() {
   return html;
 }
 
-function renderLibraryPickerScreen() {
-  const existingIds = new Set(CHALLENGES.map(c => c.id));
-  const available = CHALLENGE_LIBRARY.filter(c => !existingIds.has(c.id));
-  let html = `<button class="history-back" onclick="closeLibraryPicker()">‹ Retour</button>`;
-  html += `
+function renderLibraryScreen() {
+  if (editingChallengeId !== null) {
+    return renderChallengeForm();
+  }
+  let html = `
     <h1 class="title">Bibliothèque</h1>
-    <div class="subtitle">Coche les défis à ajouter à ta liste</div>
+    <div class="subtitle">Active les défis que tu veux faire aujourd'hui</div>
+    <div class="manage-btn-row single">
+      <button class="manage-action-btn" onclick="openNewChallengeForm()">
+        <span class="manage-action-icon">✏️</span>
+        <span>Défi personnalisé</span>
+      </button>
+    </div>
   `;
-  if (available.length === 0) {
-    html += `<div class="history-empty">Tu as déjà ajouté tous les défis de la bibliothèque 🎉</div>`;
-  } else {
-    const cats = [...new Set(available.map(c => c.cat))];
-    for (const cat of cats) {
-      html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
-      for (const c of available.filter(x => x.cat === cat)) {
-        html += renderChallengeCheckItem(c, librarySelection, 'toggleLibrarySelection');
-      }
-      html += `</div>`;
-    }
+  const cats = [...new Set(CHALLENGES.map(c => c.cat))];
+  for (const cat of cats) {
+    const itemsInCat = CHALLENGES.filter(c => c.cat === cat);
+    const activeCount = itemsInCat.filter(c => activeToday.has(c.id)).length;
+    const isOpen = libraryOpenCats.has(cat);
     html += `
-      <div class="onboarding-footer">
-        <button class="save-challenge-btn" onclick="addSelectedFromLibrary()" ${librarySelection.size === 0 ? 'disabled' : ''}>
-          Ajouter ${librarySelection.size > 0 ? `(${librarySelection.size})` : ''}
+      <div class="accordion${isOpen ? ' open' : ''}">
+        <button class="accordion-header" onclick="toggleLibraryCategory('${cat.replace(/'/g, "\\'")}')">
+          <span class="accordion-chevron">›</span>
+          <span class="accordion-title">${cat}</span>
+          <span class="accordion-count${activeCount > 0 ? ' has-active' : ''}">${activeCount} actif${activeCount === 1 ? '' : 's'}</span>
         </button>
+        ${isOpen ? `<div class="accordion-body">${itemsInCat.map(c => renderLibraryExerciseCard(c)).join('')}</div>` : ''}
       </div>
     `;
   }
   return html;
 }
 
-function renderManageScreen() {
-  let html = editingChallengeId !== null
-    ? `<button class="history-back" onclick="history.back()">‹ Retour</button>`
-    : '';
-
-  if (editingChallengeId !== null) {
-    const isNew = editingChallengeId === 'new';
-    const c = isNew ? null : CHALLENGES.find(x => x.id === editingChallengeId);
-    const existingCats = [...new Set(CHALLENGES.map(x => x.cat))];
-
-    html += `
-      <h1 class="title">${isNew ? 'Nouveau défi' : 'Modifier le défi'}</h1>
-      <div class="subtitle">${isNew ? 'Ajoute ton propre défi personnalisé' : c.name}</div>
-
-      <div class="form-field">
-        <label>Nom du défi</label>
-        <input type="text" id="cfName" value="${c ? c.name.replace(/"/g,'&quot;') : ''}" placeholder="Ex : Pompes diamant">
+function renderLibraryExerciseCard(c) {
+  const resolved = resolveChallenge(c);
+  const isActive = activeToday.has(c.id);
+  const weightHint = c.cat === 'Haltères' ? ` · 🏋️ ${weights[c.id] ?? computeStandardWeight(c, userProfile) ?? 8}kg` : '';
+  const armSentence = armModeSentence(resolved.target, resolved.unit, resolved.armMode);
+  return `
+    <div class="library-item${isActive ? ' active' : ''}" onclick="toggleActiveToday(${c.id})">
+      ${renderExercisePicto(c)}
+      <div class="picker-item-body">
+        <span class="cat">${resolved.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
+        ${c.isDefault ? '<span class="rec-badge">Recommandé</span>' : ''}
+        <span class="name">${c.name}</span>
+        <div class="goal-inline">${formatTargetLabel(resolved.target, resolved.unit)} · 🔥 ${getHardcoreTarget(resolved)}${resolved.unit === 'sec' ? ' sec' : ' reps'}${weightHint}</div>
+        ${armSentence ? `<div class="arm-mode-sentence-inline">💪 ${armSentence}</div>` : ''}
       </div>
-
-      <div class="form-field">
-        <label>Catégorie</label>
-        <input type="text" id="cfCat" value="${c ? c.cat.replace(/"/g,'&quot;') : ''}" list="catList" placeholder="Ex : Haut du corps">
-        <datalist id="catList">
-          ${existingCats.map(cat => `<option value="${cat}">`).join('')}
-        </datalist>
-      </div>
-
-      <div class="form-row-2">
-        <div class="form-field">
-          <label>Objectif</label>
-          <input type="number" id="cfTarget" value="${c ? c.target : ''}" inputmode="numeric" placeholder="100">
-        </div>
-        <div class="form-field">
-          <label>Unité</label>
-          <select id="cfUnit">
-            <option value="reps" ${c && c.unit==='reps' ? 'selected' : ''}>Répétitions</option>
-            <option value="sec" ${c && c.unit==='sec' ? 'selected' : ''}>Chrono (secondes)</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="form-field">
-        <label>🔥 Objectif Hardcore <span class="field-hint">(laisser vide = objectif × 2)</span></label>
-        <input type="number" id="cfHardcore" value="${c && c.hardcoreTarget ? c.hardcoreTarget : ''}" inputmode="numeric" placeholder="${c ? c.target * 2 : '200'}">
-      </div>
-
-      <button class="save-challenge-btn" onclick="submitChallengeForm()">Enregistrer</button>
-    `;
-  } else {
-    html += `
-      <h1 class="title">Gérer mes défis</h1>
-      <div class="subtitle">Tu veux ajouter de nouveaux défis ?</div>
-      <div class="manage-btn-row">
-        <button class="manage-action-btn" onclick="openLibraryPicker()">
-          <span class="manage-action-icon">📚</span>
-          <span>Depuis la bibliothèque</span>
-        </button>
-        <button class="manage-action-btn" onclick="openNewChallengeForm()">
-          <span class="manage-action-icon">✏️</span>
-          <span>Défi personnalisé</span>
-        </button>
-      </div>
-      <div class="section-label">Voici les défis actuellement dans ta liste (actifs sur ton accueil)</div>
-    `;
-    const cats = [...new Set(CHALLENGES.map(c => c.cat))];
-    for (const cat of cats) {
-      html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
-      for (const c of CHALLENGES.filter(x => x.cat === cat)) {
-        const armSentence = armModeSentence(c.target, c.unit, c.armMode);
-        html += `
-          <div class="manage-item">
-            ${renderExercisePicto(c)}
-            <div class="picker-item-body">
-              <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
-              <span class="name">${c.name}</span>
-              <div class="goal-inline">${formatTargetLabel(c.target, c.unit)} · 🔥 ${getHardcoreTarget(c)}${c.unit === 'sec' ? ' sec' : ' reps'}</div>
-              ${armSentence ? `<div class="arm-mode-sentence-inline">💪 ${armSentence}</div>` : ''}
-            </div>
-            <div class="manage-actions">
-              <button class="icon-btn" onclick="openEditChallengeForm(${c.id})">✏️</button>
-              <button class="icon-btn danger" onclick="deleteChallenge(${c.id})">🗑️</button>
-            </div>
+      <div class="library-item-side">
+        <div class="library-active-badge">✓ Actif</div>
+        ${c.isCustom ? `
+          <div class="manage-actions">
+            <button class="icon-btn" onclick="event.stopPropagation(); openEditChallengeForm(${c.id})">✏️</button>
+            <button class="icon-btn danger" onclick="event.stopPropagation(); deleteChallenge(${c.id})">🗑️</button>
           </div>
-        `;
-      }
-      html += `</div>`;
-    }
-  }
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
 
-  return html;
+function renderChallengeForm() {
+  const isNew = editingChallengeId === 'new';
+  const c = isNew ? null : customChallenges.find(x => x.id === editingChallengeId);
+  const existingCats = [...new Set(CHALLENGES.map(x => x.cat))];
+
+  return `
+    <button class="history-back" onclick="history.back()">‹ Retour</button>
+    <h1 class="title">${isNew ? 'Nouveau défi' : 'Modifier le défi'}</h1>
+    <div class="subtitle">${isNew ? 'Ajoute ton propre défi personnalisé' : c.name}</div>
+
+    <div class="form-field">
+      <label>Nom du défi</label>
+      <input type="text" id="cfName" value="${c ? c.name.replace(/"/g,'&quot;') : ''}" placeholder="Ex : Pompes diamant">
+    </div>
+
+    <div class="form-field">
+      <label>Catégorie</label>
+      <input type="text" id="cfCat" value="${c ? c.cat.replace(/"/g,'&quot;') : ''}" list="catList" placeholder="Ex : Haut du corps">
+      <datalist id="catList">
+        ${existingCats.map(cat => `<option value="${cat}">`).join('')}
+      </datalist>
+    </div>
+
+    <div class="form-row-2">
+      <div class="form-field">
+        <label>Objectif</label>
+        <input type="number" id="cfTarget" value="${c ? c.target : ''}" inputmode="numeric" placeholder="100">
+      </div>
+      <div class="form-field">
+        <label>Unité</label>
+        <select id="cfUnit">
+          <option value="reps" ${c && c.unit==='reps' ? 'selected' : ''}>Répétitions</option>
+          <option value="sec" ${c && c.unit==='sec' ? 'selected' : ''}>Chrono (secondes)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-field">
+      <label>🔥 Objectif Hardcore <span class="field-hint">(laisser vide = objectif × 2)</span></label>
+      <input type="number" id="cfHardcore" value="${c && c.hardcoreTarget ? c.hardcoreTarget : ''}" inputmode="numeric" placeholder="${c ? c.target * 2 : '200'}">
+    </div>
+
+    <button class="save-challenge-btn" onclick="submitChallengeForm()">Enregistrer</button>
+  `;
 }
 
 function renderWeeklyChart() {
@@ -4078,21 +4263,18 @@ async function proceedAfterProfile() {
 }
 
 async function continueStartApp() {
-  // Ces 5 chargements sont indépendants les uns des autres : on les lance
-  // en parallèle plutôt qu'en série pour diviser le temps d'attente par ~5.
+  // Ces 6 chargements sont indépendants les uns des autres : on les lance
+  // en parallèle plutôt qu'en série pour diviser le temps d'attente par ~6.
   await Promise.all([
     loadWeights(),
     loadLastCompleted(),
     loadStats(),
     loadBadges(),
     loadDailyActivity(),
+    loadManualTargetOverrides(),
   ]);
   await loadState(); // vient après : dépend de dailyActivity pour les pastilles de la semaine
-}
-
-function personalizeChallengeCopy(c) {
-  const target = computeStandardTarget(c, userProfile);
-  return { ...c, target, hardcoreTarget: target * 2 };
+  await loadActiveToday(); // vient après loadState() : dépend de todayKey
 }
 
 async function finishOnboarding() {
@@ -4100,12 +4282,12 @@ async function finishOnboarding() {
     alert('Sélectionne au moins un défi pour commencer !');
     return;
   }
-  CHALLENGES = CHALLENGE_LIBRARY
-    .filter(c => onboardingSelection.has(c.id))
-    .map(c => personalizeChallengeCopy(c));
-  await saveChallenges();
   showOnboarding = false;
   await continueStartApp();
+  // Écrase la sélection d'aujourd'hui (vide par défaut pour un tout premier lancement)
+  // avec les défis choisis à l'onboarding.
+  activeToday = new Set(onboardingSelection);
+  await saveActiveToday();
   render(true);
 }
 
