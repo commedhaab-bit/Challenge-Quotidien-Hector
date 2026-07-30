@@ -500,32 +500,7 @@
   .manage-action-btn:active { transform: scale(0.97); background: var(--bg-raised); }
   .manage-action-icon { font-size: 22px; }
 
-  /* CHECKBOX ITEMS (onboarding + bibliothèque) */
-  .check-item {
-    align-items: center;
-  }
-  .check-box {
-    width: 26px;
-    height: 26px;
-    border-radius: 7px;
-    border: 1.5px solid var(--line);
-    background: var(--bg-raised);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 800;
-    color: var(--accent);
-    flex-shrink: 0;
-    margin-left: 12px;
-  }
-  .check-item.checked .check-box {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #0a0d0b;
-  }
-  .check-item.checked {
-    border-color: var(--accent-dim);
-  }
+  /* Badge "Recommandé" (bibliothèque) */
   .rec-badge {
     display: inline-block;
     font-size: 9px;
@@ -761,19 +736,6 @@
     line-height: 1.5;
   }
 
-  .onboarding-header {
-    text-align: center;
-    margin-bottom: 26px;
-  }
-  .onboarding-header .emoji { font-size: 44px; margin-bottom: 10px; }
-  .onboarding-header .title { font-size: 34px; }
-  .onboarding-header .subtitle { line-height: 1.5; }
-  .onboarding-footer {
-    position: sticky;
-    bottom: 12px;
-    margin-top: 16px;
-    padding-top: 10px;
-  }
   .save-challenge-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
@@ -2102,8 +2064,6 @@ let libraryOpenCats = new Set(); // catégories actuellement dépliées dans l'a
 let migratedLegacyActiveIds = null; // ids à activer une seule fois pour aujourd'hui juste après une migration depuis l'ancien modèle
 let activeTab = 'today'; // 'today' | 'history' | 'library' | 'account'
 let editingChallengeId = null; // null = liste, 'new' = création, id = édition (défis personnalisés uniquement)
-let showOnboarding = false;
-let onboardingSelection = new Set();
 
 function rebuildChallenges() {
   CHALLENGES = [...CHALLENGE_LIBRARY, ...customChallenges];
@@ -2212,11 +2172,9 @@ async function finishProfileOnboarding() {
 }
 
 async function loadChallenges() {
-  let onboardingDone = false;
   try {
     const res = await dbGet('customChallenges');
     customChallenges = JSON.parse(res.value).map(c => ({ ...c, isCustom: true }));
-    onboardingDone = true;
   } catch (e) {
     // Pas encore de 'customChallenges' : migration depuis l'ancien modèle où
     // 'userChallenges' contenait à la fois les copies de bibliothèque ajoutées
@@ -2231,7 +2189,6 @@ async function loadChallenges() {
         // sélection d'aujourd'hui, pour ne pas laisser l'utilisateur avec un accueil vide.
         migratedLegacyActiveIds = saved.map(x => x.id);
         await saveCustomChallenges();
-        onboardingDone = true;
       } else {
         customChallenges = [];
       }
@@ -2240,7 +2197,6 @@ async function loadChallenges() {
     }
   }
   rebuildChallenges();
-  showOnboarding = !onboardingDone;
 }
 
 async function saveCustomChallenges() {
@@ -3340,11 +3296,6 @@ function render(animate) {
     return;
   }
 
-  if (showOnboarding) {
-    applyContent(app, renderOnboardingScreen(), animate);
-    return;
-  }
-
   if (activeTab === 'history') {
     applyContent(app, renderHistoryScreen() + renderTabBar(), animate);
     return;
@@ -3642,26 +3593,6 @@ function renderBadgesStrip() {
   `;
 }
 
-function renderChallengeCheckItem(c, selectedSet, toggleFnName) {
-  const checked = selectedSet.has(c.id);
-  const personalTarget = computeStandardTarget(c, userProfile);
-  const weightHint = c.cat === 'Haltères' ? ` · 🏋️ ${computeStandardWeight(c, userProfile)}kg` : '';
-  const armSentence = armModeSentence(personalTarget, c.unit, c.armMode);
-  return `
-    <div class="picker-item check-item${checked ? ' checked' : ''}" onclick="${toggleFnName}(${c.id})">
-      ${renderExercisePicto(c)}
-      <div class="picker-item-body">
-        <span class="cat">${c.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
-        ${c.isDefault ? '<span class="rec-badge">Recommandé</span>' : ''}
-        <span class="name">${c.name}</span>
-        <div class="goal-inline">${formatTargetLabel(personalTarget, c.unit)} · 🔥 ${personalTarget * 2}${c.unit === 'sec' ? ' sec' : ' reps'}${weightHint}</div>
-        ${armSentence ? `<div class="arm-mode-sentence-inline">💪 ${armSentence}</div>` : ''}
-      </div>
-      <div class="check-box">${checked ? '✓' : ''}</div>
-    </div>
-  `;
-}
-
 function renderProfileProgressDots() {
   const activeIndex = profileStep - 1; // décalage : step 0 = bienvenue, non comptée dans les points
   let dots = '';
@@ -3769,32 +3700,6 @@ function renderProfileOnboardingScreen() {
       </div>
     </div>
   `;
-}
-
-function renderOnboardingScreen() {
-  const cats = [...new Set(CHALLENGE_LIBRARY.map(c => c.cat))];
-  let html = `
-    <div class="onboarding-header">
-      <div class="emoji">👋</div>
-      <h1 class="title">Bienvenue !</h1>
-      <div class="subtitle">Choisis les défis qui t'intéressent pour commencer.<br>Les objectifs affichés sont déjà calculés pour ton profil 🎯</div>
-    </div>
-  `;
-  for (const cat of cats) {
-    html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
-    for (const c of CHALLENGE_LIBRARY.filter(x => x.cat === cat)) {
-      html += renderChallengeCheckItem(c, onboardingSelection, 'toggleOnboardingChallenge');
-    }
-    html += `</div>`;
-  }
-  html += `
-    <div class="onboarding-footer">
-      <button class="save-challenge-btn" onclick="finishOnboarding()">
-        Commencer avec ${onboardingSelection.size} défi${onboardingSelection.size > 1 ? 's' : ''}
-      </button>
-    </div>
-  `;
-  return html;
 }
 
 function renderLibraryScreen() {
@@ -4184,11 +4089,13 @@ async function refreshApp() {
     loadStats(),
     loadBadges(),
     loadDailyActivity(),
+    loadManualTargetOverrides(),
   ]);
   if (activeTab === 'history') {
     await loadHistoryEntries();
   } else {
     await loadState(); // dépend de dailyActivity, chargé juste avant
+    await loadActiveToday(); // vient après loadState() : dépend de todayKey
   }
   render(true);
 }
@@ -4236,7 +4143,7 @@ function computeStreak() {
 }
 
 async function startApp() {
-  if (showProfileOnboarding || showOnboarding) {
+  if (showProfileOnboarding) {
     // Un onboarding est déjà affiché et en cours de saisie : on ne le relance pas,
     // au cas où startApp() serait appelée une seconde fois (double événement d'auth par ex.)
     return;
@@ -4254,11 +4161,6 @@ async function startApp() {
 
 async function proceedAfterProfile() {
   await loadChallenges();
-  if (showOnboarding) {
-    onboardingSelection = new Set(CHALLENGE_LIBRARY.filter(c => c.isDefault).map(c => c.id));
-    render();
-    return;
-  }
   await continueStartApp();
 }
 
@@ -4275,26 +4177,6 @@ async function continueStartApp() {
   ]);
   await loadState(); // vient après : dépend de dailyActivity pour les pastilles de la semaine
   await loadActiveToday(); // vient après loadState() : dépend de todayKey
-}
-
-async function finishOnboarding() {
-  if (onboardingSelection.size === 0) {
-    alert('Sélectionne au moins un défi pour commencer !');
-    return;
-  }
-  showOnboarding = false;
-  await continueStartApp();
-  // Écrase la sélection d'aujourd'hui (vide par défaut pour un tout premier lancement)
-  // avec les défis choisis à l'onboarding.
-  activeToday = new Set(onboardingSelection);
-  await saveActiveToday();
-  render(true);
-}
-
-function toggleOnboardingChallenge(id) {
-  if (onboardingSelection.has(id)) onboardingSelection.delete(id);
-  else onboardingSelection.add(id);
-  render();
 }
 
 // Micro-interaction : légère vibration sur chaque tap d'élément interactif
