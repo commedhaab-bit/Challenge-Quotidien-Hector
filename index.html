@@ -335,7 +335,7 @@
     align-items: center;
     gap: 4px;
   }
-  .athlete-title { font-size: 14px; color: var(--chalk-dim); font-weight: 700; margin-bottom: 14px; }
+  .athlete-title { font-size: 20px; color: var(--accent); font-weight: 900; margin-bottom: 14px; text-shadow: 0 0 16px var(--accent-glow); }
   .athlete-xp-track {
     height: 10px;
     border-radius: 6px;
@@ -388,7 +388,7 @@
   .level-roadmap-close:active { transform: scale(0.94); }
   .level-roadmap-header { padding-top: 8px; margin-bottom: 26px; }
   .level-roadmap-level { font-size: 30px; font-weight: 900; margin-bottom: 2px; }
-  .level-roadmap-title { font-size: 15px; color: var(--accent); font-weight: 800; margin-bottom: 16px; }
+  .level-roadmap-title { font-size: 22px; color: var(--accent); font-weight: 900; margin-bottom: 16px; text-shadow: 0 0 16px var(--accent-glow); }
   .level-roadmap-xp-label {
     font-size: 12px;
     color: var(--chalk-dim);
@@ -853,21 +853,48 @@
     line-height: 1.5;
     margin: -10px 0 22px;
   }
-  .pf-number-input {
-    width: 100%;
+  /* ROULEAU DE SÉLECTION (wheel picker) — âge/taille/poids à l'onboarding, à la
+     place d'un <input type="number"> pour ne jamais ouvrir le clavier virtuel.
+     Défilement natif + scroll-snap : aucune logique de drag/inertie en JS. */
+  .wheel-picker {
+    position: relative;
+    height: 220px; /* 5 lignes visibles de 44px */
+    overflow-y: scroll;
+    scroll-snap-type: y mandatory;
+    -webkit-overflow-scrolling: touch;
     background: var(--bg-card);
     border: 1.5px solid var(--line);
-    color: var(--chalk);
-    font-size: 32px;
-    font-weight: 800;
-    text-align: center;
-    padding: 18px;
     border-radius: 14px;
     margin-bottom: 20px;
-    font-variant-numeric: tabular-nums;
+    scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
+    mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
   }
-  .pf-number-input:focus { outline: none; border-color: var(--accent); }
-  .pf-number-input.small { font-size: 24px; padding: 14px; margin-bottom: 0; }
+  .wheel-picker::-webkit-scrollbar { display: none; }
+  .wheel-picker-track { padding: 88px 0; } /* 2 items de marge haut/bas pour amener les valeurs extrêmes au centre */
+  .wheel-picker-item {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--chalk-dim);
+    font-variant-numeric: tabular-nums;
+    scroll-snap-align: center;
+  }
+  .wheel-picker-highlight {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 44px;
+    transform: translateY(-50%);
+    border-top: 1.5px solid var(--accent-dim);
+    border-bottom: 1.5px solid var(--accent-dim);
+    background: rgba(57, 233, 122, 0.06);
+    pointer-events: none;
+  }
 
   .pf-two-inputs {
     display: grid;
@@ -1639,43 +1666,6 @@
     margin-bottom: 16px;
   }
 
-  /* TALLY MARKS */
-  .tally-wrap {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 3px;
-    margin-bottom: 22px;
-    min-height: 24px;
-  }
-  .tally-group {
-    display: flex;
-    align-items: flex-end;
-    margin-right: 8px;
-    height: 22px;
-  }
-  .tally-mark {
-    width: 3px;
-    height: 20px;
-    background: var(--chalk-dim);
-    margin-right: 3px;
-    border-radius: 1px;
-  }
-  .tally-mark.strike {
-    position: relative;
-    margin-right: 6px;
-  }
-  .tally-mark.strike::after {
-    content: '';
-    position: absolute;
-    left: -14px;
-    top: 9px;
-    width: 20px;
-    height: 3px;
-    background: var(--accent);
-    transform: rotate(-35deg);
-    border-radius: 1px;
-  }
-
   /* QUICK ADD BUTTONS */
   .add-label {
     font-size: 11px;
@@ -1763,15 +1753,17 @@
   .timer-ring-fill-hardcore.complete {
     filter: drop-shadow(0 0 14px rgba(255, 107, 53, 0.7));
   }
+  /* Ne contient QUE le temps (l'icône est positionnée en absolu par rapport à ce
+     conteneur) : le translate(-50%,-50%) centre ainsi le texte du temps parfaitement
+     sur le cercle, largeur ET hauteur, sans que l'icône en dessous ne le décale. */
   .timer-ring-center {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
   }
 
   .timer-display {
@@ -1786,15 +1778,24 @@
     color: var(--accent);
     text-shadow: 0 0 18px var(--accent-glow);
   }
-  /* Petite icône play/pause épurée sous le temps, opacité douce (pas de gros bouton coloré) */
+  /* Petite icône play/valider épurée juste sous le temps, opacité douce (pas de gros
+     bouton coloré) ; positionnée en absolu pour ne jamais affecter le centrage du temps. */
   .timer-play-icon {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translate(-50%, 8px);
     font-size: 20px;
     line-height: 1;
     color: var(--chalk-dim);
     opacity: 0.55;
   }
-  .timer-play-icon:not(.pause):not(.done) {
-    transform: translateX(1px); /* recentre visuellement le triangle ▶ */
+  .timer-play-icon:not(.confirm):not(.done) {
+    transform: translate(calc(-50% + 1px), 8px); /* recentre visuellement le triangle ▶ */
+  }
+  .timer-play-icon.confirm {
+    color: var(--good);
+    opacity: 0.8;
   }
   .timer-play-icon.done {
     color: var(--good);
@@ -2206,7 +2207,7 @@ let onboardingTransitionPhase = null;
 let guidedTourStep = null;
 let hasSeenTour = false;
 const GUIDED_TOUR_STEPS = [
-  { tab: 'today', emoji: "🏋️‍♂️", title: "Aujourd'hui", text: "Retrouve ici les défis que tu as activés pour la journée, et suis ta progression en direct." },
+  { tab: 'today', emoji: "🏋️‍♂️", title: "Bienvenue ! Voici comment fonctionne l'application", text: "Retrouve ici les défis que tu as activés pour la journée, et suis ta progression en direct." },
   { tab: 'library', emoji: '🎯', title: 'Défis', text: "Commence par cet onglet : active un ou plusieurs défis pour aujourd'hui en appuyant sur leur carte." },
   { tab: 'history', emoji: '📓', title: 'Journal', text: "Une fois activé dans Défis, retrouve ton défi dans l'onglet Aujourd'hui pour le commencer. Ici : calendrier, activité récente et historique détaillé." },
   { tab: 'account', emoji: '👤', title: 'Profil', text: "Tes infos, ton profil sportif et tous les trophées que tu débloques au fil du temps." },
@@ -2331,6 +2332,58 @@ function getNextChallengeId() {
 // ==== ONBOARDING PROFIL (coach virtuel) ====
 const PROFILE_STEPS_COUNT = 4;
 
+// ==== ROULEAUX DE SÉLECTION (wheel pickers) — âge/taille/poids ====
+// Remplacent les <input type="number"> pour éviter d'ouvrir le clavier virtuel.
+// Défilement natif (scroll-snap CSS) ; aucune logique de drag en JS. La valeur
+// sélectionnée se déduit simplement du scrollTop courant (pas de suivi d'état
+// séparé à synchroniser) : robuste, y compris pendant l'inertie du scroll.
+const WHEEL_ITEM_HEIGHT = 44;
+
+function renderWheelPicker(id, min, max, step, suffix) {
+  let items = '';
+  for (let v = min; v <= max; v += step) {
+    items += `<div class="wheel-picker-item">${v}${suffix ? ' ' + suffix : ''}</div>`;
+  }
+  return `
+    <div class="wheel-picker" id="${id}" data-min="${min}" data-max="${max}" data-step="${step}" data-item-height="${WHEEL_ITEM_HEIGHT}">
+      <div class="wheel-picker-highlight"></div>
+      <div class="wheel-picker-track">${items}</div>
+    </div>
+  `;
+}
+
+function getWheelPickerValue(id) {
+  const el = document.getElementById(id);
+  if (!el) return NaN;
+  const itemHeight = parseInt(el.dataset.itemHeight, 10);
+  const min = parseInt(el.dataset.min, 10);
+  const max = parseInt(el.dataset.max, 10);
+  const step = parseInt(el.dataset.step, 10);
+  const maxIndex = Math.round((max - min) / step);
+  let index = Math.round(el.scrollTop / itemHeight);
+  index = Math.max(0, Math.min(maxIndex, index)); // tolère un léger rebond élastique (overscroll iOS)
+  return min + index * step;
+}
+
+function setWheelPickerValue(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const itemHeight = parseInt(el.dataset.itemHeight, 10);
+  const min = parseInt(el.dataset.min, 10);
+  const step = parseInt(el.dataset.step, 10);
+  const index = Math.round((value - min) / step);
+  el.scrollTop = index * itemHeight;
+}
+
+// Positionne les rouleaux visibles sur l'étape courante à leur valeur actuelle
+// (celle du brouillon de profil, ou une valeur par défaut raisonnable). Appelé
+// en afterRender juste après le rendu de l'écran d'onboarding.
+function initWheelPickers() {
+  setWheelPickerValue('pfAge', profileDraft.age ?? 30);
+  setWheelPickerValue('pfHeight', profileDraft.heightCm ?? 175);
+  setWheelPickerValue('pfWeight', profileDraft.weightKg ?? 75);
+}
+
 function selectProfileSex(sex) {
   profileDraft.sex = sex;
   if (navigator.vibrate) navigator.vibrate(10);
@@ -2349,8 +2402,7 @@ function profileNext() {
   if (profileStep === 0) {
     // Écran de bienvenue : rien à valider, on passe simplement à la suite
   } else if (profileStep === 1) {
-    const input = document.getElementById('pfAge');
-    const val = parseInt(input?.value, 10);
+    const val = getWheelPickerValue('pfAge');
     if (isNaN(val) || val < 12 || val > 100) {
       alert("Merci d'indiquer un âge valide (12 à 100 ans).");
       return;
@@ -2362,10 +2414,8 @@ function profileNext() {
       return;
     }
   } else if (profileStep === 3) {
-    const hInput = document.getElementById('pfHeight');
-    const wInput = document.getElementById('pfWeight');
-    const h = parseInt(hInput?.value, 10);
-    const w = parseFloat(wInput?.value);
+    const h = getWheelPickerValue('pfHeight');
+    const w = getWheelPickerValue('pfWeight');
     if (isNaN(h) || h < 100 || h > 250) {
       alert('Merci d\'indiquer une taille valide (100 à 250 cm).');
       return;
@@ -2748,7 +2798,6 @@ function enqueuePopup(opts) {
 function buildPopupInnerHtml(next) {
   const chips = [];
   if (next.xp) chips.push(`<div class="popup-chip xp-chip">⚡ +${next.xp} XP</div>`);
-  if (next.trophy) chips.push(`<div class="popup-chip trophy-chip">${next.trophy.icon} ${next.trophy.label}</div>`);
   return `
     <div class="app-popup-card${next.epic ? ' epic' : ''}">
       <div class="app-popup-icon">${next.icon}</div>
@@ -2765,7 +2814,7 @@ function drainPopupQueue() {
   const next = popupQueue.shift();
   if (!next) { popupOpen = false; currentPopupHtml = ''; return; }
   popupOpen = true;
-  if (next.variant === 'title') fireConfetti('title');
+  if (next.variant === 'title' || next.variant === 'trophy') fireConfetti('title');
   const el = document.createElement('div');
   el.id = 'appPopup';
   el.className = 'app-popup-overlay';
@@ -2776,6 +2825,21 @@ function drainPopupQueue() {
     el.remove();
     drainPopupQueue();
   };
+}
+
+// Une popup épique dédiée par trophée fraîchement débloqué (icône animée, effets
+// lumineux dorés, pluie de confettis) — distincte de la popup de complétion du défi.
+function enqueueTrophyPopups(freshBadges) {
+  for (const b of freshBadges) {
+    enqueuePopup({
+      variant: 'trophy',
+      epic: true,
+      icon: b.icon,
+      title: 'Trophée débloqué !',
+      big: b.label,
+      subtitle: 'Un nouveau trophée rejoint ta collection !',
+    });
+  }
 }
 
 // Détecte un changement de niveau (et, le cas échéant, de titre) entre deux mesures
@@ -2826,15 +2890,30 @@ async function awardXp(amount) {
   return { levelBefore, levelAfter };
 }
 
-// Courbe exponentielle (somme géométrique) : chaque niveau demande ~8.5% de XP en
-// plus que le précédent. Avec une moyenne d'environ 100 XP par défi complété, le
-// dernier titre (Légende Immortelle, niveau 48+) demande ~63 000 XP, soit environ
-// 600 défis au total — la progression doit rester gratifiante sur des mois d'usage.
-const XP_LEVEL_BASE = 100;   // XP pour passer du niveau 1 au niveau 2
-const XP_LEVEL_GROWTH = 1.085;
+// Seuils d'XP par niveau, en dur et arrondis (demande explicite : des paliers
+// "propres" comme 150/350/700/1200, pas une formule qui retomberait sur des
+// nombres quelconques). Calibrés sur le gain réel d'un défi Hardcore (~150 à
+// 225 XP selon l'exercice, cf. xpForChallenge + HARDCORE_XP_BONUS) pour que 2
+// défis Hardcore amènent au plus au niveau 2, ou tout début de niveau 3 —
+// avant, l'ancienne courbe faisait grimper à un niveau 4 dès 2 défis.
+// Au-delà de la table, la progression continue avec le même facteur de
+// croissance que ses derniers paliers (cf. xpForLevel).
+const XP_LEVEL_THRESHOLDS = [
+  0, 150, 350, 700, 1200, 1750, 2400, 3100, 3900, 4800,
+  5800, 6900, 8100, 9500, 11000, 12750, 14750, 17000, 19500, 22250,
+  25250, 28750, 32500, 36750, 41500, 47000, 53000, 59750, 67250, 75750,
+  85250, 96000, 108000, 121250, 136250, 153000, 171750, 192750, 216250, 242750,
+  272250, 305250, 342250, 383750, 430250, 482250, 540500, 605750,
+];
+const XP_LEVEL_TABLE_GROWTH = 1.12; // croissance des paliers au-dela de la table ci-dessus
 function xpForLevel(n) {
   if (n <= 1) return 0;
-  return Math.round(XP_LEVEL_BASE * (Math.pow(XP_LEVEL_GROWTH, n - 1) - 1) / (XP_LEVEL_GROWTH - 1));
+  if (n <= XP_LEVEL_THRESHOLDS.length) return XP_LEVEL_THRESHOLDS[n - 1];
+  const lastIndex = XP_LEVEL_THRESHOLDS.length - 1;
+  const lastIncrement = XP_LEVEL_THRESHOLDS[lastIndex] - XP_LEVEL_THRESHOLDS[lastIndex - 1];
+  const extra = n - XP_LEVEL_THRESHOLDS.length;
+  const growthSum = lastIncrement * XP_LEVEL_TABLE_GROWTH * (Math.pow(XP_LEVEL_TABLE_GROWTH, extra) - 1) / (XP_LEVEL_TABLE_GROWTH - 1);
+  return Math.round(XP_LEVEL_THRESHOLDS[lastIndex] + growthSum);
 }
 function computeLevel(xp) {
   let level = 1;
@@ -3278,10 +3357,11 @@ function formatTimer(totalSec) {
 }
 
 // Double anneau concentrique : intérieur (vert néon) = phase normale, extérieur
-// (feu, légèrement plus grand) = phase Hardcore. Toujours calculés ensemble, à
-// partir du total cumulé (+ l'écoulé de la session en cours si elle tourne).
+// (feu) = phase Hardcore, quasiment collé au premier (~1px d'écart visuel une
+// fois les demi-épaisseurs de trait prises en compte). Toujours calculés
+// ensemble, à partir du total cumulé (+ l'écoulé de la session en cours si elle tourne).
 const TIMER_RING_INNER_RADIUS = 78;
-const TIMER_RING_OUTER_RADIUS = 96;
+const TIMER_RING_OUTER_RADIUS = 88;
 const TIMER_RING_INNER_CIRCUMFERENCE = 2 * Math.PI * TIMER_RING_INNER_RADIUS;
 const TIMER_RING_OUTER_CIRCUMFERENCE = 2 * Math.PI * TIMER_RING_OUTER_RADIUS;
 
@@ -3499,20 +3579,37 @@ function clearTimerState() {
   releaseWakeLock();
 }
 
-// ==== COMPTE À REBOURS DE PRÉPARATION (3... 2... 1... C'est parti !) ====
-// Laisse le temps de se mettre en position (gainage, prise d'haltères) avant que
-// le chrono réel ne démarre. Overlay ajouté directement au DOM (comme showToast()),
-// indépendant du cycle render().
+// ==== COMPTE À REBOURS (3... 2... 1...) ====
+// Deux modes, partageant le même overlay/décompte :
+// - 'start' (défaut) : décompte de préparation classique avant le tout premier
+//   démarrage, se termine par "C'est parti !".
+// - 'hardcore' : au passage en mode Hardcore, annonce d'abord "Mode Hardcore
+//   enclenché !", puis (une fois la phrase terminée) le même décompte 3-2-1,
+//   sans "C'est parti !" à la fin.
+// Overlay ajouté directement au DOM (comme showToast()), indépendant du cycle render().
 let prepCountdownValue = null;
 let prepCountdownTimeoutId = null;
+let prepCountdownMode = 'start';
 
-function beginPrepCountdown() {
+function beginPrepCountdown(mode) {
   unlockTimerAudio(); // dans le geste utilisateur du clic, pour débloquer l'audio (Safari/iOS)
   clearPrepCountdown();
+  prepCountdownMode = mode === 'hardcore' ? 'hardcore' : 'start';
   prepCountdownValue = 3;
-  renderPrepCountdownOverlay();
-  speak('3');
-  prepCountdownTimeoutId = setTimeout(prepCountdownTick, 1000);
+  if (prepCountdownMode === 'hardcore') {
+    if (voiceCoachEnabled) speak('Mode Hardcore enclenché !');
+    // laisse le temps a la phrase d'etre prononcee avant d'entamer le decompte
+    // audible (speak() annule sinon l'utterance en cours en cas d'enchainement immediat)
+    prepCountdownTimeoutId = setTimeout(() => {
+      renderPrepCountdownOverlay();
+      speak('3');
+      prepCountdownTimeoutId = setTimeout(prepCountdownTick, 1000);
+    }, 1300);
+  } else {
+    renderPrepCountdownOverlay();
+    speak('3');
+    prepCountdownTimeoutId = setTimeout(prepCountdownTick, 1000);
+  }
 }
 
 function prepCountdownTick() {
@@ -3524,7 +3621,7 @@ function prepCountdownTick() {
     prepCountdownTimeoutId = setTimeout(prepCountdownTick, 1000);
   } else {
     clearPrepCountdown();
-    speak("C'est parti !");
+    if (prepCountdownMode === 'start') speak("C'est parti !");
     startTimer();
   }
 }
@@ -3533,6 +3630,7 @@ function clearPrepCountdown() {
   if (prepCountdownTimeoutId) clearTimeout(prepCountdownTimeoutId);
   prepCountdownTimeoutId = null;
   prepCountdownValue = null;
+  prepCountdownMode = 'start';
   const el = document.getElementById('prepCountdownOverlay');
   if (el) el.remove();
 }
@@ -3583,10 +3681,10 @@ function startTimer() {
   render();
 }
 
-// Clic sur le disque du chrono (anneau entier cliquable) : bascule Play/Pause.
+// Clic sur le disque du chrono (anneau entier cliquable) : bascule Play/Valider.
 // - Pas encore d'objectif normal atteint -> décompte de préparation (3-2-1) puis démarrage.
-// - Objectif normal déjà atteint (Hardcore pas encore réussi) -> démarrage direct du
-//   Hardcore, sans décompte, juste l'annonce vocale dédiée.
+// - Objectif normal déjà atteint (Hardcore pas encore réussi) -> annonce "Mode Hardcore
+//   enclenché !" puis décompte (3-2-1) avant le démarrage réel.
 // - Hardcore déjà réussi -> plus rien à démarrer.
 function toggleTimer() {
   if (timerRunning) {
@@ -3597,8 +3695,7 @@ function toggleTimer() {
   const entry = getEntry(currentChallengeId);
   if (entry.hardcoreDone) return;
   if (entry.done) {
-    if (voiceCoachEnabled) speak('Mode Hardcore enclenché !');
-    startTimer();
+    beginPrepCountdown('hardcore');
   } else {
     beginPrepCountdown();
   }
@@ -3614,8 +3711,11 @@ function tickTimer() {
   const hcTarget = getHardcoreTarget(getChallenge());
   const projected = getTotal() + elapsed;
 
+  // Le nombre affiché ne montre QUE le temps écoulé de la série en cours (repart
+  // toujours de 0:00 à chaque démarrage) ; les anneaux, eux, restent cumulatifs
+  // (progression globale vers l'objectif du jour) — deux informations distinctes.
   const el = document.getElementById('timerDisplay');
-  if (el) el.textContent = formatTimer(projected);
+  if (el) el.textContent = formatTimer(elapsed);
   updateTimerRingDOM(elapsed);
 
   if (elapsed > 0 && elapsed % 30 === 0 && elapsed !== lastBeepSecond) {
@@ -3787,8 +3887,8 @@ async function addSet(amount) {
       title: newRecord ? 'Nouveau record !' : 'Défi complété !',
       subtitle: `${completedChallenge.name} — ${total} ${completedChallenge.unit === 'sec' ? 'sec' : 'reps'}`,
       xp: xpGained,
-      trophy: freshBadges[0] || null,
     });
+    enqueueTrophyPopups(freshBadges);
     enqueueLevelPopups(levelBefore, levelAfter);
 
     // Progression automatique : 3 records consécutifs -> proposer d'augmenter l'objectif par défaut
@@ -3838,8 +3938,8 @@ async function addSet(amount) {
       title: 'MODE HARDCORE complété !',
       subtitle: `${cForHardcore.name} — ${Math.min(total, hcTarget)} / ${hcTarget} ${cForHardcore.unit === 'sec' ? 'sec' : 'reps'}`,
       xp: HARDCORE_XP_BONUS,
-      trophy: freshHardcoreBadges[0] || null,
     });
+    enqueueTrophyPopups(freshHardcoreBadges);
     enqueueLevelPopups(hcLevelBefore, hcLevelAfter);
   }
 
@@ -3891,24 +3991,6 @@ function customAddSubmit() {
   }
 }
 
-function renderTally(total, target, unit) {
-  // represent progress in tally groups of 5, scaled so it doesn't explode for "sec" units
-  const scale = unit === 'sec' ? Math.max(1, Math.round(target / 40)) : 1;
-  const marks = Math.min(60, Math.round(total / scale));
-  let html = '';
-  const groups = Math.ceil(marks / 5) || 0;
-  for (let g = 0; g < groups; g++) {
-    html += '<div class="tally-group">';
-    const inGroup = Math.min(5, marks - g*5);
-    for (let i = 0; i < inGroup; i++) {
-      const isStrike = i === 4;
-      html += `<div class="tally-mark${isStrike ? ' strike' : ''}"></div>`;
-    }
-    html += '</div>';
-  }
-  return html;
-}
-
 function applyContent(app, html, animate, afterRender) {
   if (animate) {
     app.classList.add('fade-out');
@@ -3928,7 +4010,7 @@ function render(animate) {
   const today = new Date();
 
   if (showProfileOnboarding) {
-    applyContent(app, renderProfileOnboardingScreen(), animate);
+    applyContent(app, renderProfileOnboardingScreen(), animate, initWheelPickers);
     return;
   }
 
@@ -4057,8 +4139,6 @@ function render(animate) {
           `;
         })()}
 
-        ${c.unit !== 'sec' ? `<div class="tally-wrap">${renderTally(total, target, c.unit)}</div>` : ''}
-
         ${c.unit === 'sec' ? (() => {
           const hcT = getHardcoreTarget(c);
           const elapsedNow = timerRunning ? Math.floor((Date.now() - timerStartMs) / 1000) : 0;
@@ -4070,10 +4150,10 @@ function render(animate) {
               <div class="timer-ring-wrap${entry.hardcoreDone ? ' done' : ''}" onclick="toggleTimer()">
                 ${renderDoubleTimerRingSVG(normalPct, hardcorePct, 220)}
                 <div class="timer-ring-center">
-                  <div class="timer-display${timerRunning ? ' running' : ''}" id="timerDisplay">${formatTimer(projected)}</div>
+                  <div class="timer-display${timerRunning ? ' running' : ''}" id="timerDisplay">${formatTimer(elapsedNow)}</div>
                   ${entry.hardcoreDone
                     ? `<div class="timer-play-icon done">✓</div>`
-                    : `<div class="timer-play-icon${timerRunning ? ' pause' : ''}">${timerRunning ? '❚❚' : '▶'}</div>`
+                    : `<div class="timer-play-icon${timerRunning ? ' confirm' : ''}">${timerRunning ? '✓' : '▶'}</div>`
                   }
                 </div>
               </div>
@@ -4169,7 +4249,7 @@ function renderTodayEmptyState() {
       <div class="today-empty-icon">🗓️</div>
       <div class="today-empty-title">Aucun défi sélectionné pour aujourd'hui</div>
       <div class="today-empty-text">Rendez-vous dans la Bibliothèque pour choisir tes défis du jour !</div>
-      <button class="today-empty-btn" onclick="switchTab('library')">📚 Aller à la Bibliothèque</button>
+      <button class="today-empty-btn" onclick="switchTab('library')">📚 Choisir un défi</button>
     </div>
   `;
 }
@@ -4230,7 +4310,7 @@ function renderProfileOnboardingScreen() {
     stepHtml = `
       <div class="pf-emoji">🎂</div>
       <h1 class="pf-question">Quel âge as-tu ?</h1>
-      <input type="number" id="pfAge" class="pf-number-input" inputmode="numeric" placeholder="30" value="${profileDraft.age ?? ''}" autofocus>
+      ${renderWheelPicker('pfAge', 12, 100, 1, 'ans')}
       <button class="pf-next-btn" onclick="profileNext()">Suivant</button>
     `;
   } else if (profileStep === 2) {
@@ -4260,11 +4340,11 @@ function renderProfileOnboardingScreen() {
       <div class="pf-two-inputs">
         <div class="pf-input-group">
           <label>Taille (cm)</label>
-          <input type="number" id="pfHeight" class="pf-number-input small" inputmode="numeric" placeholder="175" value="${profileDraft.heightCm ?? ''}">
+          ${renderWheelPicker('pfHeight', 100, 250, 1, 'cm')}
         </div>
         <div class="pf-input-group">
           <label>Poids (kg)</label>
-          <input type="number" id="pfWeight" class="pf-number-input small" inputmode="numeric" placeholder="75" value="${profileDraft.weightKg ?? ''}">
+          ${renderWheelPicker('pfWeight', 30, 300, 1, 'kg')}
         </div>
       </div>
       <button class="pf-next-btn" onclick="profileNext()">Suivant</button>
