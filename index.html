@@ -122,6 +122,77 @@
     letter-spacing: 0.01em;
   }
 
+  /* MINI TOUR GUIDÉ (bulle au-dessus de la barre d'onglets, première connexion) */
+  .tour-overlay {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    justify-content: center;
+    padding: 0 18px;
+    z-index: 600;
+    pointer-events: none;
+  }
+  .tour-bubble {
+    pointer-events: auto;
+    width: 100%;
+    max-width: 444px;
+    background: var(--bg-card);
+    border: 1.5px solid var(--accent);
+    border-radius: 16px;
+    padding: 16px 18px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  }
+  .tour-bubble-title {
+    font-size: 15px;
+    font-weight: 800;
+    margin-bottom: 6px;
+  }
+  .tour-bubble-text {
+    font-size: 13px;
+    color: var(--chalk-dim);
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+  .tour-bubble-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .tour-dots { display: flex; gap: 5px; }
+  .tour-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--line);
+  }
+  .tour-dot.active { background: var(--accent); }
+  .tour-next-btn {
+    background: var(--accent);
+    color: #0a0d0b;
+    border: none;
+    font-weight: 800;
+    font-size: 13px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tour-next-btn:active { transform: scale(0.96); }
+
+  .tour-spinner {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 4px solid var(--line);
+    border-top-color: var(--accent);
+    margin: 0 auto;
+    animation: tour-spin 0.8s linear infinite;
+  }
+  @keyframes tour-spin { to { transform: rotate(360deg); } }
+
   /* HEADER */
   .header {
     display: flex;
@@ -269,70 +340,22 @@
     font-size: 14px;
   }
 
-  /* WEEKLY CHART */
-  .chart-wrap {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    height: 120px;
-    margin-bottom: 26px;
-    gap: 6px;
-  }
-  .chart-col {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    height: 100%;
-    justify-content: flex-end;
-  }
-  .chart-bar-track {
-    width: 100%;
-    max-width: 26px;
-    height: 80px;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-  }
-  .chart-bar {
-    width: 100%;
-    background: var(--accent-dim);
-    border-radius: 4px 4px 0 0;
-    transition: height 0.3s ease;
-  }
-  .chart-bar.today { background: var(--accent); }
-  .chart-val {
-    font-size: 10px;
-    color: var(--chalk-dim);
-    margin-top: 4px;
-    font-variant-numeric: tabular-nums;
-    height: 12px;
-  }
-  .chart-dow {
-    font-size: 10px;
-    color: var(--chalk-dim);
-    text-transform: uppercase;
-    margin-top: 2px;
-  }
-
-  /* HEATMAP */
-  .heatmap-scroll {
-    overflow-x: auto;
-    margin-bottom: 8px;
-    padding-bottom: 4px;
-  }
+  /* HEATMAP — grille en pourcentage (pas de largeur fixe) pour tenir sur 100%
+     de la largeur de l'écran sans scroll horizontal ; les cellules (carrées,
+     via aspect-ratio) rétrécissent ensemble plutôt que de déborder. */
   .heatmap-grid {
     display: grid;
-    grid-template-rows: repeat(7, 12px);
+    grid-template-columns: repeat(26, 1fr);
+    grid-template-rows: repeat(7, 1fr);
     grid-auto-flow: column;
-    grid-auto-columns: 12px;
-    gap: 3px;
-    width: max-content;
+    gap: 2px;
+    width: 100%;
+    margin-bottom: 8px;
   }
   .heat-cell {
-    width: 12px;
-    height: 12px;
-    border-radius: 3px;
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 2px;
     background: var(--bg-card);
     border: 1px solid var(--line);
   }
@@ -1034,6 +1057,12 @@
     margin-top: 3px;
     text-transform: none;
     letter-spacing: 0;
+  }
+  .goal-weight {
+    font-size: 11px;
+    color: var(--chalk-dim);
+    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
   }
   .last-done.status-progress {
     color: var(--accent);
@@ -1871,7 +1900,7 @@ const CHALLENGE_LIBRARY = [
   { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
   { id: 6,  cat: 'Haltères', name: 'Biceps', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
   { id: 7,  cat: 'Haltères', name: 'Épaule lateral raise', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 5, armMode: 'total' },
-  { id: 8,  cat: 'Haltères', name: 'Cuban press', target: 180, unit: 'reps', hardcoreTarget: 360, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
+  { id: 8,  cat: 'Haltères', name: 'Cuban press', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
   { id: 1005, cat: 'Haltères', name: 'Rowing haltère', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0, standardWeightKg: 10, armMode: 'perArm' },
   { id: 1006, cat: 'Haltères', name: 'Développé épaules haltères', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
   { id: 1008, cat: 'Haltères', name: 'Extension triceps nuque', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 6, armMode: 'total' },
@@ -1996,6 +2025,115 @@ let showProfileOnboarding = false;
 let profileStep = 0;
 let profileDraft = { age: null, sex: null, heightCm: null, weightKg: null, level: null };
 
+// Écran de transition juste après l'onboarding profil : null (aucun),
+// 'loading' (calcul en cours) ou 'confirm' (message + bouton de lancement).
+let onboardingTransitionPhase = null;
+
+// Mini-tour guidé (première connexion uniquement) : null = pas de tour actif,
+// sinon index courant dans GUIDED_TOUR_STEPS. hasSeenTour est persisté côté
+// Firestore (pas de localStorage/sessionStorage dans cette app, cf. CLAUDE.md).
+let guidedTourStep = null;
+let hasSeenTour = false;
+const GUIDED_TOUR_STEPS = [
+  { tab: 'today', emoji: "🏋️‍♂️", title: "Aujourd'hui", text: "Retrouve ici les défis que tu as activés pour la journée, et suis ta progression en direct." },
+  { tab: 'library', emoji: '🎯', title: 'Défis', text: "Commence par cet onglet : active un ou plusieurs défis pour aujourd'hui en appuyant sur leur carte." },
+  { tab: 'history', emoji: '📓', title: 'Journal', text: "Une fois activé dans Défis, retrouve ton défi dans l'onglet Aujourd'hui pour le commencer. Ici : calendrier, activité récente et historique détaillé." },
+  { tab: 'account', emoji: '👤', title: 'Profil', text: "Tes infos, ton profil sportif et tous les trophées que tu débloques au fil du temps." },
+];
+
+async function loadHasSeenTour() {
+  try {
+    const res = await dbGet('hasSeenTour');
+    hasSeenTour = res.value === 'true';
+  } catch (e) {
+    hasSeenTour = false;
+  }
+}
+async function markTourSeen() {
+  hasSeenTour = true;
+  try { await dbSet('hasSeenTour', 'true'); }
+  catch (e) { console.error('save hasSeenTour failed', e); }
+}
+
+function startGuidedTour() {
+  guidedTourStep = 0;
+  activeTab = GUIDED_TOUR_STEPS[0].tab;
+  render(true);
+}
+
+function guidedTourNext() {
+  if (guidedTourStep === null) return;
+  const next = guidedTourStep + 1;
+  if (next >= GUIDED_TOUR_STEPS.length) {
+    endGuidedTour();
+    return;
+  }
+  guidedTourStep = next;
+  switchTab(GUIDED_TOUR_STEPS[next].tab); // switchTab() se charge déjà de re-rendre
+}
+
+async function endGuidedTour() {
+  guidedTourStep = null;
+  await markTourSeen();
+  if (activeTab !== 'today') switchTab('today');
+  else render(true);
+}
+
+function renderGuidedTourOverlay() {
+  if (guidedTourStep === null) return '';
+  const step = GUIDED_TOUR_STEPS[guidedTourStep];
+  const isLast = guidedTourStep === GUIDED_TOUR_STEPS.length - 1;
+  return `
+    <div class="tour-overlay">
+      <div class="tour-bubble">
+        <div class="tour-bubble-title">${step.emoji} ${step.title}</div>
+        <div class="tour-bubble-text">${step.text}</div>
+        <div class="tour-bubble-footer">
+          <div class="tour-dots">
+            ${GUIDED_TOUR_STEPS.map((_, i) => `<span class="tour-dot${i === guidedTourStep ? ' active' : ''}"></span>`).join('')}
+          </div>
+          <button class="tour-next-btn" onclick="guidedTourNext()">${isLast ? 'Terminer' : 'Suivant ›'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function finishOnboardingTransition() {
+  onboardingTransitionPhase = null;
+  await loadHasSeenTour();
+  if (!hasSeenTour) {
+    startGuidedTour();
+  } else {
+    render(true);
+  }
+}
+
+function renderOnboardingTransitionScreen() {
+  if (onboardingTransitionPhase === 'loading') {
+    return `
+      <div class="profile-onboarding">
+        <div class="pf-step pf-step-welcome">
+          <div class="tour-spinner"></div>
+          <div class="pf-welcome-desc" style="margin-top:22px;">Calcul de tes objectifs...</div>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="profile-onboarding">
+      <div class="pf-step pf-step-welcome">
+        <div class="pf-welcome-badge">✅</div>
+        <h1 class="pf-welcome-title">Objectifs calculés !</h1>
+        <div class="pf-welcome-desc">
+          C'est bon, nous avons calculé les objectifs de chaque défi parfaitement adaptés pour toi. Tu peux dès à présent choisir celui ou ceux que tu veux réaliser aujourd'hui dans l'onglet « Défis 🎯 » et let's go !
+        </div>
+        <button class="pf-next-btn" onclick="finishOnboardingTransition()">C'est parti !</button>
+      </div>
+    </div>
+  `;
+}
+
 async function loadProfile() {
   try {
     const res = await dbGet('profile');
@@ -2090,7 +2228,14 @@ async function finishProfileOnboarding() {
   userProfile = { ...profileDraft };
   await saveProfile();
   showProfileOnboarding = false;
-  await proceedAfterProfile();
+  onboardingTransitionPhase = 'loading';
+  render(true);
+  // Délai minimum pour que l'écran de chargement ne clignote pas si les
+  // données se chargent très vite ; en parallèle du vrai chargement.
+  const minDelay = new Promise(r => setTimeout(r, 1600));
+  await Promise.all([proceedAfterProfile(), minDelay]);
+  onboardingTransitionPhase = 'confirm';
+  render(true);
 }
 
 async function loadChallenges() {
@@ -2216,6 +2361,7 @@ function switchTab(tab) {
     currentChallengeId = null;
   } else if (activeTab === 'library') {
     editingChallengeId = null;
+    libraryOpenCats = new Set(); // referme tous les accordéons en quittant l'onglet Défis
   }
   if (navigator.vibrate) navigator.vibrate(8);
   activeTab = tab;
@@ -3214,18 +3360,23 @@ function render(animate) {
     return;
   }
 
+  if (onboardingTransitionPhase) {
+    applyContent(app, renderOnboardingTransitionScreen(), animate);
+    return;
+  }
+
   if (activeTab === 'history') {
-    applyContent(app, renderHistoryScreen() + renderTabBar(), animate);
+    applyContent(app, renderHistoryScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
     return;
   }
 
   if (activeTab === 'library') {
-    applyContent(app, renderLibraryScreen() + renderTabBar(), animate);
+    applyContent(app, renderLibraryScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
     return;
   }
 
   if (activeTab === 'account') {
-    applyContent(app, renderAccountTabScreen() + renderTabBar(), animate);
+    applyContent(app, renderAccountTabScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
     return;
   }
 
@@ -3248,7 +3399,6 @@ function render(animate) {
         <button class="streak" onclick="switchTab('history')">🔥 ${computeStreak()} j</button>
       </div>
       <h1 class="title">Défi du jour</h1>
-      <div class="subtitle">Choisis ton défi pour aujourd'hui</div>
     `;
     const activeChallenges = CHALLENGES.filter(c => activeToday.has(c.id)).map(resolveChallenge);
     if (activeChallenges.length === 0) {
@@ -3407,6 +3557,7 @@ function render(animate) {
   }
   html += `</div>`;
   html += renderTabBar();
+  html += renderGuidedTourOverlay();
 
   applyContent(app, html, animate, () => {
     const input = document.getElementById('customAddInput');
@@ -3601,9 +3752,11 @@ function renderProfileOnboardingScreen() {
 function renderChallengeCard(c, mode) {
   const resolved = resolveChallenge(c);
   const isActive = activeToday.has(c.id);
-  const weightHint = (mode === 'library' && c.cat === 'Haltères')
-    ? ` · 🏋️ ${weights[c.id] ?? computeStandardWeight(c, userProfile) ?? 8}kg`
-    : '';
+  const weightKg = weights[c.id] ?? computeStandardWeight(c, userProfile) ?? 8;
+  // Bibliothèque : poids affiché en ligne, à côté des reps. Accueil : en dessous,
+  // sur sa propre ligne (demande explicite : pas "à côté" sur les cartes du jour).
+  const weightInline = (mode === 'library' && c.cat === 'Haltères') ? ` · 🏋️ ${weightKg}kg` : '';
+  const weightBelow = (mode === 'today' && c.cat === 'Haltères') ? `<div class="goal-weight">🏋️ ${weightKg}kg</div>` : '';
 
   let rightHtml;
   if (mode === 'library') {
@@ -3635,7 +3788,8 @@ function renderChallengeCard(c, mode) {
         <span class="name">${c.name}</span>
       </div>
       <div class="goal">
-        ${resolved.unit === 'sec' ? formatTargetLabel(resolved.target, resolved.unit) : resolved.target + ' reps'}${weightHint}
+        ${resolved.unit === 'sec' ? formatTargetLabel(resolved.target, resolved.unit) : resolved.target + ' reps'}${weightInline}
+        ${weightBelow}
         ${rightHtml}
       </div>
       ${mode === 'library' && c.isCustom ? `
@@ -3726,40 +3880,6 @@ function renderChallengeForm() {
   `;
 }
 
-function renderWeeklyChart() {
-  const days = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d);
-  }
-  const totals = days.map(d => {
-    const k = dateKey(d);
-    return historyEntries.filter(e => e.key === k).reduce((sum, e) => sum + e.total, 0);
-  });
-  const max = Math.max(1, ...totals);
-
-  let bars = '';
-  days.forEach((d, i) => {
-    const h = Math.round((totals[i] / max) * 100);
-    const isToday = dateKey(d) === todayKey;
-    bars += `
-      <div class="chart-col">
-        <div class="chart-bar-track">
-          <div class="chart-bar${isToday ? ' today' : ''}" style="height:${Math.max(h, totals[i] > 0 ? 6 : 0)}%"></div>
-        </div>
-        <div class="chart-val">${totals[i] || ''}</div>
-        <div class="chart-dow">${DOW_LABELS[d.getDay()]}</div>
-      </div>
-    `;
-  });
-
-  return `
-    <div class="section-label">Volume des 7 derniers jours</div>
-    <div class="chart-wrap">${bars}</div>
-  `;
-}
-
 function renderHeatmap() {
   const WEEKS = 26; // ~6 mois, plus lisible sur mobile qu'une année complète
   const totalDays = WEEKS * 7;
@@ -3794,9 +3914,7 @@ function renderHeatmap() {
 
   return `
     <div class="section-label">Activité (6 derniers mois)</div>
-    <div class="heatmap-scroll">
-      <div class="heatmap-grid">${cells}</div>
-    </div>
+    <div class="heatmap-grid">${cells}</div>
     <div class="heat-legend">
       <span>Moins</span>
       <div class="heat-cell lvl0"></div>
@@ -3871,13 +3989,12 @@ function renderHistoryScreen() {
   }
 
   return `
-    <h1 class="title">Historique</h1>
+    <h1 class="title">Journal</h1>
     <div class="subtitle">Ta progression dans le temps</div>
     <button class="share-stats-btn" onclick="shareStatsImage()">📤 Partager mes stats</button>
-    ${renderWeeklyChart()}
-    ${renderHeatmap()}
     <div class="section-label">Calendrier du mois</div>
     ${calHtml}
+    ${renderHeatmap()}
     ${listHtml}
   `;
 }
@@ -3904,7 +4021,7 @@ function renderAccountSection() {
 
 function renderAccountTabScreen() {
   return `
-    <h1 class="title">Compte</h1>
+    <h1 class="title">Profil</h1>
     <div class="subtitle">Tes infos et la gestion de ton compte</div>
     ${renderAccountSection()}
     ${renderTrophiesGrid()}
@@ -3915,10 +4032,10 @@ function renderAccountTabScreen() {
 // écrans plein écran : onboarding, connexion, mode focus).
 function renderTabBar() {
   const tabs = [
-    { id: 'today',   icon: '🎯', label: "Aujourd'hui" },
-    { id: 'library',  icon: '📋', label: 'Défis' },
-    { id: 'history',  icon: '📊', label: 'Historique' },
-    { id: 'account',  icon: '👤', label: 'Compte' },
+    { id: 'today',   icon: '🏋️‍♂️', label: "Aujourd'hui" },
+    { id: 'library',  icon: '🎯', label: 'Défis' },
+    { id: 'history',  icon: '📓', label: 'Journal' },
+    { id: 'account',  icon: '👤', label: 'Profil' },
   ];
   return `
     <nav class="tab-bar">
@@ -4094,6 +4211,10 @@ async function continueStartApp() {
   ]);
   await loadState(); // vient après : dépend de dailyActivity pour les pastilles de la semaine
   await loadActiveToday(); // vient après loadState() : dépend de todayKey
+  // loadState() se termine par un render() interne, mais avec l'ancien activeToday
+  // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
+  // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).
+  render();
 }
 
 // Micro-interaction : légère vibration sur chaque tap d'élément interactif
