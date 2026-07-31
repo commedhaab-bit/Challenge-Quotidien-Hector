@@ -1717,19 +1717,25 @@
     margin-bottom: 12px;
   }
 
-  /* ANNEAU DE PROGRESSION CIRCULAIRE — élément visuel central du chrono */
+  /* DOUBLE ANNEAU DE PROGRESSION CIRCULAIRE — disque central cliquable (play/pause),
+     intérieur vert néon = objectif normal, extérieur feu = objectif Hardcore. */
   .timer-ring-wrap {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 18px;
+    margin: 0 auto;
+    cursor: pointer;
+    transition: transform 0.08s;
   }
+  .timer-ring-wrap:active { transform: scale(0.97); }
+  .timer-ring-wrap.done { cursor: default; }
+  .timer-ring-wrap.done:active { transform: none; }
   .timer-ring {
     transform: rotate(-90deg);
     overflow: visible;
   }
-  .timer-ring-bg {
+  .timer-ring-bg-inner, .timer-ring-bg-outer {
     fill: none;
     stroke: var(--bg);
     stroke-width: 10;
@@ -1746,6 +1752,17 @@
     stroke: var(--good);
     filter: drop-shadow(0 0 12px var(--accent-glow));
   }
+  .timer-ring-fill-hardcore {
+    fill: none;
+    stroke: var(--hardcore);
+    stroke-width: 8;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.25s linear, stroke 0.25s ease;
+    filter: drop-shadow(0 0 8px rgba(255, 107, 53, 0.45));
+  }
+  .timer-ring-fill-hardcore.complete {
+    filter: drop-shadow(0 0 14px rgba(255, 107, 53, 0.7));
+  }
   .timer-ring-center {
     position: absolute;
     top: 50%;
@@ -1754,19 +1771,11 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 10px;
-  }
-  .timer-ring-label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--accent);
-    font-weight: 800;
-    margin-top: 4px;
+    gap: 6px;
   }
 
   .timer-display {
-    font-size: 40px;
+    font-size: 52px;
     font-weight: 900;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
@@ -1777,126 +1786,19 @@
     color: var(--accent);
     text-shadow: 0 0 18px var(--accent-glow);
   }
-  /* Contrôle play/pause circulaire, intégré au centre de l'anneau (plus de gros bouton rectangulaire sous le chrono) */
-  .timer-play-btn {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    border: none;
-    background: var(--accent);
-    color: #0a0d0b;
-    font-size: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding-left: 4px; /* recentre visuellement le triangle ▶ */
-    box-shadow: 0 4px 20px var(--accent-glow);
-    transition: transform 0.08s;
-  }
-  .timer-play-btn:active { transform: scale(0.9); }
-  .timer-play-btn.running {
-    background: var(--danger);
-    color: #fff8f0;
-    padding-left: 0;
-    box-shadow: 0 4px 20px rgba(239,83,80,0.35);
-  }
-  .timer-hint {
-    font-size: 12px;
-    color: var(--chalk-dim);
-    margin-top: 10px;
-  }
-  .focus-btn {
-    display: block;
-    width: 100%;
-    background: none;
-    border: 1px solid var(--line);
-    color: var(--chalk-dim);
-    font-size: 13px;
-    font-weight: 600;
-    padding: 10px;
-    border-radius: 10px;
-    cursor: pointer;
-    margin-top: 8px;
-  }
-  .focus-btn:active { background: var(--bg-raised); transform: scale(0.98); }
-
-  /* FOCUS FULLSCREEN MODE */
-  .focus-screen {
-    position: fixed;
-    inset: 0;
-    background: var(--bg);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 24px;
-  }
-  .focus-exit {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: var(--bg-card);
-    border: 1px solid var(--line);
-    color: var(--chalk-dim);
-    font-size: 18px;
-    cursor: pointer;
-  }
-  .focus-exit:active { transform: scale(0.92); }
-  .focus-name {
-    font-size: 15px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--accent);
-    font-weight: 700;
-    margin-bottom: 18px;
-  }
-  .focus-ring-wrap {
-    margin: 0 auto 32px;
-  }
-  .focus-timer {
-    font-size: 56px;
-    font-weight: 900;
-    font-variant-numeric: tabular-nums;
-    color: var(--accent);
+  /* Petite icône play/pause épurée sous le temps, opacité douce (pas de gros bouton coloré) */
+  .timer-play-icon {
+    font-size: 20px;
     line-height: 1;
-    text-shadow: 0 0 24px var(--accent-glow);
-  }
-  .focus-target {
-    font-size: 14px;
     color: var(--chalk-dim);
-    margin-bottom: 40px;
+    opacity: 0.55;
   }
-  .focus-stop-btn {
-    background: var(--danger);
-    color: #fff8f0;
-    border: none;
-    font-weight: 800;
-    font-size: 16px;
-    padding: 16px 32px;
-    border-radius: 14px;
-    cursor: pointer;
+  .timer-play-icon:not(.pause):not(.done) {
+    transform: translateX(1px); /* recentre visuellement le triangle ▶ */
   }
-  .focus-stop-btn:active { transform: scale(0.96); }
-  .or-divider {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--chalk-dim);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin: 4px 0 12px;
-  }
-  .or-divider::before, .or-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--line);
+  .timer-play-icon.done {
+    color: var(--good);
+    opacity: 0.85;
   }
 
   .custom-add-row {
@@ -2143,7 +2045,6 @@ auth.onAuthStateChanged(user => {
     currentChallengeId = null;
     editingChallengeId = null;
     libraryOpenCats = new Set();
-    focusMode = false;
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
@@ -2597,11 +2498,6 @@ function pushNavState() {
 }
 
 function goBackOneLevel() {
-  if (focusMode) {
-    focusMode = false;
-    render(true);
-    return;
-  }
   if (editingChallengeId !== null) {
     editingChallengeId = null;
     render(true);
@@ -3341,7 +3237,6 @@ async function editWeight() {
   render();
 }
 let timerRunning = false;
-let focusMode = false;
 let timerStartMs = null;
 let timerIntervalId = null;
 let lastBeepSecond = 0;
@@ -3382,34 +3277,60 @@ function formatTimer(totalSec) {
   return `${m}:${pad(s)}`;
 }
 
-const TIMER_RING_RADIUS = 90;
-const TIMER_RING_CIRCUMFERENCE = 2 * Math.PI * TIMER_RING_RADIUS;
+// Double anneau concentrique : intérieur (vert néon) = phase normale, extérieur
+// (feu, légèrement plus grand) = phase Hardcore. Toujours calculés ensemble, à
+// partir du total cumulé (+ l'écoulé de la session en cours si elle tourne).
+const TIMER_RING_INNER_RADIUS = 78;
+const TIMER_RING_OUTER_RADIUS = 96;
+const TIMER_RING_INNER_CIRCUMFERENCE = 2 * Math.PI * TIMER_RING_INNER_RADIUS;
+const TIMER_RING_OUTER_CIRCUMFERENCE = 2 * Math.PI * TIMER_RING_OUTER_RADIUS;
 
-// Anneau de progression circulaire vert néon autour du chrono. `pct` de 0 à 1.
-function renderTimerRingSVG(pct, sizePx) {
-  const clamped = Math.min(1, Math.max(0, pct));
-  const offset = TIMER_RING_CIRCUMFERENCE * (1 - clamped);
-  const size = sizePx || 180;
+function computeTimerRingPct(projectedTotal, target, hcTarget) {
+  const normalPct = target > 0 ? Math.min(1, projectedTotal / target) : 0;
+  const hcRange = hcTarget - target;
+  const hcProgress = Math.max(0, projectedTotal - target);
+  const hardcorePct = hcRange > 0 ? Math.min(1, hcProgress / hcRange) : 0;
+  return { normalPct, hardcorePct };
+}
+
+function renderDoubleTimerRingSVG(normalPct, hardcorePct, sizePx) {
+  const nClamped = Math.min(1, Math.max(0, normalPct));
+  const hClamped = Math.min(1, Math.max(0, hardcorePct));
+  const nOffset = TIMER_RING_INNER_CIRCUMFERENCE * (1 - nClamped);
+  const hOffset = TIMER_RING_OUTER_CIRCUMFERENCE * (1 - hClamped);
+  const size = sizePx || 220;
   return `
-    <svg class="timer-ring" viewBox="0 0 200 200" width="${size}" height="${size}">
-      <circle class="timer-ring-bg" cx="100" cy="100" r="${TIMER_RING_RADIUS}"></circle>
-      <circle class="timer-ring-fill${clamped >= 1 ? ' complete' : ''}" id="timerRingFill"
-        cx="100" cy="100" r="${TIMER_RING_RADIUS}"
-        style="stroke-dasharray:${TIMER_RING_CIRCUMFERENCE}; stroke-dashoffset:${offset};"></circle>
+    <svg class="timer-ring" viewBox="0 0 220 220" width="${size}" height="${size}">
+      <circle class="timer-ring-bg-outer" cx="110" cy="110" r="${TIMER_RING_OUTER_RADIUS}"></circle>
+      <circle class="timer-ring-bg-inner" cx="110" cy="110" r="${TIMER_RING_INNER_RADIUS}"></circle>
+      <circle class="timer-ring-fill-hardcore${hClamped >= 1 ? ' complete' : ''}" id="timerRingHardcoreFill"
+        cx="110" cy="110" r="${TIMER_RING_OUTER_RADIUS}"
+        style="stroke-dasharray:${TIMER_RING_OUTER_CIRCUMFERENCE}; stroke-dashoffset:${hOffset};"></circle>
+      <circle class="timer-ring-fill${nClamped >= 1 ? ' complete' : ''}" id="timerRingFill"
+        cx="110" cy="110" r="${TIMER_RING_INNER_RADIUS}"
+        style="stroke-dasharray:${TIMER_RING_INNER_CIRCUMFERENCE}; stroke-dashoffset:${nOffset};"></circle>
     </svg>
   `;
 }
 
-// Met à jour l'anneau déjà présent dans le DOM (appelé à chaque tick, sans re-render complet)
+// Met à jour les deux anneaux déjà présents dans le DOM (appelé à chaque tick, sans re-render complet)
 function updateTimerRingDOM(elapsedSec) {
-  const ring = document.getElementById('timerRingFill');
-  if (!ring || !currentChallengeId) return;
+  if (!currentChallengeId) return;
   const target = getTarget();
+  const hcTarget = getHardcoreTarget(getChallenge());
   const total = getTotal();
-  const pct = target > 0 ? Math.min(1, (total + elapsedSec) / target) : 0;
-  const offset = TIMER_RING_CIRCUMFERENCE * (1 - pct);
-  ring.style.strokeDashoffset = String(offset);
-  ring.classList.toggle('complete', pct >= 1);
+  const { normalPct, hardcorePct } = computeTimerRingPct(total + elapsedSec, target, hcTarget);
+
+  const ringInner = document.getElementById('timerRingFill');
+  if (ringInner) {
+    ringInner.style.strokeDashoffset = String(TIMER_RING_INNER_CIRCUMFERENCE * (1 - normalPct));
+    ringInner.classList.toggle('complete', normalPct >= 1);
+  }
+  const ringOuter = document.getElementById('timerRingHardcoreFill');
+  if (ringOuter) {
+    ringOuter.style.strokeDashoffset = String(TIMER_RING_OUTER_CIRCUMFERENCE * (1 - hardcorePct));
+    ringOuter.classList.toggle('complete', hardcorePct >= 1);
+  }
 }
 
 function formatSecToReadable(totalSec) {
@@ -3629,12 +3550,16 @@ function renderPrepCountdownOverlay() {
 
 let lastVoiceCueSecond = null;
 
-// Annonce vocale à l'approche de l'objectif (chronos en secondes uniquement) :
-// "3... 2... 1..." puis "Défi terminé ! Bravo !" une fois l'objectif atteint.
+// Annonce vocale à l'approche de l'objectif NORMAL (chronos en secondes uniquement) :
+// "3... 2... 1..." puis "Défi terminé ! Bravo !" une fois l'objectif atteint. Ne
+// concerne que la phase normale : une fois entry.done, la phase Hardcore n'a pas
+// de décompte (cf. tickTimer/toggleTimer pour ses propres annonces).
 function announceTimerVoiceCues(elapsed) {
   if (!voiceCoachEnabled || !currentChallengeId) return;
   const c = getChallenge();
   if (!c || c.unit !== 'sec') return;
+  const entry = getEntry(currentChallengeId);
+  if (entry.done) return;
   const target = getTarget();
   if (!target) return;
   const remaining = target - (getTotal() + elapsed);
@@ -3658,39 +3583,64 @@ function startTimer() {
   render();
 }
 
-function enterFocusMode() {
-  focusMode = true;
-  if (navigator.vibrate) navigator.vibrate(10);
-  pushNavState();
-  render(true);
+// Clic sur le disque du chrono (anneau entier cliquable) : bascule Play/Pause.
+// - Pas encore d'objectif normal atteint -> décompte de préparation (3-2-1) puis démarrage.
+// - Objectif normal déjà atteint (Hardcore pas encore réussi) -> démarrage direct du
+//   Hardcore, sans décompte, juste l'annonce vocale dédiée.
+// - Hardcore déjà réussi -> plus rien à démarrer.
+function toggleTimer() {
+  if (timerRunning) {
+    stopTimer();
+    return;
+  }
+  if (!currentChallengeId) return;
+  const entry = getEntry(currentChallengeId);
+  if (entry.hardcoreDone) return;
+  if (entry.done) {
+    if (voiceCoachEnabled) speak('Mode Hardcore enclenché !');
+    startTimer();
+  } else {
+    beginPrepCountdown();
+  }
 }
 
-function exitFocusMode() {
-  history.back();
-}
-
+// À chaque tick : met à jour l'affichage, puis détecte le franchissement de
+// l'objectif normal ou Hardcore pour arrêter automatiquement le chrono (plus besoin
+// d'un bouton Stop manuel) et déclencher l'annonce vocale correspondante.
 function tickTimer() {
   const elapsed = Math.floor((Date.now() - timerStartMs) / 1000);
+  const entry = getEntry(currentChallengeId);
+  const target = getTarget();
+  const hcTarget = getHardcoreTarget(getChallenge());
+  const projected = getTotal() + elapsed;
+
   const el = document.getElementById('timerDisplay');
-  if (el) el.textContent = formatTimer(elapsed);
+  if (el) el.textContent = formatTimer(projected);
   updateTimerRingDOM(elapsed);
+
   if (elapsed > 0 && elapsed % 30 === 0 && elapsed !== lastBeepSecond) {
     lastBeepSecond = elapsed;
     playTimerBeep();
   }
+
   announceTimerVoiceCues(elapsed);
+
+  if (!entry.done && projected >= target) {
+    stopTimer(elapsed); // arrêt automatique : "Défi terminé !" déjà annoncé ci-dessus, les popups XP/trophée suivent via addSet()
+  } else if (entry.done && !entry.hardcoreDone && projected >= hcTarget) {
+    if (voiceCoachEnabled) speak('Mode Hardcore réussi ! Un vrai Titan !');
+    stopTimer(elapsed); // arrêt définitif
+  }
 }
 
-async function stopTimer() {
-  const elapsed = Math.round((Date.now() - timerStartMs) / 1000);
+// `precomputedElapsed` évite un léger écart d'arrondi quand stopTimer() est appelé
+// depuis tickTimer() (arrêt automatique) plutôt que depuis un clic manuel (pause).
+async function stopTimer(precomputedElapsed) {
+  const elapsed = precomputedElapsed !== undefined ? precomputedElapsed : Math.round((Date.now() - timerStartMs) / 1000);
   clearTimerState();
-  const wasFocus = focusMode;
   if (elapsed > 0) {
     await addSet(elapsed);
-  }
-  if (wasFocus) {
-    history.back(); // ferme le mode focus via goBackOneLevel, reste cohérent avec la pile de navigation
-  } else if (elapsed <= 0) {
+  } else {
     render();
   }
 }
@@ -3941,29 +3891,6 @@ function customAddSubmit() {
   }
 }
 
-function renderFocusScreen() {
-  const c = getChallenge();
-  const entry = getEntry(currentChallengeId);
-  const target = getTarget();
-  const total = getTotal();
-  const elapsed = timerStartMs ? Math.floor((Date.now() - timerStartMs) / 1000) : 0;
-  const pct = target > 0 ? (total + elapsed) / target : 0;
-  return `
-    <div class="focus-screen">
-      <button class="focus-exit" onclick="exitFocusMode()">✕</button>
-      <div class="focus-name">${c.name}</div>
-      <div class="timer-ring-wrap focus-ring-wrap">
-        ${renderTimerRingSVG(pct, 280)}
-        <div class="timer-ring-center">
-          <div class="focus-timer" id="timerDisplay">${formatTimer(elapsed)}</div>
-        </div>
-      </div>
-      <div class="focus-target">Objectif : ${formatTargetLabel(target, 'sec')}</div>
-      <button class="focus-stop-btn" onclick="stopTimer()">⏹ Terminer la série</button>
-    </div>
-  `;
-}
-
 function renderTally(total, target, unit) {
   // represent progress in tally groups of 5, scaled so it doesn't explode for "sec" units
   const scale = unit === 'sec' ? Math.max(1, Math.round(target / 40)) : 1;
@@ -4022,16 +3949,6 @@ function render(animate) {
 
   if (activeTab === 'account') {
     applyContent(app, renderAccountTabScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
-    return;
-  }
-
-  if (focusMode && timerRunning && currentChallengeId) {
-    applyContent(app, renderFocusScreen(), animate, () => {
-      const el = document.getElementById('timerDisplay');
-      const elapsed = Math.floor((Date.now()-timerStartMs)/1000);
-      if (el && timerRunning) el.textContent = formatTimer(elapsed);
-      updateTimerRingDOM(elapsed);
-    });
     return;
   }
 
@@ -4142,25 +4059,27 @@ function render(animate) {
 
         ${c.unit !== 'sec' ? `<div class="tally-wrap">${renderTally(total, target, c.unit)}</div>` : ''}
 
-        ${c.unit === 'sec' ? `
-          <div class="add-label">Chronométrer une série</div>
-          <div class="timer-box">
-            <div class="timer-ring-wrap">
-              ${renderTimerRingSVG(timerRunning ? (total + Math.floor((Date.now()-timerStartMs)/1000)) / target : total / target, 190)}
-              <div class="timer-ring-center">
-                <div class="timer-display${timerRunning ? ' running' : ''}" id="timerDisplay">${timerRunning ? formatTimer(Math.floor((Date.now()-timerStartMs)/1000)) : '0:00'}</div>
-                <button class="timer-play-btn${timerRunning ? ' running' : ''}" onclick="${timerRunning ? 'stopTimer()' : 'beginPrepCountdown()'}" aria-label="${timerRunning ? 'Arrêter et ajouter au compteur' : 'Démarrer le chrono'}">${timerRunning ? '⏸' : '▶'}</button>
-                ${timerRunning ? '<div class="timer-ring-label">en cours</div>' : ''}
+        ${c.unit === 'sec' ? (() => {
+          const hcT = getHardcoreTarget(c);
+          const elapsedNow = timerRunning ? Math.floor((Date.now() - timerStartMs) / 1000) : 0;
+          const projected = total + elapsedNow;
+          const { normalPct, hardcorePct } = computeTimerRingPct(projected, target, hcT);
+          return `
+            <div class="add-label">Chronométrer une série</div>
+            <div class="timer-box">
+              <div class="timer-ring-wrap${entry.hardcoreDone ? ' done' : ''}" onclick="toggleTimer()">
+                ${renderDoubleTimerRingSVG(normalPct, hardcorePct, 220)}
+                <div class="timer-ring-center">
+                  <div class="timer-display${timerRunning ? ' running' : ''}" id="timerDisplay">${formatTimer(projected)}</div>
+                  ${entry.hardcoreDone
+                    ? `<div class="timer-play-icon done">✓</div>`
+                    : `<div class="timer-play-icon${timerRunning ? ' pause' : ''}">${timerRunning ? '❚❚' : '▶'}</div>`
+                  }
+                </div>
               </div>
             </div>
-            ${timerRunning ? `<button class="focus-btn" onclick="enterFocusMode()">⛶ Mode plein écran</button>` : ''}
-            <div class="timer-hint">${timerRunning ? 'Chrono en cours… appuie sur ⏸ pour arrêter et ajouter au compteur' : 'Appuie sur ▶ pour lancer le chrono pendant ton gainage / ta série'}</div>
-          </div>
-          <div class="or-divider">ou ajoute un temps manuellement</div>
-          <div class="quick-add-grid">
-            ${quicks.map(q => `<button class="qa-btn" onclick="addSet(${q})">+${q}s</button>`).join('')}
-          </div>
-        ` : `
+          `;
+        })() : `
           <div class="add-label">Ajouter une série</div>
           <div class="quick-add-grid">
             ${quicks.map(q => `<button class="qa-btn" onclick="addSet(${q})">+${q}</button>`).join('')}
@@ -4940,7 +4859,7 @@ async function continueStartApp() {
 
 // Micro-interaction : légère vibration sur chaque tap d'élément interactif
 document.addEventListener('click', (e) => {
-  const target = e.target.closest('button, .picker-item, .manage-item, .qa-btn, .timer-play-btn');
+  const target = e.target.closest('button, .picker-item, .manage-item, .qa-btn, .timer-ring-wrap');
   if (target && navigator.vibrate) {
     navigator.vibrate(8);
   }

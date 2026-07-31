@@ -97,5 +97,4 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
   et en l'exécutant avec `node -c` (syntaxe) puis un mock minimal de
   `document`/`window`/`dbGet`/`dbSet` (voir historique du projet pour le
   pattern de test utilisé)
-- Jamais de `localStorage`/`sessionStorage` (interdit dans le contexte artifact
-  d'origine, habitude conservée) — tout passe par Firestore
+
