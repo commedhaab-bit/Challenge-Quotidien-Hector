@@ -115,8 +115,13 @@
     color: var(--accent);
   }
   .tab-btn.active .tab-icon {
-    transform: scale(1.12);
-    filter: drop-shadow(0 0 6px var(--accent-glow));
+    transform: scale(1.18);
+    filter: drop-shadow(0 0 3px var(--accent)) drop-shadow(0 0 10px var(--accent-glow)) drop-shadow(0 0 20px var(--accent-glow));
+    animation: tab-icon-halo-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes tab-icon-halo-pulse {
+    0%, 100% { filter: drop-shadow(0 0 3px var(--accent)) drop-shadow(0 0 10px var(--accent-glow)) drop-shadow(0 0 20px var(--accent-glow)); }
+    50% { filter: drop-shadow(0 0 5px var(--accent)) drop-shadow(0 0 16px var(--accent-glow)) drop-shadow(0 0 28px var(--accent-glow)); }
   }
   .tab-label {
     letter-spacing: 0.01em;
@@ -215,20 +220,21 @@
     to { transform: scale(1); opacity: 1; }
   }
 
-  /* POPUP DE SÉRIE (streak validée / bouclier activé), style Duolingo */
-  .streak-popup-overlay {
+  /* POPUP PLEIN ÉCRAN STYLE DUOLINGO — série/bouclier, fin de défi (XP/trophée),
+     level up, nouveau titre (epic) ; z-index au-dessus du confetti (998). */
+  .app-popup-overlay {
     position: fixed;
     inset: 0;
-    z-index: 960;
+    z-index: 1000;
     background: rgba(6,10,8,0.88);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: streak-fade-in 0.2s ease;
+    animation: app-popup-fade-in 0.2s ease;
   }
-  @keyframes streak-fade-in { from { opacity: 0; } to { opacity: 1; } }
-  .streak-popup-card {
+  @keyframes app-popup-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .app-popup-card {
     background: var(--bg-card);
     border: 1px solid var(--accent-dim);
     border-radius: 22px;
@@ -236,25 +242,60 @@
     text-align: center;
     max-width: 340px;
     width: 100%;
-    animation: streak-pop-in 0.4s cubic-bezier(.34,1.56,.64,1);
+    animation: app-popup-pop-in 0.4s cubic-bezier(.34,1.56,.64,1);
   }
-  @keyframes streak-pop-in {
+  @keyframes app-popup-pop-in {
     from { transform: scale(0.7); opacity: 0; }
     to { transform: scale(1); opacity: 1; }
   }
-  .streak-popup-flame {
+  /* Variante "épique" (Hardcore, nouveau titre) : bordure dorée pulsante premium */
+  .app-popup-card.epic {
+    border: 1.5px solid #ffd700;
+    box-shadow: 0 0 30px rgba(255,215,0,0.35), 0 0 70px rgba(255,215,0,0.15);
+    animation: app-popup-pop-in 0.4s cubic-bezier(.34,1.56,.64,1), app-popup-epic-glow 1.6s ease-in-out infinite;
+  }
+  @keyframes app-popup-epic-glow {
+    0%, 100% { box-shadow: 0 0 30px rgba(255,215,0,0.35), 0 0 70px rgba(255,215,0,0.15); }
+    50% { box-shadow: 0 0 44px rgba(255,215,0,0.55), 0 0 100px rgba(255,215,0,0.28); }
+  }
+  .app-popup-icon {
     font-size: 72px;
     line-height: 1;
-    animation: streak-flame-bounce 0.7s ease-in-out infinite alternate;
+    animation: app-popup-icon-bounce 0.7s ease-in-out infinite alternate;
   }
-  @keyframes streak-flame-bounce {
+  @keyframes app-popup-icon-bounce {
     from { transform: translateY(0) scale(1); }
     to { transform: translateY(-8px) scale(1.06); }
   }
-  .streak-popup-title { font-size: 21px; font-weight: 900; margin-top: 14px; }
-  .streak-popup-count { font-size: 44px; font-weight: 900; color: var(--accent); margin: 14px 0 6px; }
-  .streak-popup-sub { font-size: 14px; color: var(--chalk-dim); line-height: 1.5; margin-top: 4px; }
-  .streak-popup-btn {
+  .app-popup-title { font-size: 21px; font-weight: 900; margin-top: 14px; }
+  .app-popup-card.epic .app-popup-title { color: #ffd700; letter-spacing: 0.02em; }
+  .app-popup-big {
+    font-size: 30px;
+    font-weight: 900;
+    color: var(--accent);
+    margin: 14px 0 6px;
+    line-height: 1.2;
+  }
+  .app-popup-card.epic .app-popup-big { color: #ffd700; text-shadow: 0 0 18px rgba(255,215,0,0.5); }
+  .app-popup-sub { font-size: 14px; color: var(--chalk-dim); line-height: 1.5; margin-top: 4px; }
+  .app-popup-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 18px;
+  }
+  .popup-chip {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 800;
+  }
+  .popup-chip.xp-chip { color: var(--accent); border-color: var(--accent-dim); }
+  .popup-chip.trophy-chip { color: #ffd700; border-color: rgba(255,215,0,0.4); }
+  .app-popup-btn {
     width: 100%;
     background: var(--accent);
     color: #0a0d0b;
@@ -266,16 +307,19 @@
     cursor: pointer;
     margin-top: 22px;
   }
-  .streak-popup-btn:active { transform: scale(0.97); }
+  .app-popup-card.epic .app-popup-btn { background: #ffd700; }
+  .app-popup-btn:active { transform: scale(0.97); }
 
-  /* CARTE ATHLÈTE (niveau, titre, XP) — onglet Profil */
+  /* CARTE ATHLÈTE (niveau, titre, XP) — onglet Profil, cliquable (parcours de niveau) */
   .athlete-card {
     background: linear-gradient(135deg, rgba(57,233,122,0.10), rgba(57,233,122,0.02));
     border: 1px solid var(--accent-dim);
     border-radius: 16px;
     padding: 18px 20px;
     margin-bottom: 22px;
+    cursor: pointer;
   }
+  .athlete-card:active { transform: scale(0.98); }
   .athlete-level-row {
     display: flex;
     justify-content: space-between;
@@ -312,6 +356,65 @@
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
+
+  /* PARCOURS DE NIVEAU — page complète ouverte depuis la carte athlète */
+  .level-roadmap-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 970;
+    background: var(--bg);
+    overflow-y: auto;
+    padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+    animation: app-popup-fade-in 0.2s ease;
+  }
+  .level-roadmap-sheet {
+    max-width: 480px;
+    margin: 0 auto;
+    position: relative;
+  }
+  .level-roadmap-close {
+    position: absolute;
+    top: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    color: var(--chalk);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  .level-roadmap-close:active { transform: scale(0.94); }
+  .level-roadmap-header { padding-top: 8px; margin-bottom: 26px; }
+  .level-roadmap-level { font-size: 30px; font-weight: 900; margin-bottom: 2px; }
+  .level-roadmap-title { font-size: 15px; color: var(--accent); font-weight: 800; margin-bottom: 16px; }
+  .level-roadmap-xp-label {
+    font-size: 12px;
+    color: var(--chalk-dim);
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .roadmap-list { display: flex; flex-direction: column; gap: 8px; }
+  .roadmap-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 16px;
+    opacity: 0.5;
+  }
+  .roadmap-row.unlocked { opacity: 1; }
+  .roadmap-row.current {
+    border-color: var(--accent);
+    box-shadow: 0 0 16px var(--accent-glow);
+  }
+  .roadmap-row-icon { font-size: 18px; width: 22px; text-align: center; flex-shrink: 0; }
+  .roadmap-row.current .roadmap-row-icon { color: var(--accent); }
+  .roadmap-row-title { font-size: 14.5px; font-weight: 800; }
+  .roadmap-row-range { font-size: 12px; color: var(--chalk-dim); margin-top: 2px; }
 
   /* PARAMÈTRES (onglet Profil) */
   .settings-card {
@@ -1651,6 +1754,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: 10px;
   }
   .timer-ring-label {
     font-size: 11px;
@@ -1673,25 +1777,29 @@
     color: var(--accent);
     text-shadow: 0 0 18px var(--accent-glow);
   }
-  .timer-btn {
+  /* Contrôle play/pause circulaire, intégré au centre de l'anneau (plus de gros bouton rectangulaire sous le chrono) */
+  .timer-play-btn {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
     border: none;
-    font-weight: 800;
-    font-size: 16px;
-    padding: 14px 0;
-    border-radius: 12px;
-    cursor: pointer;
-    width: 100%;
-    transition: transform 0.08s;
-  }
-  .timer-btn:active { transform: scale(0.97); }
-  .timer-btn.start {
     background: var(--accent);
     color: #0a0d0b;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding-left: 4px; /* recentre visuellement le triangle ▶ */
     box-shadow: 0 4px 20px var(--accent-glow);
+    transition: transform 0.08s;
   }
-  .timer-btn.stop {
+  .timer-play-btn:active { transform: scale(0.9); }
+  .timer-play-btn.running {
     background: var(--danger);
     color: #fff8f0;
+    padding-left: 0;
+    box-shadow: 0 4px 20px rgba(239,83,80,0.35);
   }
   .timer-hint {
     font-size: 12px;
@@ -2687,8 +2795,8 @@ async function evaluateStreakOnLoad() {
   await saveStreakData();
 
   if (shieldTriggered) {
-    enqueueStreakPopup({
-      flame: '🛡️',
+    enqueuePopup({
+      icon: '🛡️',
       title: 'Bouclier activé !',
       subtitle: "Ton bouclier de pause t'a sauvé la série ! 🛡️ Pense à réaliser ton défi aujourd'hui.",
     });
@@ -2702,8 +2810,8 @@ async function registerDailyStreak() {
   lastCompletedDate = todayKey;
   await saveStreakData();
   setTimeout(() => {
-    enqueueStreakPopup({
-      flame: '🔥',
+    enqueuePopup({
+      icon: '🔥',
       title: '+1 Jour de série !',
       big: streakCount,
       subtitle: `${streakCount} jour${streakCount > 1 ? 's' : ''} d'affilée ! Continue comme ça 💪`,
@@ -2715,39 +2823,89 @@ function computeStreak() {
   return streakCount;
 }
 
-// Popup plein écran style Duolingo (flamme / bouclier). Ajouté directement au DOM,
-// comme showToast()/fireConfetti(), pour rester indépendant du cycle render().
-let streakPopupQueue = [];
-let streakPopupOpen = false; // état suivi explicitement (pas de fiabilité à attendre d'un getElementById sur un id qui vient d'être retiré du DOM selon les moteurs)
-let currentStreakPopupHtml = ''; // dernier contenu affiché (introspection/tests)
-
-function enqueueStreakPopup(opts) {
-  streakPopupQueue.push(opts);
-  if (!streakPopupOpen) drainStreakPopupQueue();
+// Explique la série + le bouclier au clic sur la pastille de l'accueil (modal
+// style Duolingo, comme les autres popups de l'app).
+function showStreakInfoModal() {
+  enqueuePopup({
+    icon: '🔥',
+    title: `Série de ${streakCount} jour${streakCount > 1 ? 's' : ''} !`,
+    big: streakCount,
+    subtitle: hasShield
+      ? "Félicitations, tu maintiens ta série ! 🛡️ Il te reste ton bouclier hebdomadaire pour geler une journée si tu manques un défi."
+      : "Félicitations, tu maintiens ta série ! Ton bouclier hebdomadaire est déjà utilisé cette semaine — il se recharge automatiquement lundi prochain.",
+  });
 }
 
-function drainStreakPopupQueue() {
-  const next = streakPopupQueue.shift();
-  if (!next) { streakPopupOpen = false; currentStreakPopupHtml = ''; return; }
-  streakPopupOpen = true;
-  const el = document.createElement('div');
-  el.id = 'streakPopup';
-  el.className = 'streak-popup-overlay';
-  el.innerHTML = `
-    <div class="streak-popup-card">
-      <div class="streak-popup-flame">${next.flame}</div>
-      <div class="streak-popup-title">${next.title}</div>
-      ${next.big !== undefined ? `<div class="streak-popup-count">${next.big}</div>` : ''}
-      <div class="streak-popup-sub">${next.subtitle}</div>
-      <button class="streak-popup-btn" id="streakPopupCloseBtn">Continuer</button>
+// ==== POPUPS PLEIN ÉCRAN STYLE DUOLINGO ====
+// Un seul moteur de popup pour tous les évènements de gamification (série, bouclier,
+// fin de défi/Hardcore avec cartes XP/trophée, level up, nouveau titre) : ajouté
+// directement au DOM, comme showToast()/fireConfetti(), indépendant du cycle render().
+let popupQueue = [];
+let popupOpen = false; // état suivi explicitement (pas de fiabilité à attendre d'un getElementById sur un id qui vient d'être retiré du DOM selon les moteurs)
+let currentPopupHtml = ''; // dernier contenu affiché (introspection/tests)
+
+function enqueuePopup(opts) {
+  popupQueue.push(opts);
+  if (!popupOpen) drainPopupQueue();
+}
+
+function buildPopupInnerHtml(next) {
+  const chips = [];
+  if (next.xp) chips.push(`<div class="popup-chip xp-chip">⚡ +${next.xp} XP</div>`);
+  if (next.trophy) chips.push(`<div class="popup-chip trophy-chip">${next.trophy.icon} ${next.trophy.label}</div>`);
+  return `
+    <div class="app-popup-card${next.epic ? ' epic' : ''}">
+      <div class="app-popup-icon">${next.icon}</div>
+      <div class="app-popup-title">${next.title}</div>
+      ${next.big !== undefined ? `<div class="app-popup-big">${next.big}</div>` : ''}
+      ${next.subtitle ? `<div class="app-popup-sub">${next.subtitle}</div>` : ''}
+      ${chips.length ? `<div class="app-popup-chips">${chips.join('')}</div>` : ''}
+      <button class="app-popup-btn" id="appPopupCloseBtn">${next.btnLabel || 'Continuer'}</button>
     </div>
   `;
-  currentStreakPopupHtml = el.innerHTML;
+}
+
+function drainPopupQueue() {
+  const next = popupQueue.shift();
+  if (!next) { popupOpen = false; currentPopupHtml = ''; return; }
+  popupOpen = true;
+  if (next.variant === 'title') fireConfetti('title');
+  const el = document.createElement('div');
+  el.id = 'appPopup';
+  el.className = 'app-popup-overlay';
+  el.innerHTML = buildPopupInnerHtml(next);
+  currentPopupHtml = el.innerHTML;
   document.body.appendChild(el);
-  document.getElementById('streakPopupCloseBtn').onclick = () => {
+  document.getElementById('appPopupCloseBtn').onclick = () => {
     el.remove();
-    drainStreakPopupQueue();
+    drainPopupQueue();
   };
+}
+
+// Détecte un changement de niveau (et, le cas échéant, de titre) entre deux mesures
+// d'XP et enfile la popup adaptée (level up simple, ou popup "titre" plus épique).
+function enqueueLevelPopups(levelBefore, levelAfter) {
+  if (levelAfter <= levelBefore) return;
+  const titleBefore = athleteTitle(levelBefore);
+  const titleAfter = athleteTitle(levelAfter);
+  if (titleAfter !== titleBefore) {
+    enqueuePopup({
+      variant: 'title',
+      epic: true,
+      icon: '👑',
+      title: 'NOUVEAU TITRE DÉBLOQUÉ',
+      big: titleAfter,
+      subtitle: `Tu es maintenant ${titleAfter} ! Niveau ${levelAfter}.`,
+    });
+  } else {
+    enqueuePopup({
+      variant: 'levelup',
+      icon: '⭐',
+      title: 'Niveau supérieur !',
+      big: 'Niveau ' + levelAfter,
+      subtitle: athleteTitle(levelAfter),
+    });
+  }
 }
 
 // ==== XP, NIVEAUX & TITRES D'ATHLÈTE ====
@@ -2761,14 +2919,26 @@ async function saveXp() {
   try { await dbSet('xpTotal', String(xpTotal)); }
   catch (e) { console.error('save xpTotal failed', e); }
 }
+// Ne déclenche aucune popup elle-même : renvoie juste les niveaux avant/après pour
+// laisser l'appelant décider de l'ordre d'affichage (ex: popup de complétion d'abord,
+// puis éventuellement level up / nouveau titre).
 async function awardXp(amount) {
+  const levelBefore = computeLevel(xpTotal);
   xpTotal += amount;
   await saveXp();
+  const levelAfter = computeLevel(xpTotal);
+  return { levelBefore, levelAfter };
 }
 
-// Courbe progressive : niveau 1 = 0 XP, niveau 2 = 100 XP, niveau 3 = 250 XP, ...
+// Courbe exponentielle (somme géométrique) : chaque niveau demande ~8.5% de XP en
+// plus que le précédent. Avec une moyenne d'environ 100 XP par défi complété, le
+// dernier titre (Légende Immortelle, niveau 48+) demande ~63 000 XP, soit environ
+// 600 défis au total — la progression doit rester gratifiante sur des mois d'usage.
+const XP_LEVEL_BASE = 100;   // XP pour passer du niveau 1 au niveau 2
+const XP_LEVEL_GROWTH = 1.085;
 function xpForLevel(n) {
-  return 25 * (n - 1) * (n + 2);
+  if (n <= 1) return 0;
+  return Math.round(XP_LEVEL_BASE * (Math.pow(XP_LEVEL_GROWTH, n - 1) - 1) / (XP_LEVEL_GROWTH - 1));
 }
 function computeLevel(xp) {
   let level = 1;
@@ -2781,12 +2951,23 @@ function xpProgress(xp) {
   const nextThreshold = xpForLevel(level + 1);
   return { level, xpIntoLevel: xp - currentThreshold, xpNeeded: nextThreshold - currentThreshold };
 }
+
+// Titres d'athlète, du niveau 1 au niveau max — source unique utilisée pour le
+// titre courant (athleteTitle) ET pour la carte "Parcours de niveau" (roadmap).
+const ATHLETE_TITLE_TIERS = [
+  { title: 'Recrue 🥉', maxLevel: 5 },
+  { title: 'Initié 🎖️', maxLevel: 10 },
+  { title: 'Motivé 🥈', maxLevel: 15 },
+  { title: 'Régulier 📅', maxLevel: 20 },
+  { title: 'Athlète 🥇', maxLevel: 26 },
+  { title: 'Guerrier ⚔️', maxLevel: 32 },
+  { title: 'Expert ⚡', maxLevel: 38 },
+  { title: 'Titan 🏆', maxLevel: 43 },
+  { title: 'Demi-Dieu 🌌', maxLevel: 47 },
+  { title: 'Légende Immortelle 👑', maxLevel: Infinity },
+];
 function athleteTitle(level) {
-  if (level <= 3) return 'Débutant 🥉';
-  if (level <= 7) return 'Motivé 🥈';
-  if (level <= 12) return 'Guerrier 🥇';
-  if (level <= 19) return 'Titan ⚡';
-  return 'Légende 🏆';
+  return ATHLETE_TITLE_TIERS.find(t => level <= t.maxLevel).title;
 }
 // 50 XP de base + bonus selon le volume (reps/sec) et, pour les haltères, la charge.
 function xpForChallenge(c, total) {
@@ -2958,6 +3139,8 @@ function showToast(html, duration = 2600) {
 function fireConfetti(variant) {
   const colors = variant === 'hardcore'
     ? ['#ff6b35', '#ef5350', '#ffb347', '#ff9d5c', '#eef2ef']
+    : variant === 'title'
+    ? ['#ffd700', '#fff2b0', '#39e97a', '#eaffef', '#ffb347']
     : ['#39e97a', '#5fbf7a', '#eaffef', '#1f6b3e', '#eef2ef'];
   const canvas = document.createElement('canvas');
   canvas.className = 'confetti-canvas';
@@ -3640,21 +3823,23 @@ async function addSet(amount) {
     const freshBadges = checkNewBadges();
     await saveBadges();
 
-    const xpGained = xpForChallenge(getChallenge(), total);
-    await awardXp(xpGained);
+    const completedChallenge = getChallenge();
+    const xpGained = xpForChallenge(completedChallenge, total);
+    const { levelBefore, levelAfter } = await awardXp(xpGained);
     if (isFirstCompletionOfDay) await registerDailyStreak();
 
     if (navigator.vibrate) navigator.vibrate([45, 35, 45, 35, 90]);
     fireConfetti();
     playSuccessSound();
 
-    showToast(`+${xpGained} XP ! ⚡`, 1400);
-    if (freshBadges.length > 0) {
-      const b = freshBadges[0];
-      setTimeout(() => showToast(`${b.icon} Trophée débloqué — ${b.label}`, 3200), 1500);
-    } else {
-      setTimeout(() => showToast(`✓ Défi complété${newRecord ? ' — nouveau record ! 🏆' : ' !'}`), 1500);
-    }
+    enqueuePopup({
+      icon: newRecord ? '🏆' : '✅',
+      title: newRecord ? 'Nouveau record !' : 'Défi complété !',
+      subtitle: `${completedChallenge.name} — ${total} ${completedChallenge.unit === 'sec' ? 'sec' : 'reps'}`,
+      xp: xpGained,
+      trophy: freshBadges[0] || null,
+    });
+    enqueueLevelPopups(levelBefore, levelAfter);
 
     // Progression automatique : 3 records consécutifs -> proposer d'augmenter l'objectif par défaut
     if (s.recordStreak >= 3) {
@@ -3691,22 +3876,21 @@ async function addSet(amount) {
     badges.totalHardcore += 1;
     const freshHardcoreBadges = checkNewBadges();
     await saveBadges();
-    await awardXp(HARDCORE_XP_BONUS);
+    const { levelBefore: hcLevelBefore, levelAfter: hcLevelAfter } = await awardXp(HARDCORE_XP_BONUS);
 
     if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 60, 40, 140]);
     fireConfetti('hardcore');
     playSuccessSound();
 
-    const hcDelay = willComplete ? 2900 : 400;
-    setTimeout(() => showToast(`+${HARDCORE_XP_BONUS} XP Hardcore ! ⚡`, 1400), hcDelay);
-    setTimeout(() => {
-      if (freshHardcoreBadges.length > 0) {
-        const b = freshHardcoreBadges[0];
-        showToast(`${b.icon} Trophée débloqué — ${b.label}`, 3200);
-      } else {
-        showToast('🔥 MODE HARDCORE complété !', 3000);
-      }
-    }, hcDelay + 1500);
+    enqueuePopup({
+      epic: true,
+      icon: '🔥',
+      title: 'MODE HARDCORE complété !',
+      subtitle: `${cForHardcore.name} — ${Math.min(total, hcTarget)} / ${hcTarget} ${cForHardcore.unit === 'sec' ? 'sec' : 'reps'}`,
+      xp: HARDCORE_XP_BONUS,
+      trophy: freshHardcoreBadges[0] || null,
+    });
+    enqueueLevelPopups(hcLevelBefore, hcLevelAfter);
   }
 
   await saveState();
@@ -3857,7 +4041,7 @@ function render(animate) {
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
-        <button class="streak" onclick="switchTab('history')">🔥 ${computeStreak()} j${hasShield ? ' 🛡️' : ''}</button>
+        <button class="streak" onclick="showStreakInfoModal()">🔥 ${computeStreak()} j${hasShield ? ' 🛡️' : ''}</button>
       </div>
       <h1 class="title">Défi du jour</h1>
     `;
@@ -3956,7 +4140,7 @@ function render(animate) {
           `;
         })()}
 
-        <div class="tally-wrap">${renderTally(total, target, c.unit)}</div>
+        ${c.unit !== 'sec' ? `<div class="tally-wrap">${renderTally(total, target, c.unit)}</div>` : ''}
 
         ${c.unit === 'sec' ? `
           <div class="add-label">Chronométrer une série</div>
@@ -3965,15 +4149,12 @@ function render(animate) {
               ${renderTimerRingSVG(timerRunning ? (total + Math.floor((Date.now()-timerStartMs)/1000)) / target : total / target, 190)}
               <div class="timer-ring-center">
                 <div class="timer-display${timerRunning ? ' running' : ''}" id="timerDisplay">${timerRunning ? formatTimer(Math.floor((Date.now()-timerStartMs)/1000)) : '0:00'}</div>
+                <button class="timer-play-btn${timerRunning ? ' running' : ''}" onclick="${timerRunning ? 'stopTimer()' : 'beginPrepCountdown()'}" aria-label="${timerRunning ? 'Arrêter et ajouter au compteur' : 'Démarrer le chrono'}">${timerRunning ? '⏸' : '▶'}</button>
                 ${timerRunning ? '<div class="timer-ring-label">en cours</div>' : ''}
               </div>
             </div>
-            ${timerRunning
-              ? `<button class="timer-btn stop" onclick="stopTimer()">⏹ Stop — ajouter au compteur</button>
-                 <button class="focus-btn" onclick="enterFocusMode()">⛶ Mode plein écran</button>`
-              : `<button class="timer-btn start" onclick="beginPrepCountdown()">▶ Démarrer le chrono</button>`
-            }
-            <div class="timer-hint">${timerRunning ? 'Chrono en cours… reste sur cette page' : 'Lance le chrono pendant ton gainage / ta série'}</div>
+            ${timerRunning ? `<button class="focus-btn" onclick="enterFocusMode()">⛶ Mode plein écran</button>` : ''}
+            <div class="timer-hint">${timerRunning ? 'Chrono en cours… appuie sur ⏸ pour arrêter et ajouter au compteur' : 'Appuie sur ▶ pour lancer le chrono pendant ton gainage / ta série'}</div>
           </div>
           <div class="or-divider">ou ajoute un temps manuellement</div>
           <div class="quick-add-grid">
@@ -4214,10 +4395,9 @@ function renderChallengeCard(c, mode) {
   const resolved = resolveChallenge(c);
   const isActive = activeToday.has(c.id);
   const weightKg = weights[c.id] ?? computeStandardWeight(c, userProfile) ?? 8;
-  // Bibliothèque : poids affiché en ligne, à côté des reps. Accueil : en dessous,
-  // sur sa propre ligne (demande explicite : pas "à côté" sur les cartes du jour).
-  const weightInline = (mode === 'library' && c.cat === 'Haltères') ? ` · 🏋️ ${weightKg}kg` : '';
-  const weightBelow = (mode === 'today' && c.cat === 'Haltères') ? `<div class="goal-weight">🏋️ ${weightKg}kg</div>` : '';
+  // Poids affiché sous les reps, sur sa propre ligne, identique sur Défis et Aujourd'hui
+  // (jamais "à côté" des reps).
+  const weightBelow = c.cat === 'Haltères' ? `<div class="goal-weight">🏋️ ${weightKg}kg</div>` : '';
 
   let rightHtml;
   if (mode === 'library') {
@@ -4249,7 +4429,7 @@ function renderChallengeCard(c, mode) {
         <span class="name">${c.name}</span>
       </div>
       <div class="goal">
-        ${resolved.unit === 'sec' ? formatTargetLabel(resolved.target, resolved.unit) : resolved.target + ' reps'}${weightInline}
+        ${resolved.unit === 'sec' ? formatTargetLabel(resolved.target, resolved.unit) : resolved.target + ' reps'}
         ${weightBelow}
         ${rightHtml}
       </div>
@@ -4465,16 +4645,70 @@ function renderAthleteCard() {
   const title = athleteTitle(level);
   const pct = xpNeeded > 0 ? Math.min(100, Math.round((xpIntoLevel / xpNeeded) * 100)) : 100;
   return `
-    <div class="athlete-card">
+    <div class="athlete-card" onclick="openLevelRoadmap()">
       <div class="athlete-level-row">
         <div class="athlete-level">Niveau ${level}</div>
         <div class="athlete-streak">🔥 ${streakCount} j${hasShield ? ' 🛡️' : ''}</div>
       </div>
       <div class="athlete-title">${title}</div>
       <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
-      <div class="athlete-xp-label">${xpIntoLevel} / ${xpNeeded} XP</div>
+      <div class="athlete-xp-label">${xpIntoLevel} / ${xpNeeded} XP · appuie pour voir ta progression</div>
     </div>
   `;
+}
+
+// ==== "PARCOURS DE NIVEAU" (page détaillant toute la progression XP/titres) ====
+let levelRoadmapOpen = false;
+
+function renderLevelRoadmapSheet() {
+  const { level, xpIntoLevel, xpNeeded } = xpProgress(xpTotal);
+  const pct = xpNeeded > 0 ? Math.min(100, Math.round((xpIntoLevel / xpNeeded) * 100)) : 100;
+  let prevMax = 0;
+  const rows = ATHLETE_TITLE_TIERS.map(t => {
+    const minLevel = prevMax + 1;
+    const rangeLabel = t.maxLevel === Infinity ? `Niveau ${minLevel}+` : `Niveaux ${minLevel}–${t.maxLevel}`;
+    const unlocked = level >= minLevel;
+    const current = level >= minLevel && level <= t.maxLevel;
+    prevMax = t.maxLevel;
+    return `
+      <div class="roadmap-row${unlocked ? ' unlocked' : ''}${current ? ' current' : ''}">
+        <div class="roadmap-row-icon">${current ? '▶' : unlocked ? '✓' : '🔒'}</div>
+        <div class="roadmap-row-text">
+          <div class="roadmap-row-title">${t.title}</div>
+          <div class="roadmap-row-range">${rangeLabel}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  return `
+    <div class="level-roadmap-sheet">
+      <button class="level-roadmap-close" onclick="closeLevelRoadmap()">✕</button>
+      <div class="level-roadmap-header">
+        <div class="level-roadmap-level">Niveau ${level}</div>
+        <div class="level-roadmap-title">${athleteTitle(level)}</div>
+        <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
+        <div class="level-roadmap-xp-label">${xpIntoLevel} / ${xpNeeded} XP jusqu'au niveau ${level + 1}</div>
+      </div>
+      <div class="section-label">Parcours des titres d'athlète</div>
+      <div class="roadmap-list">${rows}</div>
+    </div>
+  `;
+}
+
+function openLevelRoadmap() {
+  closeLevelRoadmap();
+  const el = document.createElement('div');
+  el.id = 'levelRoadmapOverlay';
+  el.className = 'level-roadmap-overlay';
+  el.innerHTML = renderLevelRoadmapSheet();
+  document.body.appendChild(el);
+  levelRoadmapOpen = true;
+}
+
+function closeLevelRoadmap() {
+  const el = document.getElementById('levelRoadmapOverlay');
+  if (el) el.remove();
+  levelRoadmapOpen = false;
 }
 
 function renderSettingsSection() {
@@ -4516,9 +4750,9 @@ function renderAccountTabScreen() {
     <h1 class="title">Profil</h1>
     <div class="subtitle">Tes infos et la gestion de ton compte</div>
     ${renderAthleteCard()}
+    ${renderTrophiesGrid()}
     ${renderAccountSection()}
     ${renderSettingsSection()}
-    ${renderTrophiesGrid()}
   `;
 }
 
@@ -4706,7 +4940,7 @@ async function continueStartApp() {
 
 // Micro-interaction : légère vibration sur chaque tap d'élément interactif
 document.addEventListener('click', (e) => {
-  const target = e.target.closest('button, .picker-item, .manage-item, .qa-btn, .timer-btn');
+  const target = e.target.closest('button, .picker-item, .manage-item, .qa-btn, .timer-play-btn');
   if (target && navigator.vibrate) {
     navigator.vibrate(8);
   }
