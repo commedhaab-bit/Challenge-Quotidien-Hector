@@ -128,11 +128,10 @@
     letter-spacing: 0.01em;
   }
 
-  /* MINI TOUR GUIDÉ (première connexion) — arrière-plan assombri + flou pour détacher
-     nettement la bulle de formation du reste de l'app (immersif, premier plan net). */
-  /* Overlay ultra-léger par défaut (étapes d'explication des onglets) : l'utilisateur
-     doit continuer à voir clairement l'interface derrière la bulle. Seule la toute
-     1ère carte (introduction, .intro) assombrit/floute pour annoncer le tutoriel. */
+  /* MINI TOUR GUIDÉ (première connexion) — overlay ultra-léger par défaut (étapes
+     d'explication des onglets) : l'utilisateur doit continuer à voir clairement
+     l'interface derrière la bulle. Seule la toute 1ère carte (bienvenue, .intro)
+     assombrit/floute l'arrière-plan pour annoncer le tutoriel. */
   .tour-overlay {
     position: fixed;
     inset: 0;
@@ -146,9 +145,12 @@
   }
   .tour-overlay.intro {
     background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
+  /* Sans flou d'arrière-plan (étapes 2+), un relief marqué (triple ombre + fine
+     bordure lumineuse) + une animation d'entrée en "pop" suffisent à signaler
+     clairement que la bulle flotte au-dessus de l'interface. */
   .tour-bubble {
     pointer-events: auto;
     width: 100%;
@@ -157,7 +159,12 @@
     border: 1.5px solid var(--accent);
     border-radius: 16px;
     padding: 16px 18px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35), 0 20px 45px rgba(0,0,0,0.55), 0 0 0 1px rgba(57,233,122,0.15);
+    animation: tour-bubble-pop-in 0.3s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes tour-bubble-pop-in {
+    from { transform: translateY(14px) scale(0.94); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
   }
   .tour-bubble-title {
     font-size: 15px;
@@ -948,6 +955,15 @@
     font-variant-numeric: tabular-nums;
     scroll-snap-align: center;
     scroll-snap-stop: always; /* empeche un flick rapide de sauter plusieurs valeurs sans s'arreter */
+    transition: color 0.1s, font-size 0.1s;
+  }
+  /* Valeur active (centrée dans le cadre de sélection) : gras, plus grande, vert
+     néon — pour trancher nettement avec les valeurs adjacentes (grises, discrètes). */
+  .wheel-picker-item.active {
+    font-weight: 900;
+    font-size: 24px;
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--accent-glow);
   }
   /* Cadre de sélection : rectangle complet (pas juste des filets haut/bas) pour
      identifier immédiatement la valeur active du rouleau. */
@@ -1680,30 +1696,37 @@
     border-radius: 10px;
     margin-bottom: 20px;
   }
-  .hardcore-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    margin-bottom: 8px;
-  }
-  .hardcore-label {
+  /* Objectif normal une fois terminé : mention discrète et secondaire (le Hardcore
+     devient le compteur principal juste en dessous, cf. .hardcore-primary). */
+  .normal-objective-recap {
     font-size: 13px;
+    font-weight: 600;
+    color: var(--chalk-dim);
+    opacity: 0.75;
+    margin-bottom: 14px;
+  }
+  .hardcore-tag {
+    font-size: 11px;
     font-weight: 800;
     color: #ff6b35;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
+    margin-bottom: 2px;
   }
-  .hardcore-nums {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--chalk-dim);
-    text-transform: none;
-    letter-spacing: 0;
-    margin-left: 8px;
+  /* Compteur Hardcore devenu principal : même mise en page que .progress-row, mais
+     en couleur/lueur Hardcore et legerement plus grand pour bien marquer que
+     l'effort en cours concerne desormais cet objectif. */
+  .progress-row.hardcore-primary .progress-current {
+    font-size: 46px;
+    color: #ff6b35;
+    text-shadow: 0 0 16px rgba(255, 107, 53, 0.5);
   }
-  .hardcore-pct {
-    font-size: 13px;
-    font-weight: 700;
+  .progress-row.hardcore-primary .progress-target,
+  .progress-row.hardcore-primary .progress-unit,
+  .progress-row.hardcore-primary .progress-readable-inline {
+    color: #ffb38a;
+  }
+  .progress-row.hardcore-primary .progress-pct {
     color: #ff6b35;
   }
   .hardcore-track {
@@ -2272,8 +2295,12 @@ let onboardingTransitionPhase = null;
 // Firestore (pas de localStorage/sessionStorage dans cette app, cf. CLAUDE.md).
 let guidedTourStep = null;
 let hasSeenTour = false;
+// Étape 0 = carte de bienvenue neutre (fond assombri/flouté, cf. isIntro dans
+// renderGuidedTourOverlay) ; étapes suivantes = présentation des onglets, sur un
+// overlay léger/transparent pour laisser l'interface bien visible en arrière-plan.
 const GUIDED_TOUR_STEPS = [
-  { tab: 'today', emoji: "🏋️‍♂️", title: "Bienvenue ! Voici comment fonctionne l'application", text: "Retrouve ici les défis que tu as activés pour la journée, et suis ta progression en direct." },
+  { tab: 'today', emoji: '👋', title: 'Bienvenue dans Défi du Jour !', text: "Faisons un rapide tour du propriétaire pour découvrir comment fonctionne l'application." },
+  { tab: 'today', emoji: "🏋️‍♂️", title: "Aujourd'hui", text: "Retrouve ici les défis que tu as activés pour la journée, et suis ta progression en direct." },
   { tab: 'library', emoji: '🎯', title: 'Défis', text: "Commence par cet onglet : active un ou plusieurs défis pour aujourd'hui en appuyant sur leur carte." },
   { tab: 'history', emoji: '📓', title: 'Journal', text: "Une fois activé dans Défis, retrouve ton défi dans l'onglet Aujourd'hui pour le commencer. Ici : calendrier, activité récente et historique détaillé." },
   { tab: 'account', emoji: '👤', title: 'Profil', text: "Tes infos, ton profil sportif et tous les trophées que tu débloques au fil du temps." },
@@ -2307,7 +2334,14 @@ function guidedTourNext() {
     return;
   }
   guidedTourStep = next;
-  switchTab(GUIDED_TOUR_STEPS[next].tab); // switchTab() se charge déjà de re-rendre
+  const nextTab = GUIDED_TOUR_STEPS[next].tab;
+  if (nextTab === activeTab) {
+    // même onglet que l'étape précédente (ex: bienvenue -> Aujourd'hui) : switchTab()
+    // ne re-rendrait pas dans ce cas (son garde-fou `if (tab === activeTab) return;`)
+    render(true);
+  } else {
+    switchTab(nextTab); // switchTab() se charge déjà de re-rendre
+  }
 }
 
 async function endGuidedTour() {
@@ -2420,22 +2454,43 @@ function renderWheelPicker(id, min, max, step, suffix) {
   `;
 }
 
-function getWheelPickerValue(id) {
+// Index (borné) de l'item actuellement centré, déduit du seul scrollTop — logique
+// pure, réutilisée par la lecture de valeur ET par la mise en valeur visuelle.
+function computeWheelPickerActiveIndex(id) {
   const el = document.getElementById(id);
-  if (!el) return NaN;
+  if (!el) return -1;
   const itemHeight = parseInt(el.dataset.itemHeight, 10);
   const min = parseInt(el.dataset.min, 10);
   const max = parseInt(el.dataset.max, 10);
   const step = parseInt(el.dataset.step, 10);
   const maxIndex = Math.round((max - min) / step);
-  let index = Math.round(el.scrollTop / itemHeight);
-  index = Math.max(0, Math.min(maxIndex, index)); // tolère un léger rebond élastique (overscroll iOS)
+  const rawIndex = Math.round(el.scrollTop / itemHeight);
+  return Math.max(0, Math.min(maxIndex, rawIndex)); // tolère un léger rebond élastique (overscroll iOS)
+}
+
+function getWheelPickerValue(id) {
+  const el = document.getElementById(id);
+  if (!el) return NaN;
+  const min = parseInt(el.dataset.min, 10);
+  const step = parseInt(el.dataset.step, 10);
+  const index = computeWheelPickerActiveIndex(id);
   return min + index * step;
 }
 
+// Met en valeur (gras, plus grand, vert néon) le chiffre actuellement centré dans
+// le cadre de sélection, en ne touchant QUE la classe de l'item concerné (jamais
+// l'innerHTML du picker, ce qui réinitialiserait le scroll en cours).
+function updateWheelPickerActiveItem(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const index = computeWheelPickerActiveIndex(id);
+  const items = el.querySelectorAll('.wheel-picker-item');
+  items.forEach((item, i) => item.classList.toggle('active', i === index));
+}
+
 // Retour haptique discret à chaque cran franchi pendant la rotation du rouleau.
-// Ne lit QUE le scrollTop (aucune manipulation du DOM/re-render du picker) pour ne
-// jamais interférer avec le scroll natif en cours (cause du "re-render chaotique").
+// Ne lit QUE le scrollTop (aucune manipulation de l'innerHTML/re-render du picker)
+// pour ne jamais interférer avec le scroll natif en cours.
 const wheelPickerLastValue = {};
 function onWheelPickerScroll(id) {
   const value = getWheelPickerValue(id);
@@ -2443,6 +2498,7 @@ function onWheelPickerScroll(id) {
     wheelPickerLastValue[id] = value;
     if (navigator.vibrate) navigator.vibrate(10);
   }
+  updateWheelPickerActiveItem(id);
 }
 
 function setWheelPickerValue(id, value) {
@@ -2453,6 +2509,7 @@ function setWheelPickerValue(id, value) {
   const step = parseInt(el.dataset.step, 10);
   const index = Math.round((value - min) / step);
   el.scrollTop = index * itemHeight;
+  updateWheelPickerActiveItem(id);
 }
 
 // Positionne les rouleaux visibles sur l'étape courante à leur valeur actuelle
@@ -4263,19 +4320,23 @@ function render(animate) {
           <div class="stat-chip">Σ ${(stats[c.id] ? stats[c.id].lifetimeTotal : 0).toLocaleString('fr-FR')} à vie</div>
         </div>
 
-        <div class="progress-row">
-          <div class="progress-numbers">
-            <span class="progress-current">${total}</span><span class="progress-target"> / ${target}</span>
-            <span class="progress-unit"> ${c.unit === 'sec' ? 'SEC' : 'reps'}</span>
-            ${c.unit === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(target)})</span>` : ''}
-            <button class="target-edit" onclick="editTarget()">modifier</button>
+        ${!entry.done ? `
+          <div class="progress-row">
+            <div class="progress-numbers">
+              <span class="progress-current">${total}</span><span class="progress-target"> / ${target}</span>
+              <span class="progress-unit"> ${c.unit === 'sec' ? 'SEC' : 'reps'}</span>
+              ${c.unit === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(target)})</span>` : ''}
+              <button class="target-edit" onclick="editTarget()">modifier</button>
+            </div>
+            <div class="progress-pct">${pct}%</div>
           </div>
-          <div class="progress-pct">${pct}%</div>
-        </div>
 
-        <div class="bar-track">
-          <div class="bar-fill${entry.done ? ' complete' : ''}" style="width:${pct}%"></div>
-        </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%"></div>
+          </div>
+        ` : `
+          <div class="normal-objective-recap">✓ Objectif normal : ${formatTargetLabel(target, c.unit)} — terminé</div>
+        `}
 
         ${(() => {
           const hcTarget = getHardcoreTarget(c);
@@ -4287,13 +4348,19 @@ function render(animate) {
               <div class="hardcore-locked">🔒 Mode Hardcore débloqué à ${target} ${unitLabel} — objectif ${hcTarget} ${unitLabel}</div>
             `;
           }
+          // Une fois l'objectif normal atteint, l'effort en cours concerne le Hardcore :
+          // ce compteur devient le principal (grand, couleur Hardcore), l'objectif
+          // normal ci-dessus repasse au second plan (petite mention discrète).
+          const hcCurrent = Math.min(total, hcTarget);
           return `
-            <div class="hardcore-row">
-              <div class="hardcore-label">
-                🔥 Hardcore
-                <span class="hardcore-nums">${Math.min(total, hcTarget)} / ${hcTarget} ${unitLabel}</span>
+            <div class="hardcore-tag">🔥 Mode Hardcore</div>
+            <div class="progress-row hardcore-primary">
+              <div class="progress-numbers">
+                <span class="progress-current">${hcCurrent}</span><span class="progress-target"> / ${hcTarget}</span>
+                <span class="progress-unit"> ${unitLabel === 'sec' ? 'SEC' : 'reps'}</span>
+                ${unitLabel === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(hcTarget)})</span>` : ''}
               </div>
-              <div class="hardcore-pct">${hcPct}%</div>
+              <div class="progress-pct">${hcPct}%</div>
             </div>
             <div class="bar-track hardcore-track">
               <div class="bar-fill hardcore-fill${entry.hardcoreDone ? ' complete' : ''}" style="width:${hcPct}%"></div>
