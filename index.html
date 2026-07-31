@@ -827,6 +827,58 @@
     line-height: 1.2;
   }
 
+  /* AUJOURD'HUI — teaser "prochains trophées à portée de main" (remplace la carte
+     statique vide) : 2-3 trophées verrouillés les plus proches d'être débloqués,
+     avec mini barre de progression (même langage visuel que .popup-progress-*). */
+  .next-trophies-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .next-trophy-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .next-trophy-card:active { transform: scale(0.98); }
+  .next-trophy-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+    filter: grayscale(1) opacity(0.55);
+  }
+  .next-trophy-body { flex: 1; min-width: 0; }
+  .next-trophy-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--chalk);
+    margin-bottom: 6px;
+  }
+  .next-trophy-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--track-bg);
+    border: 1px solid var(--line);
+  }
+  .next-trophy-fill {
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    box-shadow: 0 0 6px var(--accent-glow);
+  }
+  .next-trophy-pct {
+    font-size: 10.5px;
+    color: var(--chalk-dim);
+    font-weight: 700;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
   /* DÉFIS (ex-Bibliothèque) — en-tête + bouton compact d'ajout */
   .library-header-row {
     display: flex;
@@ -1124,7 +1176,7 @@
     cursor: not-allowed;
   }
 
-  .manage-actions { display: flex; gap: 6px; }
+  .manage-actions { display: flex; gap: 6px; align-self: center; }
   .icon-btn {
     background: var(--bg-raised);
     border: 1px solid var(--line);
@@ -1185,22 +1237,28 @@
     padding: 8px 2px 4px;
   }
 
-  /* DÉFIS — pastille "Actif" (seule différence visuelle avec la carte d'accueil) */
-  .active-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 10px;
+  /* DÉFIS — contrôle d'activation explicite (bouton, pas juste la ligne cliquable) */
+  .activate-toggle-btn {
+    align-self: center;
+    flex-shrink: 0;
+    background: var(--bg-raised);
+    border: 1.5px solid var(--line);
+    color: var(--chalk-dim);
+    font-size: 12px;
     font-weight: 800;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: #0a0d0b;
-    background: #9dff00;
-    padding: 3px 8px;
+    letter-spacing: 0.02em;
+    padding: 8px 14px;
     border-radius: 999px;
-    box-shadow: 0 0 8px rgba(157, 255, 0, 0.55);
+    cursor: pointer;
     white-space: nowrap;
-    margin-top: 4px;
+    transition: transform 0.1s, background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .activate-toggle-btn:active { transform: scale(0.94); }
+  .activate-toggle-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0a0d0b;
+    box-shadow: 0 0 10px var(--accent-glow);
   }
 
   /* AUJOURD'HUI — écran vide (aucun défi actif) */
@@ -1349,11 +1407,11 @@
     background: var(--bg-card);
     border: 1px solid var(--line);
     border-radius: 14px;
-    padding: 2px 16px;
+    padding: 12px 16px;
     display: flex;
     gap: 12px;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     cursor: pointer;
     transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
   }
@@ -1526,14 +1584,23 @@
     padding: 0;
   }
   .arm-mode-sentence {
-    background: rgba(255, 107, 53, 0.1);
-    border: 1px solid #6b3420;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg);
+    border: 1px solid #FF5500;
     border-radius: 10px;
-    padding: 8px 12px;
+    padding: 10px 14px;
     font-size: 12.5px;
     font-weight: 700;
-    color: #ff8c5c;
+    color: #ffffff;
     margin: -6px 0 18px;
+  }
+  .arm-mode-sentence-icon {
+    flex-shrink: 0;
+    font-size: 16px;
+    color: #FF5500;
+    filter: drop-shadow(0 0 4px rgba(255, 85, 0, 0.55));
   }
   .stats-row {
     display: flex;
@@ -1761,7 +1828,7 @@
   }
   .quick-add-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
     margin-bottom: 12px;
   }
@@ -1944,17 +2011,20 @@
     margin-top: 16px;
   }
 
-  /* TARGET EDIT */
+  /* TARGET EDIT — icône crayon discrète, pas de texte "modifier" inséré dans le chiffre */
   .target-edit {
-    font-size: 12px;
+    font-size: 13px;
+    line-height: 1;
     color: var(--chalk-dim);
-    text-decoration: underline;
+    opacity: 0.7;
     background: none;
     border: none;
     cursor: pointer;
-    padding: 0;
-    margin-left: 8px;
+    padding: 4px;
+    margin-left: 4px;
+    vertical-align: middle;
   }
+  .target-edit:active { opacity: 1; transform: scale(0.92); }
 
   /* WEEK STRIP */
   .week-strip {
@@ -1986,7 +2056,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--chalk-dim);
+    font-variant-numeric: tabular-nums;
   }
   .week-dot.done {
     background: var(--good);
@@ -2160,11 +2233,11 @@ const CHALLENGE_LIBRARY = [
   // ==== Haltères (bmiImpact ~nul : le poids déplacé est celui de l'haltère, pas du corps) ====
   { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
   { id: 6,  cat: 'Haltères', name: 'Biceps', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
-  { id: 7,  cat: 'Haltères', name: 'Épaule lateral raise', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 5, armMode: 'total' },
-  { id: 8,  cat: 'Haltères', name: 'Cuban press', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
-  { id: 1005, cat: 'Haltères', name: 'Rowing haltère', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0, standardWeightKg: 10, armMode: 'perArm' },
+  { id: 7,  cat: 'Haltères', name: 'Élévations latérales', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 5, armMode: 'total' },
+  { id: 8,  cat: 'Haltères', name: 'Presse cubaine', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
+  { id: 1005, cat: 'Haltères', name: 'Tirage haltères', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0, standardWeightKg: 10, armMode: 'perArm' },
   { id: 1006, cat: 'Haltères', name: 'Développé épaules haltères', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
-  { id: 1008, cat: 'Haltères', name: 'Extension triceps nuque', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 6, armMode: 'total' },
+  { id: 1008, cat: 'Haltères', name: 'Extensions triceps nuque', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 6, armMode: 'total' },
   { id: 1010, cat: 'Haltères', name: 'Squat goblet', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.15, standardWeightKg: 12, armMode: 'total' },
 
   // ==== Gainage / Core (bmiImpact modéré : la planche/hollow tiennent le poids du corps, les crunchs moins) ====
@@ -2842,6 +2915,23 @@ function mondayOfWeek(d) {
   const diff = (day === 0 ? -6 : 1) - day;
   date.setDate(date.getDate() + diff);
   return dateKey(date);
+}
+
+// Les 7 dates (objets Date) de la semaine calendaire (Lundi -> Dimanche) contenant `d`,
+// partagées entre le calcul de weekData (loadState) et le rendu du calendrier hebdomadaire
+// (accueil), pour éviter de dupliquer la logique de calcul du Lundi.
+function getCalendarWeekDates(d) {
+  const day = d.getDay(); // 0=dim..6=sam
+  const diffToMonday = (day === 0 ? -6 : 1) - day;
+  const monday = new Date(d);
+  monday.setDate(monday.getDate() + diffToMonday);
+  const dates = [];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(monday);
+    dt.setDate(monday.getDate() + i);
+    dates.push(dt);
+  }
+  return dates;
 }
 
 function daysBetween(keyA, keyB) {
@@ -3677,11 +3767,11 @@ const EXERCISE_ICON_BY_NAME = {
   "Superman (extension dos)": "superman",
   "Triceps": "triceps",
   "Biceps": "biceps",
-  "Épaule lateral raise": "epaule_raise",
-  "Cuban press": "cuban_press",
-  "Rowing haltère": "rowing",
+  "Élévations latérales": "epaule_raise",
+  "Presse cubaine": "cuban_press",
+  "Tirage haltères": "rowing",
   "Développé épaules haltères": "developpe_epaules",
-  "Extension triceps nuque": "extension_nuque",
+  "Extensions triceps nuque": "extension_nuque",
   "Squat goblet": "squat_goblet",
   "Planche cumulée": "planche",
   "Crunchs": "crunchs",
@@ -4005,12 +4095,11 @@ async function loadState() {
   } catch (e) {
     state = emptyDayState();
   }
-  // Pastilles des 7 derniers jours : calculées à partir de dailyActivity (déjà chargé en
-  // parallèle), au lieu de 7 appels Firestore séquentiels supplémentaires (un par jour).
+  // Pastilles de la semaine calendaire (Lundi -> Dimanche) : calculées à partir de
+  // dailyActivity (déjà chargé en parallèle), au lieu d'appels Firestore séquentiels
+  // supplémentaires (un par jour).
   weekData = {};
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
+  for (const d of getCalendarWeekDates(today)) {
     const k = dateKey(d);
     weekData[k] = (dailyActivity[k] || 0) > 0;
   }
@@ -4312,7 +4401,7 @@ function render(animate) {
               <button onclick="editWeight()">modifier</button>
             </div>
           </div>
-          ${armModeSentence(target, c.unit, c.armMode) ? `<div class="arm-mode-sentence">💪 ${armModeSentence(target, c.unit, c.armMode)}</div>` : ''}
+          ${armModeSentence(target, c.unit, c.armMode) ? `<div class="arm-mode-sentence"><span class="arm-mode-sentence-icon">💪</span><span>${armModeSentence(target, c.unit, c.armMode)}</span></div>` : ''}
         ` : ''}
 
         <div class="stats-row">
@@ -4326,7 +4415,7 @@ function render(animate) {
               <span class="progress-current">${total}</span><span class="progress-target"> / ${target}</span>
               <span class="progress-unit"> ${c.unit === 'sec' ? 'SEC' : 'reps'}</span>
               ${c.unit === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(target)})</span>` : ''}
-              <button class="target-edit" onclick="editTarget()">modifier</button>
+              <button class="target-edit" onclick="editTarget()" aria-label="Modifier l'objectif">✏️</button>
             </div>
             <div class="progress-pct">${pct}%</div>
           </div>
@@ -4411,18 +4500,17 @@ function render(animate) {
     `;
   }
 
-  // week strip
+  // week strip — semaine calendaire Lundi -> Dimanche, numéro du jour dans le cercle
+  // (remplacé par ✓ une fois le jour validé).
   html += `<div class="week-strip">`;
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
+  for (const d of getCalendarWeekDates(new Date())) {
     const k = dateKey(d);
     const isToday = k === todayKey;
     const done = weekData[k];
     html += `
       <div class="week-day">
         <div class="dow">${DOW_LABELS[d.getDay()]}</div>
-        <div class="week-dot${done ? ' done' : ''}${isToday ? ' today' : ''}">${done ? '✓' : ''}</div>
+        <div class="week-dot${done ? ' done' : ''}${isToday ? ' today' : ''}">${done ? '✓' : d.getDate()}</div>
       </div>
     `;
   }
@@ -4487,9 +4575,31 @@ function renderTodayEmptyState() {
 function renderBadgesStrip() {
   const unlocked = BADGE_DEFS.filter(b => badges.unlocked.includes(b.id));
   if (unlocked.length === 0) {
+    // Aucun trophée débloqué : au lieu d'un message statique, on montre les 2-3
+    // trophées verrouillés les plus proches d'être atteints, pour donner un objectif
+    // concret plutôt qu'une invitation vague.
+    const closest = BADGE_DEFS
+      .map(b => {
+        const p = b.progress();
+        const pct = p.target > 0 ? Math.min(100, (p.current / p.target) * 100) : 0;
+        return { b, pct };
+      })
+      .sort((a, z) => z.pct - a.pct)
+      .slice(0, 3);
     return `
-      <div class="section-label">Trophées</div>
-      <div class="badges-empty">Termine des défis pour débloquer tes premiers trophées 🏆</div>
+      <div class="section-label">Prochains trophées à portée de main</div>
+      <div class="next-trophies-grid">
+        ${closest.map(({ b, pct }) => `
+          <div class="next-trophy-card" onclick="showTrophyDetailModal('${b.id}')">
+            <div class="next-trophy-icon">${b.icon}</div>
+            <div class="next-trophy-body">
+              <div class="next-trophy-name">${b.label}</div>
+              <div class="next-trophy-track"><div class="next-trophy-fill" style="width:${Math.round(pct)}%"></div></div>
+            </div>
+            <div class="next-trophy-pct">${Math.round(pct)}%</div>
+          </div>
+        `).join('')}
+      </div>
     `;
   }
   return `
@@ -4630,7 +4740,7 @@ function renderChallengeCard(c, mode) {
 
   let rightHtml;
   if (mode === 'library') {
-    rightHtml = isActive ? `<div class="active-pill">✓ Actif</div>` : '';
+    rightHtml = '';
   } else {
     const todayEntry = state.challenges[c.id];
     const rel = formatRelative(lastCompleted[c.id]);
@@ -4649,6 +4759,11 @@ function renderChallengeCard(c, mode) {
   }
 
   const onclick = mode === 'library' ? `toggleActiveToday(${c.id})` : `pickChallenge(${c.id})`;
+  // Contrôle d'activation explicite (bouton visible), en plus du clic sur la ligne :
+  // l'état actif/inactif doit être identifiable sans avoir à deviner que la ligne est cliquable.
+  const activateBtn = mode === 'library'
+    ? `<button class="activate-toggle-btn${isActive ? ' active' : ''}" onclick="event.stopPropagation(); toggleActiveToday(${c.id})">${isActive ? '✓ Actif' : '+ Activer'}</button>`
+    : '';
 
   return `
     <div class="picker-item" onclick="${onclick}">
@@ -4661,6 +4776,7 @@ function renderChallengeCard(c, mode) {
         ${weightBelow}
         ${rightHtml}
       </div>
+      ${activateBtn}
       ${mode === 'library' && c.isCustom ? `
         <div class="manage-actions">
           <button class="icon-btn" onclick="event.stopPropagation(); openEditChallengeForm(${c.id})">✏️</button>
