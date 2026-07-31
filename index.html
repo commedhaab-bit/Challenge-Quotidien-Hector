@@ -193,6 +193,168 @@
   }
   @keyframes tour-spin { to { transform: rotate(360deg); } }
 
+  /* COMPTE À REBOURS DE PRÉPARATION (avant démarrage du chrono) */
+  .prep-countdown-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 950;
+    background: rgba(6,10,8,0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .prep-countdown-number {
+    font-size: 160px;
+    font-weight: 900;
+    color: var(--accent);
+    text-shadow: 0 0 60px var(--accent-glow);
+    animation: prep-countdown-pop 0.35s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes prep-countdown-pop {
+    from { transform: scale(0.4); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  /* POPUP DE SÉRIE (streak validée / bouclier activé), style Duolingo */
+  .streak-popup-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 960;
+    background: rgba(6,10,8,0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    animation: streak-fade-in 0.2s ease;
+  }
+  @keyframes streak-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .streak-popup-card {
+    background: var(--bg-card);
+    border: 1px solid var(--accent-dim);
+    border-radius: 22px;
+    padding: 40px 28px 28px;
+    text-align: center;
+    max-width: 340px;
+    width: 100%;
+    animation: streak-pop-in 0.4s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes streak-pop-in {
+    from { transform: scale(0.7); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .streak-popup-flame {
+    font-size: 72px;
+    line-height: 1;
+    animation: streak-flame-bounce 0.7s ease-in-out infinite alternate;
+  }
+  @keyframes streak-flame-bounce {
+    from { transform: translateY(0) scale(1); }
+    to { transform: translateY(-8px) scale(1.06); }
+  }
+  .streak-popup-title { font-size: 21px; font-weight: 900; margin-top: 14px; }
+  .streak-popup-count { font-size: 44px; font-weight: 900; color: var(--accent); margin: 14px 0 6px; }
+  .streak-popup-sub { font-size: 14px; color: var(--chalk-dim); line-height: 1.5; margin-top: 4px; }
+  .streak-popup-btn {
+    width: 100%;
+    background: var(--accent);
+    color: #0a0d0b;
+    border: none;
+    font-weight: 800;
+    font-size: 15px;
+    padding: 14px;
+    border-radius: 14px;
+    cursor: pointer;
+    margin-top: 22px;
+  }
+  .streak-popup-btn:active { transform: scale(0.97); }
+
+  /* CARTE ATHLÈTE (niveau, titre, XP) — onglet Profil */
+  .athlete-card {
+    background: linear-gradient(135deg, rgba(57,233,122,0.10), rgba(57,233,122,0.02));
+    border: 1px solid var(--accent-dim);
+    border-radius: 16px;
+    padding: 18px 20px;
+    margin-bottom: 22px;
+  }
+  .athlete-level-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+  }
+  .athlete-level { font-size: 20px; font-weight: 900; }
+  .athlete-streak {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .athlete-title { font-size: 14px; color: var(--chalk-dim); font-weight: 700; margin-bottom: 14px; }
+  .athlete-xp-track {
+    height: 10px;
+    border-radius: 6px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+  .athlete-xp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    border-radius: 6px;
+    transition: width 0.3s;
+  }
+  .athlete-xp-label {
+    font-size: 11.5px;
+    color: var(--chalk-dim);
+    margin-top: 6px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* PARAMÈTRES (onglet Profil) */
+  .settings-card {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 4px 16px;
+    margin-bottom: 26px;
+  }
+  .settings-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 0;
+  }
+  .settings-row-label { font-size: 14.5px; font-weight: 700; }
+  .settings-row-desc { font-size: 12px; color: var(--chalk-dim); font-weight: 400; margin-top: 3px; line-height: 1.4; }
+  .switch {
+    width: 46px;
+    height: 26px;
+    border-radius: 20px;
+    background: var(--line);
+    border: none;
+    position: relative;
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  .switch.on { background: var(--accent); }
+  .switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--chalk);
+    transition: left 0.2s;
+  }
+  .switch.on .switch-knob { left: 22px; }
+
   /* HEADER */
   .header {
     display: flex;
@@ -2453,6 +2615,223 @@ let lastCompleted = {};
 let historyEntries = [];
 let historyLoading = false;
 
+// ==== SÉRIE (STREAK) & BOUCLIER DE PAUSE ====
+// streakCount / lastCompletedDate / hasShield / lastShieldResetWeek sont regroupés
+// dans un seul document Firestore ('streakData'), comme stats/badges/dailyActivity —
+// mêmes noms de variables que le cahier des charges, juste stockés en un seul blob JSON.
+let streakCount = 0;
+let lastCompletedDate = null; // 'YYYY-MM-DD' ou null
+let hasShield = true;
+let lastShieldResetWeek = null; // clé du lundi de la semaine du dernier reset
+
+async function loadStreakData() {
+  try {
+    const res = await dbGet('streakData');
+    const d = JSON.parse(res.value);
+    streakCount = d.streakCount || 0;
+    lastCompletedDate = d.lastCompletedDate || null;
+    hasShield = d.hasShield !== undefined ? d.hasShield : true;
+    lastShieldResetWeek = d.lastShieldResetWeek || null;
+  } catch (e) {
+    streakCount = 0;
+    lastCompletedDate = null;
+    hasShield = true;
+    lastShieldResetWeek = null;
+  }
+}
+async function saveStreakData() {
+  try {
+    await dbSet('streakData', JSON.stringify({ streakCount, lastCompletedDate, hasShield, lastShieldResetWeek }));
+  } catch (e) { console.error('save streakData failed', e); }
+}
+
+function mondayOfWeek(d) {
+  const date = new Date(d);
+  const day = date.getDay(); // 0=dim..6=sam
+  const diff = (day === 0 ? -6 : 1) - day;
+  date.setDate(date.getDate() + diff);
+  return dateKey(date);
+}
+
+function daysBetween(keyA, keyB) {
+  const [ya, ma, da] = keyA.split('-').map(Number);
+  const [yb, mb, db] = keyB.split('-').map(Number);
+  const a = Date.UTC(ya, ma - 1, da);
+  const b = Date.UTC(yb, mb - 1, db);
+  return Math.round((b - a) / 86400000);
+}
+
+// Appelé une fois au chargement de l'app (après loadState(), donc todayKey connu) :
+// recharge le bouclier hebdomadaire si besoin, puis vérifie si un ou plusieurs jours
+// ont été manqués depuis la dernière validation.
+async function evaluateStreakOnLoad() {
+  const wk = mondayOfWeek(new Date());
+  if (lastShieldResetWeek !== wk) {
+    hasShield = true;
+    lastShieldResetWeek = wk;
+  }
+
+  let shieldTriggered = false;
+  if (streakCount > 0 && lastCompletedDate && lastCompletedDate !== todayKey) {
+    const gap = daysBetween(lastCompletedDate, todayKey);
+    if (gap >= 2) {
+      if (hasShield) {
+        hasShield = false;
+        shieldTriggered = true;
+      } else {
+        streakCount = 0;
+      }
+    }
+  }
+
+  await saveStreakData();
+
+  if (shieldTriggered) {
+    enqueueStreakPopup({
+      flame: '🛡️',
+      title: 'Bouclier activé !',
+      subtitle: "Ton bouclier de pause t'a sauvé la série ! 🛡️ Pense à réaliser ton défi aujourd'hui.",
+    });
+  }
+}
+
+// Appelé lors de la toute première validation de défi de la journée (dailyActivity
+// passait de 0 à 1). Le cas "jour manqué" est déjà géré par evaluateStreakOnLoad().
+async function registerDailyStreak() {
+  streakCount += 1;
+  lastCompletedDate = todayKey;
+  await saveStreakData();
+  setTimeout(() => {
+    enqueueStreakPopup({
+      flame: '🔥',
+      title: '+1 Jour de série !',
+      big: streakCount,
+      subtitle: `${streakCount} jour${streakCount > 1 ? 's' : ''} d'affilée ! Continue comme ça 💪`,
+    });
+  }, 900);
+}
+
+function computeStreak() {
+  return streakCount;
+}
+
+// Popup plein écran style Duolingo (flamme / bouclier). Ajouté directement au DOM,
+// comme showToast()/fireConfetti(), pour rester indépendant du cycle render().
+let streakPopupQueue = [];
+let streakPopupOpen = false; // état suivi explicitement (pas de fiabilité à attendre d'un getElementById sur un id qui vient d'être retiré du DOM selon les moteurs)
+let currentStreakPopupHtml = ''; // dernier contenu affiché (introspection/tests)
+
+function enqueueStreakPopup(opts) {
+  streakPopupQueue.push(opts);
+  if (!streakPopupOpen) drainStreakPopupQueue();
+}
+
+function drainStreakPopupQueue() {
+  const next = streakPopupQueue.shift();
+  if (!next) { streakPopupOpen = false; currentStreakPopupHtml = ''; return; }
+  streakPopupOpen = true;
+  const el = document.createElement('div');
+  el.id = 'streakPopup';
+  el.className = 'streak-popup-overlay';
+  el.innerHTML = `
+    <div class="streak-popup-card">
+      <div class="streak-popup-flame">${next.flame}</div>
+      <div class="streak-popup-title">${next.title}</div>
+      ${next.big !== undefined ? `<div class="streak-popup-count">${next.big}</div>` : ''}
+      <div class="streak-popup-sub">${next.subtitle}</div>
+      <button class="streak-popup-btn" id="streakPopupCloseBtn">Continuer</button>
+    </div>
+  `;
+  currentStreakPopupHtml = el.innerHTML;
+  document.body.appendChild(el);
+  document.getElementById('streakPopupCloseBtn').onclick = () => {
+    el.remove();
+    drainStreakPopupQueue();
+  };
+}
+
+// ==== XP, NIVEAUX & TITRES D'ATHLÈTE ====
+let xpTotal = 0;
+
+async function loadXp() {
+  try { const res = await dbGet('xpTotal'); xpTotal = parseInt(res.value, 10) || 0; }
+  catch (e) { xpTotal = 0; }
+}
+async function saveXp() {
+  try { await dbSet('xpTotal', String(xpTotal)); }
+  catch (e) { console.error('save xpTotal failed', e); }
+}
+async function awardXp(amount) {
+  xpTotal += amount;
+  await saveXp();
+}
+
+// Courbe progressive : niveau 1 = 0 XP, niveau 2 = 100 XP, niveau 3 = 250 XP, ...
+function xpForLevel(n) {
+  return 25 * (n - 1) * (n + 2);
+}
+function computeLevel(xp) {
+  let level = 1;
+  while (xpForLevel(level + 1) <= xp) level++;
+  return level;
+}
+function xpProgress(xp) {
+  const level = computeLevel(xp);
+  const currentThreshold = xpForLevel(level);
+  const nextThreshold = xpForLevel(level + 1);
+  return { level, xpIntoLevel: xp - currentThreshold, xpNeeded: nextThreshold - currentThreshold };
+}
+function athleteTitle(level) {
+  if (level <= 3) return 'Débutant 🥉';
+  if (level <= 7) return 'Motivé 🥈';
+  if (level <= 12) return 'Guerrier 🥇';
+  if (level <= 19) return 'Titan ⚡';
+  return 'Légende 🏆';
+}
+// 50 XP de base + bonus selon le volume (reps/sec) et, pour les haltères, la charge.
+function xpForChallenge(c, total) {
+  let bonus = c.unit === 'sec' ? Math.round(total / 5) : Math.round(total / 2);
+  if (c.cat === 'Haltères') {
+    bonus += Math.round(weights[c.id] ?? 8);
+  }
+  return 50 + Math.max(0, bonus);
+}
+const HARDCORE_XP_BONUS = 75;
+
+// ==== COACH VOCAL (Web Speech API) ====
+let voiceCoachEnabled = true;
+
+async function loadVoiceCoachEnabled() {
+  try { const res = await dbGet('voiceCoachEnabled'); voiceCoachEnabled = res.value === 'true'; }
+  catch (e) { voiceCoachEnabled = true; } // activé par défaut
+}
+async function saveVoiceCoachEnabled() {
+  try { await dbSet('voiceCoachEnabled', String(voiceCoachEnabled)); }
+  catch (e) { console.error('save voiceCoachEnabled failed', e); }
+}
+async function toggleVoiceCoach() {
+  voiceCoachEnabled = !voiceCoachEnabled;
+  if (navigator.vibrate) navigator.vibrate(10);
+  if (!voiceCoachEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+  await saveVoiceCoachEnabled();
+  render();
+}
+
+// cancel() avant chaque prise de parole pour éviter les retards/empilements audio ;
+// tolère l'absence de synthèse vocale (navigateur non compatible ou bloquée).
+function speak(text) {
+  if (!voiceCoachEnabled) return;
+  if (typeof window === 'undefined' || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return;
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'fr-FR';
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    console.error('Coach vocal indisponible :', e);
+  }
+}
+
 async function loadLastCompleted() {
   try {
     const res = await dbGet('lastCompleted');
@@ -3011,13 +3390,85 @@ function clearTimerState() {
   timerRunning = false;
   timerStartMs = null;
   lastBeepSecond = 0;
+  lastVoiceCueSecond = null;
+  clearPrepCountdown();
   releaseWakeLock();
+}
+
+// ==== COMPTE À REBOURS DE PRÉPARATION (3... 2... 1... C'est parti !) ====
+// Laisse le temps de se mettre en position (gainage, prise d'haltères) avant que
+// le chrono réel ne démarre. Overlay ajouté directement au DOM (comme showToast()),
+// indépendant du cycle render().
+let prepCountdownValue = null;
+let prepCountdownTimeoutId = null;
+
+function beginPrepCountdown() {
+  unlockTimerAudio(); // dans le geste utilisateur du clic, pour débloquer l'audio (Safari/iOS)
+  clearPrepCountdown();
+  prepCountdownValue = 3;
+  renderPrepCountdownOverlay();
+  speak('3');
+  prepCountdownTimeoutId = setTimeout(prepCountdownTick, 1000);
+}
+
+function prepCountdownTick() {
+  if (prepCountdownValue === null) return;
+  prepCountdownValue -= 1;
+  if (prepCountdownValue > 0) {
+    renderPrepCountdownOverlay();
+    speak(String(prepCountdownValue));
+    prepCountdownTimeoutId = setTimeout(prepCountdownTick, 1000);
+  } else {
+    clearPrepCountdown();
+    speak("C'est parti !");
+    startTimer();
+  }
+}
+
+function clearPrepCountdown() {
+  if (prepCountdownTimeoutId) clearTimeout(prepCountdownTimeoutId);
+  prepCountdownTimeoutId = null;
+  prepCountdownValue = null;
+  const el = document.getElementById('prepCountdownOverlay');
+  if (el) el.remove();
+}
+
+function renderPrepCountdownOverlay() {
+  let el = document.getElementById('prepCountdownOverlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'prepCountdownOverlay';
+    el.className = 'prep-countdown-overlay';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<div class="prep-countdown-number">${prepCountdownValue}</div>`;
+}
+
+let lastVoiceCueSecond = null;
+
+// Annonce vocale à l'approche de l'objectif (chronos en secondes uniquement) :
+// "3... 2... 1..." puis "Défi terminé ! Bravo !" une fois l'objectif atteint.
+function announceTimerVoiceCues(elapsed) {
+  if (!voiceCoachEnabled || !currentChallengeId) return;
+  const c = getChallenge();
+  if (!c || c.unit !== 'sec') return;
+  const target = getTarget();
+  if (!target) return;
+  const remaining = target - (getTotal() + elapsed);
+  if (remaining <= 3 && remaining >= 1 && remaining !== lastVoiceCueSecond) {
+    lastVoiceCueSecond = remaining;
+    speak(String(remaining));
+  } else if (remaining <= 0 && lastVoiceCueSecond !== 0) {
+    lastVoiceCueSecond = 0;
+    speak('Défi terminé ! Bravo !');
+  }
 }
 
 function startTimer() {
   timerRunning = true;
   timerStartMs = Date.now();
   lastBeepSecond = 0;
+  lastVoiceCueSecond = null;
   unlockTimerAudio();
   timerIntervalId = setInterval(tickTimer, 250);
   requestWakeLock();
@@ -3044,6 +3495,7 @@ function tickTimer() {
     lastBeepSecond = elapsed;
     playTimerBeep();
   }
+  announceTimerVoiceCues(elapsed);
 }
 
 async function stopTimer() {
@@ -3180,6 +3632,7 @@ async function addSet(amount) {
     lastCompleted[currentChallengeId] = Date.now();
     await saveLastCompleted();
 
+    const isFirstCompletionOfDay = !dailyActivity[todayKey];
     dailyActivity[todayKey] = (dailyActivity[todayKey] || 0) + 1;
     await saveDailyActivity();
 
@@ -3187,15 +3640,20 @@ async function addSet(amount) {
     const freshBadges = checkNewBadges();
     await saveBadges();
 
+    const xpGained = xpForChallenge(getChallenge(), total);
+    await awardXp(xpGained);
+    if (isFirstCompletionOfDay) await registerDailyStreak();
+
     if (navigator.vibrate) navigator.vibrate([45, 35, 45, 35, 90]);
     fireConfetti();
     playSuccessSound();
 
+    showToast(`+${xpGained} XP ! ⚡`, 1400);
     if (freshBadges.length > 0) {
       const b = freshBadges[0];
-      setTimeout(() => showToast(`${b.icon} Trophée débloqué — ${b.label}`, 3200), 500);
+      setTimeout(() => showToast(`${b.icon} Trophée débloqué — ${b.label}`, 3200), 1500);
     } else {
-      showToast(`✓ Défi complété${newRecord ? ' — nouveau record ! 🏆' : ' !'}`);
+      setTimeout(() => showToast(`✓ Défi complété${newRecord ? ' — nouveau record ! 🏆' : ' !'}`), 1500);
     }
 
     // Progression automatique : 3 records consécutifs -> proposer d'augmenter l'objectif par défaut
@@ -3233,11 +3691,14 @@ async function addSet(amount) {
     badges.totalHardcore += 1;
     const freshHardcoreBadges = checkNewBadges();
     await saveBadges();
+    await awardXp(HARDCORE_XP_BONUS);
 
     if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 60, 40, 140]);
     fireConfetti('hardcore');
     playSuccessSound();
 
+    const hcDelay = willComplete ? 2900 : 400;
+    setTimeout(() => showToast(`+${HARDCORE_XP_BONUS} XP Hardcore ! ⚡`, 1400), hcDelay);
     setTimeout(() => {
       if (freshHardcoreBadges.length > 0) {
         const b = freshHardcoreBadges[0];
@@ -3245,7 +3706,7 @@ async function addSet(amount) {
       } else {
         showToast('🔥 MODE HARDCORE complété !', 3000);
       }
-    }, willComplete ? 900 : 400);
+    }, hcDelay + 1500);
   }
 
   await saveState();
@@ -3396,7 +3857,7 @@ function render(animate) {
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
-        <button class="streak" onclick="switchTab('history')">🔥 ${computeStreak()} j</button>
+        <button class="streak" onclick="switchTab('history')">🔥 ${computeStreak()} j${hasShield ? ' 🛡️' : ''}</button>
       </div>
       <h1 class="title">Défi du jour</h1>
     `;
@@ -3510,7 +3971,7 @@ function render(animate) {
             ${timerRunning
               ? `<button class="timer-btn stop" onclick="stopTimer()">⏹ Stop — ajouter au compteur</button>
                  <button class="focus-btn" onclick="enterFocusMode()">⛶ Mode plein écran</button>`
-              : `<button class="timer-btn start" onclick="startTimer()">▶ Démarrer le chrono</button>`
+              : `<button class="timer-btn start" onclick="beginPrepCountdown()">▶ Démarrer le chrono</button>`
             }
             <div class="timer-hint">${timerRunning ? 'Chrono en cours… reste sur cette page' : 'Lance le chrono pendant ton gainage / ta série'}</div>
           </div>
@@ -3999,6 +4460,37 @@ function renderHistoryScreen() {
   `;
 }
 
+function renderAthleteCard() {
+  const { level, xpIntoLevel, xpNeeded } = xpProgress(xpTotal);
+  const title = athleteTitle(level);
+  const pct = xpNeeded > 0 ? Math.min(100, Math.round((xpIntoLevel / xpNeeded) * 100)) : 100;
+  return `
+    <div class="athlete-card">
+      <div class="athlete-level-row">
+        <div class="athlete-level">Niveau ${level}</div>
+        <div class="athlete-streak">🔥 ${streakCount} j${hasShield ? ' 🛡️' : ''}</div>
+      </div>
+      <div class="athlete-title">${title}</div>
+      <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
+      <div class="athlete-xp-label">${xpIntoLevel} / ${xpNeeded} XP</div>
+    </div>
+  `;
+}
+
+function renderSettingsSection() {
+  return `
+    <div class="section-label">Paramètres</div>
+    <div class="settings-card">
+      <div class="settings-row">
+        <div class="settings-row-label">🔊 Coach vocal
+          <div class="settings-row-desc">Annonce le compte à rebours de préparation et la fin du défi à voix haute.</div>
+        </div>
+        <button class="switch${voiceCoachEnabled ? ' on' : ''}" onclick="toggleVoiceCoach()"><span class="switch-knob"></span></button>
+      </div>
+    </div>
+  `;
+}
+
 function renderAccountSection() {
   const name = currentUser?.displayName || 'Compte';
   const email = currentUser?.email || '';
@@ -4023,7 +4515,9 @@ function renderAccountTabScreen() {
   return `
     <h1 class="title">Profil</h1>
     <div class="subtitle">Tes infos et la gestion de ton compte</div>
+    ${renderAthleteCard()}
     ${renderAccountSection()}
+    ${renderSettingsSection()}
     ${renderTrophiesGrid()}
   `;
 }
@@ -4124,6 +4618,9 @@ async function refreshApp() {
     loadBadges(),
     loadDailyActivity(),
     loadManualTargetOverrides(),
+    loadStreakData(),
+    loadXp(),
+    loadVoiceCoachEnabled(),
   ]);
   if (activeTab === 'history') {
     await loadHistoryEntries();
@@ -4131,6 +4628,7 @@ async function refreshApp() {
     await loadState(); // dépend de dailyActivity, chargé juste avant
     await loadActiveToday(); // vient après loadState() : dépend de todayKey
   }
+  await evaluateStreakOnLoad();
   render(true);
 }
 
@@ -4160,21 +4658,6 @@ function getSuggestion() {
   return `Tu n'as pas fait <strong>${worstCat}</strong> depuis ${days} jour${days > 1 ? 's' : ''}`;
 }
 
-function computeStreak() {
-  let streak = 0;
-  for (let i = 0; i <= 6; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const k = dateKey(d);
-    if (weekData[k]) {
-      streak++;
-    } else {
-      if (i === 0) continue; // today not done yet doesn't break streak display
-      break;
-    }
-  }
-  return streak;
-}
 
 async function startApp() {
   if (showProfileOnboarding) {
@@ -4199,8 +4682,8 @@ async function proceedAfterProfile() {
 }
 
 async function continueStartApp() {
-  // Ces 6 chargements sont indépendants les uns des autres : on les lance
-  // en parallèle plutôt qu'en série pour diviser le temps d'attente par ~6.
+  // Ces chargements sont indépendants les uns des autres : on les lance
+  // en parallèle plutôt qu'en série pour diviser le temps d'attente.
   await Promise.all([
     loadWeights(),
     loadLastCompleted(),
@@ -4208,9 +4691,13 @@ async function continueStartApp() {
     loadBadges(),
     loadDailyActivity(),
     loadManualTargetOverrides(),
+    loadStreakData(),
+    loadXp(),
+    loadVoiceCoachEnabled(),
   ]);
   await loadState(); // vient après : dépend de dailyActivity pour les pastilles de la semaine
   await loadActiveToday(); // vient après loadState() : dépend de todayKey
+  await evaluateStreakOnLoad(); // vient après loadState() : dépend de todayKey
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).
