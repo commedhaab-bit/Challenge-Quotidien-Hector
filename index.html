@@ -127,17 +127,20 @@
     letter-spacing: 0.01em;
   }
 
-  /* MINI TOUR GUIDÉ (bulle au-dessus de la barre d'onglets, première connexion) */
+  /* MINI TOUR GUIDÉ (première connexion) — arrière-plan assombri + flou pour détacher
+     nettement la bulle de formation du reste de l'app (immersif, premier plan net). */
   .tour-overlay {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    inset: 0;
     display: flex;
+    align-items: flex-end;
     justify-content: center;
-    padding: 0 18px;
+    padding: 0 18px calc(64px + env(safe-area-inset-bottom, 0px));
     z-index: 600;
-    pointer-events: none;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    animation: app-popup-fade-in 0.25s ease;
   }
   .tour-bubble {
     pointer-events: auto;
@@ -267,6 +270,32 @@
     from { transform: translateY(0) scale(1); }
     to { transform: translateY(-8px) scale(1.06); }
   }
+  .app-popup-icon.locked {
+    filter: grayscale(1) opacity(0.45);
+    animation: none; /* un trophee verrouille ne "respire" pas comme un trophee obtenu */
+  }
+  /* Barre de progression en temps réel (modal de détail d'un trophée) — même
+     langage visuel que les jauges d'XP : épaisse, bords arrondis, lueur néon. */
+  .popup-progress-track {
+    height: 10px;
+    border-radius: 6px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    margin-top: 18px;
+  }
+  .popup-progress-fill {
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    box-shadow: 0 0 10px var(--accent-glow), 0 0 4px var(--accent);
+    transition: width 0.3s;
+  }
+  .popup-progress-label {
+    font-size: 12.5px;
+    color: var(--chalk-dim);
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
+  }
   .app-popup-title { font-size: 21px; font-weight: 900; margin-top: 14px; }
   .app-popup-card.epic .app-popup-title { color: #ffd700; letter-spacing: 0.02em; }
   .app-popup-big {
@@ -327,26 +356,18 @@
     margin-bottom: 2px;
   }
   .athlete-level { font-size: 20px; font-weight: 900; }
-  .athlete-streak {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--accent);
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .athlete-title { font-size: 20px; color: var(--accent); font-weight: 900; margin-bottom: 14px; text-shadow: 0 0 16px var(--accent-glow); }
+  .athlete-title { font-size: 20px; color: var(--accent); font-weight: 900; margin-bottom: 22px; text-shadow: 0 0 16px var(--accent-glow); }
   .athlete-xp-track {
     height: 10px;
     border-radius: 6px;
     background: var(--bg);
     border: 1px solid var(--line);
-    overflow: hidden;
   }
   .athlete-xp-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--accent-dim), var(--accent));
     border-radius: 6px;
+    box-shadow: 0 0 10px var(--accent-glow), 0 0 4px var(--accent);
     transition: width 0.3s;
   }
   .athlete-xp-label {
@@ -388,7 +409,7 @@
   .level-roadmap-close:active { transform: scale(0.94); }
   .level-roadmap-header { padding-top: 8px; margin-bottom: 26px; }
   .level-roadmap-level { font-size: 30px; font-weight: 900; margin-bottom: 2px; }
-  .level-roadmap-title { font-size: 22px; color: var(--accent); font-weight: 900; margin-bottom: 16px; text-shadow: 0 0 16px var(--accent-glow); }
+  .level-roadmap-title { font-size: 22px; color: var(--accent); font-weight: 900; margin-bottom: 24px; text-shadow: 0 0 16px var(--accent-glow); }
   .level-roadmap-xp-label {
     font-size: 12px;
     color: var(--chalk-dim);
@@ -404,15 +425,21 @@
     border: 1px solid var(--line);
     border-radius: 12px;
     padding: 12px 16px;
-    opacity: 0.5;
   }
-  .roadmap-row.unlocked { opacity: 1; }
+  /* Icône grisée pour un palier verrouillé, mais texte toujours bien lisible
+     (gris clair, PAS l'ancienne opacité ~0.5 sur toute la ligne qui rendait le
+     titre du palier quasi invisible). */
+  .roadmap-row:not(.unlocked) .roadmap-row-icon { opacity: 0.5; }
+  .roadmap-row:not(.unlocked) .roadmap-row-title,
+  .roadmap-row:not(.unlocked) .roadmap-row-range {
+    color: rgba(209, 213, 219, 0.7);
+  }
   .roadmap-row.current {
     border-color: var(--accent);
     box-shadow: 0 0 16px var(--accent-glow);
   }
-  .roadmap-row-icon { font-size: 18px; width: 22px; text-align: center; flex-shrink: 0; }
-  .roadmap-row.current .roadmap-row-icon { color: var(--accent); }
+  .roadmap-row-icon { font-size: 18px; width: 22px; text-align: center; flex-shrink: 0; color: #9aa0a6; }
+  .roadmap-row.current .roadmap-row-icon { color: var(--accent); opacity: 1; }
   .roadmap-row-title { font-size: 14.5px; font-weight: 800; }
   .roadmap-row-range { font-size: 12px; color: var(--chalk-dim); margin-top: 2px; }
 
@@ -639,7 +666,7 @@
   }
   .heat-legend .heat-cell { width: 10px; height: 10px; }
 
-  /* TROPHY GRID (history screen, locked + unlocked) */
+  /* TROPHY GRID (onglet Profil, verrouillés + débloqués) — cliquables (popover de détail) */
   .trophy-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -648,14 +675,39 @@
   }
   .trophy-item {
     background: var(--bg-card);
-    border: 1px solid var(--accent-dim);
+    border: 1px solid var(--line);
     border-radius: 12px;
     padding: 12px 4px;
     text-align: center;
+    cursor: pointer;
   }
-  .trophy-item.locked {
-    border-color: var(--line);
-    opacity: 0.5;
+  .trophy-item:active { transform: scale(0.95); }
+  .trophy-item.unlocked {
+    border-color: var(--accent-dim);
+    box-shadow: 0 0 12px var(--accent-glow);
+  }
+  .trophy-item.locked .badge-icon {
+    filter: grayscale(1) opacity(0.45);
+  }
+  /* Texte bien lisible même verrouillé (gris clair, PAS l'ancienne opacité ~0.5
+     sur toute la carte qui rendait le libellé quasi illisible). */
+  .trophy-item.locked .badge-label {
+    color: rgba(209, 213, 219, 0.7);
+  }
+  .badge-lock-badge {
+    position: absolute;
+    bottom: -2px;
+    right: 50%;
+    transform: translateX(20px);
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    color: #9aa0a6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* ACCOUNT SECTION */
@@ -754,7 +806,7 @@
     padding: 12px 6px;
     text-align: center;
   }
-  .badge-icon { font-size: 26px; margin-bottom: 4px; }
+  .badge-icon { position: relative; font-size: 26px; margin-bottom: 4px; }
   .badge-label {
     font-size: 9.5px;
     color: var(--chalk-dim);
@@ -883,16 +935,19 @@
     font-variant-numeric: tabular-nums;
     scroll-snap-align: center;
   }
+  /* Cadre de sélection : rectangle complet (pas juste des filets haut/bas) pour
+     identifier immédiatement la valeur active du rouleau. */
   .wheel-picker-highlight {
     position: absolute;
     top: 50%;
-    left: 0;
-    right: 0;
-    height: 44px;
+    left: 8px;
+    right: 8px;
+    height: 40px;
     transform: translateY(-50%);
-    border-top: 1.5px solid var(--accent-dim);
-    border-bottom: 1.5px solid var(--accent-dim);
-    background: rgba(57, 233, 122, 0.06);
+    border: 1.5px solid var(--accent);
+    border-radius: 10px;
+    background: rgba(57, 233, 122, 0.08);
+    box-shadow: 0 0 10px var(--accent-glow);
     pointer-events: none;
   }
 
@@ -1791,7 +1846,12 @@
     opacity: 0.55;
   }
   .timer-play-icon:not(.confirm):not(.done) {
-    transform: translate(calc(-50% + 1px), 8px); /* recentre visuellement le triangle ▶ */
+    /* icône Play mise en valeur : plus grande, vert néon vif assorti à l'anneau */
+    font-size: 27px;
+    color: var(--accent);
+    opacity: 1;
+    text-shadow: 0 0 12px var(--accent-glow);
+    transform: translate(calc(-50% + 1px), 10px); /* recentre visuellement le triangle ▶ */
   }
   .timer-play-icon.confirm {
     color: var(--good);
@@ -2798,12 +2858,17 @@ function enqueuePopup(opts) {
 function buildPopupInnerHtml(next) {
   const chips = [];
   if (next.xp) chips.push(`<div class="popup-chip xp-chip">⚡ +${next.xp} XP</div>`);
+  const progressHtml = next.progressLabel ? `
+    <div class="popup-progress-track"><div class="popup-progress-fill" style="width:${next.progressPct}%"></div></div>
+    <div class="popup-progress-label">${next.progressLabel}</div>
+  ` : '';
   return `
     <div class="app-popup-card${next.epic ? ' epic' : ''}">
-      <div class="app-popup-icon">${next.icon}</div>
+      <div class="app-popup-icon${next.locked ? ' locked' : ''}">${next.icon}</div>
       <div class="app-popup-title">${next.title}</div>
       ${next.big !== undefined ? `<div class="app-popup-big">${next.big}</div>` : ''}
       ${next.subtitle ? `<div class="app-popup-sub">${next.subtitle}</div>` : ''}
+      ${progressHtml}
       ${chips.length ? `<div class="app-popup-chips">${chips.join('')}</div>` : ''}
       <button class="app-popup-btn" id="appPopupCloseBtn">${next.btnLabel || 'Continuer'}</button>
     </div>
@@ -2838,8 +2903,60 @@ function enqueueTrophyPopups(freshBadges) {
       title: 'Trophée débloqué !',
       big: b.label,
       subtitle: 'Un nouveau trophée rejoint ta collection !',
+      xp: b.xp,
     });
   }
+}
+
+// Petit cadenas métallique/gris (pas un gros cadenas jaune uniforme) : SVG plutôt
+// qu'un emoji, pour garder une couleur/taille sobres et cohérentes quel que soit
+// l'appareil (les emoji cadenas se rendent en jaune/or sur la plupart des systèmes).
+function lockIconSVG(size) {
+  const s = size || 12;
+  return `<svg class="lock-icon-svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="2"/>
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </svg>`;
+}
+
+// Petites icônes (vert néon via currentColor) remplaçant les mots "Chrono"/"Répétitions"
+// sur les cartes d'exercice des listes (Défis/Aujourd'hui) : chrono épuré pour les
+// défis en secondes, traits de comptage à la craie pour les défis en répétitions.
+function chronoUnitIconSVG() {
+  return `<svg class="unit-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="12" cy="13" r="8" stroke="currentColor" stroke-width="2"/>
+    <path d="M12 13V9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <path d="M10 2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </svg>`;
+}
+function tallyUnitIconSVG() {
+  return `<svg class="unit-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M6 4v16M10 4v16M14 4v16M18 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    <path d="M4 16L20 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </svg>`;
+}
+
+// Popover de détail au clic sur une carte de trophée : icône, condition de
+// déblocage, barre de progression en temps réel et récompense d'XP — que le
+// trophée soit déjà débloqué ou non.
+function showTrophyDetailModal(badgeId) {
+  const b = BADGE_DEFS.find(x => x.id === badgeId);
+  if (!b) return;
+  const unlocked = badges.unlocked.includes(b.id);
+  const { current, target } = b.progress();
+  const fmt = (n) => b.secondsBased ? formatSecToReadable(Math.round(n)) : Math.round(n).toLocaleString('fr-FR');
+  enqueuePopup({
+    icon: b.icon,
+    locked: !unlocked,
+    title: unlocked ? 'Trophée débloqué' : 'Trophée verrouillé',
+    big: b.label,
+    subtitle: unlocked
+      ? 'Bravo, ce trophée fait déjà partie de ta collection !'
+      : 'Continue à progresser pour débloquer ce trophée.',
+    progressPct: Math.min(100, Math.round((current / target) * 100)),
+    progressLabel: `${fmt(Math.min(current, target))} / ${fmt(target)}`,
+    xp: b.xp,
+  });
 }
 
 // Détecte un changement de niveau (et, le cas échéant, de titre) entre deux mesures
@@ -3030,27 +3147,31 @@ function sumLifetime(ids) {
   return ids.reduce((sum, id) => sum + (stats[id]?.lifetimeTotal || 0), 0);
 }
 
+// Chaque trophée porte, en plus de sa condition (check), une XP de récompense
+// (attribuée à l'utilisateur au déblocage, cf. addSet()) et un `progress()` qui
+// expose les valeurs brutes {current, target} — utilisées pour la barre de
+// progression en temps réel de la modal de détail (showTrophyDetailModal).
 const BADGE_DEFS = [
-  { id: 'streak_3',   label: '3 jours de suite',   icon: '🔥', check: () => computeStreak() >= 3 },
-  { id: 'streak_7',   label: '7 jours de suite',    icon: '🔥', check: () => computeStreak() >= 7 },
-  { id: 'streak_30',  label: '30 jours de suite',   icon: '🔥', check: () => computeStreak() >= 30 },
-  { id: 'streak_100', label: '100 jours de suite',  icon: '🔥', check: () => computeStreak() >= 100 },
-  { id: 'comp_10',    label: '10 défis complétés',  icon: '🏅', check: () => badges.totalCompletions >= 10 },
-  { id: 'comp_50',    label: '50 défis complétés',  icon: '🏅', check: () => badges.totalCompletions >= 50 },
-  { id: 'comp_100',   label: '100 défis complétés', icon: '🏆', check: () => badges.totalCompletions >= 100 },
-  { id: 'comp_250',   label: '250 défis complétés', icon: '👑', check: () => badges.totalCompletions >= 250 },
-  { id: 'hardcore_1',  label: 'Premier Hardcore',    icon: '🔥', check: () => badges.totalHardcore >= 1 },
-  { id: 'hardcore_10', label: '10 défis Hardcore',   icon: '💀', check: () => badges.totalHardcore >= 10 },
-  { id: 'hardcore_50', label: '50 défis Hardcore',   icon: '☠️', check: () => badges.totalHardcore >= 50 },
-  { id: 'pushups_100',   label: '100 pompes cumulées',    icon: '💪', check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 100 },
-  { id: 'pushups_500',   label: '500 pompes cumulées',    icon: '💪', check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 500 },
-  { id: 'pushups_1000',  label: '1 000 pompes cumulées',  icon: '🦾', check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 1000 },
-  { id: 'pushups_5000',  label: '5 000 pompes cumulées',  icon: '🦾', check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 5000 },
-  { id: 'pushups_10000', label: '10 000 pompes cumulées', icon: '🏆', check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 10000 },
-  { id: 'core_15min', label: '15 min de gainage cumulées',   icon: '🧘', check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 900 },
-  { id: 'core_1h',    label: '1 heure de gainage cumulée',   icon: '🧘', check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 3600 },
-  { id: 'core_6h',    label: '6 heures de gainage cumulées', icon: '🗿', check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 21600 },
-  { id: 'core_24h',   label: '24 heures de gainage cumulées', icon: '🏆', check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 86400 },
+  { id: 'streak_3',   label: '3 jours de suite',   icon: '🔥', xp: 50,   check: () => computeStreak() >= 3,   progress: () => ({ current: computeStreak(), target: 3 }) },
+  { id: 'streak_7',   label: '7 jours de suite',    icon: '🔥', xp: 100,  check: () => computeStreak() >= 7,   progress: () => ({ current: computeStreak(), target: 7 }) },
+  { id: 'streak_30',  label: '30 jours de suite',   icon: '🔥', xp: 300,  check: () => computeStreak() >= 30,  progress: () => ({ current: computeStreak(), target: 30 }) },
+  { id: 'streak_100', label: '100 jours de suite',  icon: '🔥', xp: 1000, check: () => computeStreak() >= 100, progress: () => ({ current: computeStreak(), target: 100 }) },
+  { id: 'comp_10',    label: '10 défis complétés',  icon: '🏅', xp: 100,  check: () => badges.totalCompletions >= 10,  progress: () => ({ current: badges.totalCompletions, target: 10 }) },
+  { id: 'comp_50',    label: '50 défis complétés',  icon: '🏅', xp: 300,  check: () => badges.totalCompletions >= 50,  progress: () => ({ current: badges.totalCompletions, target: 50 }) },
+  { id: 'comp_100',   label: '100 défis complétés', icon: '🏆', xp: 600,  check: () => badges.totalCompletions >= 100, progress: () => ({ current: badges.totalCompletions, target: 100 }) },
+  { id: 'comp_250',   label: '250 défis complétés', icon: '👑', xp: 1500, check: () => badges.totalCompletions >= 250, progress: () => ({ current: badges.totalCompletions, target: 250 }) },
+  { id: 'hardcore_1',  label: 'Premier Hardcore',    icon: '🔥', xp: 100,  check: () => badges.totalHardcore >= 1,  progress: () => ({ current: badges.totalHardcore, target: 1 }) },
+  { id: 'hardcore_10', label: '10 défis Hardcore',   icon: '💀', xp: 400,  check: () => badges.totalHardcore >= 10, progress: () => ({ current: badges.totalHardcore, target: 10 }) },
+  { id: 'hardcore_50', label: '50 défis Hardcore',   icon: '☠️', xp: 1000, check: () => badges.totalHardcore >= 50, progress: () => ({ current: badges.totalHardcore, target: 50 }) },
+  { id: 'pushups_100',   label: '100 pompes cumulées',    icon: '💪', xp: 100,  check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 100,   progress: () => ({ current: sumLifetime(PUSHUP_FAMILY_IDS), target: 100 }) },
+  { id: 'pushups_500',   label: '500 pompes cumulées',    icon: '💪', xp: 300,  check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 500,   progress: () => ({ current: sumLifetime(PUSHUP_FAMILY_IDS), target: 500 }) },
+  { id: 'pushups_1000',  label: '1 000 pompes cumulées',  icon: '🦾', xp: 600,  check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 1000,  progress: () => ({ current: sumLifetime(PUSHUP_FAMILY_IDS), target: 1000 }) },
+  { id: 'pushups_5000',  label: '5 000 pompes cumulées',  icon: '🦾', xp: 1500, check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 5000,  progress: () => ({ current: sumLifetime(PUSHUP_FAMILY_IDS), target: 5000 }) },
+  { id: 'pushups_10000', label: '10 000 pompes cumulées', icon: '🏆', xp: 3000, check: () => sumLifetime(PUSHUP_FAMILY_IDS) >= 10000, progress: () => ({ current: sumLifetime(PUSHUP_FAMILY_IDS), target: 10000 }) },
+  { id: 'core_15min', label: '15 min de gainage cumulées',   icon: '🧘', xp: 100,  secondsBased: true, check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 900,   progress: () => ({ current: sumLifetime(CORE_TIME_FAMILY_IDS), target: 900 }) },
+  { id: 'core_1h',    label: '1 heure de gainage cumulée',   icon: '🧘', xp: 300,  secondsBased: true, check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 3600,  progress: () => ({ current: sumLifetime(CORE_TIME_FAMILY_IDS), target: 3600 }) },
+  { id: 'core_6h',    label: '6 heures de gainage cumulées', icon: '🗿', xp: 800,  secondsBased: true, check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 21600, progress: () => ({ current: sumLifetime(CORE_TIME_FAMILY_IDS), target: 21600 }) },
+  { id: 'core_24h',   label: '24 heures de gainage cumulées', icon: '🏆', xp: 2000, secondsBased: true, check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 86400, progress: () => ({ current: sumLifetime(CORE_TIME_FAMILY_IDS), target: 86400 }) },
 ];
 
 async function loadStats() {
@@ -3591,12 +3712,19 @@ let prepCountdownValue = null;
 let prepCountdownTimeoutId = null;
 let prepCountdownMode = 'start';
 
+// mode :
+// - 'start' (défaut) : décompte de préparation classique, se termine par "C'est parti !".
+// - 'hardcore-first' : tout premier lancement du Hardcore après l'objectif normal ->
+//   annonce "Mode Hardcore enclenché !" puis décompte. Cette annonce ne doit se
+//   produire qu'une seule fois (cf. entry.hardcoreAnnounced dans toggleTimer()).
+// - 'hardcore-repeat' : reprises suivantes du Hardcore -> décompte immédiat, sans
+//   ré-annoncer la phrase (déjà entendue), ni dire "C'est parti !" à la fin.
 function beginPrepCountdown(mode) {
   unlockTimerAudio(); // dans le geste utilisateur du clic, pour débloquer l'audio (Safari/iOS)
   clearPrepCountdown();
-  prepCountdownMode = mode === 'hardcore' ? 'hardcore' : 'start';
+  prepCountdownMode = mode || 'start';
   prepCountdownValue = 3;
-  if (prepCountdownMode === 'hardcore') {
+  if (prepCountdownMode === 'hardcore-first') {
     if (voiceCoachEnabled) speak('Mode Hardcore enclenché !');
     // laisse le temps a la phrase d'etre prononcee avant d'entamer le decompte
     // audible (speak() annule sinon l'utterance en cours en cas d'enchainement immediat)
@@ -3683,8 +3811,9 @@ function startTimer() {
 
 // Clic sur le disque du chrono (anneau entier cliquable) : bascule Play/Valider.
 // - Pas encore d'objectif normal atteint -> décompte de préparation (3-2-1) puis démarrage.
-// - Objectif normal déjà atteint (Hardcore pas encore réussi) -> annonce "Mode Hardcore
-//   enclenché !" puis décompte (3-2-1) avant le démarrage réel.
+// - Objectif normal déjà atteint (Hardcore pas encore réussi) -> décompte (3-2-1) avant
+//   le démarrage réel ; l'annonce "Mode Hardcore enclenché !" ne se produit qu'au tout
+//   premier lancement (cf. entry.hardcoreAnnounced), jamais sur les reprises suivantes.
 // - Hardcore déjà réussi -> plus rien à démarrer.
 function toggleTimer() {
   if (timerRunning) {
@@ -3695,7 +3824,13 @@ function toggleTimer() {
   const entry = getEntry(currentChallengeId);
   if (entry.hardcoreDone) return;
   if (entry.done) {
-    beginPrepCountdown('hardcore');
+    if (!entry.hardcoreAnnounced) {
+      entry.hardcoreAnnounced = true;
+      saveState();
+      beginPrepCountdown('hardcore-first');
+    } else {
+      beginPrepCountdown('hardcore-repeat');
+    }
   } else {
     beginPrepCountdown();
   }
@@ -3761,7 +3896,7 @@ function emptyDayState() {
 }
 
 function emptyChallengeEntry() {
-  return { sets: [], targetOverride: null, done: false, hardcoreDone: false };
+  return { sets: [], targetOverride: null, done: false, hardcoreDone: false, hardcoreAnnounced: false };
 }
 
 function getEntry(id) {
@@ -3770,6 +3905,9 @@ function getEntry(id) {
   }
   if (state.challenges[id].hardcoreDone === undefined) {
     state.challenges[id].hardcoreDone = false; // migration
+  }
+  if (state.challenges[id].hardcoreAnnounced === undefined) {
+    state.challenges[id].hardcoreAnnounced = false; // migration
   }
   return state.challenges[id];
 }
@@ -3875,7 +4013,8 @@ async function addSet(amount) {
 
     const completedChallenge = getChallenge();
     const xpGained = xpForChallenge(completedChallenge, total);
-    const { levelBefore, levelAfter } = await awardXp(xpGained);
+    const trophyXp = freshBadges.reduce((sum, b) => sum + (b.xp || 0), 0);
+    const { levelBefore, levelAfter } = await awardXp(xpGained + trophyXp);
     if (isFirstCompletionOfDay) await registerDailyStreak();
 
     if (navigator.vibrate) navigator.vibrate([45, 35, 45, 35, 90]);
@@ -3926,7 +4065,8 @@ async function addSet(amount) {
     badges.totalHardcore += 1;
     const freshHardcoreBadges = checkNewBadges();
     await saveBadges();
-    const { levelBefore: hcLevelBefore, levelAfter: hcLevelAfter } = await awardXp(HARDCORE_XP_BONUS);
+    const hcTrophyXp = freshHardcoreBadges.reduce((sum, b) => sum + (b.xp || 0), 0);
+    const { levelBefore: hcLevelBefore, levelAfter: hcLevelAfter } = await awardXp(HARDCORE_XP_BONUS + hcTrophyXp);
 
     if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 60, 40, 140]);
     fireConfetti('hardcore');
@@ -4080,7 +4220,6 @@ function render(animate) {
       <div class="active-card">
         <img class="exercise-hero-apng" src="exercices/${getExercisePictogramKey(c)}.png" alt="Démonstration : ${c.name}"
              onerror="this.remove();">
-        <div class="active-cat">${c.cat}</div>
         <div class="active-name">${c.name}</div>
 
         ${c.cat === 'Haltères' ? `
@@ -4093,12 +4232,10 @@ function render(animate) {
           ${armModeSentence(target, c.unit, c.armMode) ? `<div class="arm-mode-sentence">💪 ${armModeSentence(target, c.unit, c.armMode)}</div>` : ''}
         ` : ''}
 
-        ${stats[c.id] ? `
-          <div class="stats-row">
-            <div class="stat-chip">🏆 Record : ${stats[c.id].bestDay.total}${unitLabel === 'sec' ? 's' : ''}</div>
-            <div class="stat-chip">Σ ${stats[c.id].lifetimeTotal.toLocaleString('fr-FR')} à vie</div>
-          </div>
-        ` : ''}
+        <div class="stats-row">
+          <div class="stat-chip">🏆 Record : ${stats[c.id] ? stats[c.id].bestDay.total : 0}${unitLabel === 'sec' ? 's' : ''}</div>
+          <div class="stat-chip">Σ ${(stats[c.id] ? stats[c.id].lifetimeTotal : 0).toLocaleString('fr-FR')} à vie</div>
+        </div>
 
         <div class="progress-row">
           <div class="progress-numbers">
@@ -4145,8 +4282,8 @@ function render(animate) {
           const projected = total + elapsedNow;
           const { normalPct, hardcorePct } = computeTimerRingPct(projected, target, hcT);
           return `
-            <div class="add-label">Chronométrer une série</div>
             <div class="timer-box">
+              <div class="add-label">Chronométrer une série</div>
               <div class="timer-ring-wrap${entry.hardcoreDone ? ' done' : ''}" onclick="toggleTimer()">
                 ${renderDoubleTimerRingSVG(normalPct, hardcorePct, 220)}
                 <div class="timer-ring-center">
@@ -4424,7 +4561,7 @@ function renderChallengeCard(c, mode) {
     <div class="picker-item" onclick="${onclick}">
       ${renderExercisePicto(c)}
       <div class="picker-item-body">
-        <span class="cat">${resolved.unit === 'sec' ? 'Chrono' : 'Répétitions'}</span>
+        <span class="cat">${resolved.unit === 'sec' ? chronoUnitIconSVG() : tallyUnitIconSVG()}</span>
         <span class="name">${c.name}</span>
       </div>
       <div class="goal">
@@ -4573,8 +4710,11 @@ function renderTrophiesGrid() {
       ${BADGE_DEFS.map(b => {
         const unlocked = badges.unlocked.includes(b.id);
         return `
-          <div class="trophy-item${unlocked ? '' : ' locked'}">
-            <div class="badge-icon">${unlocked ? b.icon : '🔒'}</div>
+          <div class="trophy-item${unlocked ? ' unlocked' : ' locked'}" onclick="showTrophyDetailModal('${b.id}')">
+            <div class="badge-icon">
+              ${b.icon}
+              ${unlocked ? '' : `<span class="badge-lock-badge">${lockIconSVG(11)}</span>`}
+            </div>
             <div class="badge-label">${b.label}</div>
           </div>
         `;
@@ -4647,7 +4787,6 @@ function renderAthleteCard() {
     <div class="athlete-card" onclick="openLevelRoadmap()">
       <div class="athlete-level-row">
         <div class="athlete-level">Niveau ${level}</div>
-        <div class="athlete-streak">🔥 ${streakCount} j${hasShield ? ' 🛡️' : ''}</div>
       </div>
       <div class="athlete-title">${title}</div>
       <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
@@ -4671,7 +4810,7 @@ function renderLevelRoadmapSheet() {
     prevMax = t.maxLevel;
     return `
       <div class="roadmap-row${unlocked ? ' unlocked' : ''}${current ? ' current' : ''}">
-        <div class="roadmap-row-icon">${current ? '▶' : unlocked ? '✓' : '🔒'}</div>
+        <div class="roadmap-row-icon">${current ? '▶' : unlocked ? '✓' : lockIconSVG(14)}</div>
         <div class="roadmap-row-text">
           <div class="roadmap-row-title">${t.title}</div>
           <div class="roadmap-row-range">${rangeLabel}</div>
@@ -4746,6 +4885,10 @@ function renderAccountSection() {
 
 function renderAccountTabScreen() {
   return `
+    <div class="header">
+      <div class="date">${formatDateLabel(new Date())}</div>
+      <button class="streak" onclick="showStreakInfoModal()">🔥 ${computeStreak()} j${hasShield ? ' 🛡️' : ''}</button>
+    </div>
     <h1 class="title">Profil</h1>
     <div class="subtitle">Tes infos et la gestion de ton compte</div>
     ${renderAthleteCard()}
