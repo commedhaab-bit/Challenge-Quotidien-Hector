@@ -39,6 +39,7 @@
     --good: #5fbf7a;
     --danger: #ef5350;
     --hardcore: #ff6b35;
+    --track-bg: #1e293b; /* fond distinct des jauges de progression (XP, series, trophees) */
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -129,6 +130,9 @@
 
   /* MINI TOUR GUIDÉ (première connexion) — arrière-plan assombri + flou pour détacher
      nettement la bulle de formation du reste de l'app (immersif, premier plan net). */
+  /* Overlay ultra-léger par défaut (étapes d'explication des onglets) : l'utilisateur
+     doit continuer à voir clairement l'interface derrière la bulle. Seule la toute
+     1ère carte (introduction, .intro) assombrit/floute pour annoncer le tutoriel. */
   .tour-overlay {
     position: fixed;
     inset: 0;
@@ -137,10 +141,13 @@
     justify-content: center;
     padding: 0 18px calc(64px + env(safe-area-inset-bottom, 0px));
     z-index: 600;
+    background: rgba(0, 0, 0, 0.15);
+    animation: app-popup-fade-in 0.25s ease;
+  }
+  .tour-overlay.intro {
     background: rgba(0, 0, 0, 0.7);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
-    animation: app-popup-fade-in 0.25s ease;
   }
   .tour-bubble {
     pointer-events: auto;
@@ -278,14 +285,14 @@
      langage visuel que les jauges d'XP : épaisse, bords arrondis, lueur néon. */
   .popup-progress-track {
     height: 10px;
-    border-radius: 6px;
-    background: var(--bg);
+    border-radius: 9999px;
+    background: var(--track-bg);
     border: 1px solid var(--line);
     margin-top: 18px;
   }
   .popup-progress-fill {
     height: 100%;
-    border-radius: 6px;
+    border-radius: 9999px;
     background: linear-gradient(90deg, var(--accent-dim), var(--accent));
     box-shadow: 0 0 10px var(--accent-glow), 0 0 4px var(--accent);
     transition: width 0.3s;
@@ -359,14 +366,14 @@
   .athlete-title { font-size: 20px; color: var(--accent); font-weight: 900; margin-bottom: 22px; text-shadow: 0 0 16px var(--accent-glow); }
   .athlete-xp-track {
     height: 10px;
-    border-radius: 6px;
-    background: var(--bg);
+    border-radius: 9999px;
+    background: var(--track-bg);
     border: 1px solid var(--line);
   }
   .athlete-xp-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--accent-dim), var(--accent));
-    border-radius: 6px;
+    border-radius: 9999px;
     box-shadow: 0 0 10px var(--accent-glow), 0 0 4px var(--accent);
     transition: width 0.3s;
   }
@@ -921,6 +928,12 @@
     scrollbar-width: none;
     -webkit-mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
     mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
+    /* force sa propre couche de compositing GPU : evite le jank/repaint chaotique
+       que provoque parfois le mask-image sur un conteneur en cours de scroll,
+       notamment sur Safari/WebViews mobiles */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    will-change: scroll-position;
   }
   .wheel-picker::-webkit-scrollbar { display: none; }
   .wheel-picker-track { padding: 88px 0; } /* 2 items de marge haut/bas pour amener les valeurs extrêmes au centre */
@@ -934,6 +947,7 @@
     color: var(--chalk-dim);
     font-variant-numeric: tabular-nums;
     scroll-snap-align: center;
+    scroll-snap-stop: always; /* empeche un flick rapide de sauter plusieurs valeurs sans s'arreter */
   }
   /* Cadre de sélection : rectangle complet (pas juste des filets haut/bas) pour
      identifier immédiatement la valeur active du rouleau. */
@@ -1380,15 +1394,6 @@
     font-size: 15.5px;
     font-weight: 600;
   }
-  .picker-item .cat {
-    font-size: 10.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--accent);
-    font-weight: 700;
-    display: block;
-    margin-bottom: 2px;
-  }
   .picker-item .goal {
     font-size: 13px;
     color: var(--chalk-dim);
@@ -1644,20 +1649,21 @@
     margin-left: 2px;
   }
 
+  /* Même langage visuel que les jauges d'XP : épaisse, fond sombre bien distinct,
+     bords totalement arrondis, remplissage néon avec lueur. */
   .bar-track {
     height: 10px;
-    background: var(--bg);
-    border-radius: 6px;
-    overflow: hidden;
+    background: var(--track-bg);
+    border-radius: 9999px;
     margin-bottom: 20px;
     border: 1px solid var(--line);
   }
   .bar-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--accent-dim), var(--accent));
-    border-radius: 6px 0 0 6px;
+    border-radius: 9999px;
     transition: width 0.35s cubic-bezier(.2,.8,.2,1);
-    box-shadow: 0 0 10px var(--accent-glow);
+    box-shadow: 0 0 10px var(--accent-glow), 0 0 4px var(--accent);
   }
   .bar-fill.complete {
     background: linear-gradient(90deg, #3f8f5c, var(--good));
@@ -2315,8 +2321,9 @@ function renderGuidedTourOverlay() {
   if (guidedTourStep === null) return '';
   const step = GUIDED_TOUR_STEPS[guidedTourStep];
   const isLast = guidedTourStep === GUIDED_TOUR_STEPS.length - 1;
+  const isIntro = guidedTourStep === 0; // seule la 1ere carte assombrit/floute l'arriere-plan
   return `
-    <div class="tour-overlay">
+    <div class="tour-overlay${isIntro ? ' intro' : ''}">
       <div class="tour-bubble">
         <div class="tour-bubble-title">${step.emoji} ${step.title}</div>
         <div class="tour-bubble-text">${step.text}</div>
@@ -2405,7 +2412,8 @@ function renderWheelPicker(id, min, max, step, suffix) {
     items += `<div class="wheel-picker-item">${v}${suffix ? ' ' + suffix : ''}</div>`;
   }
   return `
-    <div class="wheel-picker" id="${id}" data-min="${min}" data-max="${max}" data-step="${step}" data-item-height="${WHEEL_ITEM_HEIGHT}">
+    <div class="wheel-picker" id="${id}" data-min="${min}" data-max="${max}" data-step="${step}" data-item-height="${WHEEL_ITEM_HEIGHT}"
+         onscroll="onWheelPickerScroll('${id}')">
       <div class="wheel-picker-highlight"></div>
       <div class="wheel-picker-track">${items}</div>
     </div>
@@ -2423,6 +2431,18 @@ function getWheelPickerValue(id) {
   let index = Math.round(el.scrollTop / itemHeight);
   index = Math.max(0, Math.min(maxIndex, index)); // tolère un léger rebond élastique (overscroll iOS)
   return min + index * step;
+}
+
+// Retour haptique discret à chaque cran franchi pendant la rotation du rouleau.
+// Ne lit QUE le scrollTop (aucune manipulation du DOM/re-render du picker) pour ne
+// jamais interférer avec le scroll natif en cours (cause du "re-render chaotique").
+const wheelPickerLastValue = {};
+function onWheelPickerScroll(id) {
+  const value = getWheelPickerValue(id);
+  if (wheelPickerLastValue[id] !== value) {
+    wheelPickerLastValue[id] = value;
+    if (navigator.vibrate) navigator.vibrate(10);
+  }
 }
 
 function setWheelPickerValue(id, value) {
@@ -2922,20 +2942,6 @@ function lockIconSVG(size) {
 // Petites icônes (vert néon via currentColor) remplaçant les mots "Chrono"/"Répétitions"
 // sur les cartes d'exercice des listes (Défis/Aujourd'hui) : chrono épuré pour les
 // défis en secondes, traits de comptage à la craie pour les défis en répétitions.
-function chronoUnitIconSVG() {
-  return `<svg class="unit-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="12" cy="13" r="8" stroke="currentColor" stroke-width="2"/>
-    <path d="M12 13V9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-    <path d="M10 2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  </svg>`;
-}
-function tallyUnitIconSVG() {
-  return `<svg class="unit-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M6 4v16M10 4v16M14 4v16M18 4v16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-    <path d="M4 16L20 8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  </svg>`;
-}
-
 // Popover de détail au clic sur une carte de trophée : icône, condition de
 // déblocage, barre de progression en temps réel et récompense d'XP — que le
 // trophée soit déjà débloqué ou non.
@@ -3092,16 +3098,34 @@ async function toggleVoiceCoach() {
 
 // cancel() avant chaque prise de parole pour éviter les retards/empilements audio ;
 // tolère l'absence de synthèse vocale (navigateur non compatible ou bloquée).
-function speak(text) {
-  if (!voiceCoachEnabled) return;
-  if (typeof window === 'undefined' || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return;
+// `onEnd`, si fourni, se déclenche une fois la phrase RÉELLEMENT terminée (callback
+// natif SpeechSynthesisUtterance.onend), pour enchaîner un son/décompte sans jamais
+// couper l'annonce en cours (cf. le décompte du mode Hardcore). Un filet de sécurité
+// (setTimeout) évite de rester bloqué si le navigateur ne déclenche jamais onend.
+function speak(text, onEnd) {
+  if (!voiceCoachEnabled) {
+    if (onEnd) onEnd();
+    return;
+  }
+  if (typeof window === 'undefined' || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') {
+    if (onEnd) onEnd();
+    return;
+  }
   try {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'fr-FR';
+    if (onEnd) {
+      let called = false;
+      const finish = () => { if (!called) { called = true; onEnd(); } };
+      utterance.onend = finish;
+      utterance.onerror = finish;
+      setTimeout(finish, 4000); // filet de securite (bug navigateur : onend jamais declenche)
+    }
     window.speechSynthesis.speak(utterance);
   } catch (e) {
     console.error('Coach vocal indisponible :', e);
+    if (onEnd) onEnd();
   }
 }
 
@@ -3725,14 +3749,15 @@ function beginPrepCountdown(mode) {
   prepCountdownMode = mode || 'start';
   prepCountdownValue = 3;
   if (prepCountdownMode === 'hardcore-first') {
-    if (voiceCoachEnabled) speak('Mode Hardcore enclenché !');
-    // laisse le temps a la phrase d'etre prononcee avant d'entamer le decompte
-    // audible (speak() annule sinon l'utterance en cours en cas d'enchainement immediat)
-    prepCountdownTimeoutId = setTimeout(() => {
+    // attend la fin REELLE de l'annonce (callback onend de SpeechSynthesis) avant
+    // d'entamer le decompte audible, plutot qu'un delai fixe devine (speak() annule
+    // sinon l'utterance en cours si on enchaine trop tot -> phrase coupee mi-mot).
+    speak('Mode Hardcore enclenché !', () => {
+      if (prepCountdownValue === null) return; // decompte annule entretemps (clearPrepCountdown)
       renderPrepCountdownOverlay();
       speak('3');
       prepCountdownTimeoutId = setTimeout(prepCountdownTick, 1000);
-    }, 1300);
+    });
   } else {
     renderPrepCountdownOverlay();
     speak('3');
@@ -3759,6 +3784,7 @@ function clearPrepCountdown() {
   prepCountdownTimeoutId = null;
   prepCountdownValue = null;
   prepCountdownMode = 'start';
+  if (typeof window !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
   const el = document.getElementById('prepCountdownOverlay');
   if (el) el.remove();
 }
@@ -4561,7 +4587,6 @@ function renderChallengeCard(c, mode) {
     <div class="picker-item" onclick="${onclick}">
       ${renderExercisePicto(c)}
       <div class="picker-item-body">
-        <span class="cat">${resolved.unit === 'sec' ? chronoUnitIconSVG() : tallyUnitIconSVG()}</span>
         <span class="name">${c.name}</span>
       </div>
       <div class="goal">
