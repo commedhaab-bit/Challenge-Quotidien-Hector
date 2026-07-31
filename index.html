@@ -252,6 +252,7 @@
   }
   @keyframes app-popup-fade-in { from { opacity: 0; } to { opacity: 1; } }
   .app-popup-card {
+    position: relative;
     background: var(--bg-card);
     border: 1px solid var(--accent-dim);
     border-radius: 22px;
@@ -261,6 +262,24 @@
     width: 100%;
     animation: app-popup-pop-in 0.4s cubic-bezier(.34,1.56,.64,1);
   }
+  .app-popup-close-x {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    color: var(--chalk-dim);
+    font-size: 13px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .app-popup-close-x:active { transform: scale(0.9); }
   @keyframes app-popup-pop-in {
     from { transform: scale(0.7); opacity: 0; }
     to { transform: scale(1); opacity: 1; }
@@ -320,7 +339,29 @@
     line-height: 1.2;
   }
   .app-popup-card.epic .app-popup-big { color: #ffd700; text-shadow: 0 0 18px rgba(255,215,0,0.5); }
+  .app-popup-big-label {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--chalk-dim);
+    margin: -4px 0 4px;
+  }
   .app-popup-sub { font-size: 14px; color: var(--chalk-dim); line-height: 1.5; margin-top: 4px; }
+  .popup-shield-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 800;
+    padding: 7px 14px;
+    border-radius: 20px;
+    margin-top: 14px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    color: var(--chalk-dim);
+  }
+  .popup-shield-badge.available { color: var(--accent); border-color: var(--accent-dim); }
   .app-popup-chips {
     display: flex;
     flex-wrap: wrap;
@@ -512,7 +553,7 @@
     font-size: 13px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--chalk-dim);
+    color: #D1D5DB; /* plus clair que --chalk-dim pour rester lisible sur le fond noir */
     font-weight: 600;
   }
   .header .streak {
@@ -649,6 +690,18 @@
   /* HEATMAP — grille en pourcentage (pas de largeur fixe) pour tenir sur 100%
      de la largeur de l'écran sans scroll horizontal ; les cellules (carrées,
      via aspect-ratio) rétrécissent ensemble plutôt que de déborder. */
+  .heatmap-months {
+    display: grid;
+    grid-template-columns: repeat(26, 1fr);
+    gap: 2px;
+    width: 100%;
+    margin-bottom: 3px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--chalk-dim);
+  }
+  .heat-month-label { white-space: nowrap; overflow: visible; }
   .heatmap-grid {
     display: grid;
     grid-template-columns: repeat(26, 1fr);
@@ -1176,7 +1229,7 @@
     cursor: not-allowed;
   }
 
-  .manage-actions { display: flex; gap: 6px; align-self: center; }
+  .manage-actions { display: flex; gap: 6px; }
   .icon-btn {
     background: var(--bg-raised);
     border: 1px solid var(--line);
@@ -1407,11 +1460,11 @@
     background: var(--bg-card);
     border: 1px solid var(--line);
     border-radius: 14px;
-    padding: 12px 16px;
+    padding: 2px 16px;
     display: flex;
     gap: 12px;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     cursor: pointer;
     transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
   }
@@ -1577,12 +1630,13 @@
     background: none;
     border: none;
     color: var(--chalk-dim);
-    text-decoration: underline;
-    font-size: 12px;
-    font-weight: 600;
+    opacity: 0.7;
+    font-size: 13px;
+    line-height: 1;
     cursor: pointer;
-    padding: 0;
+    padding: 2px;
   }
+  .weight-pill button:active { opacity: 1; transform: scale(0.92); }
   .arm-mode-sentence {
     display: flex;
     align-items: center;
@@ -2999,13 +3053,17 @@ function computeStreak() {
 // Explique la série + le bouclier au clic sur la pastille de l'accueil (modal
 // style Duolingo, comme les autres popups de l'app).
 function showStreakInfoModal() {
+  const shieldBadge = `<div class="popup-shield-badge${hasShield ? ' available' : ''}">Bouclier : ${hasShield ? 'Disponible' : 'Inactif'} 🛡️</div>`;
   enqueuePopup({
     icon: '🔥',
-    title: `Série de ${streakCount} jour${streakCount > 1 ? 's' : ''} !`,
+    title: 'Série Actuelle',
     big: streakCount,
-    subtitle: hasShield
-      ? "Félicitations, tu maintiens ta série ! 🛡️ Il te reste ton bouclier hebdomadaire pour geler une journée si tu manques un défi."
-      : "Félicitations, tu maintiens ta série ! Ton bouclier hebdomadaire est déjà utilisé cette semaine — il se recharge automatiquement lundi prochain.",
+    bigLabel: `Jour${streakCount > 1 ? 's' : ''}`,
+    subtitle: streakCount === 0
+      ? "Aucune série en cours 🔥. Valide un défi aujourd'hui pour allumer la flamme !"
+      : "Félicitations, tu maintiens ta série !",
+    badgeLine: shieldBadge,
+    closable: true,
   });
 }
 
@@ -3031,10 +3089,13 @@ function buildPopupInnerHtml(next) {
   ` : '';
   return `
     <div class="app-popup-card${next.epic ? ' epic' : ''}">
+      ${next.closable ? `<button class="app-popup-close-x" id="appPopupCloseX" aria-label="Fermer">✕</button>` : ''}
       <div class="app-popup-icon${next.locked ? ' locked' : ''}">${next.icon}</div>
       <div class="app-popup-title">${next.title}</div>
       ${next.big !== undefined ? `<div class="app-popup-big">${next.big}</div>` : ''}
+      ${next.bigLabel ? `<div class="app-popup-big-label">${next.bigLabel}</div>` : ''}
       ${next.subtitle ? `<div class="app-popup-sub">${next.subtitle}</div>` : ''}
+      ${next.badgeLine || ''}
       ${progressHtml}
       ${chips.length ? `<div class="app-popup-chips">${chips.join('')}</div>` : ''}
       <button class="app-popup-btn" id="appPopupCloseBtn">${next.btnLabel || 'Continuer'}</button>
@@ -3057,6 +3118,13 @@ function drainPopupQueue() {
     el.remove();
     drainPopupQueue();
   };
+  const closeX = document.getElementById('appPopupCloseX');
+  if (closeX) {
+    closeX.onclick = () => {
+      el.remove();
+      drainPopupQueue();
+    };
+  }
 }
 
 // Une popup épique dédiée par trophée fraîchement débloqué (icône animée, effets
@@ -4398,7 +4466,7 @@ function render(animate) {
           <div class="weight-row">
             <div class="weight-pill">
               🏋️ ${weights[c.id] ?? 8} kg
-              <button onclick="editWeight()">modifier</button>
+              <button onclick="editWeight()" aria-label="Modifier le poids">✏️</button>
             </div>
           </div>
           ${armModeSentence(target, c.unit, c.armMode) ? `<div class="arm-mode-sentence"><span class="arm-mode-sentence-icon">💪</span><span>${armModeSentence(target, c.unit, c.armMode)}</span></div>` : ''}
@@ -4566,49 +4634,44 @@ function renderTodayEmptyState() {
     <div class="today-empty-state">
       <div class="today-empty-icon">🗓️</div>
       <div class="today-empty-title">Aucun défi sélectionné pour aujourd'hui</div>
-      <div class="today-empty-text">Rendez-vous dans la Bibliothèque pour choisir tes défis du jour !</div>
-      <button class="today-empty-btn" onclick="switchTab('library')">📚 Choisir un défi</button>
+      <div class="today-empty-text">Rendez-vous dans l'onglet Défis pour choisir tes défis du jour !</div>
+      <button class="today-empty-btn" onclick="switchTab('library')">🎯 Choisir un défi</button>
     </div>
   `;
 }
 
+// Toujours le module "Prochains trophées à portée de main" (2-3 trophées VERROUILLÉS
+// les plus proches d'être débloqués), qu'il y ait 0 ou N trophées déjà débloqués :
+// la version précédente ne remplaçait que la branche "0 débloqué", donc dès le premier
+// trophée obtenu l'ancienne bande des trophées déjà réussis réapparaissait sans jamais
+// montrer le teaser. Les trophées déjà débloqués restent consultables dans l'onglet Profil.
 function renderBadgesStrip() {
-  const unlocked = BADGE_DEFS.filter(b => badges.unlocked.includes(b.id));
-  if (unlocked.length === 0) {
-    // Aucun trophée débloqué : au lieu d'un message statique, on montre les 2-3
-    // trophées verrouillés les plus proches d'être atteints, pour donner un objectif
-    // concret plutôt qu'une invitation vague.
-    const closest = BADGE_DEFS
-      .map(b => {
-        const p = b.progress();
-        const pct = p.target > 0 ? Math.min(100, (p.current / p.target) * 100) : 0;
-        return { b, pct };
-      })
-      .sort((a, z) => z.pct - a.pct)
-      .slice(0, 3);
+  const locked = BADGE_DEFS.filter(b => !badges.unlocked.includes(b.id));
+  if (locked.length === 0) {
     return `
-      <div class="section-label">Prochains trophées à portée de main</div>
-      <div class="next-trophies-grid">
-        ${closest.map(({ b, pct }) => `
-          <div class="next-trophy-card" onclick="showTrophyDetailModal('${b.id}')">
-            <div class="next-trophy-icon">${b.icon}</div>
-            <div class="next-trophy-body">
-              <div class="next-trophy-name">${b.label}</div>
-              <div class="next-trophy-track"><div class="next-trophy-fill" style="width:${Math.round(pct)}%"></div></div>
-            </div>
-            <div class="next-trophy-pct">${Math.round(pct)}%</div>
-          </div>
-        `).join('')}
-      </div>
+      <div class="section-label">Trophées</div>
+      <div class="badges-empty">Tous les trophées sont débloqués — bravo, légende ! 🏆</div>
     `;
   }
+  const closest = locked
+    .map(b => {
+      const p = b.progress();
+      const pct = p.target > 0 ? Math.min(100, (p.current / p.target) * 100) : 0;
+      return { b, pct };
+    })
+    .sort((a, z) => z.pct - a.pct)
+    .slice(0, 3);
   return `
-    <div class="section-label">Trophées (${unlocked.length}/${BADGE_DEFS.length})</div>
-    <div class="badges-strip">
-      ${unlocked.map(b => `
-        <div class="badge-chip" title="${b.label}">
-          <div class="badge-icon">${b.icon}</div>
-          <div class="badge-label">${b.label}</div>
+    <div class="section-label">Prochains trophées à portée de main</div>
+    <div class="next-trophies-grid">
+      ${closest.map(({ b, pct }) => `
+        <div class="next-trophy-card" onclick="showTrophyDetailModal('${b.id}')">
+          <div class="next-trophy-icon">${b.icon}</div>
+          <div class="next-trophy-body">
+            <div class="next-trophy-name">${b.label}</div>
+            <div class="next-trophy-track"><div class="next-trophy-fill" style="width:${Math.round(pct)}%"></div></div>
+          </div>
+          <div class="next-trophy-pct">${Math.round(pct)}%</div>
         </div>
       `).join('')}
     </div>
@@ -4897,8 +4960,22 @@ function renderHeatmap() {
     cells += `<div class="heat-cell lvl${lvl}${isFuture ? ' future' : ''}" title="${k} — ${count} défi(s)"></div>`;
   }
 
+  // En-tête des mois : un libellé abrégé au-dessus de la 1ère semaine de chaque nouveau
+  // mois, sur la même grille à 26 colonnes que heatmap-grid (1 colonne = 1 semaine),
+  // pour rendre la lecture temporelle évidente.
+  const MONTH_ABBR = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
+  let monthsHtml = '';
+  let lastMonth = -1;
+  for (let col = 0; col < WEEKS; col++) {
+    const weekStart = days[col * 7];
+    const m = weekStart.getMonth();
+    monthsHtml += `<div class="heat-month-label">${m !== lastMonth ? MONTH_ABBR[m] : ''}</div>`;
+    lastMonth = m;
+  }
+
   return `
     <div class="section-label">Activité (6 derniers mois)</div>
+    <div class="heatmap-months">${monthsHtml}</div>
     <div class="heatmap-grid">${cells}</div>
     <div class="heat-legend">
       <span>Moins</span>
@@ -4933,14 +5010,16 @@ function renderTrophiesGrid() {
 
 function renderHistoryScreen() {
   const today = new Date();
-  const cells = [];
-  const DAYS_BACK = 28;
-  // build calendar: oldest first, pad to full weeks starting Monday
+  // Calendrier du MOIS EN COURS (du 1er au dernier jour), pas une fenêtre glissante de
+  // 28 jours (qui faisait disparaître les 1ers jours du mois sur un mois de 30/31 jours).
+  // Le statut "fait" vient de dailyActivity (déjà chargé au complet, pas limité aux 28
+  // derniers jours comme historyEntries), même source que la heatmap ci-dessous.
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
   const days = [];
-  for (let i = DAYS_BACK - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d);
+  for (let day = 1; day <= daysInMonth; day++) {
+    days.push(new Date(year, month, day));
   }
   const firstDow = (days[0].getDay() + 6) % 7; // Monday=0
   let calHtml = `<div class="cal-grid">`;
@@ -4948,9 +5027,8 @@ function renderHistoryScreen() {
   for (let i = 0; i < firstDow; i++) calHtml += `<div class="cal-cell empty"></div>`;
   for (const d of days) {
     const k = dateKey(d);
-    const dayEntries = historyEntries.filter(e => e.key === k);
     const isToday = k === todayKey;
-    const done = dayEntries.some(e => e.done);
+    const done = (dailyActivity[k] || 0) > 0;
     calHtml += `<div class="cal-cell${done ? ' done' : ''}${isToday ? ' today' : ''}">${done ? '✓' : d.getDate()}</div>`;
   }
   calHtml += `</div>`;
