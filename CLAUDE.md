@@ -108,10 +108,14 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
   mises en cache IndexedDB côté appareil.
 - **Journal** : `loadHistoryEntries()` lit ses 28 jours en parallèle (`Promise.all`),
   plus en séquentiel.
-- **SDK Firebase** : les 3 `<script>` du `<head>` et le script inline de l'appli
-  sont en `defer` (téléchargement en parallèle du parsing HTML/CSS ; l'ordre
-  relatif entre scripts `defer` reste garanti, donc firebase-app avant auth/
-  firestore avant le code de l'appli).
+- **SDK Firebase** : chargement synchrone classique (PAS de `defer`/`async`) sur
+  les 3 `<script src=...>` du `<head>` NI sur le script inline de l'appli. Un essai
+  de `defer` sur les 4 a provoqué un écran noir total en production : `defer` n'a
+  AUCUN EFFET sur un `<script>` sans `src` (spec HTML/MDN) — le script inline
+  continuait donc de s'exécuter immédiatement à sa position, avant que les 3 SDK
+  externes (eux bien différés) aient fini de charger, d'où un throw immédiat sur
+  `firebase.initializeApp(...)` qui stoppait tout le script. Ne pas réintroduire
+  `defer`/`async` sur ces 4 balises.
 
 ## Bugs déjà corrigés — NE PAS RÉINTRODUIRE
 - **onAuthStateChanged peut se déclencher 2× au chargement** → déguard via

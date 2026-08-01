@@ -14,14 +14,19 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
 
-<!-- Firebase (gratuit, plan Spark) — defer : le SDK se télécharge en parallèle du
-     parsing HTML/CSS au lieu de le bloquer 3 fois de suite ; l'ordre relatif entre
-     scripts defer (y compris le script inline de l'appli plus bas) reste garanti,
-     donc firebase-app s'exécute toujours avant auth/firestore puis avant le code
-     de l'appli qui en dépend. -->
-<script defer src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script defer src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<!-- Firebase (gratuit, plan Spark) —
+     ATTENTION : NE PAS mettre defer ici. Le `defer` sur un script externe (src=...)
+     retarde son exécution jusqu'à la fin du parsing HTML, MAIS `defer` est ignoré
+     par les navigateurs sur le script inline de l'appli plus bas (aucun effet sur
+     un <script> SANS src, cf. spec HTML/MDN) : ce script continuait donc de
+     s'exécuter immédiatement à sa position, AVANT que ces 3 SDK déférés aient fini
+     de charger, provoquant un throw immédiat sur `firebase.initializeApp(...)`
+     ("firebase is not defined") qui stoppait tout le script — écran totalement noir
+     (#loginScreen/#app restent display:none pour toujours). Déjà vécu et corrigé une
+     fois, ne pas réintroduire. -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
 <style>
   @font-face {
@@ -2219,7 +2224,7 @@
   <div class="loading">Chargement…</div>
 </div>
 
-<script defer>
+<script>
 // ==== CONFIGURATION FIREBASE ====
 // Remplace ces valeurs par celles de TON projet Firebase (voir guide fourni)
 const firebaseConfig = {
