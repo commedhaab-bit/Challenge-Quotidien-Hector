@@ -8,7 +8,23 @@ Claude (claude.ai), ce fichier sert de relais de contexte pour continuer via
 Claude Code.
 
 ## Fichiers du projet
-- `index.html` — l'application entière (HTML/CSS/JS vanilla, ~5000 lignes, un seul fichier)
+- `index.html` — l'application entière (HTML/CSS/JS vanilla, ~5000 lignes). PAS un
+  fichier unique depuis l'extraction du catalogue d'exercices (voir juste en dessous) :
+  reste néanmoins la quasi-totalité du rendu/de la logique/du gameplay
+- `exercise-data.js` / `exercise-pictograms.js` — catalogue d'exercices
+  (`CHALLENGE_LIBRARY`, `QUICK_ADD`, `EXERCISE_ICON_BY_NAME`,
+  `PICTOGRAM_ASSET_MISSING`, `getExercisePictogramKey`, `formatSecToReadable`/
+  `formatTargetLabel`) et pictogrammes SVG (`EXERCISE_PICTOGRAMS`), extraits de
+  `index.html` pour l'alléger. Chargés en **`<script src="...">` CLASSIQUES**
+  (surtout PAS `type="module"`, PAS `defer`/`async`) AVANT le script principal dans
+  le `<head>` — volontairement PAS de vrais modules ES : ça forcerait le script
+  principal à devenir un module (donc `defer` implicite), qui casserait
+  silencieusement les fonctions référencées par `onclick="..."` dans le HTML (elles
+  ne seraient plus des propriétés globales de `window`) — exactement la classe de
+  bug qui a déjà causé un écran noir en production (voir plus bas). Un simple
+  script classique garde tout dans la même portée globale partagée, sans ce risque.
+  Le harnais de test lit ces fichiers et les concatène AVANT le script principal
+  pour reproduire cet ordre de chargement.
 - `manifest.json` — manifeste PWA
 - `service-worker.js` — réseau-first pour le HTML (mise à jour PWA), cache-first
   (avec alimentation à la volée) pour tout le reste — notamment les images
@@ -108,14 +124,15 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
   mises en cache IndexedDB côté appareil.
 - **Journal** : `loadHistoryEntries()` lit ses 28 jours en parallèle (`Promise.all`),
   plus en séquentiel.
-- **SDK Firebase** : chargement synchrone classique (PAS de `defer`/`async`) sur
-  les 3 `<script src=...>` du `<head>` NI sur le script inline de l'appli. Un essai
-  de `defer` sur les 4 a provoqué un écran noir total en production : `defer` n'a
-  AUCUN EFFET sur un `<script>` sans `src` (spec HTML/MDN) — le script inline
-  continuait donc de s'exécuter immédiatement à sa position, avant que les 3 SDK
-  externes (eux bien différés) aient fini de charger, d'où un throw immédiat sur
-  `firebase.initializeApp(...)` qui stoppait tout le script. Ne pas réintroduire
-  `defer`/`async` sur ces 4 balises.
+- **SDK Firebase + fichiers classiques** : chargement synchrone classique (PAS de
+  `defer`/`async`) sur les 3 `<script src=...>` Firebase, les 2 `<script src=...>`
+  `exercise-data.js`/`exercise-pictograms.js`, NI sur le script inline de l'appli.
+  Un essai de `defer` sur les 3 SDK + le script inline a provoqué un écran noir
+  total en production : `defer` n'a AUCUN EFFET sur un `<script>` sans `src` (spec
+  HTML/MDN) — le script inline continuait donc de s'exécuter immédiatement à sa
+  position, avant que les SDK externes (eux bien différés) aient fini de charger,
+  d'où un throw immédiat sur `firebase.initializeApp(...)` qui stoppait tout le
+  script. Ne pas réintroduire `defer`/`async` sur aucune de ces 6 balises.
 
 ## Bugs déjà corrigés — NE PAS RÉINTRODUIRE
 - **onAuthStateChanged peut se déclencher 2× au chargement** → déguard via
