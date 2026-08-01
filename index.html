@@ -339,6 +339,14 @@
     line-height: 1.2;
   }
   .app-popup-card.epic .app-popup-big { color: #ffd700; text-shadow: 0 0 18px rgba(255,215,0,0.5); }
+  /* Variante "chiffre en vedette" (série) : point focal principal de la modale, bien
+     plus imposant que le "big" générique (label texte des popups trophée/level-up). */
+  .app-popup-big.big-highlight {
+    font-size: 68px;
+    font-weight: 900;
+    line-height: 1;
+    margin: 16px 0 4px;
+  }
   .app-popup-big-label {
     font-size: 11.5px;
     font-weight: 700;
@@ -362,6 +370,15 @@
     color: var(--chalk-dim);
   }
   .popup-shield-badge.available { color: var(--accent); border-color: var(--accent-dim); }
+  /* Liste des défis d'une journée (modal de détail du calendrier du Journal) : mêmes
+     lignes que le flux "Défis effectués", mais dans le popup générique donc on repasse
+     le texte en alignement gauche (le reste de la carte est centré). */
+  .popup-list {
+    text-align: left;
+    margin-top: 16px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
   .app-popup-chips {
     display: flex;
     flex-wrap: wrap;
@@ -1590,6 +1607,22 @@
   }
   .section-label:first-child { margin-top: 0; }
 
+  /* AUJOURD'HUI — la liste des défis + le module trophées partagent une colonne flex
+     dont le min-height comble l'espace restant de l'écran (approximation de la hauteur
+     prise par le header/semaine/barre d'onglets) : quand peu de défis sont actifs, le
+     module trophées se cale tout en bas (margin-top:auto) ; s'il y a assez de défis
+     pour remplir l'écran, le conteneur grandit simplement (min-height, pas height) et
+     la page défile normalement, sans jamais couper ou faire chevaucher le contenu. */
+  .today-content-flex {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 320px);
+  }
+  .home-trophies-slot {
+    margin-top: auto;
+    padding-top: 28px; /* espace vertical accru entre la liste des défis et les trophées */
+  }
+
   /* ACTIVE CHALLENGE VIEW */
   .active-card {
     background: var(--bg-card);
@@ -1960,12 +1993,16 @@
   }
   /* Ne contient QUE le temps (l'icône est positionnée en absolu par rapport à ce
      conteneur) : le translate(-50%,-50%) centre ainsi le texte du temps parfaitement
-     sur le cercle, largeur ET hauteur, sans que l'icône en dessous ne le décale. */
+     sur le cercle, largeur ET hauteur, sans que l'icône en dessous ne le décale.
+     Le -14px additionnel remonte l'ensemble (temps + icône ci-dessous) : sans lui,
+     l'icône ajoutait de la hauteur uniquement sous le centre, ce qui laissait un
+     espace nettement plus grand entre le haut de l'anneau et le temps qu'entre
+     l'icône et le bas de l'anneau. */
   .timer-ring-center {
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, calc(-50% - 14px));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1989,7 +2026,7 @@
     position: absolute;
     top: 100%;
     left: 50%;
-    transform: translate(-50%, 8px);
+    transform: translate(-50%, 4px);
     font-size: 20px;
     line-height: 1;
     color: var(--chalk-dim);
@@ -2001,7 +2038,7 @@
     color: var(--accent);
     opacity: 1;
     text-shadow: 0 0 12px var(--accent-glow);
-    transform: translate(calc(-50% + 1px), 10px); /* recentre visuellement le triangle ▶ */
+    transform: translate(calc(-50% + 1px), 6px); /* recentre visuellement le triangle ▶ */
   }
   .timer-play-icon.confirm {
     color: var(--good);
@@ -3058,12 +3095,57 @@ function showStreakInfoModal() {
     icon: '🔥',
     title: 'Série Actuelle',
     big: streakCount,
+    bigHighlight: true,
     bigLabel: `Jour${streakCount > 1 ? 's' : ''}`,
     subtitle: streakCount === 0
       ? "Aucune série en cours 🔥. Valide un défi aujourd'hui pour allumer la flamme !"
       : "Félicitations, tu maintiens ta série !",
     badgeLine: shieldBadge,
     closable: true,
+  });
+}
+
+// Détail d'une journée du calendrier mensuel (Journal) : liste des défis réalisés ce
+// jour-là. Le jour cliqué peut être hors de la fenêtre de 28 jours de historyEntries
+// (mois de 31 jours), donc on relit son document Firestore à la demande plutôt que
+// de préchager tous les jours du mois d'un coup.
+async function showDayDetailModal(dayKeyStr) {
+  const [y, m, d] = dayKeyStr.split('-').map(Number);
+  const label = formatDateLabel(new Date(y, m - 1, d));
+  let entries = [];
+  try {
+    const res = await dbGet('day:' + dayKeyStr);
+    const s = JSON.parse(res.value);
+    if (s.challenges) {
+      for (const [cid, entry] of Object.entries(s.challenges)) {
+        if (!entry.sets || entry.sets.length === 0) continue;
+        const c = CHALLENGES.find(x => x.id === Number(cid));
+        entries.push({
+          name: c ? c.name : 'Défi supprimé',
+          total: entry.sets.reduce((a, b) => a + b, 0),
+          target: entry.targetOverride || (c ? c.target : 0),
+          unit: c ? c.unit : 'reps',
+          done: !!entry.done,
+        });
+      }
+    }
+  } catch (e) {
+    entries = [];
+  }
+  const listHtml = entries.length === 0
+    ? `<div class="history-empty">Aucun défi validé ce jour</div>`
+    : entries.map(e => `
+        <div class="history-entry">
+          <div class="hname">${e.name}</div>
+          <div class="hprogress${e.done ? ' done' : ''}">${e.total}/${e.target}${e.unit === 'sec' ? ' sec' : ''}${e.done ? ' ✓' : ''}</div>
+        </div>
+      `).join('');
+  enqueuePopup({
+    icon: '📅',
+    title: label,
+    listHtml,
+    closable: true,
+    btnLabel: 'Fermer',
   });
 }
 
@@ -3092,10 +3174,11 @@ function buildPopupInnerHtml(next) {
       ${next.closable ? `<button class="app-popup-close-x" id="appPopupCloseX" aria-label="Fermer">✕</button>` : ''}
       <div class="app-popup-icon${next.locked ? ' locked' : ''}">${next.icon}</div>
       <div class="app-popup-title">${next.title}</div>
-      ${next.big !== undefined ? `<div class="app-popup-big">${next.big}</div>` : ''}
+      ${next.big !== undefined ? `<div class="app-popup-big${next.bigHighlight ? ' big-highlight' : ''}">${next.big}</div>` : ''}
       ${next.bigLabel ? `<div class="app-popup-big-label">${next.bigLabel}</div>` : ''}
       ${next.subtitle ? `<div class="app-popup-sub">${next.subtitle}</div>` : ''}
       ${next.badgeLine || ''}
+      ${next.listHtml ? `<div class="popup-list">${next.listHtml}</div>` : ''}
       ${progressHtml}
       ${chips.length ? `<div class="app-popup-chips">${chips.join('')}</div>` : ''}
       <button class="app-popup-btn" id="appPopupCloseBtn">${next.btnLabel || 'Continuer'}</button>
@@ -4428,6 +4511,7 @@ function render(animate) {
     if (activeChallenges.length === 0) {
       html += renderTodayEmptyState();
     } else {
+    html += `<div class="today-content-flex">`;
     const suggestion = getSuggestion();
     if (suggestion) {
       html += `
@@ -4445,7 +4529,8 @@ function render(animate) {
       }
       html += `</div>`;
     }
-    html += renderBadgesStrip();
+    html += `<div class="home-trophies-slot">${renderBadgesStrip()}</div>`;
+    html += `</div>`;
     }
   } else {
     const c = getChallenge();
@@ -4835,7 +4920,7 @@ function renderChallengeCard(c, mode) {
         <span class="name">${c.name}</span>
       </div>
       <div class="goal">
-        ${resolved.unit === 'sec' ? formatTargetLabel(resolved.target, resolved.unit) : resolved.target + ' reps'}
+        ${resolved.unit === 'sec' ? formatSecToReadable(resolved.target) : resolved.target + ' reps'}
         ${weightBelow}
         ${rightHtml}
       </div>
@@ -4930,18 +5015,20 @@ function renderChallengeForm() {
 
 function renderHeatmap() {
   const WEEKS = 26; // ~6 mois, plus lisible sur mobile qu'une année complète
-  const totalDays = WEEKS * 7;
+  // Semaine calendaire (Lundi -> Dimanche) contenant aujourd'hui, puis on remonte de
+  // 25 semaines pleines supplémentaires : garantit TOUJOURS exactement 26 colonnes de 7
+  // jours (contrairement à l'ancien "aligner sur Lundi en remontant depuis aujourd'hui",
+  // qui pouvait ajouter jusqu'à 6 jours de trop et décaler aujourd'hui hors de la 26e
+  // colonne — la ligne d'en-tête des mois, elle-même limitée à 26 colonnes, ratait alors
+  // silencieusement le mois en cours).
+  const currentWeekMonday = getCalendarWeekDates(new Date())[0];
+  const start = new Date(currentWeekMonday);
+  start.setDate(start.getDate() - (WEEKS - 1) * 7);
   const days = [];
-  for (let i = totalDays - 1; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
+  for (let i = 0; i < WEEKS * 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
     days.push(d);
-  }
-  // aligner sur Lundi pour la première colonne
-  while ((days[0].getDay() + 6) % 7 !== 0) {
-    const d = new Date(days[0]);
-    d.setDate(d.getDate() - 1);
-    days.unshift(d);
   }
 
   function levelFor(count) {
@@ -4960,17 +5047,21 @@ function renderHeatmap() {
     cells += `<div class="heat-cell lvl${lvl}${isFuture ? ' future' : ''}" title="${k} — ${count} défi(s)"></div>`;
   }
 
-  // En-tête des mois : un libellé abrégé au-dessus de la 1ère semaine de chaque nouveau
-  // mois, sur la même grille à 26 colonnes que heatmap-grid (1 colonne = 1 semaine),
-  // pour rendre la lecture temporelle évidente.
+  // En-tête des mois : un libellé abrégé sur la colonne qui contient le 1er jour d'un
+  // mois (comme le graphique de contributions GitHub), sur la même grille à 26 colonnes
+  // que heatmap-grid (1 colonne = 1 semaine). Règle stricte : un mois n'est libellé que
+  // s'il est ENTIÈREMENT visible, c'est-à-dire que son 1er jour fait partie de la
+  // fenêtre — un mois entamé avant le début de la heatmap (coupé à gauche) n'a donc,
+  // par construction, jamais son propre jour 1 dans `days` et ne reçoit jamais de
+  // libellé. Détecter le jour 1 dans chaque colonne (plutôt que le mois du seul Lundi
+  // de la colonne) est nécessaire pour ne pas rater le mois en cours quand celui-ci
+  // démarre au milieu d'une semaine (ex: 1er tombant un samedi).
   const MONTH_ABBR = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
   let monthsHtml = '';
-  let lastMonth = -1;
   for (let col = 0; col < WEEKS; col++) {
-    const weekStart = days[col * 7];
-    const m = weekStart.getMonth();
-    monthsHtml += `<div class="heat-month-label">${m !== lastMonth ? MONTH_ABBR[m] : ''}</div>`;
-    lastMonth = m;
+    const colDays = days.slice(col * 7, col * 7 + 7);
+    const firstOfMonthDay = colDays.find(d => d.getDate() === 1);
+    monthsHtml += `<div class="heat-month-label">${firstOfMonthDay ? MONTH_ABBR[firstOfMonthDay.getMonth()] : ''}</div>`;
   }
 
   return `
@@ -5029,7 +5120,7 @@ function renderHistoryScreen() {
     const k = dateKey(d);
     const isToday = k === todayKey;
     const done = (dailyActivity[k] || 0) > 0;
-    calHtml += `<div class="cal-cell${done ? ' done' : ''}${isToday ? ' today' : ''}">${done ? '✓' : d.getDate()}</div>`;
+    calHtml += `<div class="cal-cell${done ? ' done' : ''}${isToday ? ' today' : ''}" onclick="showDayDetailModal('${k}')">${done ? '✓' : d.getDate()}</div>`;
   }
   calHtml += `</div>`;
 
