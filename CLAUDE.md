@@ -199,6 +199,15 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
 - **Appels Firestore toujours en parallèle** (`Promise.all`) sauf dépendance
   explicite. `loadState()` calcule les pastilles de la semaine à partir de
   `dailyActivity` déjà chargé, PAS via 7 appels séquentiels jour par jour.
+- **Champ de recherche/saisie live avec `oninput` → `render()`** : `applyContent()`
+  remplace TOUT le innerHTML de `#app` à chaque appel, donc un `<input>` recréé à
+  chaque frappe perdrait le focus du navigateur (saisie cassée, un seul caractère
+  tapable à la fois) si rien ne le restaure. Voir le champ de recherche de l'onglet
+  Défis (`updateLibrarySearch()`/`librarySearchInput`) : `render()` détecte AVANT
+  `applyContent()` si `document.activeElement` est ce champ (+ sa position de
+  curseur), puis un callback `afterRender` lui redonne le focus après coup. Tout
+  nouveau champ de saisie qui déclenche un `render()` complet sur chaque frappe
+  doit suivre le même filet, sinon même bug que le formulaire de profil déjà vécu.
 
 ## Style / conventions de code
 - Palette CSS via variables `:root` uniquement (`--bg`, `--accent`, etc.) —

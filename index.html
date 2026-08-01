@@ -498,6 +498,7 @@ let CHALLENGES = [];
 let activeToday = new Set(); // ids actifs pour aujourd'hui (todayKey), persistés par date
 let manualTargetOverrides = {}; // { [id]: target } objectif par défaut ajusté manuellement (ex: 3 records de suite) pour un défi de la bibliothèque
 let libraryOpenCats = new Set(); // catégories actuellement dépliées dans l'accordéon Bibliothèque
+let librarySearchQuery = ''; // filtre texte de l'onglet Défis (vide = comportement accordéon normal)
 let migratedLegacyActiveIds = null; // ids à activer une seule fois pour aujourd'hui juste après une migration depuis l'ancien modèle
 let activeTab = 'today'; // 'today' | 'history' | 'library' | 'account'
 let editingChallengeId = null; // null = liste, 'new' = création, id = édition (défis personnalisés uniquement)
@@ -963,6 +964,7 @@ function switchTab(tab) {
   } else if (activeTab === 'library') {
     editingChallengeId = null;
     libraryOpenCats = new Set(); // referme tous les accordéons en quittant l'onglet Défis
+    librarySearchQuery = ''; // repart d'une recherche vide au prochain passage sur l'onglet
   }
   if (navigator.vibrate) navigator.vibrate(8);
   activeTab = tab;
@@ -991,6 +993,17 @@ async function toggleActiveToday(id) {
 function toggleLibraryCategory(cat) {
   if (libraryOpenCats.has(cat)) libraryOpenCats.delete(cat);
   else libraryOpenCats.add(cat);
+  render();
+}
+
+/**
+ * Filtre en direct de l'onglet Défis. render() (appelé sans animate, pas de délai
+ * de 140ms) remplace tout le innerHTML de #app — voir le bloc `activeTab ===
+ * 'library'` de render() qui restaure ensuite le focus/curseur sur ce champ,
+ * sinon chaque frappe ferait perdre le focus (comportement de saisie cassé).
+ */
+function updateLibrarySearch(value) {
+  librarySearchQuery = value;
   render();
 }
 
@@ -2603,7 +2616,20 @@ function render(animate) {
   }
 
   if (activeTab === 'library') {
-    applyContent(app, renderLibraryScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
+    // applyContent() remplace tout le innerHTML de #app à chaque frappe dans le champ
+    // de recherche (updateLibrarySearch() appelle render() sur chaque oninput) : sans
+    // ce filet, le nouvel <input> (même valeur affichée) ne recevrait jamais le focus
+    // du navigateur, et l'utilisateur ne pourrait taper qu'un seul caractère à la fois.
+    const searchEl = document.activeElement;
+    const searchWasFocused = !!(searchEl && searchEl.id === 'librarySearchInput');
+    const searchCaret = searchWasFocused ? searchEl.selectionStart : null;
+    applyContent(app, renderLibraryScreen() + renderTabBar() + renderGuidedTourOverlay(), animate, () => {
+      if (!searchWasFocused) return;
+      const input = document.getElementById('librarySearchInput');
+      if (!input) return;
+      input.focus();
+      if (searchCaret !== null && input.setSelectionRange) input.setSelectionRange(searchCaret, searchCaret);
+    });
     return;
   }
 
@@ -3080,12 +3106,24 @@ function renderLibraryScreen() {
       </div>
       <button class="add-custom-fab" onclick="openNewChallengeForm()" title="Ajouter un défi personnalisé">+</button>
     </div>
+    <input class="library-search-input" id="librarySearchInput" type="text"
+           placeholder="🔍 Rechercher un défi..." value="${escapeHtml(librarySearchQuery)}"
+           oninput="updateLibrarySearch(this.value)">
   `;
+  // Recherche active : les catégories restent affichées mais 1) filtrées à leurs seuls
+  // défis correspondants, 2) forcées ouvertes (peu importe libraryOpenCats), 3) masquées
+  // entièrement si aucun défi ne correspond — réutilise l'accordéon existant tel quel,
+  // pas de vue à plat séparée.
+  const query = librarySearchQuery.trim().toLowerCase();
   const cats = [...new Set(CHALLENGES.map(c => c.cat))];
+  let anyMatch = false;
   for (const cat of cats) {
-    const itemsInCat = CHALLENGES.filter(c => c.cat === cat);
+    let itemsInCat = CHALLENGES.filter(c => c.cat === cat);
+    if (query) itemsInCat = itemsInCat.filter(c => c.name.toLowerCase().includes(query));
+    if (query && itemsInCat.length === 0) continue;
+    anyMatch = true;
     const activeCount = itemsInCat.filter(c => activeToday.has(c.id)).length;
-    const isOpen = libraryOpenCats.has(cat);
+    const isOpen = query ? true : libraryOpenCats.has(cat);
     html += `
       <div class="accordion${isOpen ? ' open' : ''}">
         <button class="accordion-header" onclick="toggleLibraryCategory('${escapeJsAttr(cat)}')">
@@ -3096,6 +3134,9 @@ function renderLibraryScreen() {
         ${isOpen ? `<div class="accordion-body">${itemsInCat.map((c, i) => renderChallengeCard(c, 'library', i)).join('')}</div>` : ''}
       </div>
     `;
+  }
+  if (query && !anyMatch) {
+    html += `<div class="library-search-empty">Aucun défi ne correspond à « ${escapeHtml(librarySearchQuery.trim())} »</div>`;
   }
   return html;
 }

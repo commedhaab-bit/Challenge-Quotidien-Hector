@@ -51,8 +51,10 @@ function makeCtx2D() {
   });
 }
 
-function makeEl() {
+let activeElement = null; // simule document.activeElement (voir focus() ci-dessous)
+function makeEl(id) {
   const el = {
+    id: id || '',
     _html: '',
     style: {},
     classList: { add(){}, remove(){}, contains(){ return false; }, toggle(){} },
@@ -60,7 +62,7 @@ function makeEl() {
     appendChild(){}, remove(){}, closest(){ return null; },
     setAttribute(){}, getAttribute(){ return null; },
     querySelector(){ return null; }, querySelectorAll(){ return []; },
-    focus(){}, click(){},
+    focus(){ activeElement = el; }, click(){},
     getContext(){ return makeCtx2D(); },
     toBlob(cb){ cb(null); },
     offsetWidth: 0,
@@ -68,6 +70,8 @@ function makeEl() {
     textContent: '',
     dataset: {}, // comme un vrai element DOM : jamais undefined, meme sans attributs data-* reellement parses
     scrollTop: 0,
+    selectionStart: 0,
+    setSelectionRange(start){ this.selectionStart = start; },
   };
   Object.defineProperty(el, 'innerHTML', {
     get(){ return el._html; },
@@ -111,13 +115,14 @@ const sandbox = {
   __spokenLog: sandboxSpokenLog,
   document: {
     getElementById(id){
-      if (!elementsById.has(id)) elementsById.set(id, makeEl());
+      if (!elementsById.has(id)) elementsById.set(id, makeEl(id));
       return elementsById.get(id);
     },
     createElement(tag){ return makeEl(); },
     addEventListener(){}, removeEventListener(){},
     body: makeEl(),
     visibilityState: 'visible',
+    get activeElement(){ return activeElement; },
   },
   window: {
     addEventListener(){}, removeEventListener(){},
@@ -2101,6 +2106,66 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(__appDataStore.data.badges, { totalCompletions: 1, unlocked: [], totalHardcore: 0 }, 'saveAppField() ne doit jamais toucher aux AUTRES champs deja presents (badges intact)');
   __assertEq(__appDataStore.data.weights, { 7: 20 }, 'saveAppField() doit bien ecrire le champ cible');
   console.log('OK: fusion Firestore - saveAppField() fait un merge partiel, jamais un ecrasement du document entier');
+
+  // --- 113. Recherche dans l onglet Defis (#5) : filtre les cartes par nom,
+  // force l ouverture des categories avec resultat, masque celles sans resultat ---
+  customChallenges = [];
+  rebuildChallenges();
+  activeToday = new Set();
+  libraryOpenCats = new Set();
+  librarySearchQuery = '';
+  const libNoSearchHtml = renderLibraryScreen();
+  __assertOk(libNoSearchHtml.includes('id="librarySearchInput"'), 'le champ de recherche doit etre present sur l onglet Defis');
+  __assertOk(!libNoSearchHtml.includes('accordion-body'), 'sans recherche : comportement accordeon inchange, tout ferme par defaut');
+
+  librarySearchQuery = 'pompes';
+  const libSearchHtml = renderLibraryScreen();
+  __assertOk(libSearchHtml.includes('Pompes'), 'la recherche doit trouver Pompes (Haut du corps)');
+  __assertOk(!libSearchHtml.includes('>Squats<'), 'la recherche ne doit pas montrer un defi qui ne correspond pas (Squats)');
+  __assertOk(libSearchHtml.includes('accordion-body'), 'une categorie avec au moins un resultat doit etre forcee ouverte pendant la recherche');
+  __assertOk(!libSearchHtml.includes('library-search-empty'), 'des resultats existent : pas de message "aucun resultat"');
+
+  librarySearchQuery = 'zzz_defi_inexistant';
+  const libSearchEmptyHtml = renderLibraryScreen();
+  __assertOk(libSearchEmptyHtml.includes('library-search-empty'), 'aucun resultat : le message dedie doit s afficher');
+  __assertOk(!libSearchEmptyHtml.includes('accordion-header'), 'aucun resultat : aucune categorie ne doit rester affichee');
+
+  librarySearchQuery = '<script>alert(1)</script>';
+  const libSearchXssHtml = renderLibraryScreen();
+  __assertOk(!libSearchXssHtml.includes('<script>alert(1)</script>'), 'la requete de recherche affichee dans le champ/le message doit etre echappee (XSS)');
+
+  librarySearchQuery = '';
+  libraryOpenCats = new Set();
+  console.log('OK: recherche dans l onglet Defis (filtre par nom, categories forcees ouvertes, message si aucun resultat, requete echappee)');
+
+  // --- 114. switchTab() reinitialise la recherche en quittant l onglet Defis
+  // (comme libraryOpenCats), pour repartir d une recherche vide au retour ---
+  activeTab = 'library';
+  librarySearchQuery = 'pompes';
+  switchTab('today');
+  __assertEq(librarySearchQuery, '', 'quitter l onglet Defis doit vider librarySearchQuery');
+  activeTab = 'today';
+  console.log('OK: quitter l onglet Defis reinitialise la recherche');
+
+  // --- 115. render() restaure le focus du champ de recherche apres chaque
+  // frappe (sinon applyContent() remplace tout le innerHTML de #app et le
+  // nouvel <input> ne recevrait jamais le focus - saisie cassee, un seul
+  // caractere tapable a la fois). Le mock ne recree pas de vrais noeuds DOM a
+  // chaque innerHTML : on verifie donc directement que le callback afterRender
+  // de render() appelle bien .focus() sur le champ, pas juste que l objet
+  // document.activeElement reste inchange (ce qui serait vrai meme sans le
+  // correctif, et ne prouverait rien) ---
+  activeTab = 'library';
+  librarySearchQuery = '';
+  render();
+  const searchInputEl = document.getElementById('librarySearchInput');
+  searchInputEl.focus(); // simule l utilisateur qui clique/tape dans le champ
+  let focusCalls = 0;
+  searchInputEl.focus = () => { focusCalls++; };
+  updateLibrarySearch('pom');
+  __assertEq(focusCalls, 1, 'render() doit rappeler focus() sur le champ de recherche apres chaque frappe (callback afterRender), sinon la saisie serait cassee');
+  activeTab = 'today';
+  console.log('OK: le focus du champ de recherche est restaure apres chaque frappe (render() complet)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });
