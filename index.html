@@ -2398,6 +2398,102 @@ async function dbSet(key, value) {
   return { key, value };
 }
 
+// ==== DOCUMENT CONSOLIDÉ (users/{uid}/kv/appData) ====
+// Remplace 12 des anciennes clés "statiques" (profile, customChallenges, stats,
+// badges, etc.) par UN SEUL document, pour passer de 12+ lectures Firestore à 1
+// seule au démarrage. Les documents par jour (day:{date}, activeToday:{date}),
+// eux, restent séparés (historique permanent, voir loadHistoryEntries) : les
+// fusionner aurait forcé une double-lecture de format pour toujours, pour un
+// gain marginal. Les anciennes clés séparées ne sont JAMAIS supprimées lors de
+// la migration (orphelines inoffensives, déjà nettoyées par deleteMyAccount()
+// qui vide toute la sous-collection kv sans liste de clés en dur).
+function appDataDocRef() {
+  return db.collection('users').doc(currentUser.uid).collection('kv').doc('appData');
+}
+
+/**
+ * Écrit UN SEUL champ du document consolidé, via un merge Firestore natif
+ * (`{merge:true}`) qui ne touche jamais les autres champs du même document —
+ * même si un autre écran écrit un champ différent au même moment (ex: terminer
+ * un défi pendant que les Paramètres modifient les poids d'haltères ailleurs).
+ * C'est ce qui rend la fusion sûre face aux écritures concurrentes.
+ */
+async function saveAppField(field, value) {
+  try {
+    await appDataDocRef().set({ [field]: value }, { merge: true });
+  } catch (e) {
+    console.error('save ' + field + ' failed', e);
+  }
+}
+
+/**
+ * Point d'entrée unique du chargement au démarrage (et au rechargement manuel) :
+ * une seule lecture du document consolidé remplace les 12 lectures séparées
+ * d'avant. Migration non destructive : si ce document n'existe pas encore (compte
+ * pas migré), relit les 12 anciennes clés séparées — chacune via sa fonction
+ * loadX() existante, qui garde sa propre logique de défaut/migration interne
+ * (ex: loadChallenges() sait migrer depuis l'encore plus ancienne clé
+ * userChallenges) — puis, SEULEMENT si un profil existant a été trouvé (vrai
+ * compte pré-migration, pas un tout nouveau compte), écrit le document consolidé
+ * une bonne fois pour toutes. Un compte tout neuf n'écrit rien ici : c'est le
+ * premier saveProfile() de l'onboarding qui créera le document (via merge:true
+ * sur un document inexistant, ce qui le crée simplement).
+ */
+async function loadAppData() {
+  let doc;
+  try {
+    doc = await appDataDocRef().get();
+  } catch (e) {
+    doc = null;
+  }
+  if (doc && doc.exists) {
+    const d = doc.data();
+    userProfile = d.profile ?? null;
+    customChallenges = (d.customChallenges ?? []).map(c => ({ ...c, isCustom: true }));
+    manualTargetOverrides = d.manualTargetOverrides ?? {};
+    const sd = d.streakData ?? {};
+    streakCount = sd.streakCount || 0;
+    lastCompletedDate = sd.lastCompletedDate || null;
+    hasShield = sd.hasShield !== undefined ? sd.hasShield : true;
+    lastShieldResetWeek = sd.lastShieldResetWeek || null;
+    xpTotal = d.xpTotal ?? 0;
+    voiceCoachEnabled = d.voiceCoachEnabled ?? true;
+    hasSeenTour = d.hasSeenTour ?? false;
+    lastCompleted = d.lastCompleted ?? {};
+    stats = d.stats ?? {};
+    badges = d.badges ?? { totalCompletions: 0, unlocked: [], totalHardcore: 0 };
+    if (badges.totalHardcore === undefined) badges.totalHardcore = 0; // migration (comptes créés avant son introduction)
+    dailyActivity = d.dailyActivity ?? {};
+    weights = d.weights ?? {};
+    rebuildChallenges();
+    backfillDefaultWeights();
+    return;
+  }
+  // Pas encore de document consolidé : relit les anciennes clés séparées (chaque
+  // loadX() garde sa propre gestion de défaut en cas d'échec individuel).
+  await Promise.all([
+    loadProfile(), loadChallenges(), loadWeights(), loadLastCompleted(), loadStats(),
+    loadBadges(), loadDailyActivity(), loadManualTargetOverrides(), loadStreakData(),
+    loadXp(), loadVoiceCoachEnabled(), loadHasSeenTour(),
+  ]);
+  if (userProfile) {
+    await appDataDocRef().set({
+      profile: userProfile,
+      customChallenges,
+      manualTargetOverrides,
+      streakData: { streakCount, lastCompletedDate, hasShield, lastShieldResetWeek },
+      xpTotal,
+      voiceCoachEnabled,
+      hasSeenTour,
+      lastCompleted,
+      stats,
+      badges,
+      dailyActivity,
+      weights,
+    });
+  }
+}
+
 function signIn() {
   const provider = new firebase.auth.GoogleAuthProvider();
   document.getElementById('loginError').textContent = '';
@@ -2674,8 +2770,7 @@ async function loadHasSeenTour() {
 }
 async function markTourSeen() {
   hasSeenTour = true;
-  try { await dbSet('hasSeenTour', 'true'); }
-  catch (e) { console.error('save hasSeenTour failed', e); }
+  await saveAppField('hasSeenTour', true);
 }
 
 function startGuidedTour() {
@@ -2732,7 +2827,12 @@ function renderGuidedTourOverlay() {
 
 async function finishOnboardingTransition() {
   onboardingTransitionPhase = null;
-  await loadHasSeenTour();
+  // hasSeenTour est déjà à jour en mémoire (chargé par loadAppData() au démarrage,
+  // avant que cet écran ne soit atteignable) — plus besoin de le relire ici depuis
+  // Firestore. Important depuis la fusion des documents (#28) : l'ancienne clé
+  // séparée 'hasSeenTour' n'est plus jamais mise à jour après migration (markTourSeen()
+  // écrit désormais dans le document consolidé), donc la relire ici la trouverait
+  // périmée pour un compte déjà migré ayant déjà terminé le tour.
   if (!hasSeenTour) {
     startGuidedTour();
   } else {
@@ -2782,11 +2882,7 @@ async function loadProfile() {
 }
 
 async function saveProfile() {
-  try {
-    await dbSet('profile', JSON.stringify(userProfile));
-  } catch (e) {
-    console.error('save profile failed', e);
-  }
+  await saveAppField('profile', userProfile);
 }
 
 function getNextChallengeId() {
@@ -2994,11 +3090,7 @@ async function loadChallenges() {
 }
 
 async function saveCustomChallenges() {
-  try {
-    await dbSet('customChallenges', JSON.stringify(customChallenges));
-  } catch (e) {
-    console.error('save customChallenges failed', e);
-  }
+  await saveAppField('customChallenges', customChallenges);
 }
 
 async function loadManualTargetOverrides() {
@@ -3010,11 +3102,7 @@ async function loadManualTargetOverrides() {
   }
 }
 async function saveManualTargetOverrides() {
-  try {
-    await dbSet('manualTargetOverrides', JSON.stringify(manualTargetOverrides));
-  } catch (e) {
-    console.error('save manualTargetOverrides failed', e);
-  }
+  await saveAppField('manualTargetOverrides', manualTargetOverrides);
 }
 
 /**
@@ -3268,9 +3356,7 @@ async function loadStreakData() {
   }
 }
 async function saveStreakData() {
-  try {
-    await dbSet('streakData', JSON.stringify({ streakCount, lastCompletedDate, hasShield, lastShieldResetWeek }));
-  } catch (e) { console.error('save streakData failed', e); }
+  await saveAppField('streakData', { streakCount, lastCompletedDate, hasShield, lastShieldResetWeek });
 }
 
 function mondayOfWeek(d) {
@@ -3601,8 +3687,7 @@ async function loadXp() {
   catch (e) { xpTotal = 0; }
 }
 async function saveXp() {
-  try { await dbSet('xpTotal', String(xpTotal)); }
-  catch (e) { console.error('save xpTotal failed', e); }
+  await saveAppField('xpTotal', xpTotal);
 }
 // Ne déclenche aucune popup elle-même : renvoie juste les niveaux avant/après pour
 // laisser l'appelant décider de l'ordre d'affichage (ex: popup de complétion d'abord,
@@ -3688,8 +3773,7 @@ async function loadVoiceCoachEnabled() {
   catch (e) { voiceCoachEnabled = true; } // activé par défaut
 }
 async function saveVoiceCoachEnabled() {
-  try { await dbSet('voiceCoachEnabled', String(voiceCoachEnabled)); }
-  catch (e) { console.error('save voiceCoachEnabled failed', e); }
+  await saveAppField('voiceCoachEnabled', voiceCoachEnabled);
 }
 async function toggleVoiceCoach() {
   voiceCoachEnabled = !voiceCoachEnabled;
@@ -3742,11 +3826,7 @@ async function loadLastCompleted() {
 }
 
 async function saveLastCompleted() {
-  try {
-    await dbSet('lastCompleted', JSON.stringify(lastCompleted));
-  } catch (e) {
-    console.error('save lastCompleted failed', e);
-  }
+  await saveAppField('lastCompleted', lastCompleted);
 }
 
 function formatRelative(ms) {
@@ -3807,8 +3887,7 @@ async function loadStats() {
   catch (e) { stats = {}; }
 }
 async function saveStats() {
-  try { await dbSet('stats', JSON.stringify(stats)); }
-  catch (e) { console.error('save stats failed', e); }
+  await saveAppField('stats', stats);
 }
 
 /** Charge `badges` (trophées débloqués + compteurs). Migration: `totalHardcore` par défaut à 0 pour les comptes créés avant son introduction. */
@@ -3821,8 +3900,7 @@ async function loadBadges() {
   catch (e) { badges = { totalCompletions: 0, unlocked: [], totalHardcore: 0 }; }
 }
 async function saveBadges() {
-  try { await dbSet('badges', JSON.stringify(badges)); }
-  catch (e) { console.error('save badges failed', e); }
+  await saveAppField('badges', badges);
 }
 
 /** Charge `dailyActivity` (dates avec au moins un défi complété), source de la heatmap/calendrier. */
@@ -3831,8 +3909,7 @@ async function loadDailyActivity() {
   catch (e) { dailyActivity = {}; }
 }
 async function saveDailyActivity() {
-  try { await dbSet('dailyActivity', JSON.stringify(dailyActivity)); }
-  catch (e) { console.error('save dailyActivity failed', e); }
+  await saveAppField('dailyActivity', dailyActivity);
 }
 
 /**
@@ -4038,14 +4115,10 @@ async function shareStatsImage() {
   }, 'image/png');
 }
 
-async function loadWeights() {
-  try {
-    const res = await dbGet('weights');
-    weights = JSON.parse(res.value);
-  } catch (e) {
-    weights = {};
-  }
-  // poids par défaut calculé selon le profil (niveau/âge/sexe) pour toute haltère pas encore réglée
+// Poids par défaut calculé selon le profil (niveau/âge/sexe) pour toute haltère pas
+// encore réglée. Extrait de loadWeights() pour être aussi appelé par loadAppData()
+// (chemin rapide, document consolidé déjà migré) sans dupliquer la boucle.
+function backfillDefaultWeights() {
   for (const c of CHALLENGES) {
     if (c.cat === 'Haltères' && weights[c.id] === undefined) {
       weights[c.id] = computeStandardWeight(c, userProfile) ?? 8;
@@ -4053,12 +4126,18 @@ async function loadWeights() {
   }
 }
 
-async function saveWeights() {
+async function loadWeights() {
   try {
-    await dbSet('weights', JSON.stringify(weights));
+    const res = await dbGet('weights');
+    weights = JSON.parse(res.value);
   } catch (e) {
-    console.error('save weights failed', e);
+    weights = {};
   }
+  backfillDefaultWeights();
+}
+
+async function saveWeights() {
+  await saveAppField('weights', weights);
 }
 
 async function editWeight() {
@@ -5767,18 +5846,7 @@ function initPullToRefresh() {
 }
 
 async function refreshApp() {
-  await loadChallenges(); // doit rester en premier : loadWeights en dépend pour les poids par défaut
-  await Promise.all([
-    loadWeights(),
-    loadLastCompleted(),
-    loadStats(),
-    loadBadges(),
-    loadDailyActivity(),
-    loadManualTargetOverrides(),
-    loadStreakData(),
-    loadXp(),
-    loadVoiceCoachEnabled(),
-  ]);
+  await loadAppData();
   if (activeTab === 'history') {
     await loadHistoryEntries();
   } else {
@@ -5827,8 +5895,8 @@ async function startApp() {
     // au cas où startApp() serait appelée une seconde fois (double événement d'auth par ex.)
     return;
   }
-  const hasProfile = await loadProfile();
-  if (!hasProfile) {
+  await loadAppData();
+  if (!userProfile) {
     profileStep = 0;
     profileDraft = { age: null, sex: null, heightCm: null, weightKg: null, level: null };
     showProfileOnboarding = true;
@@ -5843,23 +5911,9 @@ async function proceedAfterProfile() {
 }
 
 async function continueStartApp() {
-  // Ces chargements sont indépendants les uns des autres : on les lance
-  // en parallèle plutôt qu'en série pour diviser le temps d'attente. loadChallenges()
-  // rejoint désormais ce même lot (il ne dépend d'aucun des autres, et rien ici ne
-  // dépend de lui avant loadState() plus bas) au lieu d'être attendu séparément
-  // avant : ça économisait un aller-retour réseau entier à chaque démarrage.
-  await Promise.all([
-    loadChallenges(),
-    loadWeights(),
-    loadLastCompleted(),
-    loadStats(),
-    loadBadges(),
-    loadDailyActivity(),
-    loadManualTargetOverrides(),
-    loadStreakData(),
-    loadXp(),
-    loadVoiceCoachEnabled(),
-  ]);
+  // loadAppData() (appelé juste avant, dans startApp()) a déjà chargé
+  // customChallenges/profile/stats/badges/etc. en une seule lecture — il ne reste
+  // que les documents par jour, qui en dépendent (todayKey/dailyActivity).
   await loadState(); // vient après : dépend de dailyActivity pour les pastilles de la semaine
   await loadActiveToday(); // vient après loadState() : dépend de todayKey
   await evaluateStreakOnLoad(); // vient après loadState() : dépend de todayKey

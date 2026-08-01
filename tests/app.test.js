@@ -69,9 +69,30 @@ function makeEl() {
   return el;
 }
 
-const store = new Map(); // simule Firestore : key -> JSON string
+const store = new Map(); // simule Firestore (ancien modele cle/valeur) : key -> JSON string
 const elementsById = new Map(); // simule le DOM : meme element retourne par id (ex: 'app')
 const sandboxSpokenLog = []; // simule window.speechSynthesis : phrases prononcees, dans l'ordre
+
+// Simule le document Firestore consolide users/{uid}/kv/appData (voir appDataDocRef()/
+// saveAppField()/loadAppData() dans index.html). appDataDocRef() appelle db.collection(...)
+// DIRECTEMENT (contrairement a dbGet/dbSet, remplaces plus bas par __dbGet/__dbSet) : il
+// faut donc un vrai mock de la chaine collection('users').doc(uid).collection('kv').doc('appData').
+const appDataStore = { exists: false, data: {} };
+function makeAppDataDocRef() {
+  return {
+    async get() {
+      return { exists: appDataStore.exists, data: () => JSON.parse(JSON.stringify(appDataStore.data)) };
+    },
+    async set(fields, opts) {
+      if (opts && opts.merge) {
+        Object.assign(appDataStore.data, fields);
+      } else {
+        appDataStore.data = fields;
+      }
+      appDataStore.exists = true;
+    },
+  };
+}
 
 const sandbox = {
   console,
@@ -113,12 +134,28 @@ const sandbox = {
   firebase: {
     initializeApp(){},
     auth(){ return { onAuthStateChanged(cb){ /* pilote manuellement depuis le test */ }, signInWithPopup(){ return Promise.resolve(); }, GoogleAuthProvider: function(){} }; },
-    firestore(){ return { enablePersistence: () => Promise.resolve() }; },
+    firestore(){
+      return {
+        enablePersistence: () => Promise.resolve(),
+        collection(){
+          return {
+            doc(){
+              return {
+                collection(){
+                  return { doc: () => makeAppDataDocRef() };
+                },
+              };
+            },
+          };
+        },
+      };
+    },
   },
   alert(msg){ console.log('  [alert]', msg); },
   confirm(msg){ return true; },
   prompt(msg, def){ return def; },
   __store: store,
+  __appDataStore: appDataStore, // { exists, data } du document consolide simule (voir plus haut)
   __rawHtml: html, // fichier source complet (avec la balise <style>), pour verifier des regles CSS que le vm n'execute pas
   __swSource: swSource, // contenu de service-worker.js (fichier a part, jamais execute par le vm)
   __externalClassicScripts: externalClassicScripts, // exercise-data.js + exercise-pictograms.js concatenes, pour verifier leur contenu (jamais dans __rawHtml, ce sont des fichiers a part)
@@ -145,6 +182,10 @@ const testDriver = `
 // par la version en memoire injectee par le harnais de test.
 dbGet = __dbGet;
 dbSet = __dbSet;
+// appDataDocRef() (contrairement a dbGet/dbSet) lit currentUser.uid directement : il faut
+// un utilisateur factice des le debut, avant meme le premier test (plusieurs tests le
+// re-assignent plus loin avec la meme forme, sans jamais lire .uid eux-memes).
+currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
 
 (async () => {
   // --- 1. CHALLENGE_LIBRARY sanity ---
@@ -186,7 +227,7 @@ dbSet = __dbSet;
   __assertEq(customChallenges.length, 1, 'seul le defi non-bibliotheque doit devenir un customChallenge');
   __assertEq(customChallenges[0].id, legacyCustomId, 'id du defi perso migre');
   __assertOk(CHALLENGES.some(c => c.id === pompes.id), 'Pompes doit rester dans le catalogue complet (via CHALLENGE_LIBRARY)');
-  __assertOk(__store.has('customChallenges'), 'la migration doit persister sous la nouvelle cle');
+  __assertOk(__appDataStore.exists && Array.isArray(__appDataStore.data.customChallenges), 'la migration doit persister customChallenges dans le document consolide appData');
   __assertEq([...migratedLegacyActiveIds].sort(), [pompes.id, legacyCustomId].sort(), 'ids repris pour activeToday');
   console.log('OK: migration userChallenges -> customChallenges + migratedLegacyActiveIds');
 
@@ -479,7 +520,7 @@ dbSet = __dbSet;
   __assertEq(guidedTourStep, null, 'le tour doit se terminer (plus d etape active), deja vrai de facon synchrone');
   await new Promise(r => setTimeout(r, 10));
   __assertEq(hasSeenTour, true, 'hasSeenTour doit passer a true');
-  __assertEq(__store.get('hasSeenTour'), 'true', 'hasSeenTour doit etre persiste cote Firestore');
+  __assertEq(__appDataStore.data.hasSeenTour, true, 'hasSeenTour doit etre persiste dans le document consolide appData');
   __assertEq(activeTab, 'today', 'le tour termine doit ramener sur Aujourd hui');
   __assertEq(renderGuidedTourOverlay(), '', 'aucune bulle ne doit plus s afficher apres la fin du tour');
   console.log('OK: tour guidé (5 cartes dont bienvenue dediee, marqué vu, ne se relance pas)');
@@ -548,7 +589,7 @@ dbSet = __dbSet;
   const expectedXp = xpForChallenge(cForXp, cForXp.target);
   await addSet(cForXp.target);
   __assertEq(xpTotal, expectedXp, 'xpTotal doit augmenter du montant calcule par xpForChallenge');
-  __assertEq(__store.get('xpTotal'), String(expectedXp), 'xpTotal doit etre persiste sous forme de nombre');
+  __assertEq(__appDataStore.data.xpTotal, expectedXp, 'xpTotal doit etre persiste dans le document consolide appData');
   __assertOk(popupOpen, 'une popup immersive doit s afficher immediatement a la validation');
   __assertOk(currentPopupHtml.includes('Défi complété'), 'la popup doit annoncer la completion du defi');
   __assertOk(currentPopupHtml.includes('+' + expectedXp + ' XP'), 'la popup doit afficher la carte XP gagnee');
@@ -573,7 +614,7 @@ dbSet = __dbSet;
   await addSet(cForStreak.target);
   __assertEq(streakCount, 1, 'la 1ere validation du jour doit porter la serie a 1');
   __assertEq(lastCompletedDate, todayKey, 'lastCompletedDate doit passer a aujourd hui');
-  __assertEq(JSON.parse(__store.get('streakData')).streakCount, 1, 'streakCount doit etre persiste');
+  __assertEq(__appDataStore.data.streakData.streakCount, 1, 'streakCount doit etre persiste dans le document consolide appData');
   __assertOk(popupOpen, 'la popup de completion doit s afficher immediatement');
   __assertOk(currentPopupHtml.includes('Défi complété'), 'la 1ere popup affichee doit etre celle de completion');
   document.getElementById('appPopupCloseBtn').onclick(); // ferme la popup de completion
@@ -650,7 +691,7 @@ dbSet = __dbSet;
   __assertEq(__spokenLog[__spokenLog.length - 1], 'test actif', 'speak() doit parler quand le coach vocal est actif');
   await toggleVoiceCoach();
   __assertEq(voiceCoachEnabled, false, 'toggleVoiceCoach doit inverser l etat');
-  __assertEq(__store.get('voiceCoachEnabled'), 'false', 'le nouvel etat doit etre persiste');
+  __assertEq(__appDataStore.data.voiceCoachEnabled, false, 'le nouvel etat doit etre persiste dans le document consolide appData');
   __spokenLog.length = 0;
   speak('ne doit pas parler');
   __assertEq(__spokenLog.length, 0, 'speak() ne doit rien dire quand le coach vocal est desactive');
@@ -1584,18 +1625,20 @@ dbSet = __dbSet;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
 
-  // --- 87. Demarrage : loadChallenges() est reintegre au Promise.all de
-  // continueStartApp() (plus d attente sequentielle separee avant lui) ---
-  __store.set('customChallenges', JSON.stringify([{ id: 9002, cat: 'Test', name: 'Perf Custom', target: 30, unit: 'reps', hardcoreTarget: 60, isCustom: true }]));
+  // --- 87. Demarrage : loadAppData() (chemin rapide, document consolide deja
+  // migre) charge a elle seule customChallenges/CHALLENGES en UNE lecture, sans
+  // aucun appel separe a loadChallenges() (fusion Firestore, #28) ---
+  __appDataStore.exists = true;
+  __appDataStore.data = { ...__appDataStore.data, customChallenges: [{ id: 9002, cat: 'Test', name: 'Perf Custom', target: 30, unit: 'reps', hardcoreTarget: 60, isCustom: true }] };
   customChallenges = [];
   CHALLENGES = [];
   activeToday = new Set();
   currentChallengeId = null;
   activeTab = 'today';
-  await continueStartApp(); // sans appel separe a loadChallenges() avant : doit quand meme etre charge
-  __assertOk(customChallenges.some(x => x.name === 'Perf Custom'), 'continueStartApp() doit a lui seul charger customChallenges (reintegre dans le Promise.all)');
-  __assertOk(CHALLENGES.some(x => x.name === 'Perf Custom'), 'CHALLENGES doit refleter le defi personnalise charge par continueStartApp()');
-  console.log('OK: demarrage - loadChallenges() rejoint le Promise.all de continueStartApp (plus d attente sequentielle)');
+  await loadAppData(); // une seule lecture Firestore pour tout le profil/donnees statiques
+  __assertOk(customChallenges.some(x => x.name === 'Perf Custom'), 'loadAppData() doit a elle seule charger customChallenges depuis le document consolide');
+  __assertOk(CHALLENGES.some(x => x.name === 'Perf Custom'), 'CHALLENGES doit refleter le defi personnalise charge par loadAppData()');
+  console.log('OK: demarrage - loadAppData() remplace les lectures separees (une seule lecture Firestore pour le profil/donnees statiques)');
 
   // --- 88. Cles de pictogramme sans image connue (PICTOGRAM_ASSET_MISSING) : rendu
   // SVG direct, aucune requete reseau vouee a un 404 garanti ---
@@ -1933,6 +1976,90 @@ dbSet = __dbSet;
   __assertOk(Object.keys(EXERCISE_PICTOGRAMS).length > 20, 'EXERCISE_PICTOGRAMS doit rester utilisable comme global par le reste du code');
   __assertEq(getExercisePictogramKey(CHALLENGE_LIBRARY.find(x => x.name === 'Pompes')), 'pompes', 'getExercisePictogramKey() (deplace) doit continuer a fonctionner normalement');
   console.log('OK: catalogue + pictogrammes extraits en scripts classiques (pas de defer/async, charges avant le script principal)');
+
+  // --- 107. Fusion Firestore (#28) : demarrage avec document consolide DEJA
+  // migre (chemin rapide) -> une seule lecture suffit, aucune des 12 anciennes
+  // cles separees n est lue (si loadAppData() retombait par erreur sur le
+  // chemin de migration, les dbGet() sur les vieilles cles absentes du __store
+  // couvriraient les valeurs avec des defauts differents de ceux ci-dessous) ---
+  __store.clear();
+  __appDataStore.exists = true;
+  __appDataStore.data = {
+    profile: { age: 40, sex: 'femme', heightCm: 170, weightKg: 65, level: 'avance' },
+    customChallenges: [{ id: 9101, cat: 'Test', name: 'Doc Consolide', target: 10, unit: 'reps', hardcoreTarget: 20 }],
+    manualTargetOverrides: { 1: 111 },
+    streakData: { streakCount: 7, lastCompletedDate: '2026-07-30', hasShield: false, lastShieldResetWeek: '2026-07-27' },
+    xpTotal: 4242,
+    voiceCoachEnabled: false,
+    hasSeenTour: true,
+    lastCompleted: { 1: 12345 },
+    stats: { 1: { lifetimeTotal: 99, bestDay: { total: 50, date: '2026-07-01' }, recordStreak: 2 } },
+    badges: { totalCompletions: 5, unlocked: ['x'], totalHardcore: 1 },
+    dailyActivity: { '2026-07-30': 2 },
+    weights: { 5: 15 },
+  };
+  userProfile = null; customChallenges = []; CHALLENGES = []; manualTargetOverrides = {};
+  streakCount = 0; lastCompletedDate = null; hasShield = true; lastShieldResetWeek = null;
+  xpTotal = 0; voiceCoachEnabled = true; hasSeenTour = false; lastCompleted = {};
+  stats = {}; badges = { totalCompletions: 0, unlocked: [], totalHardcore: 0 };
+  dailyActivity = {}; weights = {};
+  await loadAppData();
+  __assertEq(userProfile, { age: 40, sex: 'femme', heightCm: 170, weightKg: 65, level: 'avance' }, 'profile charge depuis le document consolide (chemin rapide)');
+  __assertOk(customChallenges.some(c => c.name === 'Doc Consolide' && c.isCustom === true), 'customChallenges charge depuis le document consolide');
+  __assertEq(manualTargetOverrides, { 1: 111 }, 'manualTargetOverrides charge depuis le document consolide');
+  __assertEq(streakCount, 7, 'streakCount charge depuis le champ streakData du document consolide');
+  __assertEq(hasShield, false, 'hasShield charge depuis le champ streakData du document consolide');
+  __assertEq(xpTotal, 4242, 'xpTotal charge depuis le document consolide');
+  __assertEq(voiceCoachEnabled, false, 'voiceCoachEnabled charge depuis le document consolide');
+  __assertEq(hasSeenTour, true, 'hasSeenTour charge depuis le document consolide');
+  __assertEq(badges.totalCompletions, 5, 'badges charge depuis le document consolide');
+  __assertEq(weights[5], 15, 'weights charge depuis le document consolide (backfillDefaultWeights ajoute aussi des defauts pour les autres halteres, sans ecraser celui-ci)');
+  console.log('OK: fusion Firestore - chemin rapide (document appData deja migre, une seule lecture)');
+
+  // --- 108. Fusion Firestore (#28) : migration non destructive depuis les
+  // anciennes cles separees (compte pre-migration, jamais vu le document
+  // consolide) -> ecrit le document consolide une bonne fois pour toutes ---
+  __store.clear();
+  __appDataStore.exists = false;
+  __appDataStore.data = {};
+  __store.set('profile', JSON.stringify({ age: 25, sex: 'homme', heightCm: 180, weightKg: 75, level: 'debutant' }));
+  __store.set('xpTotal', '321');
+  __store.set('badges', JSON.stringify({ totalCompletions: 2, unlocked: [], totalHardcore: 0 }));
+  __store.set('hasSeenTour', 'true');
+  userProfile = null; customChallenges = []; CHALLENGES = []; xpTotal = 0;
+  badges = { totalCompletions: 0, unlocked: [], totalHardcore: 0 }; hasSeenTour = false;
+  await loadAppData();
+  __assertEq(userProfile, { age: 25, sex: 'homme', heightCm: 180, weightKg: 75, level: 'debutant' }, 'profile migre depuis l ancienne cle separee');
+  __assertEq(xpTotal, 321, 'xpTotal migre depuis l ancienne cle separee');
+  __assertEq(hasSeenTour, true, 'hasSeenTour migre depuis l ancienne cle separee (ne doit pas rester a son defaut false)');
+  __assertOk(__appDataStore.exists && __appDataStore.data.xpTotal === 321 && __appDataStore.data.hasSeenTour === true, 'le document consolide doit etre ecrit une bonne fois pour toutes suite a la migration');
+  __assertOk(__store.has('profile'), 'l ancienne cle separee ne doit JAMAIS etre supprimee (migration additive, filet de securite)');
+  console.log('OK: fusion Firestore - migration non destructive depuis les anciennes cles separees');
+
+  // --- 109. Fusion Firestore (#28) : tout nouvel utilisateur (aucune donnee nulle
+  // part, ni document consolide ni anciennes cles) -> aucune ecriture prematuree
+  // du document consolide (le premier saveProfile() de l onboarding le creera) ---
+  __store.clear();
+  __appDataStore.exists = false;
+  __appDataStore.data = {};
+  userProfile = null;
+  await loadAppData();
+  __assertEq(userProfile, null, 'nouvel utilisateur : aucun profil nulle part');
+  __assertOk(!__appDataStore.exists, 'nouvel utilisateur : le document consolide ne doit PAS etre cree avant la fin de l onboarding');
+  console.log('OK: fusion Firestore - nouvel utilisateur, aucune ecriture prematuree du document consolide');
+
+  // --- 110. Fusion Firestore (#28) : saveAppField() fait un merge Firestore
+  // reel, jamais un ecrasement complet du document (protege des ecritures
+  // concurrentes entre deux ecrans differents, ex: terminer un defi pendant
+  // que les Parametres modifient les poids d haltere ailleurs) ---
+  __appDataStore.exists = true;
+  __appDataStore.data = { xpTotal: 999, badges: { totalCompletions: 1, unlocked: [], totalHardcore: 0 } };
+  weights = { 7: 20 };
+  await saveAppField('weights', weights);
+  __assertEq(__appDataStore.data.xpTotal, 999, 'saveAppField() ne doit jamais toucher aux AUTRES champs deja presents (xpTotal intact)');
+  __assertEq(__appDataStore.data.badges, { totalCompletions: 1, unlocked: [], totalHardcore: 0 }, 'saveAppField() ne doit jamais toucher aux AUTRES champs deja presents (badges intact)');
+  __assertEq(__appDataStore.data.weights, { 7: 20 }, 'saveAppField() doit bien ecrire le champ cible');
+  console.log('OK: fusion Firestore - saveAppField() fait un merge partiel, jamais un ecrasement du document entier');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

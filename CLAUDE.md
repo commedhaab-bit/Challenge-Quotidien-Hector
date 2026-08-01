@@ -65,7 +65,28 @@ appId: "1:613473786890:web:c77ccf3c2d99857df9d3f3"
 measurementId: "G-CXQPEGDHW7"
 ```
 Stockage Firestore en clé/valeur : `users/{uid}/kv/{key}` via les fonctions
-`dbGet(key)` / `dbSet(key, value)`.
+génériques `dbGet(key)` / `dbSet(key, value)` — encore utilisées telles quelles
+pour les documents par jour (`day:{date}`, `activeToday:{date}`, historique
+permanent, jamais fusionnés : voir `loadHistoryEntries()`/`showDayDetailModal()`).
+
+**Document consolidé `users/{uid}/kv/appData`** (fusion Firestore, remplace 12
+anciennes clés séparées — `profile`, `customChallenges`, `manualTargetOverrides`,
+`streakData`, `xpTotal`, `voiceCoachEnabled`, `hasSeenTour`, `lastCompleted`,
+`stats`, `badges`, `dailyActivity`, `weights`) : une seule lecture au démarrage
+(`loadAppData()`) au lieu de 12, écritures via `saveAppField(field, value)` qui
+fait un **merge Firestore natif** (`{merge:true}`) — ne touche JAMAIS les autres
+champs du document, donc aucun risque d'écrasement entre deux écrans qui
+écrivent des champs différents au même moment (ex: terminer un défi pendant que
+Paramètres modifie les poids d'haltères). **Ne jamais revenir à un `.set(obj)`
+complet sans `{merge:true}` sur ce document** — ça écraserait silencieusement
+tous les autres champs. Migration non destructive : si le document n'existe pas
+encore, `loadAppData()` relit les 12 anciennes clés séparées (chaque `loadX()`
+garde sa logique de défaut/migration interne inchangée) puis écrit le document
+consolidé une seule fois — les anciennes clés ne sont JAMAIS supprimées
+(orphelines inoffensives, déjà nettoyées par `deleteMyAccount()` qui vide toute
+la sous-collection `kv` sans liste de clés en dur). Un tout nouveau compte
+n'écrit rien avant la fin de l'onboarding (le premier `saveProfile()` crée le
+document via `merge:true` sur un document inexistant).
 
 ## Architecture de navigation
 Barre d'onglets fixe en bas (4 onglets, variable `activeTab`) :
@@ -129,11 +150,15 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
 - **Service worker** : le fallback cache-first pour les fichiers statiques
   alimente désormais le cache sur un miss (`cache.put`) — avant ce correctif, les
   images n'étaient JAMAIS mises en cache par le SW (aucun gain, ni hors-ligne).
-- **Démarrage** : `loadChallenges()` (customChallenges) est repassé dans le même
-  `Promise.all` que les 9 autres clés de `continueStartApp()` au lieu d'être
-  attendu séparément avant — un aller-retour réseau économisé à chaque démarrage.
-  Persistance locale Firestore activée (`enablePersistence`) : les lectures sont
-  mises en cache IndexedDB côté appareil.
+- **Démarrage** : `startApp()` appelle `loadAppData()` en tout premier (une seule
+  lecture Firestore du document consolidé `appData`, voir plus haut) — plus
+  besoin d'un `Promise.all` séparé de 10 clés dans `continueStartApp()`, qui ne
+  fait plus que les documents PAR JOUR (`loadState()`/`loadActiveToday()`,
+  dépendants de `todayKey`). `refreshApp()` (pull-to-refresh) appelle aussi
+  `loadAppData()` directement, au lieu de dupliquer sa propre liste de loaders
+  (ancien risque de désynchronisation entre les deux listes, éliminé par
+  construction). Persistance locale Firestore activée (`enablePersistence`) : les
+  lectures sont mises en cache IndexedDB côté appareil.
 - **Journal** : `loadHistoryEntries()` lit ses 28 jours en parallèle (`Promise.all`),
   plus en séquentiel.
 - **SDK Firebase + fichiers classiques** : chargement synchrone classique (PAS de
