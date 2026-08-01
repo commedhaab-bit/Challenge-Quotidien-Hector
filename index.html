@@ -3024,6 +3024,7 @@ async function loadActiveToday() {
     await saveActiveToday();
   }
   migratedLegacyActiveIds = null;
+  dayStateStore.set({ ...dayStateStore.get(), activeTodayLoaded: true });
 }
 async function saveActiveToday() {
   try {
@@ -3182,6 +3183,42 @@ async function deleteChallenge(id) {
   await saveManualTargetOverrides();
   render(true);
 }
+
+// ==== STORE MINIMAL (pub/sub) ====
+// Petit helper generique (get/set/subscribe), volontairement PAS une encapsulation
+// complete de l'etat de l'appli : `state`/`activeToday` restent des variables
+// globales mutables directement partout ailleurs dans le code (addSet/undoLast/etc.
+// continuent de les muter en place et d'appeler render() elles-memes, inchange). Ne
+// sert ici qu'a coordonner le CHARGEMENT initial de `state` et `activeToday` (voir
+// dayStateStore plus bas), pour ne plus dependre d'un rappel manuel de render() au
+// bon endroit une fois les deux charges — c'est exactement l'oubli qui avait cause
+// un bug de desynchronisation deja vecu (activeToday pas encore recharge au moment
+// du 1er rendu declenche par loadState()).
+function createStore(initialValue) {
+  let value = initialValue;
+  const subscribers = new Set();
+  return {
+    get: () => value,
+    set(next) {
+      value = next;
+      subscribers.forEach(fn => fn(value));
+    },
+    subscribe(fn) {
+      subscribers.add(fn);
+      return () => subscribers.delete(fn);
+    },
+  };
+}
+
+// Notifie automatiquement un render() une fois que `state` ET `activeToday` ont
+// terminé de charger, quel que soit l'ordre — filet de sécurité en plus du rappel
+// manuel déjà présent dans continueStartApp()/refreshApp(), pas un remplacement : si
+// un futur appel à loadState()/loadActiveToday() oublie ce rappel manuel, ce store
+// garantit quand même un rendu à jour.
+const dayStateStore = createStore({ stateLoaded: false, activeTodayLoaded: false });
+dayStateStore.subscribe((v) => {
+  if (v.stateLoaded && v.activeTodayLoaded) render();
+});
 
 let state = null;
 let todayKey = null;
@@ -4550,6 +4587,7 @@ async function loadState() {
     weekData[k] = (dailyActivity[k] || 0) > 0;
   }
   render();
+  dayStateStore.set({ ...dayStateStore.get(), stateLoaded: true });
 }
 
 async function saveState() {
