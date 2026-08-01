@@ -26,6 +26,13 @@ const inlineAppCode = scripts.sort((a, b) => b.length - a.length)[0]; // le plus
 // concatener AVANT le script principal, exactement comme un navigateur les charge (ordre
 // synchrone, même portée lexicale globale).
 const htmlDir = path.dirname(htmlPath);
+// styles.css : depuis la fusion CSS (#4), le bloc <style> n'existe plus dans index.html
+// (remplace par <link rel="stylesheet">). Les regles CSS n'apparaissent donc plus dans
+// __rawHtml (texte brut de index.html) : il faut les lire depuis ce fichier a part et
+// les concatener a __rawHtml pour que les tests qui verifient du texte CSS continuent
+// de fonctionner (voir cssText plus bas, meme principe que __externalClassicScripts).
+let cssSource = '';
+try { cssSource = fs.readFileSync(path.join(htmlDir, 'styles.css'), 'utf8'); } catch (e) { /* optionnel */ }
 let externalClassicScripts = '';
 for (const name of ['exercise-pictograms.js', 'exercise-data.js']) {
   const p = path.join(htmlDir, name);
@@ -156,7 +163,8 @@ const sandbox = {
   prompt(msg, def){ return def; },
   __store: store,
   __appDataStore: appDataStore, // { exists, data } du document consolide simule (voir plus haut)
-  __rawHtml: html, // fichier source complet (avec la balise <style>), pour verifier des regles CSS que le vm n'execute pas
+  __rawHtml: html, // fichier source complet de index.html (le <style> a ete extrait dans styles.css, voir __cssSource)
+  __cssSource: cssSource, // contenu de styles.css, a part depuis la fusion CSS (#4) : jamais dans __rawHtml
   __swSource: swSource, // contenu de service-worker.js (fichier a part, jamais execute par le vm)
   __externalClassicScripts: externalClassicScripts, // exercise-data.js + exercise-pictograms.js concatenes, pour verifier leur contenu (jamais dans __rawHtml, ce sont des fichiers a part)
   __dbGet: async (key) => {
@@ -186,6 +194,10 @@ dbSet = __dbSet;
 // un utilisateur factice des le debut, avant meme le premier test (plusieurs tests le
 // re-assignent plus loin avec la meme forme, sans jamais lire .uid eux-memes).
 currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
+// Depuis la fusion CSS (#4), les regles de style ne sont plus dans __rawHtml (index.html)
+// mais dans styles.css (__cssSource) : les tests qui verifient du texte CSS doivent
+// chercher dans cssText plutot que dans __rawHtml seul.
+const cssText = __rawHtml + __cssSource;
 
 (async () => {
   // --- 1. CHALLENGE_LIBRARY sanity ---
@@ -1275,8 +1287,8 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
   console.log('OK: overlay du tutoriel assombri/floute uniquement sur la carte d introduction');
 
   // --- 62. Jauges de progression harmonisees : variable de fond dediee, bords totalement arrondis ---
-  __assertOk(__rawHtml.includes('--track-bg'), 'une variable CSS dediee au fond des jauges de progression doit exister');
-  __assertOk(__rawHtml.includes('border-radius: 9999px'), 'les jauges harmonisees doivent utiliser des bords totalement arrondis (pilule)');
+  __assertOk(cssText.includes('--track-bg'), 'une variable CSS dediee au fond des jauges de progression doit exister');
+  __assertOk(cssText.includes('border-radius: 9999px'), 'les jauges harmonisees doivent utiliser des bords totalement arrondis (pilule)');
   console.log('OK: jauges de progression (serie/XP/trophee) harmonisees sur un meme langage visuel');
 
   // --- 63. Hierarchie Hardcore : le compteur Hardcore devient principal une fois
@@ -1316,8 +1328,8 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
 
   // --- 65. Bulle du tutoriel : relief "3D" (ombre + animation d entree) sans flou sur
   // les etapes 2+, flou renforce (6px) reserve a la carte de bienvenue ---
-  __assertOk(__rawHtml.includes('blur(6px)'), 'le flou de la carte de bienvenue doit etre passe a 6px');
-  __assertOk(__rawHtml.includes('tour-bubble-pop-in'), 'une animation d entree doit renforcer l effet de relief/3D de la bulle');
+  __assertOk(cssText.includes('blur(6px)'), 'le flou de la carte de bienvenue doit etre passe a 6px');
+  __assertOk(cssText.includes('tour-bubble-pop-in'), 'une animation d entree doit renforcer l effet de relief/3D de la bulle');
   console.log('OK: relief "3D" de la bulle du tutoriel (ombre + animation), flou reserve a la carte de bienvenue');
 
   // --- 66. Semaine calendaire (Lundi -> Dimanche) : remplace la fenetre glissante des
@@ -1399,8 +1411,8 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
   console.log('OK: noms d exercices harmonisés en français correct, pictogrammes toujours résolus');
 
   // --- 70. Grille +5/+10/+15/+20/+25/+30 : 3 colonnes fixes (plus d auto-fit imprevisible) ---
-  const qagIdx = __rawHtml.indexOf('.quick-add-grid {');
-  const qagBlock = __rawHtml.slice(qagIdx, __rawHtml.indexOf('}', qagIdx));
+  const qagIdx = cssText.indexOf('.quick-add-grid {');
+  const qagBlock = cssText.slice(qagIdx, cssText.indexOf('}', qagIdx));
   __assertOk(qagBlock.includes('grid-template-columns: repeat(3, 1fr)'), 'la grille rapide doit forcer exactement 3 colonnes');
   __assertOk(!qagBlock.includes('auto-fit'), 'l ancien auto-fit (source du bouton isole) ne doit plus etre utilise');
   console.log('OK: grille de séries rapides forcée en 3x2 (3 colonnes fixes)');
@@ -1417,11 +1429,11 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
   console.log('OK: bouton "modifier" remplacé par une icône crayon à côté de l objectif');
 
   // --- 72. Bandeau "Chaque bras doit faire X reps" : design dark + bordure néon orange #FF5500 ---
-  const amsIdx = __rawHtml.indexOf('.arm-mode-sentence {');
-  const amsBlock = __rawHtml.slice(amsIdx, __rawHtml.indexOf('}', amsIdx));
+  const amsIdx = cssText.indexOf('.arm-mode-sentence {');
+  const amsBlock = cssText.slice(amsIdx, cssText.indexOf('}', amsIdx));
   __assertOk(amsBlock.includes('border: 1px solid #FF5500'), 'la bordure du bandeau doit etre en néon orange #FF5500');
   __assertOk(amsBlock.includes('color: #ffffff'), 'le texte du bandeau doit etre blanc vif');
-  __assertOk(__rawHtml.includes('.arm-mode-sentence-icon'), 'l icône du bandeau doit être stylée séparément (orange contrastée)');
+  __assertOk(cssText.includes('.arm-mode-sentence-icon'), 'l icône du bandeau doit être stylée séparément (orange contrastée)');
   const rowingChallenge = CHALLENGE_LIBRARY.find(x => x.name === 'Tirage haltères'); // armMode: perArm
   await pickChallenge(rowingChallenge.id);
   render(false);
@@ -1432,8 +1444,8 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
 
   // --- 73. Alignement vertical des cartes Défis : ANNULE (le rendu ne convenait pas) —
   // retour au centrage d origine du contenu de la carte ---
-  const piIdx = __rawHtml.indexOf('.picker-item {');
-  const piBlock = __rawHtml.slice(piIdx, __rawHtml.indexOf('}', piIdx));
+  const piIdx = cssText.indexOf('.picker-item {');
+  const piBlock = cssText.slice(piIdx, cssText.indexOf('}', piIdx));
   __assertOk(piBlock.includes('align-items: center'), 'la carte défi doit revenir a son centrage d origine (modif annulee)');
   __assertOk(!piBlock.includes('align-items: flex-start'), 'l alignement en haut (annule) ne doit plus etre applique');
   console.log('OK: alignement vertical des cartes Défis revenu au centrage d origine (annulation)');
@@ -1445,8 +1457,8 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
   __assertOk(!emptyStateHtml2.includes('Bibliothèque'), 'le mot Bibliotheque ne doit plus apparaitre dans l etat vide');
   __assertOk(emptyStateHtml2.includes('🎯 Choisir un défi'), 'le bouton CTA doit utiliser l icone cible 🎯 (identique a l onglet Défis)');
   __assertOk(!emptyStateHtml2.includes('📚'), 'l icone livre 📚 ne doit plus apparaitre sur le bouton de l etat vide');
-  const headerDateIdx = __rawHtml.indexOf('.header .date {');
-  const headerDateBlock = __rawHtml.slice(headerDateIdx, __rawHtml.indexOf('}', headerDateIdx));
+  const headerDateIdx = cssText.indexOf('.header .date {');
+  const headerDateBlock = cssText.slice(headerDateIdx, cssText.indexOf('}', headerDateIdx));
   __assertOk(headerDateBlock.includes('#D1D5DB') || headerDateBlock.includes('#9CA3AF'), 'la date doit utiliser une couleur claire et lisible sur fond noir');
   console.log('OK: ecran vide harmonise (onglet Défis, icone cible) + contraste de la date ameliore');
 
@@ -1492,9 +1504,9 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
   console.log('OK: en-tete des mois ajoutee au-dessus de la heatmap (repères temporels)');
 
   // --- 78. Pop-up Serie : chiffre nettement agrandi (point focal principal) ---
-  const bigIdx = __rawHtml.indexOf('.app-popup-big.big-highlight');
+  const bigIdx = cssText.indexOf('.app-popup-big.big-highlight');
   __assertOk(bigIdx !== -1, 'une classe dediee doit agrandir significativement le chiffre de la serie');
-  const bigBlock = __rawHtml.slice(bigIdx, __rawHtml.indexOf('}', bigIdx));
+  const bigBlock = cssText.slice(bigIdx, cssText.indexOf('}', bigIdx));
   const fontSizeMatch = bigBlock.match(/font-size: ([0-9]+)px/);
   __assertOk(!!fontSizeMatch && parseInt(fontSizeMatch[1], 10) >= 56, 'le chiffre de la serie doit etre nettement plus grand que le "big" generique (30px)');
   streakCount = 12; hasShield = true;
@@ -1505,11 +1517,11 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
   console.log('OK: chiffre de la serie agrandi (point focal de la modale)');
 
   // --- 79. Chrono : icone Play/valider remontee, espacement haut/bas rapproche de la symetrie ---
-  const trIdx = __rawHtml.indexOf('.timer-ring-center {');
-  const trBlock = __rawHtml.slice(trIdx, __rawHtml.indexOf('}', trIdx));
+  const trIdx = cssText.indexOf('.timer-ring-center {');
+  const trBlock = cssText.slice(trIdx, cssText.indexOf('}', trIdx));
   __assertOk(trBlock.includes('calc(-50% - 14px)'), 'le groupe temps+icone doit etre remonte pour equilibrer les marges haut/bas');
-  const tpIdx = __rawHtml.indexOf('.timer-play-icon {');
-  const tpBlock = __rawHtml.slice(tpIdx, __rawHtml.indexOf('}', tpIdx));
+  const tpIdx = cssText.indexOf('.timer-play-icon {');
+  const tpBlock = cssText.slice(tpIdx, cssText.indexOf('}', tpIdx));
   __assertOk(tpBlock.includes('translate(-50%, 4px)'), 'icone par defaut remontee (4px au lieu de 8px)');
   console.log('OK: icone du chrono remontee, espacement haut/bas rapproche de la symetrie');
 
@@ -1522,12 +1534,12 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
   const homeLayoutHtml = document.getElementById('app').innerHTML;
   __assertOk(homeLayoutHtml.includes('today-content-flex'), 'la liste + les trophees doivent partager un conteneur flex dedie');
   __assertOk(homeLayoutHtml.includes('home-trophies-slot'), 'le module trophees doit etre dans un slot dedie (marge auto vers le bas)');
-  const tcfIdx = __rawHtml.indexOf('.today-content-flex {');
-  const tcfBlock = __rawHtml.slice(tcfIdx, __rawHtml.indexOf('}', tcfIdx));
+  const tcfIdx = cssText.indexOf('.today-content-flex {');
+  const tcfBlock = cssText.slice(tcfIdx, cssText.indexOf('}', tcfIdx));
   __assertOk(tcfBlock.includes('flex-direction: column'), 'le conteneur doit etre une colonne flex');
   __assertOk(tcfBlock.includes('min-height'), 'min-height (pas height) pour ne jamais bloquer le defilement si la liste deborde');
-  const htsIdx = __rawHtml.indexOf('.home-trophies-slot {');
-  const htsBlock = __rawHtml.slice(htsIdx, __rawHtml.indexOf('}', htsIdx));
+  const htsIdx = cssText.indexOf('.home-trophies-slot {');
+  const htsBlock = cssText.slice(htsIdx, cssText.indexOf('}', htsIdx));
   __assertOk(htsBlock.includes('margin-top: auto'), 'le slot trophees doit se caler en bas via margin-top:auto');
   __assertOk(htsBlock.includes('padding-top'), 'un espacement vertical accru doit preceder le module trophees');
   console.log('OK: mise en page Aujourd hui (espacement accru + trophees cales en bas si peu de defis)');
@@ -1672,11 +1684,11 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
 
   // --- 90. Chargement percu : skeleton "shimmer" + fondu a l arrivee (classe .loaded),
   // espace reserve (aspect-ratio) pour ne jamais provoquer de saut de mise en page (CLS) ---
-  __assertOk(__rawHtml.includes('picto-shimmer'), 'un skeleton shimmer doit exister pour les miniatures en cours de chargement');
-  __assertOk(__rawHtml.includes('.exercise-picto img.loaded { opacity: 1; }'), 'la miniature doit apparaitre en fondu une fois chargee');
+  __assertOk(cssText.includes('picto-shimmer'), 'un skeleton shimmer doit exister pour les miniatures en cours de chargement');
+  __assertOk(cssText.includes('.exercise-picto img.loaded { opacity: 1; }'), 'la miniature doit apparaitre en fondu une fois chargee');
   __assertOk(webpPictoHtml.includes("classList.add('loaded')"), 'la miniature doit marquer .loaded au chargement (ou au dernier repli) pour faire disparaitre le shimmer');
-  const heroCssIdx = __rawHtml.indexOf('.exercise-hero-apng {');
-  const heroCssBlock = __rawHtml.slice(heroCssIdx, __rawHtml.indexOf('}', heroCssIdx));
+  const heroCssIdx = cssText.indexOf('.exercise-hero-apng {');
+  const heroCssBlock = cssText.slice(heroCssIdx, cssText.indexOf('}', heroCssIdx));
   __assertOk(heroCssBlock.includes('aspect-ratio: 1 / 1'), 'l image hero doit reserver un espace carre fixe pour ne jamais provoquer de CLS (toutes les sources sont carrees)');
   console.log('OK: skeleton shimmer + fondu a l arrivee, espace reserve (CLS evite)');
 
@@ -1890,13 +1902,13 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
   // --- 102. Mode Hardcore plus immersif : var(--hardcore) utilisee (au lieu de la
   // couleur codee en dur) pour les usages "a plat" ; toute la carte se teinte
   // (.active-card.hardcore-engaged) une fois l objectif normal atteint ---
-  const hardcoreTagIdx = __rawHtml.indexOf('.hardcore-tag {');
-  const hardcoreTagBlock = __rawHtml.slice(hardcoreTagIdx, __rawHtml.indexOf('}', hardcoreTagIdx));
+  const hardcoreTagIdx = cssText.indexOf('.hardcore-tag {');
+  const hardcoreTagBlock = cssText.slice(hardcoreTagIdx, cssText.indexOf('}', hardcoreTagIdx));
   __assertOk(hardcoreTagBlock.includes('var(--hardcore)'), '.hardcore-tag doit utiliser var(--hardcore) plutot qu une couleur codee en dur');
-  const hardcoreBannerIdx = __rawHtml.indexOf('.hardcore-banner {');
-  const hardcoreBannerBlock = __rawHtml.slice(hardcoreBannerIdx, __rawHtml.indexOf('}', hardcoreBannerIdx));
+  const hardcoreBannerIdx = cssText.indexOf('.hardcore-banner {');
+  const hardcoreBannerBlock = cssText.slice(hardcoreBannerIdx, cssText.indexOf('}', hardcoreBannerIdx));
   __assertOk(hardcoreBannerBlock.includes('var(--hardcore)'), '.hardcore-banner doit utiliser var(--hardcore) plutot qu une couleur codee en dur');
-  __assertOk(__rawHtml.includes('.active-card.hardcore-engaged'), 'une classe dediee doit teinter toute la carte en mode Hardcore engage');
+  __assertOk(cssText.includes('.active-card.hardcore-engaged'), 'une classe dediee doit teinter toute la carte en mode Hardcore engage');
 
   state = emptyDayState();
   activeToday = new Set([pompes.id]);
@@ -1920,8 +1932,8 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
 
   // --- 103. Entree en cascade des cartes de liste (Aujourd hui/Défis) : keyframes +
   // delai croissant par carte (plafonne), desactivee sous prefers-reduced-motion ---
-  __assertOk(__rawHtml.includes('@keyframes card-pop-in'), 'les keyframes d entree en cascade doivent exister');
-  __assertOk(__rawHtml.includes('prefers-reduced-motion: reduce') && __rawHtml.includes('.picker-item { animation: none; }'), 'l animation doit etre desactivee sous prefers-reduced-motion');
+  __assertOk(cssText.includes('@keyframes card-pop-in'), 'les keyframes d entree en cascade doivent exister');
+  __assertOk(cssText.includes('prefers-reduced-motion: reduce') && cssText.includes('.picker-item { animation: none; }'), 'l animation doit etre desactivee sous prefers-reduced-motion');
   const cardNoIndex = renderChallengeCard(pompes, 'library');
   __assertOk(!cardNoIndex.includes('animation-delay'), 'sans index fourni, aucun delai ne doit etre pose (repli sans animation cassee)');
   const card0 = renderChallengeCard(pompes, 'library', 0);
@@ -1996,6 +2008,15 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
   __assertOk(Object.keys(EXERCISE_PICTOGRAMS).length > 20, 'EXERCISE_PICTOGRAMS doit rester utilisable comme global par le reste du code');
   __assertEq(getExercisePictogramKey(CHALLENGE_LIBRARY.find(x => x.name === 'Pompes')), 'pompes', 'getExercisePictogramKey() (deplace) doit continuer a fonctionner normalement');
   console.log('OK: catalogue + pictogrammes extraits en scripts classiques (pas de defer/async, charges avant le script principal)');
+
+  // --- 112. CSS extrait dans styles.css (#4) : plus de <style> inline dans
+  // index.html, un <link rel="stylesheet"> le remplace, et le vrai contenu CSS
+  // vit desormais dans le fichier a part (jamais duplique) ---
+  __assertOk(!__rawHtml.includes('<style>'), 'index.html ne doit plus contenir de bloc <style> inline');
+  __assertOk(__rawHtml.includes('<link rel="stylesheet" href="styles.css">'), 'index.html doit charger styles.css via un <link> classique');
+  __assertOk(__cssSource.length > 10000, 'styles.css doit contenir le contenu CSS reel (pas juste lisible, non vide)');
+  __assertOk(__cssSource.includes('--track-bg') && __cssSource.includes('@keyframes card-pop-in'), 'des regles CSS connues doivent vivre dans styles.css');
+  console.log('OK: CSS extrait dans styles.css (plus de <style> inline, contenu non duplique)');
 
   // --- 107. Fusion Firestore (#28) : demarrage avec document consolide DEJA
   // migre (chemin rapide) -> une seule lecture suffit, aucune des 12 anciennes

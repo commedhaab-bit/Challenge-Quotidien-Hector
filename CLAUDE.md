@@ -25,6 +25,13 @@ Claude Code.
   script classique garde tout dans la même portée globale partagée, sans ce risque.
   Le harnais de test lit ces fichiers et les concatène AVANT le script principal
   pour reproduire cet ordre de chargement.
+- `styles.css` — tout le CSS, extrait du bloc `<style>` autrefois inline dans
+  `index.html` (chargé via `<link rel="stylesheet" href="styles.css">`), pour un
+  fichier principal moins volumineux et un fichier CSS mis en cache séparément
+  par le navigateur/service worker. Contenu inchangé, juste déplacé. Le harnais
+  de test lit ce fichier à part (`__cssSource`) : les tests qui vérifient du
+  texte CSS cherchent dans `cssText` (= `__rawHtml + __cssSource`), pas dans
+  `__rawHtml` seul (qui ne contient plus que le HTML/JS de `index.html`).
 - `manifest.json` — manifeste PWA
 - `service-worker.js` — réseau-first pour le HTML (mise à jour PWA), cache-first
   (avec alimentation à la volée) pour tout le reste — notamment les images
