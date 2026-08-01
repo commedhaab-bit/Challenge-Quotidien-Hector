@@ -55,7 +55,12 @@ module.exports = [
       globals: { ...browserGlobals, ...nodeGlobals },
     },
     rules: {
-      'no-unused-vars': 'warn',
+      // args: 'none' : le harnais definit beaucoup de stubs/mocks DOM/Firebase dont
+      // la signature doit correspondre a l'API reelle (ex: getContext(tag), fetch
+      // (cb), confirm(msg)) sans que le corps du mock ait besoin du parametre —
+      // un "jamais utilise" attendu et sans interet ici. Les variables locales
+      // (hors arguments) restent, elles, signalees normalement.
+      'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none' }],
       'no-undef': 'error',
     },
   },
