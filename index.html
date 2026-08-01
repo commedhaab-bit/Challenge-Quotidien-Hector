@@ -1522,9 +1522,21 @@
     align-items: center;
     cursor: pointer;
     transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+    animation: card-pop-in 0.35s cubic-bezier(.34,1.56,.64,1) backwards;
   }
   .picker-item:active { transform: scale(0.98); }
   .picker-item:hover { border-color: var(--accent-dim); }
+  /* Entrée en cascade des cartes de liste (Aujourd'hui/Défis) : léger décalage par
+     carte (animation-delay posé en inline par renderChallengeCard), même timing/bounce
+     que app-popup-pop-in/tour-bubble-pop-in pour rester cohérent avec le reste de
+     l'appli. "backwards" garde la carte invisible pendant son délai (pas de flash). */
+  @keyframes card-pop-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .picker-item { animation: none; }
+  }
 
   .picker-item-body {
     flex: 1;
@@ -1695,6 +1707,14 @@
     padding: 6px 20px 20px;
     position: relative;
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  }
+  /* Immersion visuelle renforcée quand le mode Hardcore est engagé (objectif normal
+     déjà atteint, phase Hardcore active ou terminée) : toute la carte se teinte, pas
+     seulement les badges/textes ponctuels ci-dessous — reste contenu à la fiche
+     détail (pas de changement du header/de la barre d'onglets globale). */
+  .active-card.hardcore-engaged {
+    border-color: var(--hardcore);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), 0 0 24px rgba(255, 107, 53, 0.18);
   }
   .active-cat {
     font-size: 11px;
@@ -1965,7 +1985,7 @@
   .hardcore-tag {
     font-size: 11px;
     font-weight: 800;
-    color: #ff6b35;
+    color: var(--hardcore);
     text-transform: uppercase;
     letter-spacing: 0.08em;
     margin-bottom: 2px;
@@ -1975,7 +1995,7 @@
      l'effort en cours concerne desormais cet objectif. */
   .progress-row.hardcore-primary .progress-current {
     font-size: 46px;
-    color: #ff6b35;
+    color: var(--hardcore);
     text-shadow: 0 0 16px rgba(255, 107, 53, 0.5);
   }
   .progress-row.hardcore-primary .progress-target,
@@ -1984,7 +2004,7 @@
     color: #ffb38a;
   }
   .progress-row.hardcore-primary .progress-pct {
-    color: #ff6b35;
+    color: var(--hardcore);
   }
   .hardcore-track {
     border-color: #6b3420;
@@ -1999,7 +2019,7 @@
     text-align: center;
     padding: 14px;
     background: rgba(255, 107, 53, 0.12);
-    border: 1px solid #ff6b35;
+    border: 1px solid var(--hardcore);
     border-radius: 12px;
     color: #ff8c5c;
     font-weight: 800;
@@ -4801,10 +4821,11 @@ function render(animate) {
       `;
     }
     const cats = [...new Set(activeChallenges.map(c => c.cat))];
+    let todayCardIndex = 0; // continu sur toute la liste (pas remis a zero par categorie), pour un seul enchainement visuel
     for (const cat of cats) {
       html += `<div class="section-label">${escapeHtml(cat)}</div><div class="picker-grid">`;
       for (const c of activeChallenges.filter(x => x.cat === cat)) {
-        html += renderChallengeCard(c, 'today');
+        html += renderChallengeCard(c, 'today', todayCardIndex++);
       }
       html += `</div>`;
     }
@@ -4830,7 +4851,7 @@ function render(animate) {
     `;
 
     html += `
-      <div class="active-card">
+      <div class="active-card${entry.done ? ' hardcore-engaged' : ''}">
         ${heroImgHtml}
         <div class="active-name">${escapeHtml(c.name)}</div>
 
@@ -5168,7 +5189,7 @@ function renderProfileOnboardingScreen() {
 // droite (statut du jour vs pastille "Actif"), le poids affiché pour les défis
 // haltères en mode bibliothèque, et les actions éditer/supprimer réservées aux
 // défis personnalisés.
-function renderChallengeCard(c, mode) {
+function renderChallengeCard(c, mode, index) {
   const resolved = resolveChallenge(c);
   const isActive = activeToday.has(c.id);
   const weightKg = weights[c.id] ?? computeStandardWeight(c, userProfile) ?? 8;
@@ -5203,8 +5224,13 @@ function renderChallengeCard(c, mode) {
     ? `<button class="activate-toggle-btn${isActive ? ' active' : ''}" onclick="event.stopPropagation(); toggleActiveToday(${c.id})">${isActive ? '✓ Actif' : '+ Activer'}</button>`
     : '';
 
+  // Entrée en cascade (léger décalage par carte), plafonné pour ne jamais laisser une
+  // longue liste avec un délai interminable sur les dernières cartes ; absent si
+  // index n'est pas fourni (repli sans délai, jamais d'animation cassée).
+  const delayStyle = index !== undefined ? ` style="animation-delay:${Math.min(index, 8) * 40}ms"` : '';
+
   return `
-    <div class="picker-item" onclick="${onclick}">
+    <div class="picker-item"${delayStyle} onclick="${onclick}">
       ${renderExercisePicto(c)}
       <div class="picker-item-body">
         <span class="name">${escapeHtml(c.name)}</span>
@@ -5250,7 +5276,7 @@ function renderLibraryScreen() {
           <span class="accordion-title">${escapeHtml(cat)}</span>
           <span class="accordion-count${activeCount > 0 ? ' has-active' : ''}">${activeCount} actif${activeCount === 1 ? '' : 's'}</span>
         </button>
-        ${isOpen ? `<div class="accordion-body">${itemsInCat.map(c => renderChallengeCard(c, 'library')).join('')}</div>` : ''}
+        ${isOpen ? `<div class="accordion-body">${itemsInCat.map((c, i) => renderChallengeCard(c, 'library', i)).join('')}</div>` : ''}
       </div>
     `;
   }
