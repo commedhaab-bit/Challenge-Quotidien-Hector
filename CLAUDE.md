@@ -104,6 +104,14 @@ poussent PAS d'état d'historique (pairs, pas une pile) ; seuls les écrans
 imbriqués dans un onglet (fiche défi, formulaire, sous-écran bibliothèque,
 mode focus) le font.
 
+**Raccourcis PWA** (`manifest.json` → `shortcuts`, appui long sur l'icône) :
+`?tab=library`/`?tab=history` sur `start_url`. `applyShortcutTabFromUrl()` (appelée
+dans `startApp()` juste après `loadAppData()`) lit `?tab=...`, affecte `activeTab`
+**directement** (pas `switchTab()`, dont les effets de bord — vibration, reset du
+timer — sont pensés pour un changement d'onglet interactif, pas un démarrage),
+puis nettoie l'URL via `history.replaceState()` pour qu'un rechargement manuel
+ultérieur ne re-déclenche pas la même redirection.
+
 ## Modèle de données clé
 - `CHALLENGE_LIBRARY` — bibliothèque complète des défis disponibles (32 défis,
   15 précochés par défaut à l'onboarding)
@@ -208,6 +216,14 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
   curseur), puis un callback `afterRender` lui redonne le focus après coup. Tout
   nouveau champ de saisie qui déclenche un `render()` complet sur chaque frappe
   doit suivre le même filet, sinon même bug que le formulaire de profil déjà vécu.
+
+## Accessibilité (base posée, pas un audit exhaustif)
+`role="tablist"`/`role="tab"`/`aria-selected` sur la barre d'onglets,
+`aria-label` sur les boutons/champs icône-seule sans texte visible (ex:
+`add-custom-fab`, le champ de recherche Défis), `role="dialog" aria-modal="true"`
+sur les overlays popup/`confirmModal`, `aria-live="polite"` sur le toast. Portée
+volontairement limitée à ces points à fort impact/faible risque — étendre au cas
+par cas plutôt que viser une conformité complète d'un coup.
 
 ## Style / conventions de code
 - Palette CSS via variables `:root` uniquement (`--bg`, `--accent`, etc.) —

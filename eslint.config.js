@@ -28,6 +28,7 @@ const nodeGlobals = {
   __dirname: 'readonly',
   console: 'readonly',
   setImmediate: 'readonly',
+  URLSearchParams: 'readonly',
 };
 
 module.exports = [

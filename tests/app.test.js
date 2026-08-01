@@ -60,7 +60,9 @@ function makeEl(id) {
     classList: { add(){}, remove(){}, contains(){ return false; }, toggle(){} },
     addEventListener(){}, removeEventListener(){},
     appendChild(){}, remove(){}, closest(){ return null; },
-    setAttribute(){}, getAttribute(){ return null; },
+    _attrs: {},
+    setAttribute(k, v){ this._attrs[k] = String(v); },
+    getAttribute(k){ return k in this._attrs ? this._attrs[k] : null; },
     querySelector(){ return null; }, querySelectorAll(){ return []; },
     focus(){ activeElement = el; }, click(){},
     getContext(){ return makeCtx2D(); },
@@ -83,6 +85,7 @@ function makeEl(id) {
 const store = new Map(); // simule Firestore (ancien modele cle/valeur) : key -> JSON string
 const elementsById = new Map(); // simule le DOM : meme element retourne par id (ex: 'app')
 const sandboxSpokenLog = []; // simule window.speechSynthesis : phrases prononcees, dans l'ordre
+const mockLocation = { search: '', pathname: '/index.html' }; // simule window.location (raccourcis PWA, ?tab=...)
 
 // Simule le document Firestore consolide users/{uid}/kv/appData (voir appDataDocRef()/
 // saveAppField()/loadAppData() dans index.html). appDataDocRef() appelle db.collection(...)
@@ -142,7 +145,20 @@ const sandbox = {
   requestAnimationFrame(){ return 0; },
   cancelAnimationFrame(){},
   navigator: { vibrate(){ return true; }, onLine: true },
-  history: { pushState(){}, back(){} },
+  history: {
+    pushState(){}, back(){},
+    // Simule le lien reel entre history.replaceState(url) et location.search/pathname
+    // (dans un vrai navigateur, changer l URL via replaceState met aussi a jour location) :
+    // applyShortcutTabFromUrl() s en sert pour nettoyer ?tab=... apres l avoir lu.
+    replaceState(state, title, url) {
+      if (typeof url !== 'string') return;
+      const qIdx = url.indexOf('?');
+      if (qIdx === -1) { mockLocation.pathname = url; mockLocation.search = ''; }
+      else { mockLocation.pathname = url.slice(0, qIdx); mockLocation.search = url.slice(qIdx); }
+    },
+  },
+  URLSearchParams,
+  location: mockLocation,
   firebase: {
     initializeApp(){},
     auth(){ return { onAuthStateChanged(cb){ /* pilote manuellement depuis le test */ }, signInWithPopup(){ return Promise.resolve(); }, GoogleAuthProvider: function(){} }; },
@@ -2166,6 +2182,61 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(focusCalls, 1, 'render() doit rappeler focus() sur le champ de recherche apres chaque frappe (callback afterRender), sinon la saisie serait cassee');
   activeTab = 'today';
   console.log('OK: le focus du champ de recherche est restaure apres chaque frappe (render() complet)');
+
+  // --- 116. Raccourcis PWA (#7) : ?tab=... positionne activeTab au demarrage
+  // et nettoie ensuite l URL (evite de re-declencher au prochain rechargement) ---
+  location.search = '?tab=library';
+  activeTab = 'today';
+  applyShortcutTabFromUrl();
+  __assertEq(activeTab, 'library', '?tab=library doit positionner activeTab sur Defis');
+  __assertEq(location.search, '', 'l URL doit etre nettoyee apres lecture (history.replaceState)');
+
+  location.search = '?tab=history';
+  activeTab = 'today';
+  applyShortcutTabFromUrl();
+  __assertEq(activeTab, 'history', '?tab=history doit positionner activeTab sur Journal');
+
+  location.search = '?tab=valeur_invalide';
+  activeTab = 'today';
+  applyShortcutTabFromUrl();
+  __assertEq(activeTab, 'today', 'une valeur de tab invalide/inconnue ne doit pas modifier activeTab');
+
+  location.search = '';
+  activeTab = 'account';
+  applyShortcutTabFromUrl();
+  __assertEq(activeTab, 'account', 'sans parametre tab dans l URL, activeTab ne doit pas etre touche');
+  activeTab = 'today';
+  console.log('OK: raccourcis PWA (?tab=...) positionnent activeTab au demarrage et nettoient l URL');
+
+  // --- 117. Accessibilite de base (#14) : barre d onglets (role tablist/tab +
+  // aria-selected), champ de recherche et bouton + de la bibliotheque (aria-label),
+  // toast (aria-live) ---
+  activeTab = 'library';
+  const ariaTabBarHtml = renderTabBar();
+  __assertOk(ariaTabBarHtml.includes('role="tablist"'), 'la barre d onglets doit avoir role="tablist"');
+  __assertOk(ariaTabBarHtml.includes('role="tab"'), 'chaque bouton d onglet doit avoir role="tab"');
+  __assertOk(ariaTabBarHtml.includes('tab-btn active"'), 'un bouton d onglet actif doit exister (classe tab-btn active)');
+  __assertEq((ariaTabBarHtml.match(/aria-selected="true"/g) || []).length, 1, 'un seul onglet a la fois doit avoir aria-selected="true"');
+  __assertOk(ariaTabBarHtml.includes('aria-selected="false"'), 'les onglets inactifs doivent avoir aria-selected="false"');
+  activeTab = 'today';
+
+  const ariaLibHtml = renderLibraryScreen();
+  __assertOk(ariaLibHtml.includes('aria-label="Rechercher un défi"'), 'le champ de recherche doit avoir un aria-label');
+  __assertOk(ariaLibHtml.includes('aria-label="Ajouter un défi personnalisé"'), 'le bouton + (icone seule) doit avoir un aria-label');
+
+  // Note : pas de verification via document.getElementById('toast') apres coup - le mock
+  // fait de getElementById() une auto-creation permanente (jamais null), donc le "if (!el)"
+  // de showToast() (creation paresseuse a la premiere fois) ne se declenche jamais dans le
+  // harnais. Verification directe du code source a la place (meme principe que d autres
+  // verifications deja presentes dans ce fichier, ex: enablePersistence).
+  __assertOk(__rawHtml.includes("el.setAttribute('aria-live', 'polite')"), 'le toast doit annoncer aria-live="polite" aux lecteurs d ecran');
+  console.log('OK: accessibilite de base (tablist/tab/aria-selected, aria-label champs icone-seule, toast aria-live)');
+
+  // --- 118. Fermeture #3 (lazy-loading) : l image hero de la fiche detail reste
+  // explicitement eager (LCP-critique, ne doit jamais devenir lazy) ; les images de
+  // liste (renderExercisePicto) restent lazy comme deja verifie plus haut ---
+  __assertOk(__rawHtml.includes('class="exercise-hero-apng"') && __rawHtml.includes('loading="eager"'), 'l image hero de la fiche detail doit etre explicitement loading="eager"');
+  console.log('OK: image hero de la fiche detail explicitement loading="eager" (LCP-critique)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

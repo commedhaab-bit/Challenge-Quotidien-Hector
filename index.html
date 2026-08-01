@@ -1338,6 +1338,8 @@ function drainPopupQueue() {
   const el = document.createElement('div');
   el.id = 'appPopup';
   el.className = 'app-popup-overlay';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-modal', 'true');
   el.innerHTML = buildPopupInnerHtml(next);
   currentPopupHtml = el.innerHTML;
   document.body.appendChild(el);
@@ -1366,6 +1368,8 @@ function confirmModal({ icon = '⚠️', title = '', subtitle = '', confirmLabel
   return new Promise((resolve) => {
     const el = document.createElement('div');
     el.className = 'app-popup-overlay';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-modal', 'true');
     el.innerHTML = `
       <div class="app-popup-card">
         <div class="app-popup-icon">${icon}</div>
@@ -1720,6 +1724,7 @@ function showToast(html, duration = 2600) {
     el = document.createElement('div');
     el.id = 'toast';
     el.className = 'toast';
+    el.setAttribute('aria-live', 'polite'); // annonce le toast aux lecteurs d ecran sans voler le focus
     document.body.appendChild(el);
   }
   el.innerHTML = html;
@@ -2687,7 +2692,7 @@ function render(animate) {
     // silencieuse si aucun des deux n'existe ; aucune requête réseau du tout pour les
     // clés connues comme n'ayant aucune image (PICTOGRAM_ASSET_MISSING).
     const heroImgHtml = PICTOGRAM_ASSET_MISSING.has(heroKey) ? '' : `
-        <img class="exercise-hero-apng" src="exercices/${heroKey}.webp" alt="Démonstration : ${escapeHtml(c.name)}" decoding="async"
+        <img class="exercise-hero-apng" src="exercices/${heroKey}.webp" alt="Démonstration : ${escapeHtml(c.name)}" decoding="async" loading="eager"
              onload="this.classList.add('loaded');"
              onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${heroKey}.png';}else{this.remove();}">
     `;
@@ -3104,10 +3109,10 @@ function renderLibraryScreen() {
         <h1 class="title">Défis</h1>
         <div class="subtitle">Active les défis que tu veux faire aujourd'hui</div>
       </div>
-      <button class="add-custom-fab" onclick="openNewChallengeForm()" title="Ajouter un défi personnalisé">+</button>
+      <button class="add-custom-fab" onclick="openNewChallengeForm()" title="Ajouter un défi personnalisé" aria-label="Ajouter un défi personnalisé">+</button>
     </div>
     <input class="library-search-input" id="librarySearchInput" type="text"
-           placeholder="🔍 Rechercher un défi..." value="${escapeHtml(librarySearchQuery)}"
+           placeholder="🔍 Rechercher un défi..." aria-label="Rechercher un défi" value="${escapeHtml(librarySearchQuery)}"
            oninput="updateLibrarySearch(this.value)">
   `;
   // Recherche active : les catégories restent affichées mais 1) filtrées à leurs seuls
@@ -3581,9 +3586,9 @@ function renderTabBar() {
     { id: 'account',  icon: '👤', label: 'Profil' },
   ];
   return `
-    <nav class="tab-bar">
+    <nav class="tab-bar" role="tablist">
       ${tabs.map(t => `
-        <button class="tab-btn${activeTab === t.id ? ' active' : ''}" onclick="switchTab('${t.id}')">
+        <button class="tab-btn${activeTab === t.id ? ' active' : ''}" onclick="switchTab('${t.id}')" role="tab" aria-selected="${activeTab === t.id}">
           <span class="tab-icon">${t.icon}</span>
           <span class="tab-label">${t.label}</span>
         </button>
@@ -3702,6 +3707,26 @@ function getSuggestion() {
 }
 
 
+/**
+ * Raccourcis PWA (manifest.json "shortcuts", ex: "Défis"/"Journal" depuis un appui
+ * long sur l'icône de l'appli) : lit `?tab=...` dans l'URL et positionne activeTab
+ * en conséquence avant le tout premier rendu (affectation directe, PAS switchTab()
+ * qui déclenche des effets de bord pensés pour un changement d'onglet interactif :
+ * vibration, nettoyage du timer, etc. — ici on démarre simplement sur cet onglet).
+ * Nettoie ensuite l'URL (history.replaceState) pour qu'un rechargement manuel
+ * ultérieur ne re-déclenche pas la même redirection.
+ */
+function applyShortcutTabFromUrl() {
+  const params = new URLSearchParams(location.search);
+  const tab = params.get('tab');
+  if (['today', 'history', 'library', 'account'].includes(tab)) {
+    activeTab = tab;
+  }
+  if (params.has('tab')) {
+    history.replaceState(null, '', location.pathname);
+  }
+}
+
 async function startApp() {
   if (showProfileOnboarding) {
     // Un onboarding est déjà affiché et en cours de saisie : on ne le relance pas,
@@ -3709,6 +3734,7 @@ async function startApp() {
     return;
   }
   await loadAppData();
+  applyShortcutTabFromUrl();
   if (!userProfile) {
     profileStep = 0;
     profileDraft = { age: null, sex: null, heightCm: null, weightKg: null, level: null };
