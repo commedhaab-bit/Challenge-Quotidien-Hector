@@ -2394,8 +2394,15 @@ async function dbGet(key) {
 
 /** Écrit (crée ou remplace) `users/{uid}/kv/{key}` dans Firestore. */
 async function dbSet(key, value) {
-  await db.collection('users').doc(currentUser.uid).collection('kv').doc(key).set({ value });
-  return { key, value };
+  pendingWriteCount++;
+  updateOfflineBanner();
+  try {
+    await db.collection('users').doc(currentUser.uid).collection('kv').doc(key).set({ value });
+    return { key, value };
+  } finally {
+    pendingWriteCount--;
+    updateOfflineBanner();
+  }
 }
 
 // ==== DOCUMENT CONSOLIDÉ (users/{uid}/kv/appData) ====
@@ -2419,10 +2426,15 @@ function appDataDocRef() {
  * C'est ce qui rend la fusion sûre face aux écritures concurrentes.
  */
 async function saveAppField(field, value) {
+  pendingWriteCount++;
+  updateOfflineBanner();
   try {
     await appDataDocRef().set({ [field]: value }, { merge: true });
   } catch (e) {
     console.error('save ' + field + ' failed', e);
+  } finally {
+    pendingWriteCount--;
+    updateOfflineBanner();
   }
 }
 
@@ -2612,12 +2624,30 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Nombre d'écritures Firestore en cours (dbSet/saveAppField), incrémenté avant et
+// décrémenté après chaque appel. Ne sert QUE hors ligne (voir updateOfflineBanner) :
+// en ligne, ces écritures se résolvent trop vite (persistance locale Firestore) pour
+// qu'un indicateur séparé apporte quoi que ce soit — il ne ferait que clignoter à
+// chaque validation de défi (plusieurs écritures séquentielles par addSet()).
+let pendingWriteCount = 0;
+
 // Bandeau hors-ligne : aucun appel réseau supplémentaire, juste un retour visuel clair
 // (jusqu'ici totalement silencieux) quand la connexion tombe, et sa disparition dès
-// qu'elle revient.
+// qu'elle revient. Précise désormais, hors ligne, si des modifications sont en
+// attente de synchronisation (pendingWriteCount) — Firestore les rejoue déjà
+// automatiquement au retour du réseau (enablePersistence), ceci ne fait qu'en
+// informer l'utilisateur.
 function updateOfflineBanner() {
   const banner = document.getElementById('offlineBanner');
-  if (banner) banner.style.display = navigator.onLine ? 'none' : 'flex';
+  if (!banner) return;
+  if (navigator.onLine) {
+    banner.style.display = 'none';
+    return;
+  }
+  banner.style.display = 'flex';
+  banner.textContent = pendingWriteCount > 0
+    ? `📡 Hors ligne — ${pendingWriteCount} modification${pendingWriteCount > 1 ? 's' : ''} en attente de synchronisation`
+    : '📡 Hors ligne — tes données seront synchronisées au retour du réseau';
 }
 window.addEventListener('online', updateOfflineBanner);
 window.addEventListener('offline', updateOfflineBanner);

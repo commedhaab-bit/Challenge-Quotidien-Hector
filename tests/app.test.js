@@ -1703,9 +1703,29 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
   navigator.onLine = false;
   updateOfflineBanner();
   __assertEq(document.getElementById('offlineBanner').style.display, 'flex', 'hors ligne : le bandeau doit etre visible');
+  __assertOk(document.getElementById('offlineBanner').textContent.includes('seront synchronisées'), 'hors ligne sans ecriture en cours : message generique (#1)');
+  pendingWriteCount = 2;
+  updateOfflineBanner();
+  __assertOk(document.getElementById('offlineBanner').textContent.includes('2 modifications en attente de synchronisation'), 'hors ligne avec ecritures en cours : le nombre en attente doit s afficher (#1)');
+  pendingWriteCount = 1;
+  updateOfflineBanner();
+  const singularTxt = document.getElementById('offlineBanner').textContent;
+  __assertOk(singularTxt.includes('1 modification en attente') && !singularTxt.includes('modifications'), 'singulier correct pour une seule ecriture en attente (#1)');
+  pendingWriteCount = 0;
   navigator.onLine = true;
   updateOfflineBanner();
-  console.log('OK: bandeau hors ligne suit navigator.onLine');
+  console.log('OK: bandeau hors ligne suit navigator.onLine et affiche le nombre d ecritures en attente de synchronisation');
+
+  // --- 111. pendingWriteCount (#1) : dbSet/saveAppField l incrementent bien
+  // pendant l ecriture puis le decrementent (y compris en cas d erreur, via finally) ---
+  navigator.onLine = false;
+  const writePromise = saveAppField('xpTotal', 555);
+  __assertOk(pendingWriteCount > 0, 'saveAppField doit incrementer pendingWriteCount pendant l ecriture');
+  await writePromise;
+  __assertEq(pendingWriteCount, 0, 'pendingWriteCount doit retomber a 0 une fois l ecriture terminee');
+  navigator.onLine = true;
+  updateOfflineBanner();
+  console.log('OK: pendingWriteCount reflete fidelement les ecritures dbSet/saveAppField en cours');
 
   // --- 93. Mise a jour SW : detection structurelle (updatefound/statechange) +
   // bandeau dedie ; preconnect vers les domaines Firebase/Firestore ---

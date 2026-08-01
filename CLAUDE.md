@@ -161,6 +161,15 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
   lectures sont mises en cache IndexedDB côté appareil.
 - **Journal** : `loadHistoryEntries()` lit ses 28 jours en parallèle (`Promise.all`),
   plus en séquentiel.
+- **Indicateur de synchronisation en attente** : `pendingWriteCount` (incrémenté/
+  décrémenté dans `dbSet`/`saveAppField`) n'est exploité QUE hors ligne, dans
+  `updateOfflineBanner()` — en ligne, ces écritures se résolvent trop vite
+  (persistance locale Firestore) pour qu'un indicateur séparé apporte quoi que ce
+  soit ; il ne ferait que clignoter à chaque validation de défi (plusieurs
+  écritures séquentielles par `addSet()`). Décision volontaire (pas de file de
+  retry maison) : Firestore rejoue déjà automatiquement les écritures hors ligne
+  via `enablePersistence({synchronizeTabs:true})`, ceci ne fait qu'en informer
+  l'utilisateur avec un compte précis plutôt qu'un message générique.
 - **SDK Firebase + fichiers classiques** : chargement synchrone classique (PAS de
   `defer`/`async`) sur les 3 `<script src=...>` Firebase, les 2 `<script src=...>`
   `exercise-data.js`/`exercise-pictograms.js`, NI sur le script inline de l'appli.
