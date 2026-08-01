@@ -1,0 +1,16 @@
+{
+  "name": "defi-du-jour",
+  "private": true,
+  "version": "1.0.0",
+  "description": "PWA de defis fitness quotidiens (mono-fichier index.html + Firebase). Ce package.json ne sert qu'a l'outillage local (lint/format/tests) : aucun build, aucun impact sur le deploiement GitHub Pages.",
+  "scripts": {
+    "test": "node tests/app.test.js",
+    "extract-script": "node tests/extract-script.js",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "eslint": "^10.8.0",
+    "prettier": "^3.9.6"
+  }
+}

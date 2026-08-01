@@ -41,6 +41,18 @@ Claude Code.
   s'il est absent (`onerror`), donc relancer ce script à tout moment est sans
   risque, même partiellement
 - `exercices/` — dossier d'images par exercice (voir section dédiée plus bas)
+- `package.json` / `eslint.config.js` / `.prettierrc` — outillage local uniquement
+  (devDependencies : eslint, prettier). Aucun build, aucun impact sur le
+  déploiement GitHub Pages (qui sert directement `index.html`). `npm test` /
+  `npm run lint` / `npm run format`. Le lint (ESLint 10, flat config) ne couvre
+  QUE les vrais fichiers `.js` (`exercise-data.js`, `exercise-pictograms.js`,
+  `tests/`) : le script principal reste inline dans `index.html`, hors de portée
+  d'ESLint sans plugin HTML dédié (volontairement non ajouté, hors scope).
+- `tests/app.test.js` — harnais de test Node/`vm` (voir section dédiée plus bas) ;
+  `tests/extract-script.js` — extrait le script applicatif combiné (scripts
+  classiques + inline) pour un `node -c` (vérification de syntaxe) indépendant.
+- `.github/workflows/ci.yml` — à chaque push/PR : `node -c` sur le script extrait,
+  `npm test` (harnais complet), `npm run lint`.
 
 ## Config Firebase (déjà en dur dans index.html, ne PAS mettre de placeholder)
 ```js
@@ -151,8 +163,14 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
 - Palette CSS via variables `:root` uniquement (`--bg`, `--accent`, etc.) —
   ne jamais coder une couleur en dur, toujours passer par les variables pour
   que les futurs changements de thème restent globaux
-- Toute nouvelle fonctionnalité doit être testée en isolant le bloc `<script>`
-  et en l'exécutant avec `node -c` (syntaxe) puis un mock minimal de
-  `document`/`window`/`dbGet`/`dbSet` (voir historique du projet pour le
-  pattern de test utilisé)
+- Toute nouvelle fonctionnalité doit être testée : ajouter un cas dans
+  `tests/app.test.js` (harnais Node/`vm`, mock minimal de `document`/`window`/
+  `dbGet`/`dbSet`), vérifier `npm test` + `node tests/extract-script.js && node -c
+  .extracted-script.js`, avant de commit — exactement ce que `.github/workflows/ci.yml`
+  automatise à chaque push
+- JSDoc sur les fonctions "cœur" partagées (loaders/savers Firestore, calculs du
+  coach `computeStandardTarget`/`computeStandardWeight`, `escapeHtml`/
+  `escapeJsAttr`, `confirmModal`, `createStore`, etc.) — pas une exigence
+  systématique sur les ~167 fonctions du fichier, seulement celles dont le rôle
+  n'est pas évident au premier coup d'œil
 

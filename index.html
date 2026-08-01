@@ -2381,12 +2381,18 @@ db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
 });
 let currentUser = null;
 
+/**
+ * Lit `users/{uid}/kv/{key}` dans Firestore. Rejette si le document n'existe pas
+ * encore (premier lancement) — les appelants doivent catch/fournir une valeur
+ * par défaut, jamais supposer que la clé existe déjà.
+ */
 async function dbGet(key) {
   const doc = await db.collection('users').doc(currentUser.uid).collection('kv').doc(key).get();
   if (!doc.exists) throw new Error('not found: ' + key);
   return { key, value: doc.data().value };
 }
 
+/** Écrit (crée ou remplace) `users/{uid}/kv/{key}` dans Firestore. */
 async function dbSet(key, value) {
   await db.collection('users').doc(currentUser.uid).collection('kv').doc(key).set({ value });
   return { key, value };
@@ -2576,6 +2582,13 @@ function getSexWeightCoef(sex) {
   return 1.0;
 }
 
+/**
+ * Objectif standard personnalisé pour un défi, dérivé du profil coach (âge/sexe/
+ * IMC/niveau). Sans profil, retombe sur `c.target` (valeur fixe de la bibliothèque).
+ * Calibré pour qu'un profil de référence (homme 32 ans intermédiaire IMC~26)
+ * redonne ~les anciens objectifs fixes — ne jamais coder un nouveau coefficient
+ * en dur ailleurs que dans les fonctions `get*Coef`.
+ */
 function computeStandardTarget(c, profile) {
   if (!profile) return c.target;
   const levelCoef = COEF_LEVEL[profile.level] ?? 1;
@@ -2590,6 +2603,11 @@ function computeStandardTarget(c, profile) {
   return Math.max(c.unit === 'sec' ? 15 : 10, stepped);
 }
 
+/**
+ * Poids d'haltère standard personnalisé (kg), uniquement pour les défis de
+ * catégorie "Haltères" avec `standardWeightKg`. Retourne `null` pour tout défi
+ * qui n'utilise pas d'haltère (rien à afficher côté formulaire/fiche).
+ */
 function computeStandardWeight(c, profile) {
   if (c.cat !== 'Haltères' || !c.standardWeightKg) return null;
   if (!profile) return Math.round(c.standardWeightKg);
@@ -2747,6 +2765,11 @@ function renderOnboardingTransitionScreen() {
   `;
 }
 
+/**
+ * Charge le profil coach (`userProfile`). Retourne `false` (profil absent) pour
+ * distinguer un compte jamais onboardé — l'appelant doit alors déclencher
+ * l'écran d'onboarding plutôt que d'utiliser un profil `null`.
+ */
 async function loadProfile() {
   try {
     const res = await dbGet('profile');
@@ -2936,6 +2959,12 @@ async function finishProfileOnboarding() {
   render(true);
 }
 
+/**
+ * Charge `customChallenges` (défis personnalisés). Si la clé Firestore actuelle
+ * est absente (compte pas encore migré), retombe sur l'ancienne clé
+ * `userChallenges` et migre une seule fois vers le nouveau format — voir
+ * `migratedLegacyActiveIds` pour la suite de cette migration côté sélection du jour.
+ */
 async function loadChallenges() {
   try {
     const res = await dbGet('customChallenges');
@@ -2988,6 +3017,13 @@ async function saveManualTargetOverrides() {
   }
 }
 
+/**
+ * Charge la sélection de défis actifs du jour (`activeToday:{todayKey}`). Sans
+ * données pour cette date (nouveau jour, ou migration en cours), retombe sur
+ * `migratedLegacyActiveIds` si présent, sinon liste vide. Notifie `dayStateStore`
+ * à la fin — c'est ce signal, combiné à celui de `loadState()`, qui déclenche le
+ * premier rendu réel de l'app (voir Batch 6 / `createStore`).
+ */
 async function loadActiveToday() {
   try {
     const res = await dbGet('activeToday:' + todayKey);
@@ -3025,6 +3061,12 @@ function pushNavState() {
   history.pushState({ appNav: true }, '');
 }
 
+/**
+ * Ferme l'écran/overlay imbriqué le plus interne actuellement ouvert (priorité
+ * dans l'ordre des `if`), en réponse à un `popstate` (bouton retour Android/PWA).
+ * Chaque nouvel écran imbriqué ajouté à l'app doit avoir sa garde ici, sinon le
+ * bouton retour du téléphone quitte l'application au lieu de le fermer.
+ */
 function goBackOneLevel() {
   if (settingsScreenOpen) {
     settingsScreenOpen = false;
@@ -3598,6 +3640,7 @@ function xpForLevel(n) {
   const growthSum = lastIncrement * XP_LEVEL_TABLE_GROWTH * (Math.pow(XP_LEVEL_TABLE_GROWTH, extra) - 1) / (XP_LEVEL_TABLE_GROWTH - 1);
   return Math.round(XP_LEVEL_THRESHOLDS[lastIndex] + growthSum);
 }
+/** Niveau atteint pour un total d'XP donné, en cherchant le plus haut seuil (`xpForLevel`) franchi. */
 function computeLevel(xp) {
   let level = 1;
   while (xpForLevel(level + 1) <= xp) level++;
@@ -3758,6 +3801,7 @@ const BADGE_DEFS = [
   { id: 'core_24h',   label: '24 heures de gainage cumulées', icon: '🏆', xp: 2000, secondsBased: true, check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 86400, progress: () => ({ current: sumLifetime(CORE_TIME_FAMILY_IDS), target: 86400 }) },
 ];
 
+/** Charge les cumuls à vie par défi (`stats`), utilisés par `sumLifetime`/les badges. */
 async function loadStats() {
   try { const res = await dbGet('stats'); stats = JSON.parse(res.value); }
   catch (e) { stats = {}; }
@@ -3767,6 +3811,7 @@ async function saveStats() {
   catch (e) { console.error('save stats failed', e); }
 }
 
+/** Charge `badges` (trophées débloqués + compteurs). Migration: `totalHardcore` par défaut à 0 pour les comptes créés avant son introduction. */
 async function loadBadges() {
   try {
     const res = await dbGet('badges');
@@ -3780,6 +3825,7 @@ async function saveBadges() {
   catch (e) { console.error('save badges failed', e); }
 }
 
+/** Charge `dailyActivity` (dates avec au moins un défi complété), source de la heatmap/calendrier. */
 async function loadDailyActivity() {
   try { const res = await dbGet('dailyActivity'); dailyActivity = JSON.parse(res.value); }
   catch (e) { dailyActivity = {}; }
@@ -3789,6 +3835,12 @@ async function saveDailyActivity() {
   catch (e) { console.error('save dailyActivity failed', e); }
 }
 
+/**
+ * Parcourt `BADGE_DEFS`, débloque tout badge dont `check()` devient vrai et n'est
+ * pas déjà dans `badges.unlocked`. Retourne uniquement les badges NOUVELLEMENT
+ * débloqués par cet appel (pour piloter les popups trophée), sans persister —
+ * l'appelant doit encore appeler `saveBadges()`.
+ */
 function checkNewBadges() {
   const freshlyUnlocked = [];
   for (const b of BADGE_DEFS) {
@@ -4449,6 +4501,12 @@ function getEntry(id) {
   return state.challenges[id];
 }
 
+/**
+ * Charge la progression du jour (`day:{todayKey}`) dans `state`, recalcule
+ * `todayKey`/`weekData`. Notifie `dayStateStore` à la fin — combiné au signal de
+ * `loadActiveToday()`, c'est ce qui déclenche le premier vrai rendu de l'app
+ * (voir `createStore`, Batch 6) plutôt qu'un `render()` manuel non coordonné.
+ */
 async function loadState() {
   const today = new Date();
   todayKey = dateKey(today);
@@ -4908,6 +4966,7 @@ function render(animate) {
   });
 }
 
+/** Charge les 28 derniers jours d'historique (documents `day:{key}`), en parallèle. */
 async function loadHistoryEntries() {
   const DAYS_BACK = 28;
   const dayInfos = [];
@@ -5742,6 +5801,11 @@ async function refreshApp() {
   render(true);
 }
 
+/**
+ * Suggestion du jour ("catégorie la plus délaissée") affichée sur l'onglet
+ * Aujourd'hui. Retourne `null` tant que l'historique est trop court pour être
+ * pertinent (voir seuil ci-dessous) plutôt que de risquer un faux signal.
+ */
 function getSuggestion() {
   // Pas assez d'historique pour être pertinent, on évite de harceler un nouvel utilisateur
   if (badges.totalCompletions < 3) return null;

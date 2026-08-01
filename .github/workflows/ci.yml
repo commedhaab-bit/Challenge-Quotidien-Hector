@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Verifie la syntaxe du script applicatif (index.html + scripts classiques)
+        run: |
+          node tests/extract-script.js
+          node -c .extracted-script.js
+
+      - name: Harnais de test (vm) - migration, gameplay, XP, streak, popups...
+        run: npm test
+
+      - name: ESLint (exercise-data.js / exercise-pictograms.js / tests/)
+        run: npm run lint
