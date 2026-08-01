@@ -8,13 +8,22 @@ Claude (claude.ai), ce fichier sert de relais de contexte pour continuer via
 Claude Code.
 
 ## Fichiers du projet
-- `index.html` — l'application entière (HTML/CSS/JS vanilla, ~4000 lignes, un seul fichier)
+- `index.html` — l'application entière (HTML/CSS/JS vanilla, ~5000 lignes, un seul fichier)
 - `manifest.json` — manifeste PWA
-- `service-worker.js` — cache réseau-first pour le HTML (permet la mise à jour de la PWA)
+- `service-worker.js` — réseau-first pour le HTML (mise à jour PWA), cache-first
+  (avec alimentation à la volée) pour tout le reste — notamment les images
+  `exercices/`, de loin les assets les plus lourds de l'appli
 - `icon-192.png` / `icon-512.png` — icônes d'app
-- `generate-static-frames.py` — script Python (Pillow) qui extrait la 1ère image
-  de chaque PNG animé du dossier `exercices/` pour créer les versions statiques
-  utilisées sur l'accueil (`nom-static.png`)
+- `generate-static-frames.py` — script Python (Pillow) qui extrait la 7ᵉ frame de
+  chaque PNG animé du dossier `exercices/`, la redimensionne (128px, 2x la taille
+  d'affichage réelle de 64px) et crée la version statique (`nom-static.png`)
+  utilisée sur les listes (Aujourd'hui/Défis)
+- `generate-webp-assets.py` — génère, EN PLUS de chaque PNG (jamais à la place :
+  les .png restent les fichiers maîtres), une version `.webp` — statique ou
+  animée selon la source, bien plus légère (voir section Performance). L'appli
+  essaie toujours le `.webp` en premier et retombe automatiquement sur le `.png`
+  s'il est absent (`onerror`), donc relancer ce script à tout moment est sans
+  risque, même partiellement
 - `exercices/` — dossier d'images par exercice (voir section dédiée plus bas)
 
 ## Config Firebase (déjà en dur dans index.html, ne PAS mettre de placeholder)
@@ -75,6 +84,34 @@ squat_goblet, planche, crunchs, gainage_lateral, mountain_climbers,
 leg_raises, hollow_hold, vups, bicycle, dead_bug, squats, fentes, chaise,
 mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
 `dumbbell_generic` en repli pour les défis personnalisés).
+
+## Performance (audit + correctifs — voir aussi historique de session)
+- **Images** : chaque PNG de `exercices/` a un jumeau `.webp` (généré par
+  `generate-webp-assets.py`, ~4-8x plus léger). `renderExercisePicto()` et la
+  fiche détail essaient `.webp` → `.png` → SVG dessiné à la main, en cascade via
+  `onerror`. `PICTOGRAM_ASSET_MISSING` (index.html) liste les clés sans AUCUN
+  fichier sur le disque (encore en attente d'illustration, ou repli permanent
+  `generic`/`dumbbell_generic`) : pour elles, le SVG est rendu directement, sans
+  requête réseau vouée à un 404 garanti. Penser à retirer une clé de cette liste
+  dès que sa vraie image est déposée.
+- **Chargement perçu** : `.exercise-picto`/`.exercise-hero-apng` affichent un
+  skeleton "shimmer" + fondu à l'arrivée (classe `.loaded`, posée par `onload` ou
+  par le dernier repli `onerror`), et réservent leur espace (`aspect-ratio`/taille
+  fixe) pour ne jamais provoquer de saut de mise en page (CLS).
+- **Service worker** : le fallback cache-first pour les fichiers statiques
+  alimente désormais le cache sur un miss (`cache.put`) — avant ce correctif, les
+  images n'étaient JAMAIS mises en cache par le SW (aucun gain, ni hors-ligne).
+- **Démarrage** : `loadChallenges()` (customChallenges) est repassé dans le même
+  `Promise.all` que les 9 autres clés de `continueStartApp()` au lieu d'être
+  attendu séparément avant — un aller-retour réseau économisé à chaque démarrage.
+  Persistance locale Firestore activée (`enablePersistence`) : les lectures sont
+  mises en cache IndexedDB côté appareil.
+- **Journal** : `loadHistoryEntries()` lit ses 28 jours en parallèle (`Promise.all`),
+  plus en séquentiel.
+- **SDK Firebase** : les 3 `<script>` du `<head>` et le script inline de l'appli
+  sont en `defer` (téléchargement en parallèle du parsing HTML/CSS ; l'ordre
+  relatif entre scripts `defer` reste garanti, donc firebase-app avant auth/
+  firestore avant le code de l'appli).
 
 ## Bugs déjà corrigés — NE PAS RÉINTRODUIRE
 - **onAuthStateChanged peut se déclencher 2× au chargement** → déguard via

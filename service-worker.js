@@ -1,4 +1,4 @@
-const CACHE_NAME = 'defi-du-jour-v2';
+const CACHE_NAME = 'defi-du-jour-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -48,8 +48,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Autres fichiers statiques (icônes, manifest) : cache d'abord, réseau en secours
+  // Autres fichiers statiques (icônes, manifest, et surtout les images d'exercices,
+  // de loin les assets les plus lourds de l'appli) : cache d'abord, réseau en secours —
+  // et on alimente le cache à la volée sur un miss (sans ça, ces fichiers n'étaient
+  // JAMAIS mis en cache : chaque affichage d'une fiche défi retéléchargeait l'image
+  // en entier, même en 2ème visite, et l'appli était inutilisable hors-ligne pour
+  // tout ce qui n'était pas dans le pré-cache ASSETS ci-dessus).
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request).then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      });
+    })
   );
 });

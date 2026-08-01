@@ -14,10 +14,14 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
 
-<!-- Firebase (gratuit, plan Spark) -->
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<!-- Firebase (gratuit, plan Spark) — defer : le SDK se télécharge en parallèle du
+     parsing HTML/CSS au lieu de le bloquer 3 fois de suite ; l'ordre relatif entre
+     scripts defer (y compris le script inline de l'appli plus bas) reste garanti,
+     donc firebase-app s'exécute toujours avant auth/firestore puis avant le code
+     de l'appli qui en dépend. -->
+<script defer src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
 <style>
   @font-face {
@@ -1512,6 +1516,26 @@
     height: 100%;
     object-fit: cover;
     display: block;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  .exercise-picto img.loaded { opacity: 1; }
+  /* Skeleton "shimmer" tant que l'image n'a pas fini de charger/décoder : évite le
+     clignotement/pop-in brut sur l'onglet Défis, qui affiche potentiellement des
+     dizaines de miniatures d'un coup. Disparaît dès que .loaded est posée (image
+     chargée OU repli SVG atteint), quel que soit le chemin emprunté. */
+  .exercise-picto::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+    background-size: 200% 100%;
+    animation: picto-shimmer 1.4s ease-in-out infinite;
+  }
+  .exercise-picto.loaded::before { display: none; }
+  @keyframes picto-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
   .exercise-picto svg {
     width: 34px;
@@ -1529,11 +1553,17 @@
     display: block;
     width: 100%;
     max-height: 220px;
+    aspect-ratio: 1 / 1; /* toutes les illustrations sources sont carrées : réserve
+      l'espace avant même que l'image (souvent volumineuse) ait fini de charger,
+      pour ne jamais provoquer de saut de mise en page (CLS). */
     object-fit: contain;
     border-radius: 14px;
     background: var(--bg-card);
     margin-bottom: 10px;
+    opacity: 0;
+    transition: opacity 0.25s ease;
   }
+  .exercise-hero-apng.loaded { opacity: 1; }
   .picker-item .name {
     font-size: 15.5px;
     font-weight: 600;
@@ -2189,7 +2219,7 @@
   <div class="loading">Chargement…</div>
 </div>
 
-<script>
+<script defer>
 // ==== CONFIGURATION FIREBASE ====
 // Remplace ces valeurs par celles de TON projet Firebase (voir guide fourni)
 const firebaseConfig = {
@@ -2205,6 +2235,16 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+// Persistance locale IndexedDB : les lectures Firestore sont mises en cache sur
+// l'appareil, donc un changement d'onglet ou une réouverture de l'appli peut être
+// servi depuis le cache local (quasi instantané) plutôt que d'attendre le réseau à
+// chaque fois. synchronizeTabs permet d'avoir l'appli ouverte dans plusieurs onglets
+// sans que la persistance échoue. Best-effort : si indisponible (navigation privée,
+// très vieux navigateur), l'appli continue de fonctionner normalement, juste sans
+// ce cache local entre les sessions.
+db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+  console.warn('Firestore persistence indisponible :', err.code);
+});
 let currentUser = null;
 
 async function dbGet(key) {
@@ -3941,6 +3981,17 @@ const EXERCISE_ICON_BY_NAME = {
   "Tirage élastique": "tirage_elastique"
 };
 
+// Clés de pictogramme sans aucun fichier exercices/{clé}(-static).png sur le disque
+// (soit en attente de l'illustration IA de l'utilisateur, soit — pour generic/
+// dumbbell_generic — un repli SVG permanent qui n'aura jamais d'image dédiée). Le
+// vérifier ici évite une requête réseau vouée à échouer (404 garanti) à chaque
+// affichage d'une carte ou d'une fiche défi concernée ; retirer une clé de cette
+// liste dès que sa vraie illustration est déposée dans exercices/.
+const PICTOGRAM_ASSET_MISSING = new Set([
+  'pompes_iso', 'pompes_larges', 'mountain_climbers', 'squats_sumo', 'tirage_elastique',
+  'generic', 'dumbbell_generic',
+]);
+
 function getExercisePictogramKey(c) {
   // 1) Correspondance exacte par nom (tous les défis de la bibliothèque)
   if (EXERCISE_ICON_BY_NAME[c.name]) return EXERCISE_ICON_BY_NAME[c.name];
@@ -3960,14 +4011,25 @@ function getExercisePictogramKey(c) {
 function renderExercisePicto(c) {
   const key = getExercisePictogramKey(c);
   const svg = EXERCISE_PICTOGRAMS[key] || EXERCISE_PICTOGRAMS.generic;
-  // Essaie d'abord l'image statique extraite (exercices/{key}-static.png), générée
-  // à partir de la première image du PNG animé fourni. Si le fichier n'existe pas
-  // encore (404), bascule automatiquement sur le pictogramme SVG dessiné à la main —
-  // aucune modification de code nécessaire au fur et à mesure que les images arrivent.
+  if (PICTOGRAM_ASSET_MISSING.has(key)) {
+    // Aucun fichier exercices/{key}(-static).png|webp n'existe pour cette clé : on
+    // rend directement le SVG, sans requête réseau vouée à un 404 garanti (et sans
+    // effet de chargement puisqu'il n'y a rien à attendre).
+    return `<div class="exercise-picto loaded"><div class="exercise-picto-fallback" style="display:flex;">${svg}</div></div>`;
+  }
+  // Essaie d'abord le WebP (généré par generate-webp-assets.py, bien plus léger),
+  // puis le PNG si absent, puis le pictogramme SVG dessiné à la main en dernier
+  // recours — aucune modification de code nécessaire au fur et à mesure que les
+  // images arrivent. width/height fixes : cohérent avec le conteneur (déjà de
+  // taille fixe) et évite tout redimensionnement implicite pendant le décodage.
+  // La classe .loaded (posée par onload OU par le dernier repli onerror, quel que
+  // soit le chemin emprunté) fait disparaître le skeleton "shimmer" et fait
+  // apparaître l'image en fondu, pour ne jamais montrer de pop-in brut.
   return `
     <div class="exercise-picto">
-      <img src="exercices/${key}-static.png" alt="${c.name}" loading="lazy"
-           onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+      <img src="exercices/${key}-static.webp" alt="${c.name}" loading="lazy" decoding="async" width="64" height="64"
+           onload="this.classList.add('loaded'); this.parentElement.classList.add('loaded');"
+           onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${key}-static.png';}else{this.style.display='none'; this.nextElementSibling.style.display='flex'; this.parentElement.classList.add('loaded');}">
       <div class="exercise-picto-fallback">${svg}</div>
     </div>
   `;
@@ -4540,11 +4602,19 @@ function render(animate) {
     const pct = Math.min(100, Math.round((total/target)*100));
     const unitLabel = c.unit === 'sec' ? 'sec' : 'reps';
     const quicks = QUICK_ADD[c.unit];
+    const heroKey = getExercisePictogramKey(c);
+    // WebP d'abord (bien plus léger que l'APNG source), repli PNG puis suppression
+    // silencieuse si aucun des deux n'existe ; aucune requête réseau du tout pour les
+    // clés connues comme n'ayant aucune image (PICTOGRAM_ASSET_MISSING).
+    const heroImgHtml = PICTOGRAM_ASSET_MISSING.has(heroKey) ? '' : `
+        <img class="exercise-hero-apng" src="exercices/${heroKey}.webp" alt="Démonstration : ${c.name}" decoding="async"
+             onload="this.classList.add('loaded');"
+             onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${heroKey}.png';}else{this.remove();}">
+    `;
 
     html += `
       <div class="active-card">
-        <img class="exercise-hero-apng" src="exercices/${getExercisePictogramKey(c)}.png" alt="Démonstration : ${c.name}"
-             onerror="this.remove();">
+        ${heroImgHtml}
         <div class="active-name">${c.name}</div>
 
         ${c.cat === 'Haltères' ? `
@@ -4683,34 +4753,37 @@ function render(animate) {
 
 async function loadHistoryEntries() {
   const DAYS_BACK = 28;
-  const entries = [];
+  const dayInfos = [];
   for (let i = 0; i < DAYS_BACK; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const k = dateKey(d);
-    try {
-      const res = await dbGet('day:' + k);
-      const s = JSON.parse(res.value);
-      if (s.challenges) {
-        for (const [cid, entry] of Object.entries(s.challenges)) {
-          if (entry.sets && entry.sets.length === 0) continue;
-          const c = CHALLENGES.find(x => x.id === Number(cid));
-          entries.push({
-            key: k,
-            date: d,
-            challengeName: c ? c.name : 'Défi supprimé',
-            cat: c ? c.cat : '',
-            total: entry.sets ? entry.sets.reduce((a,b)=>a+b,0) : 0,
-            target: entry.targetOverride || (c ? c.target : 0),
-            unit: c ? c.unit : 'reps',
-            done: !!entry.done,
-          });
-        }
-      }
-    } catch (e) {
-      // no entry for this day
-    }
+    dayInfos.push({ d, k: dateKey(d) });
   }
+  // Lectures Firestore toujours en parallèle (règle du projet) : ce sont 28 documents
+  // indépendants, aucune dépendance entre eux ne justifie de les lire en séquentiel
+  // (jusqu'à 28 aller-retours réseau l'un après l'autre à chaque ouverture du Journal).
+  const results = await Promise.all(dayInfos.map(({ k }) =>
+    dbGet('day:' + k).then(res => JSON.parse(res.value)).catch(() => null)
+  ));
+  const entries = [];
+  results.forEach((s, idx) => {
+    if (!s || !s.challenges) return;
+    const { d, k } = dayInfos[idx];
+    for (const [cid, entry] of Object.entries(s.challenges)) {
+      if (entry.sets && entry.sets.length === 0) continue;
+      const c = CHALLENGES.find(x => x.id === Number(cid));
+      entries.push({
+        key: k,
+        date: d,
+        challengeName: c ? c.name : 'Défi supprimé',
+        cat: c ? c.cat : '',
+        total: entry.sets ? entry.sets.reduce((a,b)=>a+b,0) : 0,
+        target: entry.targetOverride || (c ? c.target : 0),
+        unit: c ? c.unit : 'reps',
+        done: !!entry.done,
+      });
+    }
+  });
   historyEntries = entries;
 }
 
@@ -5430,14 +5503,17 @@ async function startApp() {
 }
 
 async function proceedAfterProfile() {
-  await loadChallenges();
   await continueStartApp();
 }
 
 async function continueStartApp() {
   // Ces chargements sont indépendants les uns des autres : on les lance
-  // en parallèle plutôt qu'en série pour diviser le temps d'attente.
+  // en parallèle plutôt qu'en série pour diviser le temps d'attente. loadChallenges()
+  // rejoint désormais ce même lot (il ne dépend d'aucun des autres, et rien ici ne
+  // dépend de lui avant loadState() plus bas) au lieu d'être attendu séparément
+  // avant : ça économisait un aller-retour réseau entier à chaque démarrage.
   await Promise.all([
+    loadChallenges(),
     loadWeights(),
     loadLastCompleted(),
     loadStats(),
