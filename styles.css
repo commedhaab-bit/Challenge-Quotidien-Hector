@@ -982,6 +982,9 @@
     padding: 11px 14px;
     border-radius: 10px;
     margin-top: 12px;
+    /* Même espacement qu'entre deux accordéons (.accordion { margin-bottom: 10px }),
+       pour un espacement vertical uniforme entre la recherche et la première carte. */
+    margin-bottom: 10px;
   }
   .library-search-input:focus { outline: 1px solid var(--accent); }
   .library-search-empty {
@@ -1516,6 +1519,10 @@
   @media (prefers-reduced-motion: reduce) {
     .picker-item { animation: none; }
   }
+  /* Onglet Défis : évite de rejouer l'entrée en cascade sur un accordéon déjà ouvert
+     (ex: activer/désactiver un défi) — seule une catégorie qui vient d'être dépliée
+     doit animer (renderChallengeCard(..., animate) / renderLibraryScreen()). */
+  .picker-item.no-anim { animation: none; }
 
   .picker-item-body {
     flex: 1;

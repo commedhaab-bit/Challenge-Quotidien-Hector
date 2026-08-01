@@ -499,6 +499,13 @@ let activeToday = new Set(); // ids actifs pour aujourd'hui (todayKey), persist�
 let manualTargetOverrides = {}; // { [id]: target } objectif par défaut ajusté manuellement (ex: 3 records de suite) pour un défi de la bibliothèque
 let libraryOpenCats = new Set(); // catégories actuellement dépliées dans l'accordéon Bibliothèque
 let librarySearchQuery = ''; // filtre texte de l'onglet Défis (vide = comportement accordéon normal)
+// Catégorie qui vient d'être dépliée (une seule frame) : sert à limiter l'entrée en
+// cascade des cartes (renderChallengeCard) au tout premier affichage de ce menu
+// déroulant. Sans ça, activer/désactiver un défi dans un accordéon déjà ouvert
+// re-render toute la liste et rejoue l'animation sur chaque carte (effet de
+// clignotement désagréable). Consommée (remise à null) dès que renderLibraryScreen()
+// s'en sert, donc les rendus suivants (toggle d'activation) n'animent plus rien.
+let libraryAnimatingCat = null;
 let migratedLegacyActiveIds = null; // ids à activer une seule fois pour aujourd'hui juste après une migration depuis l'ancien modèle
 let activeTab = 'today'; // 'today' | 'history' | 'library' | 'account'
 let editingChallengeId = null; // null = liste, 'new' = création, id = édition (défis personnalisés uniquement)
@@ -991,8 +998,12 @@ async function toggleActiveToday(id) {
 }
 
 function toggleLibraryCategory(cat) {
-  if (libraryOpenCats.has(cat)) libraryOpenCats.delete(cat);
-  else libraryOpenCats.add(cat);
+  if (libraryOpenCats.has(cat)) {
+    libraryOpenCats.delete(cat);
+  } else {
+    libraryOpenCats.add(cat);
+    libraryAnimatingCat = cat; // nouvelle ouverture : ses cartes doivent animer une fois
+  }
   render();
 }
 
@@ -3037,7 +3048,7 @@ function renderProfileOnboardingScreen() {
 // droite (statut du jour vs pastille "Actif"), le poids affiché pour les défis
 // haltères en mode bibliothèque, et les actions éditer/supprimer réservées aux
 // défis personnalisés.
-function renderChallengeCard(c, mode, index) {
+function renderChallengeCard(c, mode, index, animate = true) {
   const resolved = resolveChallenge(c);
   const isActive = activeToday.has(c.id);
   const weightKg = weights[c.id] ?? computeStandardWeight(c, userProfile) ?? 8;
@@ -3074,11 +3085,15 @@ function renderChallengeCard(c, mode, index) {
 
   // Entrée en cascade (léger décalage par carte), plafonné pour ne jamais laisser une
   // longue liste avec un délai interminable sur les dernières cartes ; absent si
-  // index n'est pas fourni (repli sans délai, jamais d'animation cassée).
+  // index n'est pas fourni (repli sans délai, jamais d'animation cassée). `animate`
+  // (par défaut true, comme avant) permet à renderLibraryScreen() de désactiver
+  // l'animation quand un accordéon déjà ouvert se contente de re-render suite à un
+  // toggle d'activation — seule une NOUVELLE ouverture de menu déroulant doit animer.
   const delayStyle = index !== undefined ? ` style="animation-delay:${Math.min(index, 8) * 40}ms"` : '';
+  const noAnimClass = animate ? '' : ' no-anim';
 
   return `
-    <div class="picker-item"${delayStyle} onclick="${onclick}">
+    <div class="picker-item${noAnimClass}"${delayStyle} onclick="${onclick}">
       ${renderExercisePicto(c)}
       <div class="picker-item-body">
         <span class="name">${escapeHtml(c.name)}</span>
@@ -3122,6 +3137,10 @@ function renderLibraryScreen() {
   const query = librarySearchQuery.trim().toLowerCase();
   const cats = [...new Set(CHALLENGES.map(c => c.cat))];
   let anyMatch = false;
+  // Consomme le flag ici : seul CE rendu anime la catégorie qui vient d'être dépliée,
+  // les rendus suivants (ex: toggle d'activation dans un accordéon déjà ouvert) non.
+  const catToAnimate = libraryAnimatingCat;
+  libraryAnimatingCat = null;
   for (const cat of cats) {
     let itemsInCat = CHALLENGES.filter(c => c.cat === cat);
     if (query) itemsInCat = itemsInCat.filter(c => c.name.toLowerCase().includes(query));
@@ -3129,6 +3148,9 @@ function renderLibraryScreen() {
     anyMatch = true;
     const activeCount = itemsInCat.filter(c => activeToday.has(c.id)).length;
     const isOpen = query ? true : libraryOpenCats.has(cat);
+    // N'anime que la catégorie tout juste dépliée (jamais pendant une recherche, qui
+    // ne doit pas non plus clignoter à chaque frappe).
+    const shouldAnimate = !query && cat === catToAnimate;
     html += `
       <div class="accordion${isOpen ? ' open' : ''}">
         <button class="accordion-header" onclick="toggleLibraryCategory('${escapeJsAttr(cat)}')">
@@ -3136,7 +3158,7 @@ function renderLibraryScreen() {
           <span class="accordion-title">${escapeHtml(cat)}</span>
           <span class="accordion-count${activeCount > 0 ? ' has-active' : ''}">${activeCount} actif${activeCount === 1 ? '' : 's'}</span>
         </button>
-        ${isOpen ? `<div class="accordion-body">${itemsInCat.map((c, i) => renderChallengeCard(c, 'library', i)).join('')}</div>` : ''}
+        ${isOpen ? `<div class="accordion-body">${itemsInCat.map((c, i) => renderChallengeCard(c, 'library', i, shouldAnimate)).join('')}</div>` : ''}
       </div>
     `;
   }

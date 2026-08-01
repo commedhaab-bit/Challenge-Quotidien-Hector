@@ -216,6 +216,16 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
   curseur), puis un callback `afterRender` lui redonne le focus après coup. Tout
   nouveau champ de saisie qui déclenche un `render()` complet sur chaque frappe
   doit suivre le même filet, sinon même bug que le formulaire de profil déjà vécu.
+- **Cartes de l'onglet Défis et animation d'entrée en cascade** : `.picker-item`
+  a `animation: card-pop-in` par défaut (CSS), donc `applyContent()` recréant
+  TOUTES les cartes à chaque `render()` rejouerait l'animation même pour un
+  simple toggle d'activation dans un accordéon déjà ouvert (clignotement). Filet :
+  `libraryAnimatingCat` (posé par `toggleLibraryCategory()` uniquement quand une
+  catégorie passe de fermée à ouverte, jamais lors d'une simple mise à jour) +
+  4ᵉ paramètre `animate` de `renderChallengeCard()` (classe CSS `.no-anim` sinon)
+  — `renderLibraryScreen()` consomme le flag (le remet à `null`) à chaque rendu,
+  donc seul CE rendu-là anime. Ne jamais faire animer `shouldAnimate` par défaut
+  à `true` dans la boucle des catégories : ça réintroduirait le clignotement.
 
 ## Accessibilité (base posée, pas un audit exhaustif)
 `role="tablist"`/`role="tab"`/`aria-selected` sur la barre d'onglets,

@@ -1207,7 +1207,7 @@ const cssText = __rawHtml + __cssSource;
 
   // --- 56. Cartes de la liste (Défis/Aujourd hui) : plus AUCUNE icone ni mot de type
   // d'exercice (revirement assume : les icones ajoutees precedemment sont supprimees) ---
-  const planche = CHALLENGE_LIBRARY.find(x => x.name === 'Planche cumulée'); // unit='sec'
+  const planche = CHALLENGE_LIBRARY.find(x => x.name === 'Planche'); // unit='sec'
   const cardSecHtml = renderChallengeCard(planche, 'library');
   __assertOk(!cardSecHtml.includes('unit-icon'), 'aucune icone de type ne doit plus apparaitre pour un defi chronometre');
   __assertOk(!cardSecHtml.includes('>Chrono<'), 'le mot "Chrono" ne doit pas apparaitre');
@@ -2237,6 +2237,58 @@ const cssText = __rawHtml + __cssSource;
   // liste (renderExercisePicto) restent lazy comme deja verifie plus haut ---
   __assertOk(__rawHtml.includes('class="exercise-hero-apng"') && __rawHtml.includes('loading="eager"'), 'l image hero de la fiche detail doit etre explicitement loading="eager"');
   console.log('OK: image hero de la fiche detail explicitement loading="eager" (LCP-critique)');
+
+  // --- 119. Nettoyage des libelles d exercices : plus aucun nom ne contient
+  // "cumulé"/"cumulée" (catalogue + table de pictogrammes associee) ---
+  const stillHasCumule = CHALLENGE_LIBRARY.some(c => /cumulé/i.test(c.name));
+  __assertOk(!stillHasCumule, 'aucun nom d exercice ne doit plus contenir "cumulé"/"cumulée"');
+  __assertOk(CHALLENGE_LIBRARY.some(c => c.name === 'Planche'), '"Planche cumulée" doit devenir "Planche"');
+  __assertOk(CHALLENGE_LIBRARY.some(c => c.name === 'Hollow hold'), '"Hollow hold cumulé" doit devenir "Hollow hold"');
+  __assertOk(CHALLENGE_LIBRARY.some(c => c.name === 'Chaise (wall sit)'), '"Chaise (wall sit) cumulée" doit devenir "Chaise (wall sit)"');
+  __assertEq(getExercisePictogramKey({ name: 'Planche', cat: 'Gainage / Core' }), 'planche', 'EXERCISE_ICON_BY_NAME doit reconnaitre le nouveau nom "Planche"');
+  __assertEq(getExercisePictogramKey({ name: 'Hollow hold', cat: 'Gainage / Core' }), 'hollow_hold', 'EXERCISE_ICON_BY_NAME doit reconnaitre le nouveau nom "Hollow hold"');
+  __assertEq(getExercisePictogramKey({ name: 'Chaise (wall sit)', cat: 'Bas du corps' }), 'chaise', 'EXERCISE_ICON_BY_NAME doit reconnaitre le nouveau nom "Chaise (wall sit)"');
+  console.log('OK: noms d exercices nettoyes (retrait de "cumulé"/"cumulée")');
+
+  // --- 120. L entree en cascade des cartes Defis n anime QUE la categorie qui vient
+  // d etre depliee ; un toggle d activation dans un accordeon deja ouvert ne doit pas
+  // re-declencher l animation sur ses cartes (evite l effet de clignotement/refresh) ---
+  activeTab = 'today'; // evite que le render() interne de toggleLibraryCategory()/toggleActiveToday() consomme le flag via renderLibraryScreen()
+  customChallenges = [];
+  rebuildChallenges();
+  activeToday = new Set();
+  libraryOpenCats = new Set();
+  librarySearchQuery = '';
+  libraryAnimatingCat = null;
+  toggleLibraryCategory('Haut du corps'); // simule un vrai tap : ouvre la categorie + arme libraryAnimatingCat
+  const freshOpenHtml = renderLibraryScreen();
+  __assertOk(freshOpenHtml.includes('accordion-body'), 'la categorie doit etre ouverte apres toggleLibraryCategory()');
+  __assertOk(!freshOpenHtml.includes('no-anim'), 'une categorie qui vient d etre depliee doit animer ses cartes (pas de classe no-anim)');
+
+  const pompesForAnim = CHALLENGE_LIBRARY.find(c => c.name === 'Pompes'); // categorie 'Haut du corps', deja ouverte
+  await toggleActiveToday(pompesForAnim.id);
+  const afterToggleHtml = renderLibraryScreen();
+  __assertOk(afterToggleHtml.includes('accordion-body'), 'la categorie doit rester ouverte apres un simple toggle d activation');
+  __assertOk(afterToggleHtml.includes('no-anim'), 'un toggle d activation dans un accordeon deja ouvert ne doit PAS re-animer ses cartes (pas de clignotement)');
+  activeToday = new Set();
+  libraryOpenCats = new Set();
+  libraryAnimatingCat = null;
+  console.log('OK: entree en cascade limitee a l ouverture d un menu deroulant (pas de re-animation au toggle d activation)');
+
+  // --- 121. Espacement recherche/premiere carte (#3 CSS) : meme marge que celle
+  // entre deux accordeons (.accordion { margin-bottom: ... }), pour un espacement
+  // vertical uniforme et propre ---
+  const accordionRuleIdx = cssText.indexOf('.accordion { margin-bottom:');
+  __assertOk(accordionRuleIdx !== -1, 'la regle .accordion (espacement entre deux accordeons) doit exister dans styles.css');
+  const accordionRuleBlock = cssText.slice(accordionRuleIdx, cssText.indexOf('}', accordionRuleIdx) + 1);
+  const mbStart = accordionRuleBlock.indexOf('margin-bottom:') + 'margin-bottom:'.length;
+  const mbEnd = accordionRuleBlock.indexOf(';', mbStart);
+  const accordionMarginBottom = accordionRuleBlock.slice(mbStart, mbEnd).trim();
+  const searchInputCssIdx = cssText.indexOf('.library-search-input {');
+  __assertOk(searchInputCssIdx !== -1, 'la regle .library-search-input doit exister dans styles.css');
+  const searchInputCssBlock = cssText.slice(searchInputCssIdx, cssText.indexOf('}', searchInputCssIdx));
+  __assertOk(searchInputCssBlock.includes('margin-bottom: ' + accordionMarginBottom), 'le champ de recherche doit avoir le meme margin-bottom que .accordion (' + accordionMarginBottom + '), pour un espacement uniforme avec le premier accordeon');
+  console.log('OK: espacement uniforme entre la recherche et le premier accordeon (meme margin-bottom que .accordion)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });
