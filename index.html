@@ -427,6 +427,28 @@
   .app-popup-card.epic .app-popup-btn { background: #ffd700; }
   .app-popup-btn:active { transform: scale(0.97); }
 
+  /* Modale de confirmation (Annuler/Confirmer) — voir confirmModal() : remplace les
+     confirm() natifs du navigateur, réutilise le même habillage .app-popup-*. */
+  .app-popup-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .app-popup-actions .app-popup-btn { margin-top: 0; flex: 1; width: auto; }
+  .app-popup-btn-cancel {
+    flex: 1;
+    background: var(--bg-raised);
+    color: var(--chalk);
+    border: 1px solid var(--line);
+    font-weight: 700;
+    font-size: 15px;
+    padding: 14px;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+  .app-popup-btn-cancel:active { transform: scale(0.97); }
+  .app-popup-btn.danger { background: var(--danger); color: #fff; }
+
   /* CARTE ATHLÈTE (niveau, titre, XP) — onglet Profil, cliquable (parcours de niveau) */
   .athlete-card {
     background: linear-gradient(135deg, rgba(57,233,122,0.10), rgba(57,233,122,0.02));
@@ -2357,14 +2379,22 @@ function signOutUser() {
 async function deleteMyAccount() {
   if (!currentUser) return;
 
-  const step1 = confirm(
-    '⚠️ ATTENTION\n\nCeci va supprimer DÉFINITIVEMENT toutes tes données : défis, historique, statistiques, records et trophées.\n\nCette action est irréversible. Continuer ?'
-  );
+  const step1 = await confirmModal({
+    icon: '⚠️',
+    title: 'Supprimer définitivement ton compte ?',
+    subtitle: 'Ceci va supprimer DÉFINITIVEMENT toutes tes données : défis, historique, statistiques, records et trophées. Cette action est irréversible.',
+    confirmLabel: 'Continuer',
+    danger: true,
+  });
   if (!step1) return;
 
-  const step2 = confirm(
-    'Es-tu vraiment certain ? Il n\'y aura aucun moyen de récupérer ces données ensuite.'
-  );
+  const step2 = await confirmModal({
+    icon: '⚠️',
+    title: 'Es-tu vraiment certain ?',
+    subtitle: 'Il n\'y aura aucun moyen de récupérer ces données ensuite.',
+    confirmLabel: 'Oui, tout supprimer',
+    danger: true,
+  });
   if (!step2) return;
 
   try {
@@ -3103,7 +3133,14 @@ async function submitChallengeForm() {
 }
 
 async function deleteChallenge(id) {
-  if (!confirm('Supprimer ce défi personnalisé ? (ton historique passé sera conservé mais il n\'apparaîtra plus dans la liste)')) return;
+  const accepted = await confirmModal({
+    icon: '🗑️',
+    title: 'Supprimer ce défi ?',
+    subtitle: 'Ton historique passé sera conservé mais il n\'apparaîtra plus dans la liste.',
+    confirmLabel: 'Supprimer',
+    danger: true,
+  });
+  if (!accepted) return;
   customChallenges = customChallenges.filter(c => c.id !== id);
   rebuildChallenges();
   await saveCustomChallenges();
@@ -3360,6 +3397,37 @@ function drainPopupQueue() {
       drainPopupQueue();
     };
   }
+}
+
+// Modale de confirmation stylée (Annuler/Confirmer), à la place des confirm() natifs
+// du navigateur (moches, non personnalisables). Volontairement INDÉPENDANTE de la
+// file enqueuePopup/drainPopupQueue (qui reste single-bouton, fire-and-forget, comme
+// partout ailleurs dans l'appli) : ici on a besoin d'attendre une vraie décision de
+// l'utilisateur avant de continuer, donc on retourne une Promise<boolean> — chose que
+// la file générique ne permet pas. Réutilise le même habillage visuel
+// (.app-popup-overlay/.app-popup-card) pour rester cohérent avec le reste de l'appli.
+let currentConfirmModalHtml = ''; // dernier contenu affiché (introspection/tests, même principe que currentPopupHtml)
+function confirmModal({ icon = '⚠️', title = '', subtitle = '', confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const el = document.createElement('div');
+    el.className = 'app-popup-overlay';
+    el.innerHTML = `
+      <div class="app-popup-card">
+        <div class="app-popup-icon">${icon}</div>
+        ${title ? `<div class="app-popup-title">${title}</div>` : ''}
+        ${subtitle ? `<div class="app-popup-sub">${subtitle}</div>` : ''}
+        <div class="app-popup-actions">
+          <button class="app-popup-btn-cancel" id="confirmModalCancelBtn">${cancelLabel}</button>
+          <button class="app-popup-btn${danger ? ' danger' : ''}" id="confirmModalConfirmBtn">${confirmLabel}</button>
+        </div>
+      </div>
+    `;
+    currentConfirmModalHtml = el.innerHTML;
+    document.body.appendChild(el);
+    const finish = (result) => { el.remove(); resolve(result); };
+    document.getElementById('confirmModalCancelBtn').onclick = () => finish(false);
+    document.getElementById('confirmModalConfirmBtn').onclick = () => finish(true);
+  });
 }
 
 // Une popup épique dédiée par trophée fraîchement débloqué (icône animée, effets
@@ -4553,9 +4621,13 @@ async function addSet(amount) {
       const c = getChallenge();
       const suggestedTarget = Math.ceil((total * 1.15) / 5) * 5;
       setTimeout(async () => {
-        const accept = confirm(
-          `🚀 Tu bats ton record 3 fois de suite sur "${c.name}" !\n\nVeux-tu augmenter l'objectif par défaut de ${formatTargetLabel(c.target, c.unit)} à ${formatTargetLabel(suggestedTarget, c.unit)} ?`
-        );
+        const accept = await confirmModal({
+          icon: '🚀',
+          title: 'Nouveau record 3 fois de suite !',
+          subtitle: `Veux-tu augmenter l'objectif par défaut de "${escapeHtml(c.name)}" de ${formatTargetLabel(c.target, c.unit)} à ${formatTargetLabel(suggestedTarget, c.unit)} ?`,
+          confirmLabel: 'Augmenter l\'objectif',
+          cancelLabel: 'Pas maintenant',
+        });
         if (accept) {
           if (c.isCustom) {
             const custom = customChallenges.find(x => x.id === c.id);
