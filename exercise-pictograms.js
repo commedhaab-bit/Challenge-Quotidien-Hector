@@ -1,3 +1,4 @@
+// @ts-check
 // Pictogrammes SVG des exercices — extrait de index.html pour un fichier principal
 // moins volumineux. Chargé en <script> CLASSIQUE (PAS de type=module, PAS de defer/
 // async) avant le script principal : EXERCISE_PICTOGRAMS doit être un global

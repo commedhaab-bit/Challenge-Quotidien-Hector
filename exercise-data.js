@@ -1,3 +1,4 @@
+// @ts-check
 // Catalogue d'exercices + utilitaires associés — extrait de index.html pour un
 // fichier principal moins volumineux. Chargé en <script> CLASSIQUE (PAS de
 // type=module, PAS de defer/async) avant le script principal : ces éléments
@@ -46,6 +47,10 @@ const CHALLENGE_LIBRARY = [
 
 const QUICK_ADD = { reps: [5, 10, 15, 20, 25, 30], sec: [15, 30, 60, 120] };
 
+/**
+ * @param {number} totalSec
+ * @returns {string}
+ */
 function formatSecToReadable(totalSec) {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
@@ -54,7 +59,12 @@ function formatSecToReadable(totalSec) {
   return `${m} min ${s} s`;
 }
 
-// Affichage complet d'une valeur cible selon son unité, ex: "335 SEC (5 min 35 s)" ou "100 reps"
+/**
+ * Affichage complet d'une valeur cible selon son unité, ex: "335 SEC (5 min 35 s)" ou "100 reps"
+ * @param {number} value
+ * @param {string} unit
+ * @returns {string}
+ */
 function formatTargetLabel(value, unit) {
   if (unit === 'sec') {
     return `${value} SEC (${formatSecToReadable(value)})`;
@@ -62,6 +72,7 @@ function formatTargetLabel(value, unit) {
   return `${value} reps`;
 }
 
+/** @type {Record<string, string>} */
 const EXERCISE_ICON_BY_NAME = {
   "Pompes": "pompes",
   "Dips": "dips",
@@ -105,6 +116,10 @@ const PICTOGRAM_ASSET_MISSING = new Set([
   'generic', 'dumbbell_generic',
 ]);
 
+/**
+ * @param {{ name: string, cat?: string }} c
+ * @returns {string}
+ */
 function getExercisePictogramKey(c) {
   // 1) Correspondance exacte par nom (tous les défis de la bibliothèque)
   if (EXERCISE_ICON_BY_NAME[c.name]) return EXERCISE_ICON_BY_NAME[c.name];

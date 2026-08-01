@@ -239,4 +239,13 @@ par cas plutôt que viser une conformité complète d'un coup.
   `escapeJsAttr`, `confirmModal`, `createStore`, etc.) — pas une exigence
   systématique sur les ~167 fonctions du fichier, seulement celles dont le rôle
   n'est pas évident au premier coup d'œil
+- `// @ts-check` en première ligne de `exercise-data.js`/`exercise-pictograms.js`
+  (types dérivés du JSDoc, ex: `@type {Record<string, string>}` sur
+  `EXERCISE_ICON_BY_NAME`, `@param`/`@returns` sur `formatSecToReadable`/
+  `formatTargetLabel`/`getExercisePictogramKey`) : VSCode l'exploite tout de
+  suite dans l'éditeur, zéro dépendance/config supplémentaire. Volontairement
+  PAS étendu au script principal (inline dans `index.html`, hors de portée d'un
+  simple `@ts-check` sur un fichier HTML) ni vérifié en CI (pas de `typescript`
+  dans `package.json` — vérification ponctuelle via `npx tsc --allowJs
+  --checkJs --noEmit` au moment d'ajouter des types, pas un gate automatique)
 
