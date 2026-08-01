@@ -2622,6 +2622,7 @@ let libraryOpenCats = new Set(); // catégories actuellement dépliées dans l'a
 let migratedLegacyActiveIds = null; // ids à activer une seule fois pour aujourd'hui juste après une migration depuis l'ancien modèle
 let activeTab = 'today'; // 'today' | 'history' | 'library' | 'account'
 let editingChallengeId = null; // null = liste, 'new' = création, id = édition (défis personnalisés uniquement)
+let settingsScreenOpen = false; // écran "Paramètres" poussé depuis l'onglet Profil (même pattern que editingChallengeId/currentChallengeId)
 
 function rebuildChallenges() {
   CHALLENGES = [...CHALLENGE_LIBRARY, ...customChallenges];
@@ -3031,6 +3032,11 @@ function pushNavState() {
 }
 
 function goBackOneLevel() {
+  if (settingsScreenOpen) {
+    settingsScreenOpen = false;
+    render(true);
+    return;
+  }
   if (editingChallengeId !== null) {
     editingChallengeId = null;
     render(true);
@@ -3094,6 +3100,12 @@ function toggleLibraryCategory(cat) {
 
 function openNewChallengeForm() {
   editingChallengeId = 'new';
+  pushNavState();
+  render(true);
+}
+
+function openSettingsScreen() {
+  settingsScreenOpen = true;
   pushNavState();
   render(true);
 }
@@ -5532,13 +5544,135 @@ function renderAccountSection() {
           ${email ? `<div class="account-email">${escapeHtml(email)}</div>` : ''}
         </div>
       </div>
+    </div>
+  `;
+}
+
+// Boutons de compte "sensibles" (déconnexion/suppression), relocalisés depuis
+// renderAccountSection() vers l'écran Paramètres dédié (moins de risque de clic
+// accidentel sur l'écran Profil principal, qui montre surtout des infos/progression).
+function renderAccountActionsSection() {
+  return `
+    <div class="section-label">Compte</div>
+    <div class="account-card">
       <button class="signout-btn" onclick="signOutUser()">🚪 Se déconnecter</button>
       <button class="delete-account-btn" onclick="deleteMyAccount()">🗑️ Supprimer mon compte et mes données</button>
     </div>
   `;
 }
 
+function renderDataManagementSection() {
+  return `
+    <div class="section-label">Mes données</div>
+    <div class="settings-card data-management-card">
+      <button class="signout-btn" onclick="exportUserData()">📤 Exporter mes données</button>
+      <label class="signout-btn" for="importDataInput">📥 Importer des données</label>
+      <input type="file" id="importDataInput" accept=".json,application/json" style="display:none;" onchange="importUserData(event)">
+    </div>
+  `;
+}
+
+function renderSettingsScreen() {
+  return `
+    <button class="history-back" onclick="history.back()">‹ Retour</button>
+    <h1 class="title">Paramètres</h1>
+    ${renderSettingsSection()}
+    ${renderDataManagementSection()}
+    ${renderAccountActionsSection()}
+  `;
+}
+
+// Sérialise tout ce qui est déjà en mémoire (aucune lecture Firestore
+// supplémentaire) en un fichier JSON téléchargeable — sauvegarde manuelle avant un
+// changement d'appareil/de compte.
+function exportUserData() {
+  const data = {
+    exportedAt: new Date().toISOString(),
+    profile: userProfile,
+    customChallenges,
+    manualTargetOverrides,
+    weights,
+    lastCompleted,
+    stats,
+    badges,
+    dailyActivity,
+    streakData: { streakCount, lastCompletedDate, hasShield, lastShieldResetWeek },
+    xpTotal,
+    voiceCoachEnabled,
+    activeToday: [...activeToday],
+    todayKey,
+    todayState: state,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `defi-du-jour-export-${dateKey(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Réécrit chaque clé reconnue via les save*() existants (jamais un accès Firestore
+// direct), pour rester cohérent avec le reste du code et bénéficier des mêmes
+// garanties. Passe par confirmModal() avant d'écraser quoi que ce soit : c'est une
+// action destructrice et irréversible pour les données actuelles.
+async function importUserData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch (e) {
+    event.target.value = '';
+    showToast('❌ Fichier invalide');
+    return;
+  }
+
+  const accepted = await confirmModal({
+    icon: '📥',
+    title: 'Importer ces données ?',
+    subtitle: 'Cela va REMPLACER tes données actuelles (défis personnalisés, statistiques, série, XP...). Cette action est irréversible.',
+    confirmLabel: 'Importer et remplacer',
+    danger: true,
+  });
+  if (!accepted) {
+    event.target.value = '';
+    return;
+  }
+
+  if (data.profile) { userProfile = data.profile; await saveProfile(); }
+  if (Array.isArray(data.customChallenges)) {
+    customChallenges = data.customChallenges;
+    await saveCustomChallenges();
+    rebuildChallenges();
+  }
+  if (data.manualTargetOverrides) { manualTargetOverrides = data.manualTargetOverrides; await saveManualTargetOverrides(); }
+  if (data.weights) { weights = data.weights; await saveWeights(); }
+  if (data.lastCompleted) { lastCompleted = data.lastCompleted; await saveLastCompleted(); }
+  if (data.stats) { stats = data.stats; await saveStats(); }
+  if (data.badges) { badges = data.badges; await saveBadges(); }
+  if (data.dailyActivity) { dailyActivity = data.dailyActivity; await saveDailyActivity(); }
+  if (data.streakData) {
+    streakCount = data.streakData.streakCount ?? 0;
+    lastCompletedDate = data.streakData.lastCompletedDate ?? null;
+    hasShield = data.streakData.hasShield ?? true;
+    lastShieldResetWeek = data.streakData.lastShieldResetWeek ?? null;
+    await saveStreakData();
+  }
+  if (typeof data.xpTotal === 'number') { xpTotal = data.xpTotal; await saveXp(); }
+  if (typeof data.voiceCoachEnabled === 'boolean') { voiceCoachEnabled = data.voiceCoachEnabled; await saveVoiceCoachEnabled(); }
+  if (Array.isArray(data.activeToday)) { activeToday = new Set(data.activeToday); await saveActiveToday(); }
+  if (data.todayState && data.todayKey === todayKey) { state = data.todayState; await saveState(); }
+
+  event.target.value = '';
+  showToast('✅ Données importées');
+  render(true);
+}
+
 function renderAccountTabScreen() {
+  if (settingsScreenOpen) {
+    return renderSettingsScreen();
+  }
   return `
     <div class="header">
       <div class="date">${formatDateLabel(new Date())}</div>
@@ -5549,7 +5683,7 @@ function renderAccountTabScreen() {
     ${renderAthleteCard()}
     ${renderTrophiesGrid()}
     ${renderAccountSection()}
-    ${renderSettingsSection()}
+    <button class="signout-btn" onclick="openSettingsScreen()">⚙️ Paramètres</button>
   `;
 }
 
