@@ -4008,6 +4008,27 @@ function updateTimerRingDOM(elapsedSec) {
   }
 }
 
+// Échappe une chaîne pour une insertion sûre dans du HTML (contenu ou attribut
+// délimité par des guillemets doubles) : noms/catégories de défis personnalisés et
+// nom de compte Google sont du texte libre saisi par l'utilisateur, jamais fiable
+// tel quel dans un template literal HTML (sinon injection possible via <, >, ", &).
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Échappe une chaîne pour une insertion sûre à l'intérieur d'une chaîne JS à guillemets
+// simples, elle-même dans un attribut HTML à guillemets doubles (ex: onclick="fn('...')") :
+// il faut neutraliser à la fois le guillemet simple (fin de la chaîne JS) et le double
+// (fin de l'attribut HTML).
+function escapeJsAttr(str) {
+  return String(str ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
 function formatSecToReadable(totalSec) {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
@@ -4139,7 +4160,7 @@ function renderExercisePicto(c) {
   // apparaître l'image en fondu, pour ne jamais montrer de pop-in brut.
   return `
     <div class="exercise-picto">
-      <img src="exercices/${key}-static.webp" alt="${c.name}" loading="lazy" decoding="async" width="64" height="64"
+      <img src="exercices/${key}-static.webp" alt="${escapeHtml(c.name)}" loading="lazy" decoding="async" width="64" height="64"
            onload="this.classList.add('loaded'); this.parentElement.classList.add('loaded');"
            onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${key}-static.png';}else{this.style.display='none'; this.nextElementSibling.style.display='flex'; this.parentElement.classList.add('loaded');}">
       <div class="exercise-picto-fallback">${svg}</div>
@@ -4697,7 +4718,7 @@ function render(animate) {
     }
     const cats = [...new Set(activeChallenges.map(c => c.cat))];
     for (const cat of cats) {
-      html += `<div class="section-label">${cat}</div><div class="picker-grid">`;
+      html += `<div class="section-label">${escapeHtml(cat)}</div><div class="picker-grid">`;
       for (const c of activeChallenges.filter(x => x.cat === cat)) {
         html += renderChallengeCard(c, 'today');
       }
@@ -4719,7 +4740,7 @@ function render(animate) {
     // silencieuse si aucun des deux n'existe ; aucune requête réseau du tout pour les
     // clés connues comme n'ayant aucune image (PICTOGRAM_ASSET_MISSING).
     const heroImgHtml = PICTOGRAM_ASSET_MISSING.has(heroKey) ? '' : `
-        <img class="exercise-hero-apng" src="exercices/${heroKey}.webp" alt="Démonstration : ${c.name}" decoding="async"
+        <img class="exercise-hero-apng" src="exercices/${heroKey}.webp" alt="Démonstration : ${escapeHtml(c.name)}" decoding="async"
              onload="this.classList.add('loaded');"
              onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${heroKey}.png';}else{this.remove();}">
     `;
@@ -4727,7 +4748,7 @@ function render(animate) {
     html += `
       <div class="active-card">
         ${heroImgHtml}
-        <div class="active-name">${c.name}</div>
+        <div class="active-name">${escapeHtml(c.name)}</div>
 
         ${c.cat === 'Haltères' ? `
           <div class="weight-row">
@@ -5102,7 +5123,7 @@ function renderChallengeCard(c, mode) {
     <div class="picker-item" onclick="${onclick}">
       ${renderExercisePicto(c)}
       <div class="picker-item-body">
-        <span class="name">${c.name}</span>
+        <span class="name">${escapeHtml(c.name)}</span>
       </div>
       <div class="goal">
         ${resolved.unit === 'sec' ? formatSecToReadable(resolved.target) : resolved.target + ' reps'}
@@ -5140,9 +5161,9 @@ function renderLibraryScreen() {
     const isOpen = libraryOpenCats.has(cat);
     html += `
       <div class="accordion${isOpen ? ' open' : ''}">
-        <button class="accordion-header" onclick="toggleLibraryCategory('${cat.replace(/'/g, "\\'")}')">
+        <button class="accordion-header" onclick="toggleLibraryCategory('${escapeJsAttr(cat)}')">
           <span class="accordion-chevron">›</span>
-          <span class="accordion-title">${cat}</span>
+          <span class="accordion-title">${escapeHtml(cat)}</span>
           <span class="accordion-count${activeCount > 0 ? ' has-active' : ''}">${activeCount} actif${activeCount === 1 ? '' : 's'}</span>
         </button>
         ${isOpen ? `<div class="accordion-body">${itemsInCat.map(c => renderChallengeCard(c, 'library')).join('')}</div>` : ''}
@@ -5160,18 +5181,18 @@ function renderChallengeForm() {
   return `
     <button class="history-back" onclick="history.back()">‹ Retour</button>
     <h1 class="title">${isNew ? 'Nouveau défi' : 'Modifier le défi'}</h1>
-    <div class="subtitle">${isNew ? 'Ajoute ton propre défi personnalisé' : c.name}</div>
+    <div class="subtitle">${isNew ? 'Ajoute ton propre défi personnalisé' : escapeHtml(c.name)}</div>
 
     <div class="form-field">
       <label>Nom du défi</label>
-      <input type="text" id="cfName" value="${c ? c.name.replace(/"/g,'&quot;') : ''}" placeholder="Ex : Pompes diamant">
+      <input type="text" id="cfName" value="${c ? escapeHtml(c.name) : ''}" placeholder="Ex : Pompes diamant">
     </div>
 
     <div class="form-field">
       <label>Catégorie</label>
-      <input type="text" id="cfCat" value="${c ? c.cat.replace(/"/g,'&quot;') : ''}" list="catList" placeholder="Ex : Haut du corps">
+      <input type="text" id="cfCat" value="${c ? escapeHtml(c.cat) : ''}" list="catList" placeholder="Ex : Haut du corps">
       <datalist id="catList">
-        ${existingCats.map(cat => `<option value="${cat}">`).join('')}
+        ${existingCats.map(cat => `<option value="${escapeHtml(cat)}">`).join('')}
       </datalist>
     </div>
 
@@ -5433,10 +5454,10 @@ function renderAccountSection() {
     <div class="section-label">Compte</div>
     <div class="account-card">
       <div class="account-info">
-        ${photo ? `<img src="${photo}" class="account-avatar" referrerpolicy="no-referrer">` : `<div class="account-avatar-fallback">${name.charAt(0).toUpperCase()}</div>`}
+        ${photo ? `<img src="${escapeHtml(photo)}" class="account-avatar" referrerpolicy="no-referrer">` : `<div class="account-avatar-fallback">${escapeHtml(name.charAt(0).toUpperCase())}</div>`}
         <div>
-          <div class="account-name">${name}</div>
-          ${email ? `<div class="account-email">${email}</div>` : ''}
+          <div class="account-name">${escapeHtml(name)}</div>
+          ${email ? `<div class="account-email">${escapeHtml(email)}</div>` : ''}
         </div>
       </div>
       <button class="signout-btn" onclick="signOutUser()">🚪 Se déconnecter</button>
