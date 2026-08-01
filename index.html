@@ -14,6 +14,13 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
 
+<!-- Connexion anticipée vers les hôtes utilisés dès le chargement (SDK Firebase,
+     puis Firestore/Auth) : la négociation DNS/TLS se fait en parallèle du parsing
+     HTML/CSS au lieu d'attendre la 1ère requête réelle vers ces domaines. -->
+<link rel="preconnect" href="https://www.gstatic.com">
+<link rel="preconnect" href="https://firestore.googleapis.com">
+<link rel="preconnect" href="https://identitytoolkit.googleapis.com">
+
 <!-- Firebase (gratuit, plan Spark) —
      ATTENTION : NE PAS mettre defer ici. Le `defer` sur un script externe (src=...)
      retarde son exécution jusqu'à la fin du parsing HTML, MAIS `defer` est ignoré
@@ -1764,6 +1771,45 @@
     transform: translate(-50%, 0);
   }
 
+  /* Bandeaux persistants en haut d'écran (mise à jour dispo / hors ligne) : contrairement
+     au toast (auto-masqué, dans le flux de #app), ce sont des frères de #app posés une
+     fois dans le HTML statique, pilotés directement via leur propre style.display — donc
+     jamais effacés par un re-render (qui remplace tout le innerHTML de #app). */
+  .top-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-top, 0px));
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .top-banner-update {
+    background: var(--accent);
+    color: #0a0d0b;
+  }
+  .top-banner-update button {
+    background: #0a0d0b;
+    color: var(--accent);
+    border: none;
+    font-weight: 800;
+    font-size: 12.5px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+  }
+  .top-banner-offline {
+    background: var(--bg-raised);
+    color: var(--chalk-dim);
+    border-bottom: 1px solid var(--line);
+  }
+
   .confetti-canvas {
     position: fixed;
     top: 0; left: 0;
@@ -2209,6 +2255,14 @@
 </head>
 <body>
 
+<div id="updateBanner" class="top-banner top-banner-update" style="display:none;">
+  <span>🔄 Nouvelle version disponible</span>
+  <button onclick="window.location.reload()">Recharger</button>
+</div>
+<div id="offlineBanner" class="top-banner top-banner-offline" style="display:none;">
+  📡 Hors ligne — tes données seront synchronisées au retour du réseau
+</div>
+
 <div id="loginScreen" class="login-screen" style="display:none;">
   <div class="emoji">💪</div>
   <h1>Défi du Jour</h1>
@@ -2225,6 +2279,31 @@
 </div>
 
 <script>
+// ==== FILET DE SÉCURITÉ GLOBAL ====
+// Si une exception non interceptée survient N'IMPORTE OÙ dans ce script (ex: le bug
+// "defer" qui a provoqué un écran noir total en production), affiche un écran de
+// secours minimal plutôt que de laisser la page vide/figée sans aucun signal. Posé
+// tout en haut, AVANT l'initialisation Firebase, pour attraper les erreurs les plus
+// précoces. Volontairement écrit en HTML/CSS inline très simple (aucune dépendance à
+// une fonction de l'appli plus bas, qui pourrait elle-même être à l'origine du crash).
+let fatalErrorShown = false;
+function showFatalErrorScreen(detail) {
+  if (fatalErrorShown) return; // n'afficher qu'une seule fois même si plusieurs erreurs surviennent
+  fatalErrorShown = true;
+  console.error('Erreur fatale interceptée :', detail);
+  const el = document.createElement('div');
+  el.setAttribute('style', 'position:fixed;inset:0;z-index:99999;background:#0a0d0b;color:#eef2ef;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;');
+  el.innerHTML =
+    '<div style="font-size:44px;">⚠️</div>' +
+    '<div style="font-size:18px;font-weight:800;">Une erreur est survenue</div>' +
+    '<div style="font-size:14px;color:#8a958e;max-width:320px;line-height:1.5;">L\'application a rencontré un problème inattendu. Recharge la page pour réessayer.</div>' +
+    '<button id="fatalReloadBtn" style="background:#39e97a;color:#0a0d0b;border:none;font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;cursor:pointer;">Recharger</button>';
+  document.body.appendChild(el);
+  document.getElementById('fatalReloadBtn').onclick = () => window.location.reload();
+}
+window.addEventListener('error', (e) => showFatalErrorScreen(e.error || e.message));
+window.addEventListener('unhandledrejection', (e) => showFatalErrorScreen(e.reason));
+
 // ==== CONFIGURATION FIREBASE ====
 // Remplace ces valeurs par celles de TON projet Firebase (voir guide fourni)
 const firebaseConfig = {
@@ -2349,12 +2428,40 @@ auth.onAuthStateChanged(user => {
   }
 });
 
-// Enregistrement du service worker (mode PWA hors-ligne pour l'interface)
+// Enregistrement du service worker (mode PWA hors-ligne pour l'interface) + détection
+// d'une nouvelle version disponible : le SW existant fait déjà skipWaiting()/clients.claim()
+// automatiquement, mais la PAGE déjà chargée (HTML/JS déjà parsés) ne récupère le
+// nouveau code qu'après un rechargement — d'où ce bandeau pour le proposer explicitement
+// plutôt que de laisser l'utilisateur sans aucun signal qu'une mise à jour existe.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    navigator.serviceWorker.register('service-worker.js').then((registration) => {
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        if (!newWorker) return;
+        newWorker.addEventListener('statechange', () => {
+          // "installed" + un controller déjà actif = vraie mise à jour (pas la 1ère
+          // installation, où il n'y a pas encore de controller).
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            const banner = document.getElementById('updateBanner');
+            if (banner) banner.style.display = 'flex';
+          }
+        });
+      });
+    }).catch(() => {});
   });
 }
+
+// Bandeau hors-ligne : aucun appel réseau supplémentaire, juste un retour visuel clair
+// (jusqu'ici totalement silencieux) quand la connexion tombe, et sa disparition dès
+// qu'elle revient.
+function updateOfflineBanner() {
+  const banner = document.getElementById('offlineBanner');
+  if (banner) banner.style.display = navigator.onLine ? 'none' : 'flex';
+}
+window.addEventListener('online', updateOfflineBanner);
+window.addEventListener('offline', updateOfflineBanner);
+updateOfflineBanner();
 
 const CHALLENGE_LIBRARY = [
   // ==== Haut du corps (bmiImpact élevé : mouvements qui portent tout le poids du corps) ====
