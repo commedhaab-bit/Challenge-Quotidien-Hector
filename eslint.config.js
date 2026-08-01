@@ -32,6 +32,15 @@ const nodeGlobals = {
 
 module.exports = [
   {
+    // Contrairement a un .eslintignore, les fichiers hors des `files` d'un bloc ne
+    // sont PAS silencieusement ignores : ESLint tente quand meme de les parser (et
+    // peut lever ses propres erreurs de parsing dessus). `.extracted-script.js` est
+    // un artefact TEMPORAIRE genere par tests/extract-script.js (verification node -c) :
+    // s'il traine sur le disque au moment du lint (ex: etape CI precedente non
+    // nettoyee), il ne doit jamais etre analyse par ESLint.
+    ignores: ['node_modules/**', '.extracted-script.js'],
+  },
+  {
     files: ['exercise-data.js', 'exercise-pictograms.js'],
     languageOptions: {
       ecmaVersion: 2021,

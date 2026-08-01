@@ -4191,21 +4191,9 @@ function escapeJsAttr(str) {
   return String(str ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-function formatSecToReadable(totalSec) {
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  if (m === 0) return `${s} s`;
-  if (s === 0) return `${m} min`;
-  return `${m} min ${s} s`;
-}
-
-// Affichage complet d'une valeur cible selon son unité, ex: "335 SEC (5 min 35 s)" ou "100 reps"
-function formatTargetLabel(value, unit) {
-  if (unit === 'sec') {
-    return `${value} SEC (${formatSecToReadable(value)})`;
-  }
-  return `${value} reps`;
-}
+// formatSecToReadable / formatTargetLabel vivent désormais dans exercise-data.js
+// (script classique chargé avant celui-ci, voir <head>) — restent des globaux,
+// aucun changement d'usage ici.
 
 // EXERCISE_PICTOGRAMS, EXERCISE_ICON_BY_NAME, PICTOGRAM_ASSET_MISSING et
 // getExercisePictogramKey() vivent désormais dans exercise-pictograms.js /
