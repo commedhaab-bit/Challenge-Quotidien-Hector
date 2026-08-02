@@ -666,13 +666,27 @@ function renderOnboardingTransitionScreen() {
       </div>
     `;
   }
+  // Mini-carte de preview : un exemple concret et RÉEL (pas un simple texte gris) de ce
+  // que le coach virtuel vient de calibrer — objectif effectivement calculé pour "Pompes"
+  // à partir du profil qui vient d'être renseigné, pas une valeur fictive.
+  const previewChallenge = CHALLENGE_LIBRARY.find(c => c.name === 'Pompes');
+  const previewTarget = previewChallenge ? computeStandardTarget(previewChallenge, userProfile) : 100;
   return `
     <div class="profile-onboarding">
-      <div class="pf-step pf-step-welcome">
-        <div class="pf-welcome-badge">✅</div>
-        <h1 class="pf-welcome-title">Objectifs calculés !</h1>
-        <div class="pf-welcome-desc">
-          C'est bon, nous avons calculé les objectifs de chaque défi parfaitement adaptés pour toi. Tu peux dès à présent choisir celui ou ceux que tu veux réaliser aujourd'hui dans l'onglet « Défis 🎯 » et let's go !
+      <div class="pf-step pf-step-welcome pf-step-anchored">
+        <div class="pf-step-content">
+          <div class="pf-welcome-badge">✅</div>
+          <h1 class="pf-welcome-title">Objectifs calculés !</h1>
+          <div class="pf-welcome-desc pf-welcome-desc-short">
+            Choisis dès maintenant tes défis dans l'onglet « Défis 🎯 ».
+          </div>
+          <div class="pf-preview-card">
+            <div class="pf-preview-card-icon">🎯</div>
+            <div class="pf-preview-card-body">
+              <div class="pf-preview-card-name">Pompes</div>
+              <div class="pf-preview-card-goal">Objectif calculé : ${previewTarget} reps</div>
+            </div>
+          </div>
         </div>
         <button class="pf-next-btn" onclick="finishOnboardingTransition()">C'est parti !</button>
       </div>
@@ -3007,27 +3021,31 @@ function renderProfileOnboardingScreen() {
 
   if (isWelcome) {
     stepHtml = `
-      <div class="pf-welcome-badge">⚡</div>
-      <h1 class="pf-welcome-title">Bienvenue dans<br><span class="pf-brand">Défi du Jour</span></h1>
-      <div class="pf-welcome-bullets">
-        <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">🎯</span> Choisis tes défis</div>
-        <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">⚡</span> Surpasse-toi chaque jour</div>
-        <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">📈</span> Suis tes progrès</div>
+      <div class="pf-step-content">
+        <div class="pf-welcome-badge">⚡</div>
+        <h1 class="pf-welcome-title">Bienvenue dans<br><span class="pf-brand">Défi du Jour</span></h1>
+        <div class="pf-welcome-bullets">
+          <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">🎯</span> Choisis tes défis</div>
+          <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">⚡</span> Surpasse-toi chaque jour</div>
+          <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">📈</span> Suis tes progrès</div>
+        </div>
       </div>
       <button class="pf-next-btn" onclick="profileNext()">Commencer</button>
     `;
   } else if (profileStep === 1) {
     stepHtml = `
-      <div class="pf-emoji">🎂</div>
-      <h1 class="pf-question">Quel âge as-tu ?</h1>
-      <div class="pf-algo-callout">
-        <div class="pf-algo-icon">🧠</div>
-        <div class="pf-algo-text">
-          <div class="pf-algo-title">Coach virtuel activé</div>
-          <div class="pf-algo-desc">Réponds à quelques questions rapides : notre algorithme calcule des objectifs sur-mesure, calibrés exactement pour ton profil.</div>
+      <div class="pf-step-content">
+        <div class="pf-algo-callout pf-algo-callout-title">
+          <div class="pf-algo-icon">🧠</div>
+          <div class="pf-algo-text">
+            <div class="pf-algo-title">Coach virtuel activé</div>
+            <div class="pf-algo-desc">Réponds à quelques questions rapides : notre algorithme calcule des objectifs sur-mesure, calibrés exactement pour ton profil.</div>
+          </div>
         </div>
+        <div class="pf-emoji">🎂</div>
+        <h1 class="pf-question">Quel âge as-tu ?</h1>
+        ${renderWheelPicker('pfAge', 12, 100, 1, 'ans')}
       </div>
-      ${renderWheelPicker('pfAge', 12, 100, 1, 'ans')}
       <button class="pf-next-btn" onclick="profileNext()">Suivant</button>
     `;
   } else if (profileStep === 2) {
@@ -3051,17 +3069,19 @@ function renderProfileOnboardingScreen() {
     `;
   } else if (profileStep === 3) {
     stepHtml = `
-      <div class="pf-emoji">📏</div>
-      <h1 class="pf-question">Taille et poids</h1>
-      <div class="pf-subtitle">Ça nous permet de calibrer tes objectifs pour que ce soit un vrai défi, ni trop facile ni impossible.</div>
-      <div class="pf-two-inputs">
-        <div class="pf-input-group">
-          <label>Taille (cm)</label>
-          ${renderWheelPicker('pfHeight', 100, 250, 1, 'cm')}
-        </div>
-        <div class="pf-input-group">
-          <label>Poids (kg)</label>
-          ${renderWheelPicker('pfWeight', 30, 300, 1, 'kg')}
+      <div class="pf-step-content">
+        <div class="pf-emoji">📏</div>
+        <h1 class="pf-question">Taille et poids</h1>
+        <div class="pf-subtitle">Ça nous permet de calibrer tes objectifs pour que ce soit un vrai défi, ni trop facile ni impossible.</div>
+        <div class="pf-two-inputs">
+          <div class="pf-input-group">
+            <label>Taille (cm)</label>
+            ${renderWheelPicker('pfHeight', 100, 250, 1, 'cm')}
+          </div>
+          <div class="pf-input-group">
+            <label>Poids (kg)</label>
+            ${renderWheelPicker('pfWeight', 30, 300, 1, 'kg')}
+          </div>
         </div>
       </div>
       <button class="pf-next-btn" onclick="profileNext()">Suivant</button>
@@ -3087,6 +3107,12 @@ function renderProfileOnboardingScreen() {
     `;
   }
 
+  // Bouton CTA ancré en bas d'écran (au lieu de suivre le flux centré du contenu) : ne
+  // concerne que les étapes avec un vrai bouton "Suivant"/"Commencer" (0, 1, 3) — les
+  // étapes 2/4 avancent automatiquement au clic sur une carte (selectProfileSex/Level),
+  // sans bouton, donc sans besoin de cet ancrage.
+  const isAnchoredStep = profileStep === 0 || profileStep === 1 || profileStep === 3;
+
   return `
     <div class="profile-onboarding">
       <div class="pf-header">
@@ -3094,7 +3120,7 @@ function renderProfileOnboardingScreen() {
         ${isWelcome ? '<div></div>' : renderProfileProgressDots()}
         <div></div>
       </div>
-      <div class="pf-step${isWelcome ? ' pf-step-welcome' : ''}">
+      <div class="pf-step${isWelcome ? ' pf-step-welcome' : ''}${isAnchoredStep ? ' pf-step-anchored' : ''}">
         ${stepHtml}
       </div>
     </div>

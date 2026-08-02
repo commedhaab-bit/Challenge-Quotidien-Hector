@@ -1008,7 +1008,7 @@
     z-index: 2000;
     display: flex;
     flex-direction: column;
-    padding: 20px 22px 32px;
+    padding: 20px 22px calc(32px + env(safe-area-inset-bottom, 0px));
   }
   .pf-header {
     display: flex;
@@ -1054,6 +1054,25 @@
     margin: 0 auto;
     width: 100%;
   }
+  /* Étapes avec un vrai bouton CTA ("Commencer"/"Suivant"/"C'est parti !") : le bouton
+     reste ancré tout en bas de l'écran (meilleure ergonomie au pouce) pendant que le
+     contenu au-dessus (.pf-step-content) garde son propre centrage vertical dans
+     l'espace restant — plutôt qu'un centrage global qui ferait flotter le bouton au
+     milieu de l'écran avec le reste du contenu. */
+  .pf-step.pf-step-anchored {
+    justify-content: space-between;
+    gap: 20px;
+  }
+  .pf-step-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+  }
+  .pf-step-anchored .pf-next-btn { flex-shrink: 0; }
   .pf-emoji { font-size: 46px; margin-bottom: 14px; }
   .pf-question {
     font-size: 26px;
@@ -1237,8 +1256,12 @@
     line-height: 1.6;
     margin-bottom: 26px;
   }
+  /* Version condensée (écran de confirmation "Objectifs calculés !"), à côté de la
+     mini-carte de preview qui porte désormais l'essentiel du message. */
+  .pf-welcome-desc-short { margin-bottom: 18px; }
   /* Résumé visuel de l'écran de bienvenue (3 points clés), à la place de deux longs
-     paragraphes — condensé, percutant, une icône par ligne. */
+     paragraphes — condensé, percutant, une icône par ligne, aligné à gauche dans un
+     conteneur centré (léger fond clair sur le thème sombre, coins arrondis). */
   .pf-welcome-bullets {
     display: flex;
     flex-direction: column;
@@ -1251,7 +1274,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    background: var(--bg-card);
+    background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--line);
     border-radius: 14px;
     padding: 14px 16px;
@@ -1288,6 +1311,34 @@
     color: var(--chalk);
     line-height: 1.5;
   }
+  /* Variante utilisée en tête de l'écran Âge (avant l'émoticône/la question elle-même) :
+     fonctionne comme un titre de page ("ce coach virtuel pilote cette étape"), pas comme
+     une simple notice — marge réduite pour s'enchaîner naturellement avec la suite. */
+  .pf-algo-callout-title { margin-bottom: 22px; }
+
+  /* Mini-carte de preview (écran de confirmation "Objectifs calculés !") : simule
+     concrètement un défi avec son objectif fraîchement calibré, à la place d'un long
+     paragraphe. Même langage visuel que .pf-welcome-bullet/.pf-algo-callout (carte
+     sombre, coins arrondis, accent vert néon). */
+  .pf-preview-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--accent-dim);
+    border-radius: 16px;
+    padding: 16px 18px;
+    text-align: left;
+    width: 100%;
+    box-shadow: 0 0 20px rgba(57, 233, 122, 0.08);
+  }
+  .pf-preview-card-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 8px rgba(57,233,122,0.3));
+  }
+  .pf-preview-card-name { font-size: 16px; font-weight: 800; margin-bottom: 2px; }
+  .pf-preview-card-goal { font-size: 13px; color: var(--accent); font-weight: 700; }
 
   .save-challenge-btn:disabled {
     opacity: 0.4;

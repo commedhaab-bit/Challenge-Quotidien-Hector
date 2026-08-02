@@ -571,7 +571,8 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(onboardingTransitionPhase, 'confirm', 'apres le delai + chargement, la phase doit passer a "confirm"');
   await new Promise(r => setTimeout(r, 200)); // laisse le temps a l'animation differee (140ms, cf applyContent) de peindre le DOM
   const confirmHtml = document.getElementById('app').innerHTML;
-  __assertOk(confirmHtml.includes('nous avons calculé les objectifs'), 'le message de confirmation attendu doit s afficher');
+  __assertOk(confirmHtml.includes('Objectifs calculés'), 'le message de confirmation attendu doit s afficher');
+  __assertOk(confirmHtml.includes('pf-preview-card') && confirmHtml.includes('Objectif calculé'), 'une mini-carte de preview d objectif calcule doit remplacer le long paragraphe');
   __assertOk(confirmHtml.includes('finishOnboardingTransition()'), 'un bouton doit permettre de lancer la suite');
   console.log('OK: écran de transition onboarding (loading -> confirm)');
 
@@ -2500,6 +2501,49 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(ageHtml.includes('id="pfAge"'), 'le rouleau d age doit toujours etre present sur cet ecran');
   profileStep = 0;
   console.log('OK: onboarding - ecran de bienvenue condense (3 points cles), coach virtuel explique sur l ecran age');
+
+  // --- 131. Finitions UI onboarding : bouton CTA ancre en bas d ecran (etapes avec
+  // bouton uniquement), encadre coach virtuel repositionne EN TITRE avant la question
+  // age, mini-carte de preview d objectif sur l ecran de confirmation ---
+  profileStep = 0;
+  const anchoredWelcomeHtml = renderProfileOnboardingScreen();
+  __assertOk(anchoredWelcomeHtml.includes('pf-step-anchored') && anchoredWelcomeHtml.includes('pf-step-content'), 'l ecran de bienvenue (bouton Commencer) doit utiliser la mise en page ancree en bas');
+  const idxContentDiv = anchoredWelcomeHtml.indexOf('pf-step-content');
+  const idxCommencerBtn = anchoredWelcomeHtml.indexOf('pf-next-btn');
+  __assertOk(idxContentDiv !== -1 && idxCommencerBtn > idxContentDiv, 'le bouton Commencer doit venir apres le conteneur de contenu centre (ancre en bas, pas emporte dans le centrage)');
+
+  profileStep = 1;
+  const anchoredAgeHtml = renderProfileOnboardingScreen();
+  __assertOk(anchoredAgeHtml.includes('pf-step-anchored'), 'l ecran age (bouton Suivant) doit utiliser la mise en page ancree en bas');
+  const idxCoachTitle = anchoredAgeHtml.indexOf('Coach virtuel activé');
+  const idxAgeQuestion = anchoredAgeHtml.indexOf('Quel âge as-tu');
+  __assertOk(idxCoachTitle !== -1 && idxAgeQuestion !== -1 && idxCoachTitle < idxAgeQuestion, 'l encadre coach virtuel doit apparaitre AVANT la question/emoticone gateau (fonctionne comme un titre de page)');
+
+  profileStep = 2;
+  const sexHtml = renderProfileOnboardingScreen();
+  __assertOk(!sexHtml.includes('pf-step-anchored'), 'l ecran sexe (pas de bouton, avance automatique au clic) ne doit pas utiliser la mise en page ancree');
+
+  profileStep = 3;
+  const metricsHtml = renderProfileOnboardingScreen();
+  __assertOk(metricsHtml.includes('pf-step-anchored'), 'l ecran taille/poids (bouton Suivant) doit utiliser la mise en page ancree en bas');
+
+  profileStep = 4;
+  const levelHtml = renderProfileOnboardingScreen();
+  __assertOk(!levelHtml.includes('pf-step-anchored'), 'l ecran niveau (pas de bouton, avance automatique au clic) ne doit pas utiliser la mise en page ancree');
+  profileStep = 0;
+  console.log('OK: bouton CTA ancre en bas d ecran uniquement sur les etapes avec un vrai bouton (0, 1, 3)');
+
+  // --- 132. Mini-carte de preview (ecran de confirmation) : objectif REELLEMENT
+  // calcule pour Pompes a partir du profil qui vient d etre rempli, pas une valeur
+  // fictive codee en dur ---
+  userProfile = { age: 40, sex: 'homme', heightCm: 185, weightKg: 90, level: 'avance' };
+  onboardingTransitionPhase = 'confirm';
+  const previewHtml = renderOnboardingTransitionScreen();
+  const pompesForPreview = CHALLENGE_LIBRARY.find(c => c.name === 'Pompes');
+  const expectedPreviewTarget = computeStandardTarget(pompesForPreview, userProfile);
+  __assertOk(previewHtml.includes('Objectif calculé : ' + expectedPreviewTarget + ' reps'), 'la mini-carte de preview doit afficher l objectif REELLEMENT calcule pour Pompes selon le profil (pas une valeur fictive)');
+  onboardingTransitionPhase = null;
+  console.log('OK: la mini-carte de preview affiche un objectif reellement calcule (pas une valeur fictive codee en dur)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

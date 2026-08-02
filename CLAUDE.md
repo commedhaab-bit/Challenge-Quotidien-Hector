@@ -325,4 +325,14 @@ par cas plutôt que viser une conformité complète d'un coup.
   simple `@ts-check` sur un fichier HTML) ni vérifié en CI (pas de `typescript`
   dans `package.json` — vérification ponctuelle via `npx tsc --allowJs
   --checkJs --noEmit` au moment d'ajouter des types, pas un gate automatique)
+- **Bouton CTA ancré en bas d'écran (onboarding)** : `.pf-step.pf-step-anchored`
+  (`justify-content: space-between` au lieu du `center` par défaut de `.pf-step`)
+  + `.pf-step-content` (`flex:1`, centre son propre contenu) comme wrapper autour
+  de tout sauf le bouton, qui reste un frère direct en fin de `.pf-step` — pur
+  flexbox, pas de `position:fixed/sticky` (évite les soucis de `safe-area`/
+  clavier virtuel). Uniquement sur les étapes qui ont un vrai bouton (0, 1, 3
+  de `renderProfileOnboardingScreen()`, + l'écran de confirmation dans
+  `renderOnboardingTransitionScreen()`) — PAS sur les étapes à avance automatique
+  au clic (2 : sexe, 4 : niveau, ni l'écran de chargement), qui n'ont pas de
+  bouton et resteraient simplement centrées via le `.pf-step` de base.
 
