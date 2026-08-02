@@ -1707,7 +1707,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v6'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v7'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2567,6 +2567,66 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(cleanConfirmHtml.includes('onboarding-screen') && cleanConfirmHtml.includes('onboarding-content') && cleanConfirmHtml.includes('onboarding-cta'), 'l ecran de confirmation doit utiliser le nouveau design system (onboarding-screen/onboarding-content/onboarding-cta)');
   onboardingTransitionPhase = null;
   console.log('OK: refonte visuelle premium de l onboarding (design system exact applique integralement)');
+
+  // --- 134. Bouton retour minimaliste (filet de secours iOS, le swipe natif n est pas
+  // toujours fiable) : cercle discret sur la vue detaillee d un defi (flottant, absent
+  // avant ce correctif), sur Parametres et sur le formulaire de defi personnalise ---
+  activeToday = new Set([pompes.id]);
+  await pickChallenge(pompes.id);
+  render(false);
+  const challengeDetailBackHtml = document.getElementById('app').innerHTML;
+  __assertOk(challengeDetailBackHtml.includes('nav-back-btn') && challengeDetailBackHtml.includes('floating') && challengeDetailBackHtml.includes("history.back()"), 'la vue detaillee d un defi doit avoir un bouton retour flottant relie a history.back()');
+  currentChallengeId = null;
+  activeTab = 'account';
+  settingsScreenOpen = true;
+  render(false);
+  const settingsBackHtml = document.getElementById('app').innerHTML;
+  __assertOk(settingsBackHtml.includes('nav-back-btn') && settingsBackHtml.includes("history.back()"), 'l ecran Parametres doit garder un bouton retour relie a history.back()');
+  settingsScreenOpen = false;
+  activeTab = 'library';
+  editingChallengeId = 'new';
+  render(false);
+  const formBackHtml = document.getElementById('app').innerHTML;
+  __assertOk(formBackHtml.includes('nav-back-btn') && formBackHtml.includes("history.back()"), 'le formulaire de defi personnalise doit garder un bouton retour relie a history.back()');
+  editingChallengeId = null;
+  activeTab = 'today';
+  __assertOk(!cssText.includes('.history-back'), 'l ancienne classe texte remplacee ne doit plus exister dans le CSS');
+  console.log('OK: bouton retour minimaliste present sur les ecrans secondaires (defi/parametres/formulaire)');
+
+  // --- 135. Journal : l emoji calendrier "tear-off" (📅, "17 JUL" grave en dur dans le
+  // dessin Apple) ne doit plus apparaitre dans la popup de detail du jour, remplace par
+  // 🗓️ (sans date fixe dessinee) ---
+  activeTab = 'history';
+  popupQueue = []; popupOpen = false;
+  await showDayDetailModal(todayKey);
+  __assertOk(!currentPopupHtml.includes('📅'), 'l emoji calendrier avec une date figee (17 JUL) ne doit plus apparaitre');
+  __assertOk(currentPopupHtml.includes('🗓️'), 'un icone calendrier sans date figee doit le remplacer');
+  document.getElementById('appPopupCloseX').onclick();
+  activeTab = 'today';
+  console.log('OK: emoji calendrier fige (17 JUL) remplace dans la popup de detail du jour');
+
+  // --- 136. Heatmap : seulement 3 niveaux de couleur distincts (0 / 1 / 2+ defis),
+  // fini les 4 nuances proches peu lisibles ; legende explicite ---
+  dailyActivity = { [todayKey]: 5 };
+  const heatmap3 = renderHeatmap();
+  __assertOk(!heatmap3.includes('lvl3'), 'il ne doit plus y avoir de 4e niveau (lvl3)');
+  __assertOk(heatmap3.includes('lvl2'), 'le niveau maximal (2+ defis) doit exister');
+  __assertOk(heatmap3.includes('heat-legend-item') && heatmap3.includes('Aucun') && heatmap3.includes('1 défi') && heatmap3.includes('2+ défis'), 'la legende doit refleter clairement les 3 niveaux (Aucun / 1 defi / 2+ defis)');
+  const lvl1CellIdx = cssText.indexOf('.heat-cell.lvl1');
+  const lvl1Block = cssText.slice(lvl1CellIdx, cssText.indexOf('}', lvl1CellIdx));
+  __assertOk(lvl1Block.includes('rgba(57, 233, 122, 0.4)'), 'le niveau 1 defi doit etre un vert accent adouci, distinct du niveau 2+ (accent plein)');
+  dailyActivity = {};
+  console.log('OK: heatmap simplifiee a 3 etats de couleur tres contrastes');
+
+  // --- 137. Partage des stats (onglet Journal) : icone SVG epuree style iOS
+  // (square.and.arrow.up), fini l emoji 📤 avec son fond lourd ---
+  activeTab = 'history';
+  render(false);
+  const journalShareHtml = document.getElementById('app').innerHTML;
+  __assertOk(journalShareHtml.includes('share-icon') && journalShareHtml.includes('<svg'), 'le bouton de partage des stats doit utiliser une icone SVG');
+  __assertOk(!journalShareHtml.includes('📤 Partager'), 'l ancien emoji de partage ne doit plus apparaitre devant le texte du bouton');
+  activeTab = 'today';
+  console.log('OK: icone de partage des stats remplacee par un SVG epure style iOS');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

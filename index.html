@@ -1363,7 +1363,11 @@ async function showDayDetailModal(dayKeyStr) {
         </div>
       `).join('');
   enqueuePopup({
-    icon: '📅',
+    // 🗓️ (et non 📅) : le dessin Apple de l'emoji "tear-off calendar" grave en dur
+    // "17 JUL" (illustration historique d'iCal) et faisait croire a un bug de date
+    // bloquee au 17 juillet des qu'il apparaissait a cote de la date reellement
+    // selectionnee.
+    icon: '🗓️',
     title: label,
     listHtml,
     closable: true,
@@ -2786,6 +2790,7 @@ function render(animate) {
     `;
 
     html += `
+      <button class="nav-back-btn floating" onclick="history.back()" aria-label="Retour">‹</button>
       <div class="active-card${entry.done ? ' hardcore-engaged' : ''}">
         ${heroImgHtml}
         <div class="active-name">${escapeHtml(c.name)}</div>
@@ -3262,7 +3267,7 @@ function renderChallengeForm() {
   const existingCats = [...new Set(CHALLENGES.map(x => x.cat))];
 
   return `
-    <button class="history-back" onclick="history.back()">‹ Retour</button>
+    <button class="nav-back-btn" onclick="history.back()" aria-label="Retour">‹</button>
     <h1 class="title">${isNew ? 'Nouveau défi' : 'Modifier le défi'}</h1>
     <div class="subtitle">${isNew ? 'Ajoute ton propre défi personnalisé' : escapeHtml(c.name)}</div>
 
@@ -3320,11 +3325,12 @@ function renderHeatmap() {
     days.push(d);
   }
 
+  // 3 niveaux seulement (au lieu de 4) : plus lisible/contraste qu'une gradation fine
+  // difficile a distinguer d'un coup d'oeil sur une heatmap mobile.
   function levelFor(count) {
     if (!count) return 0;
     if (count === 1) return 1;
-    if (count <= 2) return 2;
-    return 3;
+    return 2;
   }
 
   let cells = '';
@@ -3358,12 +3364,9 @@ function renderHeatmap() {
     <div class="heatmap-months">${monthsHtml}</div>
     <div class="heatmap-grid">${cells}</div>
     <div class="heat-legend">
-      <span>Moins</span>
-      <div class="heat-cell lvl0"></div>
-      <div class="heat-cell lvl1"></div>
-      <div class="heat-cell lvl2"></div>
-      <div class="heat-cell lvl3"></div>
-      <span>Plus</span>
+      <span class="heat-legend-item"><span class="heat-cell lvl0"></span>Aucun</span>
+      <span class="heat-legend-item"><span class="heat-cell lvl1"></span>1 défi</span>
+      <span class="heat-legend-item"><span class="heat-cell lvl2"></span>2+ défis</span>
     </div>
   `;
 }
@@ -3437,7 +3440,10 @@ function renderHistoryScreen() {
   return `
     <h1 class="title">Journal</h1>
     <div class="subtitle">Ta progression dans le temps</div>
-    <button class="share-stats-btn" onclick="shareStatsImage()">📤 Partager mes stats</button>
+    <button class="share-stats-btn" onclick="shareStatsImage()">
+      <svg class="share-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
+      Partager mes stats
+    </button>
     <div class="section-label">Calendrier du mois</div>
     ${calHtml}
     ${renderHeatmap()}
@@ -3618,7 +3624,7 @@ function renderTroubleshootingSection() {
 
 function renderSettingsScreen() {
   return `
-    <button class="history-back" onclick="history.back()">‹ Retour</button>
+    <button class="nav-back-btn" onclick="history.back()" aria-label="Retour">‹</button>
     <h1 class="title">Paramètres</h1>
     ${renderSettingsSection()}
     ${renderDataManagementSection()}

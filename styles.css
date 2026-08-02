@@ -588,21 +588,41 @@
   }
   .header .streak:active { background: var(--bg-raised); transform: scale(0.95); }
 
-  /* HISTORY SCREEN */
-  .history-back {
-    background: none;
-    border: 1px solid var(--line);
-    color: var(--chalk-dim);
-    font-size: 13px;
-    padding: 7px 14px;
-    border-radius: 20px;
+  /* Bouton retour minimaliste (icone seule, cercle discret fondu dans le fond) : filet
+     de secours visible sur les ecrans secondaires, le geste natif "glisser depuis le
+     bord gauche" n'etant pas toujours fiable sur iOS/Safari. `.floating` (vue detaillee
+     d'un defi, sans en-tete de flux) le sort du flux pour flotter au-dessus du hero ;
+     sans le modificateur, il reste dans le flux (Parametres/formulaire de defi) pour
+     conserver l'espace deja reserve au-dessus du titre. */
+  .nav-back-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--chalk);
+    font-size: 20px;
+    line-height: 1;
     cursor: pointer;
     margin-bottom: 18px;
   }
-  .history-back:active { background: var(--bg-raised); transform: scale(0.95); }
+  .nav-back-btn:active { background: rgba(255, 255, 255, 0.16); transform: scale(0.92); }
+  .nav-back-btn.floating {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 14px);
+    left: 16px;
+    z-index: 10;
+    margin-bottom: 0;
+  }
 
   .share-stats-btn {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     width: 100%;
     background: linear-gradient(135deg, var(--accent-dim), var(--accent));
     color: #0a0d0b;
@@ -615,6 +635,7 @@
     margin-bottom: 24px;
   }
   .share-stats-btn:active { transform: scale(0.98); }
+  .share-icon { flex-shrink: 0; }
 
   .cal-grid {
     display: grid;
@@ -732,21 +753,27 @@
     width: 100%;
     aspect-ratio: 1;
     border-radius: 2px;
-    background: var(--bg-card);
+    background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--line);
   }
-  .heat-cell.lvl1 { background: #1a2e20; border-color: #1a2e20; }
-  .heat-cell.lvl2 { background: var(--accent-dim); border-color: var(--accent-dim); }
-  .heat-cell.lvl3 { background: var(--accent); border-color: var(--accent); }
+  /* 3 etats seulement, tres contrastes (au lieu de 4 nuances proches peu lisibles) :
+     neutre -> vert adouci (1 defi) -> vert neon accent plein (2+ defis). */
+  .heat-cell.lvl1 { background: rgba(57, 233, 122, 0.4); border-color: rgba(57, 233, 122, 0.4); }
+  .heat-cell.lvl2 { background: var(--accent); border-color: var(--accent); }
   .heat-cell.future { visibility: hidden; }
   .heat-legend {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 12px;
     justify-content: flex-end;
     font-size: 10px;
     color: var(--chalk-dim);
     margin-bottom: 26px;
+  }
+  .heat-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
   .heat-legend .heat-cell { width: 10px; height: 10px; }
 

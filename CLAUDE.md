@@ -167,6 +167,15 @@ timer — sont pensés pour un changement d'onglet interactif, pas un démarrage
 puis nettoie l'URL via `history.replaceState()` pour qu'un rechargement manuel
 ultérieur ne re-déclenche pas la même redirection.
 
+**Bouton retour minimaliste** (`.nav-back-btn`, icône `‹` seule, cercle
+`rgba(255,255,255,0.08)`) : filet de secours car le geste natif "glisser depuis
+le bord gauche" n'est pas fiable à 100% sur iOS/Safari. Toujours relié à
+`history.back()` (jamais un appel direct à `goBackOneLevel()`, pour rester
+symétrique avec le bouton retour physique/`popstate`). Présent sur la fiche
+défi (`.floating` — `position:fixed` en haut à gauche, superposé au hero, car
+cet écran n'a pas d'en-tête de flux), Paramètres et le formulaire de défi
+personnalisé (sans `.floating`, dans le flux, au-dessus du titre).
+
 ## Modèle de données clé
 - `CHALLENGE_LIBRARY` — bibliothèque complète des défis disponibles (32 défis,
   15 précochés par défaut à l'onboarding)
@@ -308,6 +317,11 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
   désormais `profileDraft[...]` EN DIRECT à chaque cran (pas seulement à la
   validation de l'étape), et `initPullToRefresh()` se désactive entièrement
   pendant `showProfileOnboarding`.
+- **Ne JAMAIS utiliser l'emoji 📅 à côté d'une date affichée** : son dessin Apple
+  (illustration historique d'iCal) grave en dur le texte "17 JUL" dans l'image —
+  les utilisateurs croient alors que la date est bloquée au 17 juillet dès qu'il
+  apparaît à côté d'une vraie date sélectionnée (`showDayDetailModal()`).
+  Utiliser 🗓️ (spirale, aucune date dessinée) à la place.
 
 ## Accessibilité (base posée, pas un audit exhaustif)
 `role="tablist"`/`role="tab"`/`aria-selected` sur la barre d'onglets,
