@@ -766,6 +766,9 @@ function updateWheelPickerActiveItem(id) {
 // Ne lit QUE le scrollTop (aucune manipulation de l'innerHTML/re-render du picker)
 // pour ne jamais interférer avec le scroll natif en cours.
 const wheelPickerLastValue = {};
+// Associe chaque id de roulette au champ profileDraft correspondant : voir plus bas,
+// pourquoi il faut y écrire en direct pendant le défilement.
+const WHEEL_PICKER_PROFILE_FIELD = { pfAge: 'age', pfHeight: 'heightCm', pfWeight: 'weightKg' };
 function onWheelPickerScroll(id) {
   const value = getWheelPickerValue(id);
   if (wheelPickerLastValue[id] !== value) {
@@ -773,6 +776,15 @@ function onWheelPickerScroll(id) {
     if (navigator.vibrate) navigator.vibrate(10);
   }
   updateWheelPickerActiveItem(id);
+  // Persiste la valeur en direct (pas seulement au clic sur "Suivant", cf. profileNext()) :
+  // initWheelPickers() (appelée en afterRender à CHAQUE re-render de l'écran d'onboarding,
+  // y compris un re-render déclenché par autre chose que ce picker) repositionne les
+  // roulettes depuis profileDraft, avec un repli par défaut (175cm/75kg) tant que ce champ
+  // est encore `null`. Sans cette écriture immédiate, un re-render survenant pendant que
+  // l'utilisateur défile encore (ex: un pull-to-refresh déclenché par erreur, cf. initPullToRefresh)
+  // écraserait silencieusement son choix en cours avec cette valeur par défaut.
+  const field = WHEEL_PICKER_PROFILE_FIELD[id];
+  if (field) profileDraft[field] = value;
 }
 
 function setWheelPickerValue(id, value) {
@@ -1410,6 +1422,7 @@ function drainPopupQueue() {
 // la file générique ne permet pas. Réutilise le même habillage visuel
 // (.app-popup-overlay/.app-popup-card) pour rester cohérent avec le reste de l'appli.
 let currentConfirmModalHtml = ''; // dernier contenu affiché (introspection/tests, même principe que currentPopupHtml)
+let currentConfirmModalEl = null; // dernier élément popup créé (introspection/tests, pour vérifier la portée de querySelector)
 function confirmModal({ icon = '⚠️', title = '', subtitle = '', confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false } = {}) {
   return new Promise((resolve) => {
     const el = document.createElement('div');
@@ -1428,10 +1441,19 @@ function confirmModal({ icon = '⚠️', title = '', subtitle = '', confirmLabel
       </div>
     `;
     currentConfirmModalHtml = el.innerHTML;
+    currentConfirmModalEl = el;
     document.body.appendChild(el);
     const finish = (result) => { el.remove(); resolve(result); };
-    document.getElementById('confirmModalCancelBtn').onclick = () => finish(false);
-    document.getElementById('confirmModalConfirmBtn').onclick = () => finish(true);
+    // Recherche SCOPÉE à ce popup précis (el.querySelector), pas document.getElementById()
+    // (global) : confirmModal() n'a, contrairement à drainPopupQueue(), AUCUN garde-fou
+    // d'instance unique (pas de "popupOpen") — deux appels concurrents (ex: terminer 2
+    // défis différents chacun avec 3 records d'affilée, à quelques secondes d'écart,
+    // chacun programmant son propre setTimeout(1400ms)) créent deux <div id="confirmModal...">
+    // avec les MÊMES id. document.getElementById() aurait alors pu se lier au premier
+    // popup (déjà fermé ou caché derrière), laissant les boutons du second (celui
+    // réellement visible/cliqué par l'utilisateur) totalement inertes.
+    el.querySelector('#confirmModalCancelBtn').onclick = () => finish(false);
+    el.querySelector('#confirmModalConfirmBtn').onclick = () => finish(true);
   });
 }
 
@@ -2987,15 +3009,10 @@ function renderProfileOnboardingScreen() {
     stepHtml = `
       <div class="pf-welcome-badge">⚡</div>
       <h1 class="pf-welcome-title">Bienvenue dans<br><span class="pf-brand">Défi du Jour</span></h1>
-      <div class="pf-welcome-desc">
-        Choisis un défi, fixe-toi un objectif quotidien, et dépasse-toi jour après jour — avec suivi de progression, records personnels et un mode Hardcore pour les jours de grande forme.
-      </div>
-      <div class="pf-algo-callout">
-        <div class="pf-algo-icon">🧠</div>
-        <div class="pf-algo-text">
-          <div class="pf-algo-title">Coach virtuel activé</div>
-          <div class="pf-algo-desc">Réponds à quelques questions rapides : notre algorithme calcule avec précision des objectifs sur-mesure, calibrés exactement pour ton profil.</div>
-        </div>
+      <div class="pf-welcome-bullets">
+        <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">🎯</span> Choisis tes défis</div>
+        <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">⚡</span> Surpasse-toi chaque jour</div>
+        <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">📈</span> Suis tes progrès</div>
       </div>
       <button class="pf-next-btn" onclick="profileNext()">Commencer</button>
     `;
@@ -3003,6 +3020,13 @@ function renderProfileOnboardingScreen() {
     stepHtml = `
       <div class="pf-emoji">🎂</div>
       <h1 class="pf-question">Quel âge as-tu ?</h1>
+      <div class="pf-algo-callout">
+        <div class="pf-algo-icon">🧠</div>
+        <div class="pf-algo-text">
+          <div class="pf-algo-title">Coach virtuel activé</div>
+          <div class="pf-algo-desc">Réponds à quelques questions rapides : notre algorithme calcule des objectifs sur-mesure, calibrés exactement pour ton profil.</div>
+        </div>
+      </div>
       ${renderWheelPicker('pfAge', 12, 100, 1, 'ans')}
       <button class="pf-next-btn" onclick="profileNext()">Suivant</button>
     `;
@@ -3716,7 +3740,13 @@ function initPullToRefresh() {
   document.body.appendChild(indicator);
 
   document.addEventListener('touchstart', (e) => {
-    if (ptrRefreshing) return;
+    // showProfileOnboarding : l'écran d'onboarding ne scrolle pas au niveau de la page
+    // (window.scrollY reste à 0), donc un simple défilement de roulette (âge/taille/poids)
+    // pouvait être mal interprété comme un pull-to-refresh — déclenchant refreshApp() /
+    // render(true) en pleine saisie, ce qui réinitialisait les roulettes à leurs valeurs
+    // par défaut (voir onWheelPickerScroll). refreshApp() ne concerne de toute façon que
+    // les données déjà chargées, pas l'onboarding : aucune raison de l'autoriser ici.
+    if (ptrRefreshing || showProfileOnboarding) return;
     if (window.scrollY <= 0 && !timerRunning) {
       ptrStartY = e.touches[0].clientY;
       ptrCurrentY = e.touches[0].clientY; // reset : un tap sans touchmove ne doit jamais hériter d'une ancienne valeur

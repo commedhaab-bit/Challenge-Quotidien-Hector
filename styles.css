@@ -1237,6 +1237,28 @@
     line-height: 1.6;
     margin-bottom: 26px;
   }
+  /* Résumé visuel de l'écran de bienvenue (3 points clés), à la place de deux longs
+     paragraphes — condensé, percutant, une icône par ligne. */
+  .pf-welcome-bullets {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    margin-bottom: 28px;
+    text-align: left;
+  }
+  .pf-welcome-bullet {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .pf-welcome-bullet-icon { font-size: 22px; flex-shrink: 0; }
   .pf-algo-callout {
     display: flex;
     align-items: flex-start;

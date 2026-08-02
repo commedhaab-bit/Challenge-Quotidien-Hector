@@ -63,7 +63,19 @@ function makeEl(id) {
     _attrs: {},
     setAttribute(k, v){ this._attrs[k] = String(v); },
     getAttribute(k){ return k in this._attrs ? this._attrs[k] : null; },
-    querySelector(){ return null; }, querySelectorAll(){ return []; },
+    _childrenById: new Map(),
+    querySelector(selector) {
+      // Ne gere que les selecteurs #id (seul cas utilise par l'appli, cf. confirmModal) :
+      // recherche SCOPEE aux enfants issus du dernier innerHTML assigne a CET element
+      // precis, contrairement a document.getElementById() (global, voir plus bas) — c'est
+      // exactement cette portee qui permet de distinguer 2 popups simultanes avec les
+      // memes id (voir le test de la collision confirmModal).
+      if (typeof selector === 'string' && selector[0] === '#') {
+        return el._childrenById.get(selector.slice(1)) || null;
+      }
+      return null;
+    },
+    querySelectorAll(){ return []; },
     focus(){ activeElement = el; }, click(){},
     getContext(){ return makeCtx2D(); },
     toBlob(cb){ cb(null); },
@@ -77,7 +89,21 @@ function makeEl(id) {
   };
   Object.defineProperty(el, 'innerHTML', {
     get(){ return el._html; },
-    set(v){ el._html = v; },
+    set(v){
+      el._html = v;
+      el._childrenById = new Map();
+      // Cree un mock enfant par id="..." trouve dans le HTML assigne : conserve aussi le
+      // Portee STRICTEMENT LOCALE a cet element (contrairement a document.getElementById(),
+      // jamais touche ici) : necessaire pour tester confirmModal() de facon realiste sans
+      // perturber les tests existants qui dependent de la stabilite de document.getElementById()
+      // a travers les re-renders de #app (ce mock ne recree pas de vrais noeuds DOM sur un
+      // innerHTML global, seul confirmModal()/enqueuePopup() l'utilisent via querySelector).
+      const idAttrRegex = / id="([^"]+)"/g;
+      let m;
+      while ((m = idAttrRegex.exec(v))) {
+        el._childrenById.set(m[1], makeEl(m[1]));
+      }
+    },
   });
   return el;
 }
@@ -366,7 +392,7 @@ const cssText = __rawHtml + __cssSource;
   // deleteChallenge() passe maintenant par confirmModal() (Promise<boolean>, resolue
   // seulement au clic sur le bouton de confirmation) : on simule ce clic avant d attendre.
   const deleteChallengePromise = deleteChallenge(legacyCustomId);
-  document.getElementById('confirmModalConfirmBtn').onclick();
+  currentConfirmModalEl.querySelector('#confirmModalConfirmBtn').onclick();
   await deleteChallengePromise;
   __assertOk(!customChallenges.some(c => c.id === legacyCustomId), 'customChallenges nettoye');
   __assertOk(!activeToday.has(legacyCustomId), 'activeToday nettoye');
@@ -1871,12 +1897,12 @@ const cssText = __rawHtml + __cssSource;
   const cancelPromise = confirmModal({ icon: '⚠️', title: 'Titre test', subtitle: 'Sous-titre test', confirmLabel: 'Oui', cancelLabel: 'Non' });
   __assertOk(currentConfirmModalHtml.includes('Titre test') && currentConfirmModalHtml.includes('Sous-titre test'), 'la modale doit afficher le titre et le sous-titre fournis');
   __assertOk(currentConfirmModalHtml.includes('>Oui<') && currentConfirmModalHtml.includes('>Non<'), 'la modale doit afficher les libelles de bouton fournis');
-  document.getElementById('confirmModalCancelBtn').onclick();
+  currentConfirmModalEl.querySelector('#confirmModalCancelBtn').onclick();
   __assertEq(await cancelPromise, false, 'cliquer sur Annuler doit resoudre la promesse a false');
 
   const confirmPromise = confirmModal({ title: 'Suppression', danger: true });
   __assertOk(currentConfirmModalHtml.includes('app-popup-btn danger'), 'la variante danger doit teinter le bouton de confirmation');
-  document.getElementById('confirmModalConfirmBtn').onclick();
+  currentConfirmModalEl.querySelector('#confirmModalConfirmBtn').onclick();
   __assertEq(await confirmPromise, true, 'cliquer sur Confirmer doit resoudre la promesse a true');
   console.log('OK: confirmModal (Annuler/Confirmer stylise, Promise<boolean>, variante danger)');
 
@@ -1931,7 +1957,7 @@ const cssText = __rawHtml + __cssSource;
   const fakeFileCancel = { text: async () => JSON.stringify({ xpTotal: 777, voiceCoachEnabled: false }) };
   const importPromiseCancel = importUserData({ target: { files: [fakeFileCancel], value: '' } });
   await new Promise(r => setTimeout(r, 10));
-  document.getElementById('confirmModalCancelBtn').onclick();
+  currentConfirmModalEl.querySelector('#confirmModalCancelBtn').onclick();
   await importPromiseCancel;
   __assertEq(xpTotal, 42, 'annuler l import ne doit modifier aucune donnee');
   __assertEq(voiceCoachEnabled, true, 'annuler l import ne doit modifier aucune donnee (coach vocal)');
@@ -1940,7 +1966,7 @@ const cssText = __rawHtml + __cssSource;
   const fakeFileConfirm = { text: async () => JSON.stringify({ xpTotal: importedXp, voiceCoachEnabled: false }) };
   const importPromiseConfirm = importUserData({ target: { files: [fakeFileConfirm], value: '' } });
   await new Promise(r => setTimeout(r, 10));
-  document.getElementById('confirmModalConfirmBtn').onclick();
+  currentConfirmModalEl.querySelector('#confirmModalConfirmBtn').onclick();
   await importPromiseConfirm;
   __assertEq(xpTotal, importedXp, 'confirmer l import doit ecraser xpTotal avec la valeur importee');
   __assertEq(voiceCoachEnabled, false, 'confirmer l import doit ecraser voiceCoachEnabled avec la valeur importee');
@@ -2355,7 +2381,7 @@ const cssText = __rawHtml + __cssSource;
   __mockSwRegistrations.forEach(r => { r.unregisterCalled = false; });
   location.reloadCalled = false;
   const forceUpdatePromise = forceAppUpdate();
-  document.getElementById('confirmModalConfirmBtn').onclick(); // simule le clic sur "Forcer la mise a jour"
+  currentConfirmModalEl.querySelector('#confirmModalConfirmBtn').onclick(); // simule le clic sur "Forcer la mise a jour"
   await forceUpdatePromise;
   __assertOk(__mockSwRegistrations.every(r => r.unregisterCalled), 'forceAppUpdate() doit desenregistrer TOUS les service workers actifs');
   __assertEq(__mockCacheKeys.length, 0, 'forceAppUpdate() doit vider TOUS les caches (y compris un ancien jamais purge)');
@@ -2366,7 +2392,7 @@ const cssText = __rawHtml + __cssSource;
   __mockSwRegistrations.forEach(r => { r.unregisterCalled = false; });
   location.reloadCalled = false;
   const forceUpdateCancelPromise = forceAppUpdate();
-  document.getElementById('confirmModalCancelBtn').onclick();
+  currentConfirmModalEl.querySelector('#confirmModalCancelBtn').onclick();
   await forceUpdateCancelPromise;
   __assertOk(__mockSwRegistrations.every(r => !r.unregisterCalled), 'annuler forceAppUpdate() ne doit RIEN desenregistrer');
   __assertEq(__mockCacheKeys.length, 1, 'annuler forceAppUpdate() ne doit vider AUCUN cache');
@@ -2378,6 +2404,102 @@ const cssText = __rawHtml + __cssSource;
   // l heuristique interne du navigateur pour une PWA restee ouverte longtemps ---
   __assertOk(__rawHtml.includes("document.addEventListener('visibilitychange'") && __rawHtml.includes('registration.update()'), 'une PWA restee ouverte longtemps doit revérifier une mise a jour au retour au premier plan, pas seulement au chargement');
   console.log('OK: verification de mise a jour SW plus proactive (visibilitychange)');
+
+  // --- 126. Modal "Nouveau record 3 fois de suite" (bug #1) : le flux complet
+  // (3e record consecutif -> confirmModal differe de 1400ms -> clic sur Augmenter
+  // l objectif) doit mettre a jour manualTargetOverrides et fermer la modale ---
+  activeTab = 'today';
+  customChallenges = [];
+  rebuildChallenges();
+  activeToday = new Set([pompesForAnim.id]);
+  manualTargetOverrides = {};
+  state = emptyDayState();
+  await pickChallenge(pompesForAnim.id);
+  const cRecord = getChallenge();
+  stats[pompesForAnim.id] = { lifetimeTotal: 0, bestDay: { total: cRecord.target - 10, date: '2020-01-01' }, recordStreak: 2 };
+  popupQueue = []; popupOpen = false;
+  await addSet(cRecord.target); // 3e record consecutif -> programme le confirmModal (setTimeout 1400ms)
+  __assertEq(stats[pompesForAnim.id].recordStreak, 3, '3e record consecutif atteint');
+  await new Promise(r => setTimeout(r, 1500)); // laisse le setTimeout(1400) declencher confirmModal()
+  __assertOk(currentConfirmModalHtml.includes('Nouveau record 3 fois de suite'), 'la modale de suggestion d objectif doit s afficher apres 3 records consecutifs');
+  __assertOk(currentConfirmModalEl.querySelector('#confirmModalConfirmBtn') && typeof currentConfirmModalEl.querySelector('#confirmModalConfirmBtn').onclick === 'function', 'le bouton Augmenter l objectif doit avoir un gestionnaire de clic actif');
+  currentConfirmModalEl.querySelector('#confirmModalConfirmBtn').onclick();
+  await new Promise(r => setTimeout(r, 10));
+  __assertEq(manualTargetOverrides[pompesForAnim.id], Math.ceil((cRecord.target * 1.15) / 5) * 5, 'cliquer Augmenter l objectif doit mettre a jour manualTargetOverrides avec la cible suggeree');
+  __assertEq(stats[pompesForAnim.id].recordStreak, 0, 'recordStreak doit se reinitialiser apres la decision (acceptee ou non)');
+  console.log('OK: modal "Nouveau record 3 fois de suite" - le bouton Augmenter l objectif fonctionne et ferme la modale');
+
+  // --- 127. Bug #1 (root cause) : confirmModal() n a AUCUN garde-fou d instance
+  // unique (contrairement a drainPopupQueue()/popupOpen) - deux popups simultanes
+  // avec les MEMES id ne doivent JAMAIS se marcher dessus. Reproduit exactement le
+  // scenario reel (terminer 2 defis differents chacun avec 3 records d affilee, a
+  // quelques secondes d ecart : 2 setTimeout(1400) qui se chevauchent) ---
+  const confirmPromise1 = confirmModal({ title: 'Modal 1', confirmLabel: 'OK1', cancelLabel: 'Annuler1' });
+  const el1 = currentConfirmModalEl; // capture AVANT que le 2e appel n ecrase currentConfirmModalEl
+  const confirmPromise2 = confirmModal({ title: 'Modal 2', confirmLabel: 'OK2', cancelLabel: 'Annuler2' });
+  const el2 = currentConfirmModalEl;
+  __assertOk(el1 !== el2, 'les 2 appels concurrents doivent creer 2 elements distincts');
+
+  let result2 = null;
+  el2.querySelector('#confirmModalConfirmBtn').onclick(); // clique sur celui que l utilisateur VOIT (affiche en dernier, donc au-dessus visuellement)
+  confirmPromise2.then(v => { result2 = v; });
+  await new Promise(r => setTimeout(r, 10));
+  __assertEq(result2, true, 'cliquer sur le bouton du 2e popup doit resoudre LE 2e popup (pas rester inerte)');
+
+  let result1 = null;
+  el1.querySelector('#confirmModalConfirmBtn').onclick(); // le 1er popup doit rester independamment fonctionnel
+  confirmPromise1.then(v => { result1 = v; });
+  await new Promise(r => setTimeout(r, 10));
+  __assertEq(result1, true, 'le 1er popup doit rester fonctionnel independamment du 2e (aucun des deux ne doit etre inerte)');
+  console.log('OK: confirmModal() reste fonctionnel meme avec 2 instances simultanees (portee querySelector, pas de collision d id)');
+
+  // --- 128. Bug #3 : le defilement d une roulette d onboarding (age/taille/poids) doit
+  // persister EN DIRECT dans profileDraft (pas seulement au clic sur "Suivant"), pour
+  // survivre a un re-render intempestif (ex: pull-to-refresh mal interprete) sans
+  // reinitialiser la roulette a sa valeur par defaut (175cm/75kg) ---
+  showProfileOnboarding = true;
+  profileStep = 3; // ecran taille/poids
+  profileDraft = { age: 30, sex: 'homme', heightCm: null, weightKg: null, level: null };
+  render();
+  document.getElementById('pfHeight').dataset = { min: '100', max: '250', step: '1', itemHeight: '44' };
+  document.getElementById('pfWeight').dataset = { min: '30', max: '300', step: '1', itemHeight: '44' };
+
+  document.getElementById('pfHeight').scrollTop = (160 - 100) * 44; // l utilisateur defile jusqu a 160cm
+  onWheelPickerScroll('pfHeight');
+  __assertEq(profileDraft.heightCm, 160, 'profileDraft.heightCm doit se mettre a jour EN DIRECT pendant le defilement, pas seulement au clic sur Suivant');
+
+  // Un re-render intempestif survient PENDANT que l utilisateur est encore sur cet ecran
+  // (initWheelPickers() est exactement le callback afterRender rejoue a chaque render()) :
+  // ne doit PAS reinitialiser la roulette a son defaut (175cm) puisque profileDraft.heightCm
+  // reflete deja la derniere valeur choisie.
+  initWheelPickers();
+  __assertEq(getWheelPickerValue('pfHeight'), 160, 'un re-render intempestif ne doit PAS reinitialiser la roulette a sa valeur par defaut (175cm)');
+  __assertEq(profileDraft.heightCm, 160, 'profileDraft.heightCm ne doit pas non plus etre ecrase par le re-render');
+  showProfileOnboarding = false;
+  profileStep = 0;
+  console.log('OK: le defilement des roulettes d onboarding persiste en direct dans profileDraft (survit a un re-render intempestif)');
+
+  // --- 129. Bug #3 (garde-fou complementaire) : le pull-to-refresh ne doit jamais se
+  // declencher pendant l onboarding (verification a la source : le mock ne simule pas de
+  // vrais evenements touch document-level, addEventListener y est un no-op) ---
+  __assertOk(__rawHtml.includes('ptrRefreshing || showProfileOnboarding'), 'le pull-to-refresh doit etre desactive pendant l onboarding (evite un refreshApp() accidentel qui reinitialiserait les roulettes)');
+  console.log('OK: pull-to-refresh desactive pendant l onboarding (garde-fou complementaire)');
+
+  // --- 130. Refonte copywriting onboarding (#2) : l ecran de bienvenue est condense
+  // en 3 points cles (plus les 2 longs paragraphes), et l explication du coach virtuel
+  // est deplacee sur l ecran age (avec l icone cerveau) ---
+  profileStep = 0;
+  const welcomeHtml = renderProfileOnboardingScreen();
+  __assertOk(welcomeHtml.includes('pf-welcome-bullet') && welcomeHtml.includes('🎯') && welcomeHtml.includes('⚡') && welcomeHtml.includes('📈'), 'l ecran de bienvenue doit afficher les 3 points cles avec emojis');
+  __assertOk(!welcomeHtml.includes('Coach virtuel activé'), 'l explication du coach virtuel ne doit plus apparaitre sur l ecran de bienvenue (deplacee sur l ecran age)');
+  __assertOk(!welcomeHtml.includes('dépasse-toi jour après jour'), 'l ancien long paragraphe de bienvenue ne doit plus apparaitre');
+
+  profileStep = 1;
+  const ageHtml = renderProfileOnboardingScreen();
+  __assertOk(ageHtml.includes('Coach virtuel activé') && ageHtml.includes('🧠'), 'l explication du coach virtuel (icone cerveau) doit desormais apparaitre sur l ecran age');
+  __assertOk(ageHtml.includes('id="pfAge"'), 'le rouleau d age doit toujours etre present sur cet ecran');
+  profileStep = 0;
+  console.log('OK: onboarding - ecran de bienvenue condense (3 points cles), coach virtuel explique sur l ecran age');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

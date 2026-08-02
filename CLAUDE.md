@@ -266,6 +266,33 @@ mollets, fentes_bulgares, squats_sumo, pont_fessier (+ `generic` et
   — `renderLibraryScreen()` consomme le flag (le remet à `null`) à chaque rendu,
   donc seul CE rendu-là anime. Ne jamais faire animer `shouldAnimate` par défaut
   à `true` dans la boucle des catégories : ça réintroduirait le clignotement.
+- **`confirmModal()` doit chercher ses boutons via `el.querySelector('#id')`,
+  JAMAIS via `document.getElementById(id)`** : contrairement à
+  `drainPopupQueue()` (protégé par `popupOpen`, une seule instance à la fois),
+  `confirmModal()` n'a AUCUN garde-fou d'instance unique. Deux appels concurrents
+  (ex: terminer 2 défis différents qui atteignent chacun 3 records d'affilée à
+  quelques secondes d'écart, chacun via son propre `setTimeout(1400ms)` dans
+  `addSet()`) créent deux `<div>` avec les MÊMES id `confirmModalConfirmBtn`/
+  `confirmModalCancelBtn`. `document.getElementById()` renvoie alors le PREMIER
+  élément en ordre du DOM (donc le popup le plus ancien, visuellement caché
+  derrière le second) — les boutons du popup réellement affiché (le second,
+  au-dessus) restent inertes (bug déjà vécu et corrigé : "les boutons ne
+  déclenchent rien"). `el.querySelector(...)`, scopé à l'élément qu'on vient de
+  créer, élimine cette ambiguïté par construction.
+- **Roulettes de l'onboarding (âge/taille/poids) réinitialisées en plein
+  défilement** : `profileDraft.age`/`heightCm`/`weightKg` n'étaient mis à jour
+  qu'au clic sur "Suivant" (`profileNext()`), jamais pendant le défilement lui-
+  même. Un re-render de l'écran d'onboarding pendant que l'utilisateur défile
+  encore (`initWheelPickers()`, rejoué en `afterRender` à CHAQUE render())
+  retombait donc sur le repli par défaut (175cm/75kg), écrasant le choix en
+  cours. Cause du re-render intempestif : `initPullToRefresh()` n'avait aucune
+  garde contre `showProfileOnboarding` — un simple défilement de roulette
+  pouvait être mal interprété comme un geste de pull-to-refresh (l'écran
+  d'onboarding ne scrolle pas au niveau de la page, `window.scrollY` reste à 0
+  pendant tout le défilement). Double correctif : `onWheelPickerScroll()` écrit
+  désormais `profileDraft[...]` EN DIRECT à chaque cran (pas seulement à la
+  validation de l'étape), et `initPullToRefresh()` se désactive entièrement
+  pendant `showProfileOnboarding`.
 
 ## Accessibilité (base posée, pas un audit exhaustif)
 `role="tablist"`/`role="tab"`/`aria-selected` sur la barre d'onglets,
