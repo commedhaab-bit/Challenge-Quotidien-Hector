@@ -572,7 +572,7 @@ const cssText = __rawHtml + __cssSource;
   await new Promise(r => setTimeout(r, 200)); // laisse le temps a l'animation differee (140ms, cf applyContent) de peindre le DOM
   const confirmHtml = document.getElementById('app').innerHTML;
   __assertOk(confirmHtml.includes('Objectifs calculés'), 'le message de confirmation attendu doit s afficher');
-  __assertOk(confirmHtml.includes('pf-preview-card') && confirmHtml.includes('pf-preview-card-badge') && confirmHtml.includes('REPS'), 'une mini-carte de preview d objectif calcule doit remplacer le long paragraphe');
+  __assertOk(confirmHtml.includes('preview-card') && confirmHtml.includes('preview-badge') && confirmHtml.includes('REPS'), 'une mini-carte de preview d objectif calcule doit remplacer le long paragraphe');
   __assertOk(confirmHtml.includes('finishOnboardingTransition()'), 'un bouton doit permettre de lancer la suite');
   console.log('OK: écran de transition onboarding (loading -> confirm)');
 
@@ -1706,7 +1706,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v4'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v5'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2491,47 +2491,47 @@ const cssText = __rawHtml + __cssSource;
   // est deplacee sur l ecran age (avec l icone cerveau) ---
   profileStep = 0;
   const welcomeHtml = renderProfileOnboardingScreen();
-  __assertOk(welcomeHtml.includes('pf-welcome-bullet') && welcomeHtml.includes('🎯') && welcomeHtml.includes('⚡') && welcomeHtml.includes('📈'), 'l ecran de bienvenue doit afficher les 3 points cles avec emojis');
-  __assertOk(!welcomeHtml.includes('pf-coach-chip'), 'le chip coach virtuel ne doit pas apparaitre sur l ecran de bienvenue (deplace sur l ecran age)');
+  __assertOk(welcomeHtml.includes('feature-item') && welcomeHtml.includes('🎯') && welcomeHtml.includes('⚡') && welcomeHtml.includes('📈'), 'l ecran de bienvenue doit afficher les 3 points cles avec emojis');
+  __assertOk(!welcomeHtml.includes('coach-badge'), 'le badge coach virtuel ne doit pas apparaitre sur l ecran de bienvenue (deplace sur l ecran age)');
   __assertOk(!welcomeHtml.includes('dépasse-toi jour après jour'), 'l ancien long paragraphe de bienvenue ne doit plus apparaitre');
 
   profileStep = 1;
   const ageHtml = renderProfileOnboardingScreen();
-  __assertOk(ageHtml.includes('pf-coach-chip') && ageHtml.includes('Coach Virtuel IA') && ageHtml.includes('🧠'), 'le chip coach virtuel (icone cerveau) doit desormais apparaitre sur l ecran age');
+  __assertOk(ageHtml.includes('coach-badge') && ageHtml.includes('Coach Virtuel IA') && ageHtml.includes('🧠'), 'le badge coach virtuel (icone cerveau) doit desormais apparaitre sur l ecran age');
   __assertOk(ageHtml.includes('id="pfAge"'), 'le rouleau d age doit toujours etre present sur cet ecran');
   profileStep = 0;
   console.log('OK: onboarding - ecran de bienvenue condense (3 points cles), coach virtuel explique sur l ecran age');
 
-  // --- 131. Finitions UI onboarding : bouton CTA ancre en bas d ecran (etapes avec
-  // bouton uniquement), encadre coach virtuel repositionne EN TITRE avant la question
-  // age, mini-carte de preview d objectif sur l ecran de confirmation ---
+  // --- 131. Finitions UI onboarding : bouton CTA present uniquement sur les etapes qui
+  // en ont besoin (0, 1, 3, ecran de confirmation), badge coach virtuel repositionne
+  // AVANT la question age, mini-carte de preview d objectif sur l ecran de confirmation ---
   profileStep = 0;
   const anchoredWelcomeHtml = renderProfileOnboardingScreen();
-  __assertOk(anchoredWelcomeHtml.includes('pf-step-anchored') && anchoredWelcomeHtml.includes('pf-step-content'), 'l ecran de bienvenue (bouton Commencer) doit utiliser la mise en page ancree en bas');
-  const idxContentDiv = anchoredWelcomeHtml.indexOf('pf-step-content');
-  const idxCommencerBtn = anchoredWelcomeHtml.indexOf('pf-next-btn');
+  __assertOk(anchoredWelcomeHtml.includes('onboarding-content') && anchoredWelcomeHtml.includes('onboarding-cta'), 'l ecran de bienvenue doit utiliser le conteneur de contenu + un bouton CTA');
+  const idxContentDiv = anchoredWelcomeHtml.indexOf('onboarding-content');
+  const idxCommencerBtn = anchoredWelcomeHtml.indexOf('onboarding-cta');
   __assertOk(idxContentDiv !== -1 && idxCommencerBtn > idxContentDiv, 'le bouton Commencer doit venir apres le conteneur de contenu centre (ancre en bas, pas emporte dans le centrage)');
 
   profileStep = 1;
   const anchoredAgeHtml = renderProfileOnboardingScreen();
-  __assertOk(anchoredAgeHtml.includes('pf-step-anchored'), 'l ecran age (bouton Suivant) doit utiliser la mise en page ancree en bas');
-  const idxCoachTitle = anchoredAgeHtml.indexOf('pf-coach-chip');
+  __assertOk(anchoredAgeHtml.includes('onboarding-cta'), 'l ecran age (bouton Suivant) doit avoir un bouton CTA');
+  const idxCoachTitle = anchoredAgeHtml.indexOf('coach-badge');
   const idxAgeQuestion = anchoredAgeHtml.indexOf('Quel âge as-tu');
-  __assertOk(idxCoachTitle !== -1 && idxAgeQuestion !== -1 && idxCoachTitle < idxAgeQuestion, 'l encadre coach virtuel doit apparaitre AVANT la question/emoticone gateau (fonctionne comme un titre de page)');
+  __assertOk(idxCoachTitle !== -1 && idxAgeQuestion !== -1 && idxCoachTitle < idxAgeQuestion, 'le badge coach virtuel doit apparaitre AVANT la question/emoticone gateau (fonctionne comme un titre de page)');
 
   profileStep = 2;
   const sexHtml = renderProfileOnboardingScreen();
-  __assertOk(!sexHtml.includes('pf-step-anchored'), 'l ecran sexe (pas de bouton, avance automatique au clic) ne doit pas utiliser la mise en page ancree');
+  __assertOk(!sexHtml.includes('onboarding-cta'), 'l ecran sexe (pas de bouton, avance automatique au clic) ne doit pas avoir de bouton CTA');
 
   profileStep = 3;
   const metricsHtml = renderProfileOnboardingScreen();
-  __assertOk(metricsHtml.includes('pf-step-anchored'), 'l ecran taille/poids (bouton Suivant) doit utiliser la mise en page ancree en bas');
+  __assertOk(metricsHtml.includes('onboarding-cta'), 'l ecran taille/poids (bouton Suivant) doit avoir un bouton CTA');
 
   profileStep = 4;
   const levelHtml = renderProfileOnboardingScreen();
-  __assertOk(!levelHtml.includes('pf-step-anchored'), 'l ecran niveau (pas de bouton, avance automatique au clic) ne doit pas utiliser la mise en page ancree');
+  __assertOk(!levelHtml.includes('onboarding-cta'), 'l ecran niveau (pas de bouton, avance automatique au clic) ne doit pas avoir de bouton CTA');
   profileStep = 0;
-  console.log('OK: bouton CTA ancre en bas d ecran uniquement sur les etapes avec un vrai bouton (0, 1, 3)');
+  console.log('OK: bouton CTA present uniquement sur les etapes avec un vrai bouton (0, 1, 3, confirmation)');
 
   // --- 132. Mini-carte de preview (ecran de confirmation) : objectif REELLEMENT
   // calcule pour Pompes a partir du profil qui vient d etre rempli, pas une valeur
@@ -2545,23 +2545,25 @@ const cssText = __rawHtml + __cssSource;
   onboardingTransitionPhase = null;
   console.log('OK: la mini-carte de preview affiche un objectif reellement calcule (pas une valeur fictive codee en dur)');
 
-  // --- 133. Refonte visuelle premium de l onboarding (design system precis) :
-  // cercle d icone teinte accent sur les cartes de bienvenue, chip coach virtuel
-  // discret, fondu du wheel picker adouci (25%/75%), texte de confirmation propre
-  // (plus de ponctuation orpheline « »), carte de preview nom+badge ---
-  __assertOk(cssText.includes('background: rgba(57, 233, 122, 0.1)') && cssText.includes('border-radius: 50%'), 'les icones des cartes de bienvenue doivent etre dans un cercle teinte accent');
-  __assertOk(cssText.includes('.pf-coach-chip'), 'le chip coach virtuel doit exister (remplace le gros bloc vert)');
+  // --- 133. Refonte visuelle premium de l onboarding (design system precis, remplace
+  // integralement le HTML/CSS des 3 ecrans) : icone teinte accent sur les cartes de
+  // bienvenue, badge coach virtuel discret, fondu du wheel picker adouci (25%/75%),
+  // texte de confirmation propre (plus de ponctuation orpheline « »), carte de
+  // preview nom+badge ---
+  __assertOk(cssText.includes('background: rgba(57, 233, 122, 0.1)') && cssText.includes('.feature-icon'), 'les icones des cartes de bienvenue doivent etre teintees accent');
+  __assertOk(cssText.includes('.coach-badge'), 'le badge coach virtuel doit exister (remplace le gros bloc vert)');
   __assertOk(cssText.includes('black 25%, black 75%'), 'le fondu du wheel picker doit etre adouci a 25%/75% (moins agressif que 30%/70%)');
-  __assertOk(!cssText.includes('.pf-algo-callout'), 'les anciennes classes du gros bloc coach virtuel ne doivent plus exister (remplacees par le chip)');
+  __assertOk(!cssText.includes('.pf-algo-callout') && !cssText.includes('.pf-coach-chip') && !cssText.includes('.pf-welcome-bullet') && !cssText.includes('.pf-step-anchored') && !cssText.includes('.pf-preview-card'), 'les anciennes classes remplacees ne doivent plus exister dans le CSS (onboarding-screen/onboarding-content/onboarding-cta/features-list/feature-item/coach-badge/preview-card)');
 
   profileStep = 0;
   onboardingTransitionPhase = 'confirm';
   const cleanConfirmHtml = renderOnboardingTransitionScreen();
   __assertOk(!cleanConfirmHtml.includes("l'onglet « Défis"), 'l ancien texte avec ponctuation orpheline (emoji colle a la fermeture de guillemet) ne doit plus apparaitre');
   __assertOk(cleanConfirmHtml.includes('Tes défis personnalisés sont prêts'), 'le sous-titre de confirmation doit etre court et propre');
-  __assertOk(cleanConfirmHtml.includes('pf-preview-card-name') && cleanConfirmHtml.includes('pf-preview-card-badge'), 'la carte de preview doit avoir un nom d exercice et un badge neon separes (pas un bloc de texte brut)');
+  __assertOk(cleanConfirmHtml.includes('preview-title') && cleanConfirmHtml.includes('preview-badge'), 'la carte de preview doit avoir un nom d exercice et un badge neon separes (pas un bloc de texte brut)');
+  __assertOk(cleanConfirmHtml.includes('onboarding-screen') && cleanConfirmHtml.includes('onboarding-content') && cleanConfirmHtml.includes('onboarding-cta'), 'l ecran de confirmation doit utiliser le nouveau design system (onboarding-screen/onboarding-content/onboarding-cta)');
   onboardingTransitionPhase = null;
-  console.log('OK: refonte visuelle premium de l onboarding (cercles d icone, chip coach, fondu adouci, texte propre, carte preview badge)');
+  console.log('OK: refonte visuelle premium de l onboarding (design system exact applique integralement)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

@@ -135,6 +135,21 @@ revue de code :
   ci-dessus au prochain incident — à vérifier côté console si le problème
   revient.
 
+**RÉCIDIVE déjà vécue une fois (`v4`), ne PAS refaire l'erreur** : `styles.css`,
+`exercise-data.js` et `exercise-pictograms.js` sont des fichiers "cache-first
+avec remplissage" côté service worker (voir plus bas) — **jamais revalidés
+contre le réseau une fois en cache**. Modifier l'un de ces 3 fichiers SANS
+bumper `CACHE_NAME` dans `service-worker.js` laisse tout appareil ayant déjà
+mis ces fichiers en cache continuer d'utiliser l'ANCIENNE version pour
+toujours, même après un rechargement classique — un nouveau HTML généré pour
+de nouvelles classes CSS, combiné à un vieux `styles.css` qui ne les définit
+pas encore, ressemble exactement à "aucun style appliqué, texte brut qui
+flotte". **Réflexe systématique : toute modification de `styles.css`,
+`exercise-data.js` ou `exercise-pictograms.js` DOIT s'accompagner d'un bump de
+`CACHE_NAME`** (`v4` → `v5` etc.) dans le même commit — sinon le bug est
+invisible en local (le harnais de test ne passe jamais par le service worker)
+et n'apparaît qu'en production, sur les appareils déjà visités.
+
 ## Architecture de navigation
 Barre d'onglets fixe en bas (4 onglets, variable `activeTab`) :
 `today` (accueil + fiche défi) / `history` / `library` (gestion défis) / `account`.
@@ -325,26 +340,26 @@ par cas plutôt que viser une conformité complète d'un coup.
   simple `@ts-check` sur un fichier HTML) ni vérifié en CI (pas de `typescript`
   dans `package.json` — vérification ponctuelle via `npx tsc --allowJs
   --checkJs --noEmit` au moment d'ajouter des types, pas un gate automatique)
-- **Bouton CTA ancré en bas d'écran (onboarding)** : `.pf-step.pf-step-anchored`
-  (`justify-content: space-between` au lieu du `center` par défaut de `.pf-step`)
-  + `.pf-step-content` (`flex:1`, centre son propre contenu) comme wrapper autour
-  de tout sauf le bouton, qui reste un frère direct en fin de `.pf-step` — pur
-  flexbox, pas de `position:fixed/sticky` (évite les soucis de `safe-area`/
-  clavier virtuel). Uniquement sur les étapes qui ont un vrai bouton (0, 1, 3
-  de `renderProfileOnboardingScreen()`, + l'écran de confirmation dans
-  `renderOnboardingTransitionScreen()`) — PAS sur les étapes à avance automatique
-  au clic (2 : sexe, 4 : niveau, ni l'écran de chargement), qui n'ont pas de
-  bouton et resteraient simplement centrées via le `.pf-step` de base.
-- **Design system onboarding (cartes/chip/preview)** : cartes "glass" sur fond
-  sombre (`rgba(255,255,255,0.05)` + bordure `rgba(255,255,255,0.08-0.1)`,
-  jamais `var(--bg-card)`/`var(--line)` pleins pour ces éléments spécifiques),
-  icône dans un cercle 40px teinté `rgba(57,233,122,0.1)` (= `--accent` en rgb,
-  cohérent avec `.pf-coach-chip`/`.wheel-picker-highlight` ailleurs dans le
-  fichier). Le "Coach Virtuel IA" est un chip discret (`.pf-coach-chip`), plus
-  un gros bloc/callout — ne pas réintroduire un bloc lourd type notice, ça
-  compresse le reste de l'écran. La carte de preview (écran de confirmation)
-  affiche un vrai objectif calculé (`computeStandardTarget()` sur "Pompes" +
-  `userProfile`), jamais une valeur fictive codée en dur, dans un badge néon
-  plein `var(--accent)` (nom à gauche, badge à droite, `justify-content:
-  space-between`) — pas un bloc de texte empilé.
+- **Design system onboarding** (`renderProfileOnboardingScreen()` /
+  `renderOnboardingTransitionScreen()`) : conteneur racine = TOUJOURS les deux
+  classes ensemble, `class="profile-onboarding onboarding-screen"`
+  (`.profile-onboarding` = modale plein écran `position:fixed`,
+  `.onboarding-screen` = tout le layout flex/padding/fond). À l'intérieur,
+  `.pf-header` (retour + points de progression) puis **un seul**
+  `.onboarding-content` (`flex:1`, centre lui-même son contenu quel que soit le
+  nombre de frères — plus besoin de variante "ancrée"/"centrée" séparée comme
+  avant) puis, seulement sur les étapes qui en ont besoin (0, 1, 3 de
+  `renderProfileOnboardingScreen()` + l'écran de confirmation), un
+  `<button class="onboarding-cta">` en frère direct après `.onboarding-content`
+  — jamais à l'intérieur. Pur flexbox, pas de `position:fixed/sticky`.
+  Cartes/badges "glass" sur fond sombre (`rgba(255,255,255,0.04-0.05)` +
+  bordure `rgba(255,255,255,0.08-0.1)`, jamais `var(--bg-card)`/`var(--line)`
+  pleins pour ces éléments précis) : `.features-list`/`.feature-item` (écran
+  bienvenue, icône dans `.feature-icon` teintée `rgba(57,233,122,0.1)` = accent
+  en rgb, carré arrondi 12px PAS un cercle), `.coach-badge` (pilule discrète
+  "Coach Virtuel IA" sur l'écran âge — jamais réintroduire un gros bloc/callout
+  façon notice, ça compresse le reste de l'écran), `.preview-card`/
+  `.preview-title`/`.preview-badge` (écran de confirmation, objectif RÉEL via
+  `computeStandardTarget()` sur "Pompes" + `userProfile`, jamais une valeur
+  fictive codée en dur, badge plein `var(--accent)` à droite).
 

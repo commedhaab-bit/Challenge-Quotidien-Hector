@@ -1000,23 +1000,25 @@
     font-size: 14px;
   }
 
-  /* PROFILE ONBOARDING (coach virtuel) — conteneur plein écran : colonne flex,
-     header (retour/points de progression) en haut, .pf-step flex:1 juste en dessous
-     (qui gère lui-même son propre centrage/ancrage, voir plus bas). justify-content:
-     space-between ici est sans effet visible tant que .pf-step reste flex:1 (il
-     consomme déjà tout l'espace restant), mais documente l'intention du layout. */
+  /* PROFILE ONBOARDING (coach virtuel) — .profile-onboarding porte le comportement
+     de modale plein écran (position fixe, au-dessus de tout) ; .onboarding-screen
+     porte tout le layout (colonne flex, header en haut, .onboarding-content flex:1
+     centré au milieu, bouton CTA ancré en bas) — les deux classes sont TOUJOURS
+     posées ensemble sur le même conteneur racine. */
   .profile-onboarding {
     position: fixed;
     inset: 0;
-    height: 100dvh;
-    background: var(--bg);
     z-index: 2000;
+  }
+  .onboarding-screen {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 24px 20px;
-    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    min-height: 100dvh;
+    padding: 24px 20px 36px 20px;
+    padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
+    background-color: var(--bg);
   }
   .pf-header {
     display: flex;
@@ -1051,34 +1053,21 @@
   .pf-dot.active { background: var(--accent); }
   .pf-dot.done { background: var(--accent-dim); }
 
-  .pf-step {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    max-width: 420px;
-    margin: 0 auto;
-    width: 100%;
-  }
-  /* Étapes avec un vrai bouton CTA ("Commencer"/"Suivant"/"C'est parti !") : le bouton
-     reste ancré tout en bas de l'écran (meilleure ergonomie au pouce) pendant que le
-     contenu au-dessus (.pf-step-content) garde son propre centrage vertical dans
-     l'espace restant — plutôt qu'un centrage global qui ferait flotter le bouton au
-     milieu de l'écran avec le reste du contenu. */
-  .pf-step.pf-step-anchored {
-    justify-content: space-between;
-    gap: 20px;
-  }
-  .pf-step-content {
+  /* Zone de contenu centrale : icône/titre/carte(s) d'un écran, toujours entre le
+     header et le bouton CTA (absent sur les écrans sexe/niveau, qui avancent tout
+     seuls au clic d'une carte). flex:1 fait qu'elle absorbe tout l'espace restant,
+     laissant le CTA naturellement "ancré" en bas sans position:fixed/sticky. */
+  .onboarding-content {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     align-items: center;
+    justify-content: center;
     width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+    text-align: center;
   }
   .pf-emoji { font-size: 46px; margin-bottom: 14px; }
   .pf-question {
@@ -1175,15 +1164,17 @@
     margin-bottom: 8px;
   }
 
-  .pf-next-btn {
+  .onboarding-cta {
     width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
     height: 52px;
     background: var(--accent);
     color: #0a0d0b;
     border: none;
-    font-weight: 700;
-    font-size: 1rem;
     border-radius: 14px;
+    font-size: 1rem;
+    font-weight: 700;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -1191,7 +1182,7 @@
     box-sizing: border-box;
     flex-shrink: 0;
   }
-  .pf-next-btn:active { transform: scale(0.97); }
+  .onboarding-cta:active { transform: scale(0.97); }
 
   .pf-choice-grid {
     display: flex;
@@ -1243,7 +1234,6 @@
   .pf-level-desc { font-size: 12.5px; color: var(--chalk-dim); }
 
   /* ÉCRAN DE BIENVENUE (intro coach virtuel) */
-  .pf-step-welcome { justify-content: center; }
   .pf-welcome-badge {
     width: 76px;
     height: 76px;
@@ -1277,77 +1267,89 @@
   /* Résumé visuel de l'écran de bienvenue (3 points clés), à la place de deux longs
      paragraphes — 3 cartes horizontales élégantes alignées à gauche dans un conteneur
      centré (léger fond clair type "glass" sur le thème sombre, coins arrondis). */
-  .pf-welcome-bullets {
+  .features-list {
+    width: 100%;
     display: flex;
     flex-direction: column;
-    width: 100%;
-    text-align: left;
+    gap: 12px;
+    margin-top: 24px;
   }
-  .pf-welcome-bullet {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 16px;
-    padding: 14px 18px;
-    margin-bottom: 10px;
-    width: 100%;
+  .feature-item {
     display: flex;
     align-items: center;
     gap: 14px;
-    font-size: 15px;
-    font-weight: 700;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 14px 16px;
+    text-align: left;
   }
-  /* Icône dans un cercle teinté accent, à gauche de chaque carte (au lieu d'un simple
-     emoji flottant) — même teinte que le chip "Coach Virtuel IA" ci-dessous. */
-  .pf-welcome-bullet-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
+  /* Icône dans un carré arrondi teinté accent, à gauche de chaque carte (au lieu d'un
+     simple emoji flottant) — même teinte que .coach-badge ci-dessous. */
+  .feature-icon {
+    font-size: 1.4rem;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
     background: rgba(57, 233, 122, 0.1);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    font-size: 20px;
   }
+  .feature-text {
+    color: var(--chalk);
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
   /* Pilule discrète "Coach Virtuel IA" (écran Âge), à la place du gros bloc vert qui
      compressait le reste de l'écran — un simple repère contextuel, pas une notice. */
-  .pf-coach-chip {
+  .coach-badge {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    background: rgba(57, 233, 122, 0.1);
+    background: rgba(57, 233, 122, 0.12);
+    border: 1px solid rgba(57, 233, 122, 0.25);
     color: var(--accent);
-    border: 1px solid rgba(57, 233, 122, 0.2);
-    border-radius: 20px;
     padding: 6px 14px;
+    border-radius: 20px;
     font-size: 0.85rem;
     font-weight: 600;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
   }
 
   /* Vraie carte de preview (écran de confirmation "Objectifs calculés !") : nom de
      l'exercice à gauche, badge néon avec l'objectif calculé à droite — à la place d'un
      texte brut. */
-  .pf-preview-card {
-    background: rgba(255, 255, 255, 0.05);
+  .preview-card {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 20px;
-    padding: 20px;
-    width: 100%;
-    max-width: 320px;
+    padding: 16px 20px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-top: 20px;
+    margin-top: 24px;
+    box-sizing: border-box;
   }
-  .pf-preview-card-name { font-size: 16px; font-weight: 700; }
-  .pf-preview-card-badge {
+  .preview-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--chalk);
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+  .preview-badge {
     background: var(--accent);
     color: #0a0d0b;
     font-weight: 800;
+    font-size: 0.85rem;
     padding: 6px 12px;
-    border-radius: 12px;
-    font-size: 0.9rem;
+    border-radius: 10px;
+    letter-spacing: 0.5px;
     flex-shrink: 0;
   }
 
