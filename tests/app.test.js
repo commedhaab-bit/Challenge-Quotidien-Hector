@@ -86,6 +86,24 @@ const store = new Map(); // simule Firestore (ancien modele cle/valeur) : key ->
 const elementsById = new Map(); // simule le DOM : meme element retourne par id (ex: 'app')
 const sandboxSpokenLog = []; // simule window.speechSynthesis : phrases prononcees, dans l'ordre
 const mockLocation = { search: '', pathname: '/index.html' }; // simule window.location (raccourcis PWA, ?tab=...)
+mockLocation.reload = function () { mockLocation.reloadCalled = true; };
+mockLocation.reloadCalled = false;
+
+// Simule le Cache Storage + les ServiceWorkerRegistration existantes, pour verifier
+// forceAppUpdate() (#1 : desenregistre le SW + vide tous les caches + recharge).
+const mockCacheKeys = ['defi-du-jour-v4'];
+const mockCachesApi = {
+  keys: async () => [...mockCacheKeys],
+  delete: async (name) => {
+    const idx = mockCacheKeys.indexOf(name);
+    if (idx !== -1) mockCacheKeys.splice(idx, 1);
+    return idx !== -1;
+  },
+};
+const mockSwRegistrations = [
+  { unregisterCalled: false, unregister: async function () { this.unregisterCalled = true; return true; } },
+  { unregisterCalled: false, unregister: async function () { this.unregisterCalled = true; return true; } },
+];
 
 // Simule le document Firestore consolide users/{uid}/kv/appData (voir appDataDocRef()/
 // saveAppField()/loadAppData() dans index.html). appDataDocRef() appelle db.collection(...)
@@ -130,6 +148,7 @@ const sandbox = {
   window: {
     addEventListener(){}, removeEventListener(){},
     innerWidth: 400, innerHeight: 800, scrollY: 0,
+    caches: mockCachesApi, // pour le test `'caches' in window` de forceAppUpdate()
     AudioContext: function(){ return { createOscillator(){ return { connect(){}, start(){}, stop(){}, frequency:{} }; }, createGain(){ return { connect(){}, gain:{ setValueAtTime(){}, linearRampToValueAtTime(){}, exponentialRampToValueAtTime(){} } }; }, currentTime: 0, state: 'running', resume(){} }; },
     speechSynthesis: {
       cancel(){ /* no-op : le log ne garde que les phrases reellement prononcees */ },
@@ -144,7 +163,12 @@ const sandbox = {
   },
   requestAnimationFrame(){ return 0; },
   cancelAnimationFrame(){},
-  navigator: { vibrate(){ return true; }, onLine: true },
+  navigator: {
+    vibrate(){ return true; },
+    onLine: true,
+    serviceWorker: { getRegistrations: async () => mockSwRegistrations },
+  },
+  caches: mockCachesApi,
   history: {
     pushState(){}, back(){},
     // Simule le lien reel entre history.replaceState(url) et location.search/pathname
@@ -184,6 +208,8 @@ const sandbox = {
   prompt(msg, def){ return def; },
   __store: store,
   __appDataStore: appDataStore, // { exists, data } du document consolide simule (voir plus haut)
+  __mockCacheKeys: mockCacheKeys, // Cache Storage simule (forceAppUpdate)
+  __mockSwRegistrations: mockSwRegistrations, // ServiceWorkerRegistration simulees (forceAppUpdate)
   __rawHtml: html, // fichier source complet de index.html (le <style> a ete extrait dans styles.css, voir __cssSource)
   __cssSource: cssSource, // contenu de styles.css, a part depuis la fusion CSS (#4) : jamais dans __rawHtml
   __swSource: swSource, // contenu de service-worker.js (fichier a part, jamais execute par le vm)
@@ -1653,7 +1679,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v3'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v4'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -1864,7 +1890,7 @@ const cssText = __rawHtml + __cssSource;
   // 5 depuis l ajout de l import de donnees (batch Parametres) : compte x2, defi,
   // suggestion d objectif, + confirmation avant import destructif.
   const confirmModalCallCount = (__rawHtml.match(/await confirmModal\\(\\{/g) || []).length;
-  __assertEq(confirmModalCallCount, 5, 'les 5 sites (compte x2, defi, suggestion objectif, import de donnees) doivent utiliser confirmModal');
+  __assertEq(confirmModalCallCount, 6, 'les 6 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour) doivent utiliser confirmModal');
   console.log('OK: les 4 anciens confirm() natifs (compte x2, defi, suggestion objectif) passent par confirmModal');
 
   // --- 99. Ecran Parametres dedie : navigation (ouverture/fermeture) + regroupe le
@@ -2289,6 +2315,69 @@ const cssText = __rawHtml + __cssSource;
   const searchInputCssBlock = cssText.slice(searchInputCssIdx, cssText.indexOf('}', searchInputCssIdx));
   __assertOk(searchInputCssBlock.includes('margin-bottom: ' + accordionMarginBottom), 'le champ de recherche doit avoir le meme margin-bottom que .accordion (' + accordionMarginBottom + '), pour un espacement uniforme avec le premier accordeon');
   console.log('OK: espacement uniforme entre la recherche et le premier accordeon (meme margin-bottom que .accordion)');
+
+  // --- 122. reportSaveError (persistance Firestore, #2) : signale une erreur
+  // d ecriture via un toast visible, mais SEULEMENT si on est en ligne - hors ligne,
+  // Firestore rejoue deja automatiquement (persistance locale), pas la peine
+  // d alarmer l utilisateur pour ca ---
+  navigator.onLine = true;
+  document.getElementById('toast').innerHTML = '';
+  reportSaveError('save test failed', new Error('boom'));
+  __assertOk(document.getElementById('toast').innerHTML.includes('Échec de sauvegarde'), 'en ligne, un echec d ecriture doit afficher un toast d erreur visible (jusqu ici invisible, simple console.error)');
+
+  navigator.onLine = false;
+  document.getElementById('toast').innerHTML = '';
+  reportSaveError('save test failed', new Error('boom'));
+  __assertEq(document.getElementById('toast').innerHTML, '', 'hors ligne, reportSaveError ne doit PAS afficher de toast (deja gere par le bandeau hors ligne + la file Firestore)');
+  navigator.onLine = true;
+  console.log('OK: reportSaveError affiche un toast uniquement en ligne (echec reellement anormal, plus jamais silencieux)');
+
+  // --- 123. Diagnostic de persistance Firestore (#2) dans Parametres > Depannage :
+  // reflete fidelement firestorePersistenceEnabled (true/false/pas encore determine) ---
+  firestorePersistenceEnabled = true;
+  const settingsPersistOkHtml = renderSettingsScreen();
+  __assertOk(settingsPersistOkHtml.includes('Active') && !settingsPersistOkHtml.includes('Indisponible'), 'persistance active : diagnostic positif affiche dans Parametres');
+
+  firestorePersistenceEnabled = false;
+  const settingsPersistKoHtml = renderSettingsScreen();
+  __assertOk(settingsPersistKoHtml.includes('Indisponible sur cet appareil'), 'persistance indisponible : avertissement explicite affiche dans Parametres > Depannage');
+
+  firestorePersistenceEnabled = null;
+  const settingsPersistPendingHtml = renderSettingsScreen();
+  __assertOk(settingsPersistPendingHtml.includes('vérification en cours'), 'etat pas encore determine (juste apres demarrage) : message neutre, pas d avertissement premature');
+  firestorePersistenceEnabled = true;
+  console.log('OK: diagnostic de persistance Firestore affiche fidelement dans Parametres > Depannage');
+
+  // --- 124. forceAppUpdate() (#1, filet de secours PWA) : desenregistre TOUS les
+  // service workers + vide TOUS les caches + recharge, gate par confirmModal ---
+  __mockCacheKeys.length = 0;
+  __mockCacheKeys.push('defi-du-jour-v3', 'defi-du-jour-v4'); // simule un vieux cache jamais purge + le courant
+  __mockSwRegistrations.forEach(r => { r.unregisterCalled = false; });
+  location.reloadCalled = false;
+  const forceUpdatePromise = forceAppUpdate();
+  document.getElementById('confirmModalConfirmBtn').onclick(); // simule le clic sur "Forcer la mise a jour"
+  await forceUpdatePromise;
+  __assertOk(__mockSwRegistrations.every(r => r.unregisterCalled), 'forceAppUpdate() doit desenregistrer TOUS les service workers actifs');
+  __assertEq(__mockCacheKeys.length, 0, 'forceAppUpdate() doit vider TOUS les caches (y compris un ancien jamais purge)');
+  __assertOk(location.reloadCalled, 'forceAppUpdate() doit recharger la page une fois le nettoyage termine');
+
+  // Annulation : ne doit RIEN nettoyer ni recharger
+  __mockCacheKeys.push('defi-du-jour-v4');
+  __mockSwRegistrations.forEach(r => { r.unregisterCalled = false; });
+  location.reloadCalled = false;
+  const forceUpdateCancelPromise = forceAppUpdate();
+  document.getElementById('confirmModalCancelBtn').onclick();
+  await forceUpdateCancelPromise;
+  __assertOk(__mockSwRegistrations.every(r => !r.unregisterCalled), 'annuler forceAppUpdate() ne doit RIEN desenregistrer');
+  __assertEq(__mockCacheKeys.length, 1, 'annuler forceAppUpdate() ne doit vider AUCUN cache');
+  __assertOk(!location.reloadCalled, 'annuler forceAppUpdate() ne doit PAS recharger la page');
+  console.log('OK: forceAppUpdate() (filet de secours PWA) desenregistre les SW + vide les caches + recharge, annulable');
+
+  // --- 125. Verification a la source (#1) : detection de mise a jour SW rendue plus
+  // proactive (visibilitychange -> registration.update()), independamment de
+  // l heuristique interne du navigateur pour une PWA restee ouverte longtemps ---
+  __assertOk(__rawHtml.includes("document.addEventListener('visibilitychange'") && __rawHtml.includes('registration.update()'), 'une PWA restee ouverte longtemps doit revérifier une mise a jour au retour au premier plan, pas seulement au chargement');
+  console.log('OK: verification de mise a jour SW plus proactive (visibilitychange)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

@@ -95,6 +95,46 @@ la sous-collection `kv` sans liste de clés en dur). Un tout nouveau compte
 n'écrit rien avant la fin de l'onboarding (le premier `saveProfile()` crée le
 document via `merge:true` sur un document inexistant).
 
+## Incident production (PWA bloquée / pertes de données silencieuses)
+Deux symptômes rapportés sur un appareil différent du principal (streak à 0 et
+sélection du jour revenue en arrière après fermeture/rechargement, PWA restée
+bloquée sur une ancienne version malgré un rechargement classique). Le
+`service-worker.js` avait déjà `skipWaiting()`/`clients.claim()`/purge des
+anciens caches/réseau-first pour le HTML — donc pas un oubli de ces bonnes
+pratiques de base. Root cause non reproduite avec certitude (pas d'accès aux
+logs de l'appareil concerné), mais deux failles réelles et confirmées par la
+revue de code :
+- **Échecs d'écriture Firestore totalement silencieux** : chaque `saveX()`
+  catchait déjà ses erreurs, mais seulement via `console.error` — invisible
+  pour l'utilisateur. Si `enablePersistence()` échoue sur un appareil (onglets
+  multiples, navigation privée, quota IndexedDB, certaines PWA iOS...) — déjà
+  best-effort, catché en `console.warn` — chaque écriture doit atteindre le
+  réseau AVANT de survivre à une fermeture de l'appli ; fermer l'appli juste
+  après avoir validé un défi peut alors perdre cette écriture sans AUCUN
+  signal. **Corrigé** : `reportSaveError()` affiche désormais un toast quand
+  un échec survient EN LIGNE (hors ligne, Firestore rejoue déjà tout seul,
+  pas la peine d'alarmer) ; `firestorePersistenceEnabled` (booléen, mis à jour
+  par le `.then()`/`.catch()` de `enablePersistence()`) est diagnostiqué dans
+  Paramètres > Dépannage.
+- **Aucun filet de secours pour une PWA restée bloquée** : `forceAppUpdate()`
+  (Paramètres > Dépannage) désenregistre tous les service workers +vide tout
+  le Cache Storage + recharge — un "vider le cache" du navigateur ne touche
+  pas forcément ces deux zones de stockage séparées sur toutes les plateformes
+  (notamment PWA "ajoutée à l'écran d'accueil" sur iOS). En complément,
+  `registration.update()` est maintenant aussi appelé à chaque retour au
+  premier plan (`visibilitychange`), pas seulement au chargement — une PWA
+  restée ouverte des jours entiers sans navigation complète ne déclenchait
+  sinon jamais l'heuristique de vérification du navigateur. `CACHE_NAME` bumpé
+  (`v3` → `v4`) pour purger les anciens caches sur les appareils qui reçoivent
+  la mise à jour.
+- **Non vérifiable depuis ce dépôt** : les règles de sécurité Firestore ne sont
+  pas versionnées ici (gérées côté console Firebase). Si un écran d'écriture
+  échoue précisément à cause des règles (ex: validation de champ pensée pour
+  l'ancien modèle une-clé-par-doc, incompatible avec le nouveau document
+  consolidé `appData`), ce serait désormais visible via le toast d'erreur
+  ci-dessus au prochain incident — à vérifier côté console si le problème
+  revient.
+
 ## Architecture de navigation
 Barre d'onglets fixe en bas (4 onglets, variable `activeTab`) :
 `today` (accueil + fiche défi) / `history` / `library` (gestion défis) / `account`.

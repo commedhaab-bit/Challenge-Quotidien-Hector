@@ -118,10 +118,36 @@ const db = firebase.firestore();
 // sans que la persistance échoue. Best-effort : si indisponible (navigation privée,
 // très vieux navigateur), l'appli continue de fonctionner normalement, juste sans
 // ce cache local entre les sessions.
-db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+// Diagnostic exposé dans Paramètres > Dépannage : si la persistance échoue (onglets
+// multiples sans leader, navigation privée, quota IndexedDB, certaines PWA iOS...),
+// chaque écriture Firestore doit atteindre le réseau AVANT de survivre à une
+// fermeture de l'appli — une complétion de défi suivie d'une fermeture immédiate
+// peut alors se perdre silencieusement (aucune queue locale durable). null = pas
+// encore déterminé, true/false = résultat connu.
+let firestorePersistenceEnabled = null;
+db.enablePersistence({ synchronizeTabs: true }).then(() => {
+  firestorePersistenceEnabled = true;
+}).catch((err) => {
+  firestorePersistenceEnabled = false;
   console.warn('Firestore persistence indisponible :', err.code);
 });
 let currentUser = null;
+
+/**
+ * Signale un échec d'écriture Firestore — mais SEULEMENT si on est en ligne : hors
+ * ligne, Firestore met déjà en file d'attente localement (si la persistance a pu
+ * s'activer, voir firestorePersistenceEnabled) et rejoue automatiquement au retour
+ * du réseau (voir le bandeau hors ligne) — pas la peine d'alarmer l'utilisateur
+ * pour ça. Un échec alors qu'on est EN LIGNE est en revanche une vraie erreur
+ * (règles de sécurité, quota, document invalide...) qui serait sinon totalement
+ * invisible (jusqu'ici un simple console.error, jamais vu par l'utilisateur).
+ */
+function reportSaveError(context, err) {
+  console.error(context, err);
+  if (navigator.onLine) {
+    showToast('⚠️ Échec de sauvegarde — réessaie ou vérifie ta connexion');
+  }
+}
 
 /**
  * Lit `users/{uid}/kv/{key}` dans Firestore. Rejette si le document n'existe pas
@@ -173,7 +199,7 @@ async function saveAppField(field, value) {
   try {
     await appDataDocRef().set({ [field]: value }, { merge: true });
   } catch (e) {
-    console.error('save ' + field + ' failed', e);
+    reportSaveError('save ' + field + ' failed', e);
   } finally {
     pendingWriteCount--;
     updateOfflineBanner();
@@ -361,6 +387,15 @@ if ('serviceWorker' in navigator) {
             if (banner) banner.style.display = 'flex';
           }
         });
+      });
+      // Une PWA "ajoutée à l'écran d'accueil" reste parfois ouverte des jours entiers
+      // sans jamais refaire de vraie navigation complète — le seul déclencheur naturel
+      // de la vérification de mise à jour du navigateur. On force donc une vérification
+      // à chaque fois que l'appli redevient visible (retour au premier plan) plutôt que
+      // de dépendre uniquement de l'heuristique interne du navigateur, pour repérer une
+      // nouvelle version plus vite sur un appareil resté ouvert longtemps.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') registration.update().catch(() => {});
       });
     }).catch(() => {});
   });
@@ -907,7 +942,7 @@ async function saveActiveToday() {
   try {
     await dbSet('activeToday:' + todayKey, JSON.stringify([...activeToday]));
   } catch (e) {
-    console.error('save activeToday failed', e);
+    reportSaveError('save activeToday failed', e);
   }
 }
 
@@ -2401,7 +2436,7 @@ async function saveState() {
   try {
     await dbSet('day:' + todayKey, JSON.stringify(state));
   } catch (e) {
-    console.error('save failed', e);
+    reportSaveError('save state failed', e);
   }
 }
 
@@ -3483,12 +3518,58 @@ function renderDataManagementSection() {
   `;
 }
 
+/**
+ * Filet de secours pour un appareil resté bloqué sur une ancienne version malgré
+ * skipWaiting()/clients.claim() (ex: PWA "ajoutée à l'écran d'accueil" qui ne
+ * revérifie jamais le service worker). Désenregistre TOUS les service workers de
+ * cette origine et vide tout le Cache Storage (jamais purgé par un simple "vider
+ * le cache" du navigateur sur certaines plateformes), puis recharge.
+ */
+async function forceAppUpdate() {
+  const accepted = await confirmModal({
+    icon: '🔄',
+    title: 'Forcer la mise à jour ?',
+    subtitle: "Désenregistre le service worker et vide le cache de l'appli, puis recharge. À utiliser si l'appli semble bloquée sur une ancienne version malgré un rechargement classique.",
+    confirmLabel: 'Forcer la mise à jour',
+  });
+  if (!accepted) return;
+  try {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(r => r.unregister()));
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) {
+    console.error('forceAppUpdate failed', e);
+  }
+  location.reload();
+}
+
+function renderTroubleshootingSection() {
+  const persistenceLabel = firestorePersistenceEnabled === true
+    ? '✅ Active'
+    : firestorePersistenceEnabled === false
+      ? '⚠️ Indisponible sur cet appareil (les sauvegardes récentes peuvent se perdre si l\'appli se ferme juste après)'
+      : '… vérification en cours';
+  return `
+    <div class="section-label">Dépannage</div>
+    <div class="settings-card data-management-card">
+      <div class="troubleshoot-diag">Persistance locale hors ligne : ${persistenceLabel}</div>
+      <button class="signout-btn" onclick="forceAppUpdate()">🔄 Forcer la mise à jour de l'appli</button>
+    </div>
+  `;
+}
+
 function renderSettingsScreen() {
   return `
     <button class="history-back" onclick="history.back()">‹ Retour</button>
     <h1 class="title">Paramètres</h1>
     ${renderSettingsSection()}
     ${renderDataManagementSection()}
+    ${renderTroubleshootingSection()}
     ${renderAccountActionsSection()}
   `;
 }
