@@ -573,6 +573,7 @@ const cssText = __rawHtml + __cssSource;
   const confirmHtml = document.getElementById('app').innerHTML;
   __assertOk(confirmHtml.includes('Objectifs calculés'), 'le message de confirmation attendu doit s afficher');
   __assertOk(confirmHtml.includes('preview-card') && confirmHtml.includes('preview-badge') && confirmHtml.includes('REPS'), 'une mini-carte de preview d objectif calcule doit remplacer le long paragraphe');
+  __assertOk(confirmHtml.includes('preview-header-tag') && confirmHtml.includes("Exemple d'objectif") && confirmHtml.includes('exercise-name') && confirmHtml.includes('exercise-sub'), 'une etiquette EXEMPLE et un sous-libelle doivent rendre explicite que Pompes n est qu un exemple parmi d autres defis calcules');
   __assertOk(confirmHtml.includes('finishOnboardingTransition()'), 'un bouton doit permettre de lancer la suite');
   console.log('OK: écran de transition onboarding (loading -> confirm)');
 
@@ -1706,7 +1707,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v5'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v6'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2559,8 +2560,10 @@ const cssText = __rawHtml + __cssSource;
   onboardingTransitionPhase = 'confirm';
   const cleanConfirmHtml = renderOnboardingTransitionScreen();
   __assertOk(!cleanConfirmHtml.includes("l'onglet « Défis"), 'l ancien texte avec ponctuation orpheline (emoji colle a la fermeture de guillemet) ne doit plus apparaitre');
-  __assertOk(cleanConfirmHtml.includes('Tes défis personnalisés sont prêts'), 'le sous-titre de confirmation doit etre court et propre');
+  __assertOk(cleanConfirmHtml.includes('Ton programme personnalisé est prêt'), 'le sous-titre de confirmation doit etre court et propre');
   __assertOk(cleanConfirmHtml.includes('preview-title') && cleanConfirmHtml.includes('preview-badge'), 'la carte de preview doit avoir un nom d exercice et un badge neon separes (pas un bloc de texte brut)');
+  __assertOk(cleanConfirmHtml.includes('preview-container') && cleanConfirmHtml.includes('preview-header-tag') && cleanConfirmHtml.includes('exercise-name') && cleanConfirmHtml.includes('exercise-sub'), 'la carte de preview doit etre etiquetee comme un EXEMPLE (pas presentee comme le seul defi genere)');
+  __assertOk(cleanConfirmHtml.includes('Découvrir mes défis'), 'le bouton de fin d onboarding doit inviter a decouvrir les autres defis, pas juste demarrer');
   __assertOk(cleanConfirmHtml.includes('onboarding-screen') && cleanConfirmHtml.includes('onboarding-content') && cleanConfirmHtml.includes('onboarding-cta'), 'l ecran de confirmation doit utiliser le nouveau design system (onboarding-screen/onboarding-content/onboarding-cta)');
   onboardingTransitionPhase = null;
   console.log('OK: refonte visuelle premium de l onboarding (design system exact applique integralement)');

@@ -361,5 +361,12 @@ par cas plutôt que viser une conformité complète d'un coup.
   façon notice, ça compresse le reste de l'écran), `.preview-card`/
   `.preview-title`/`.preview-badge` (écran de confirmation, objectif RÉEL via
   `computeStandardTarget()` sur "Pompes" + `userProfile`, jamais une valeur
-  fictive codée en dur, badge plein `var(--accent)` à droite).
+  fictive codée en dur, badge plein `var(--accent)` à droite). La carte est
+  enveloppée dans `.preview-container` avec une étiquette `.preview-header-tag`
+  ("💡 Exemple d'objectif généré") au-dessus + une note de bas d'écran
+  `.pf-onboarding-footnote` — sans ça "Pompes" pouvait passer pour LE seul
+  défi généré plutôt qu'un exemple parmi ceux qui attendent dans l'appli.
+  `.preview-title` contient l'icône + `.exercise-info` (nom `.exercise-name` +
+  sous-libellé `.exercise-sub` "Calibré selon ton profil" empilés), pas juste
+  un nom seul.
 

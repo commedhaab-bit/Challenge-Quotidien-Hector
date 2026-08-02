@@ -668,7 +668,10 @@ function renderOnboardingTransitionScreen() {
   }
   // Mini-carte de preview : un exemple concret et RÉEL (pas un simple texte gris) de ce
   // que le coach virtuel vient de calibrer — objectif effectivement calculé pour "Pompes"
-  // à partir du profil qui vient d'être renseigné, pas une valeur fictive.
+  // à partir du profil qui vient d'être renseigné, pas une valeur fictive. L'étiquette
+  // "EXEMPLE D'OBJECTIF GÉNÉRÉ" + la note de bas d'écran rendent explicite que "Pompes"
+  // n'est qu'un des défis calculés, pas le seul (sans ça l'utilisateur pouvait croire que
+  // l'appli ne lui propose qu'un unique défi).
   const previewChallenge = CHALLENGE_LIBRARY.find(c => c.name === 'Pompes');
   const previewTarget = previewChallenge ? computeStandardTarget(previewChallenge, userProfile) : 100;
   return `
@@ -676,13 +679,23 @@ function renderOnboardingTransitionScreen() {
       <div class="onboarding-content">
         <div class="pf-welcome-badge">✅</div>
         <h1 class="pf-welcome-title">Objectifs calculés !</h1>
-        <p class="pf-welcome-desc pf-welcome-desc-short">Tes défis personnalisés sont prêts.</p>
-        <div class="preview-card">
-          <div class="preview-title"><span>🎯</span> Pompes</div>
-          <div class="preview-badge">${previewTarget} REPS</div>
+        <p class="pf-welcome-desc pf-welcome-desc-short">Ton programme personnalisé est prêt.</p>
+        <div class="preview-container">
+          <div class="preview-header-tag">💡 Exemple d'objectif généré</div>
+          <div class="preview-card">
+            <div class="preview-title">
+              <span>🎯</span>
+              <div class="exercise-info">
+                <span class="exercise-name">Pompes</span>
+                <span class="exercise-sub">Calibré selon ton profil</span>
+              </div>
+            </div>
+            <div class="preview-badge">${previewTarget} REPS</div>
+          </div>
         </div>
+        <p class="pf-onboarding-footnote">Retrouve cet objectif et tous tes autres défis du jour dans ton espace.</p>
       </div>
-      <button class="onboarding-cta" onclick="finishOnboardingTransition()">C'est parti !</button>
+      <button class="onboarding-cta" onclick="finishOnboardingTransition()">Découvrir mes défis</button>
     </div>
   `;
 }
