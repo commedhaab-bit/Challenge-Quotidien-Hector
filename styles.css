@@ -1000,15 +1000,23 @@
     font-size: 14px;
   }
 
-  /* PROFILE ONBOARDING (coach virtuel) */
+  /* PROFILE ONBOARDING (coach virtuel) — conteneur plein écran : colonne flex,
+     header (retour/points de progression) en haut, .pf-step flex:1 juste en dessous
+     (qui gère lui-même son propre centrage/ancrage, voir plus bas). justify-content:
+     space-between ici est sans effet visible tant que .pf-step reste flex:1 (il
+     consomme déjà tout l'espace restant), mais documente l'intention du layout. */
   .profile-onboarding {
     position: fixed;
     inset: 0;
+    height: 100dvh;
     background: var(--bg);
     z-index: 2000;
     display: flex;
     flex-direction: column;
-    padding: 20px 22px calc(32px + env(safe-area-inset-bottom, 0px));
+    justify-content: space-between;
+    padding: 24px 20px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    box-sizing: border-box;
   }
   .pf-header {
     display: flex;
@@ -1072,7 +1080,6 @@
     align-items: center;
     width: 100%;
   }
-  .pf-step-anchored .pf-next-btn { flex-shrink: 0; }
   .pf-emoji { font-size: 46px; margin-bottom: 14px; }
   .pf-question {
     font-size: 26px;
@@ -1095,13 +1102,16 @@
     overflow-y: scroll;
     scroll-snap-type: y mandatory;
     -webkit-overflow-scrolling: touch;
-    background: var(--bg-card);
-    border: 1.5px solid var(--line);
+    /* Pas de bloc plein/bordure massive autour (look "input encadré") : juste un
+       voile très subtil, l'essentiel de la lisibilité vient du cadre de sélection
+       (.wheel-picker-highlight, accent vert néon) et du fondu ci-dessous — plus
+       proche d'un vrai picker natif iOS/Android. */
+    background: rgba(255, 255, 255, 0.03);
     border-radius: 14px;
     margin-bottom: 20px;
     scrollbar-width: none;
-    -webkit-mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
-    mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
+    mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
     /* force sa propre couche de compositing GPU : evite le jank/repaint chaotique
        que provoque parfois le mask-image sur un conteneur en cours de scroll,
        notamment sur Safari/WebViews mobiles */
@@ -1167,14 +1177,19 @@
 
   .pf-next-btn {
     width: 100%;
+    height: 52px;
     background: var(--accent);
     color: #0a0d0b;
     border: none;
-    font-weight: 800;
-    font-size: 16px;
-    padding: 16px;
+    font-weight: 700;
+    font-size: 1rem;
     border-radius: 14px;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    flex-shrink: 0;
   }
   .pf-next-btn:active { transform: scale(0.97); }
 
@@ -1260,85 +1275,81 @@
      mini-carte de preview qui porte désormais l'essentiel du message. */
   .pf-welcome-desc-short { margin-bottom: 18px; }
   /* Résumé visuel de l'écran de bienvenue (3 points clés), à la place de deux longs
-     paragraphes — condensé, percutant, une icône par ligne, aligné à gauche dans un
-     conteneur centré (léger fond clair sur le thème sombre, coins arrondis). */
+     paragraphes — 3 cartes horizontales élégantes alignées à gauche dans un conteneur
+     centré (léger fond clair type "glass" sur le thème sombre, coins arrondis). */
   .pf-welcome-bullets {
     display: flex;
     flex-direction: column;
-    gap: 12px;
     width: 100%;
-    margin-bottom: 28px;
     text-align: left;
   }
   .pf-welcome-bullet {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    width: 100%;
     display: flex;
     align-items: center;
-    gap: 12px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 14px 16px;
+    gap: 14px;
     font-size: 15px;
     font-weight: 700;
   }
-  .pf-welcome-bullet-icon { font-size: 22px; flex-shrink: 0; }
-  .pf-algo-callout {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    background: linear-gradient(135deg, rgba(57,233,122,0.10), rgba(57,233,122,0.03));
-    border: 1px solid var(--accent-dim);
-    border-radius: 16px;
-    padding: 18px;
-    text-align: left;
-    margin-bottom: 28px;
-  }
-  .pf-algo-icon {
-    font-size: 28px;
-    flex-shrink: 0;
-    filter: drop-shadow(0 2px 8px rgba(57,233,122,0.3));
-  }
-  .pf-algo-title {
-    font-size: 14px;
-    font-weight: 800;
-    color: var(--accent);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 5px;
-  }
-  .pf-algo-desc {
-    font-size: 13px;
-    color: var(--chalk);
-    line-height: 1.5;
-  }
-  /* Variante utilisée en tête de l'écran Âge (avant l'émoticône/la question elle-même) :
-     fonctionne comme un titre de page ("ce coach virtuel pilote cette étape"), pas comme
-     une simple notice — marge réduite pour s'enchaîner naturellement avec la suite. */
-  .pf-algo-callout-title { margin-bottom: 22px; }
-
-  /* Mini-carte de preview (écran de confirmation "Objectifs calculés !") : simule
-     concrètement un défi avec son objectif fraîchement calibré, à la place d'un long
-     paragraphe. Même langage visuel que .pf-welcome-bullet/.pf-algo-callout (carte
-     sombre, coins arrondis, accent vert néon). */
-  .pf-preview-card {
+  /* Icône dans un cercle teinté accent, à gauche de chaque carte (au lieu d'un simple
+     emoji flottant) — même teinte que le chip "Coach Virtuel IA" ci-dessous. */
+  .pf-welcome-bullet-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(57, 233, 122, 0.1);
     display: flex;
     align-items: center;
-    gap: 14px;
-    background: var(--bg-card);
-    border: 1px solid var(--accent-dim);
-    border-radius: 16px;
-    padding: 16px 18px;
-    text-align: left;
-    width: 100%;
-    box-shadow: 0 0 20px rgba(57, 233, 122, 0.08);
-  }
-  .pf-preview-card-icon {
-    font-size: 28px;
+    justify-content: center;
     flex-shrink: 0;
-    filter: drop-shadow(0 2px 8px rgba(57,233,122,0.3));
+    font-size: 20px;
   }
-  .pf-preview-card-name { font-size: 16px; font-weight: 800; margin-bottom: 2px; }
-  .pf-preview-card-goal { font-size: 13px; color: var(--accent); font-weight: 700; }
+  /* Pilule discrète "Coach Virtuel IA" (écran Âge), à la place du gros bloc vert qui
+     compressait le reste de l'écran — un simple repère contextuel, pas une notice. */
+  .pf-coach-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(57, 233, 122, 0.1);
+    color: var(--accent);
+    border: 1px solid rgba(57, 233, 122, 0.2);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+
+  /* Vraie carte de preview (écran de confirmation "Objectifs calculés !") : nom de
+     l'exercice à gauche, badge néon avec l'objectif calculé à droite — à la place d'un
+     texte brut. */
+  .pf-preview-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 20px;
+    width: 100%;
+    max-width: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 20px;
+  }
+  .pf-preview-card-name { font-size: 16px; font-weight: 700; }
+  .pf-preview-card-badge {
+    background: var(--accent);
+    color: #0a0d0b;
+    font-weight: 800;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+  }
 
   .save-challenge-btn:disabled {
     opacity: 0.4;

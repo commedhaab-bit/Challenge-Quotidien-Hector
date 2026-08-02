@@ -335,4 +335,16 @@ par cas plutôt que viser une conformité complète d'un coup.
   `renderOnboardingTransitionScreen()`) — PAS sur les étapes à avance automatique
   au clic (2 : sexe, 4 : niveau, ni l'écran de chargement), qui n'ont pas de
   bouton et resteraient simplement centrées via le `.pf-step` de base.
+- **Design system onboarding (cartes/chip/preview)** : cartes "glass" sur fond
+  sombre (`rgba(255,255,255,0.05)` + bordure `rgba(255,255,255,0.08-0.1)`,
+  jamais `var(--bg-card)`/`var(--line)` pleins pour ces éléments spécifiques),
+  icône dans un cercle 40px teinté `rgba(57,233,122,0.1)` (= `--accent` en rgb,
+  cohérent avec `.pf-coach-chip`/`.wheel-picker-highlight` ailleurs dans le
+  fichier). Le "Coach Virtuel IA" est un chip discret (`.pf-coach-chip`), plus
+  un gros bloc/callout — ne pas réintroduire un bloc lourd type notice, ça
+  compresse le reste de l'écran. La carte de preview (écran de confirmation)
+  affiche un vrai objectif calculé (`computeStandardTarget()` sur "Pompes" +
+  `userProfile`), jamais une valeur fictive codée en dur, dans un badge néon
+  plein `var(--accent)` (nom à gauche, badge à droite, `justify-content:
+  space-between`) — pas un bloc de texte empilé.
 

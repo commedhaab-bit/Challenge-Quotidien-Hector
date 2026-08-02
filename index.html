@@ -677,15 +677,10 @@ function renderOnboardingTransitionScreen() {
         <div class="pf-step-content">
           <div class="pf-welcome-badge">✅</div>
           <h1 class="pf-welcome-title">Objectifs calculés !</h1>
-          <div class="pf-welcome-desc pf-welcome-desc-short">
-            Choisis dès maintenant tes défis dans l'onglet « Défis 🎯 ».
-          </div>
+          <div class="pf-welcome-desc pf-welcome-desc-short">Tes défis personnalisés sont prêts.</div>
           <div class="pf-preview-card">
-            <div class="pf-preview-card-icon">🎯</div>
-            <div class="pf-preview-card-body">
-              <div class="pf-preview-card-name">Pompes</div>
-              <div class="pf-preview-card-goal">Objectif calculé : ${previewTarget} reps</div>
-            </div>
+            <div class="pf-preview-card-name">🎯 Pompes</div>
+            <div class="pf-preview-card-badge">${previewTarget} REPS</div>
           </div>
         </div>
         <button class="pf-next-btn" onclick="finishOnboardingTransition()">C'est parti !</button>
@@ -3025,9 +3020,9 @@ function renderProfileOnboardingScreen() {
         <div class="pf-welcome-badge">⚡</div>
         <h1 class="pf-welcome-title">Bienvenue dans<br><span class="pf-brand">Défi du Jour</span></h1>
         <div class="pf-welcome-bullets">
-          <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">🎯</span> Choisis tes défis</div>
-          <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">⚡</span> Surpasse-toi chaque jour</div>
-          <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">📈</span> Suis tes progrès</div>
+          <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">🎯</span><span>Choisis tes défis</span></div>
+          <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">⚡</span><span>Surpasse-toi chaque jour</span></div>
+          <div class="pf-welcome-bullet"><span class="pf-welcome-bullet-icon">📈</span><span>Suis tes progrès</span></div>
         </div>
       </div>
       <button class="pf-next-btn" onclick="profileNext()">Commencer</button>
@@ -3035,13 +3030,7 @@ function renderProfileOnboardingScreen() {
   } else if (profileStep === 1) {
     stepHtml = `
       <div class="pf-step-content">
-        <div class="pf-algo-callout pf-algo-callout-title">
-          <div class="pf-algo-icon">🧠</div>
-          <div class="pf-algo-text">
-            <div class="pf-algo-title">Coach virtuel activé</div>
-            <div class="pf-algo-desc">Réponds à quelques questions rapides : notre algorithme calcule des objectifs sur-mesure, calibrés exactement pour ton profil.</div>
-          </div>
-        </div>
+        <div class="pf-coach-chip">🧠 Coach Virtuel IA</div>
         <div class="pf-emoji">🎂</div>
         <h1 class="pf-question">Quel âge as-tu ?</h1>
         ${renderWheelPicker('pfAge', 12, 100, 1, 'ans')}
