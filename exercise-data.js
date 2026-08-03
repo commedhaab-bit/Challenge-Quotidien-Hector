@@ -18,9 +18,9 @@ const CHALLENGE_LIBRARY = [
 
   // ==== Haltères (bmiImpact ~nul : le poids déplacé est celui de l'haltère, pas du corps) ====
   { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
-  { id: 6,  cat: 'Haltères', name: 'Biceps', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
+  { id: 6,  cat: 'Haltères', name: 'Biceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
   { id: 7,  cat: 'Haltères', name: 'Élévations latérales', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 5, armMode: 'total' },
-  { id: 8,  cat: 'Haltères', name: 'Presse cubaine', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
+  { id: 8,  cat: 'Haltères', name: 'Presse cubaine', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
   { id: 1005, cat: 'Haltères', name: 'Tirage haltères', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0, standardWeightKg: 10, armMode: 'perArm' },
   { id: 1006, cat: 'Haltères', name: 'Développé épaules haltères', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
   { id: 1008, cat: 'Haltères', name: 'Extensions triceps nuque', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 6, armMode: 'total' },
