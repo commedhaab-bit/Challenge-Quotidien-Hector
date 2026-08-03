@@ -699,3 +699,33 @@ par cas plutôt que viser une conformité complète d'un coup.
   sous-libellé `.exercise-sub` "Calibré selon ton profil" empilés), pas juste
   un nom seul.
 
+## Hiérarchie visuelle écran d'exécution (+5/+10 vs saisie personnalisée)
+
+**`.qa-btn` (+5/+10) est le CTA principal, `.custom-add-btn`/`.custom-add-row input`
+sont volontairement secondaires (style ghost)** — avant ce correctif c'était
+l'inverse : `.qa-btn` utilisait `var(--bg-raised)`/`var(--line)` (discret) tandis que
+`.custom-add-btn` utilisait `var(--accent)` plein (donc visuellement PLUS mis en
+avant que les boutons rapides), alors que +5/+10 doivent être la méthode
+d'interaction privilégiée pendant l'effort. `.qa-btn` est maintenant en
+`#00E676` (vert néon, PAS `var(--accent)` : volontairement une valeur dédiée, plus
+vive, réservée à ce CTA précis) avec `box-shadow` de mise en valeur ; `.custom-add-btn`
+et `.custom-add-row input` sont en `rgba(255,255,255,0.08)` + bordure fine
+`rgba(255,255,255,0.12)`, texte `var(--chalk-dim)`.
+
+## Bug corrigé : désynchronisation objectif carte accueil / fiche détail
+
+`renderChallengeCard()` avait DEUX chemins de calcul de l'objectif affiché pour le
+même défi actif : le libellé `.goal` (toujours visible sous le nom) utilisait
+`resolved.target` (objectif STANDARD, recalculé par `resolveChallenge()`), tandis que
+la ligne `.status-progress` ("En cours — X/Y", visible seulement après la 1ère série)
+et la fiche détail (`getTarget()`) utilisaient `entry.targetOverride || resolved.target`
+(objectif DU JOUR, modifiable via le crayon ✏️ `editTarget()`). Résultat : dès qu'un
+utilisateur modifiait son objectif du jour sur la fiche détail, la carte d'accueil
+continuait d'afficher l'ancien objectif standard à côté du nom — deux chiffres
+différents pour le même défi, sur deux écrans différents. Corrigé en calculant UNE
+seule fois `displayTarget = (todayEntry && todayEntry.targetOverride) || resolved.target`
+en haut de `renderChallengeCard()`, réutilisé par le libellé `.goal` ET la ligne
+`.status-progress`. En mode `'library'` (catalogue, pas de notion de "jour en cours"),
+`todayEntry` reste `null` et `displayTarget` retombe sur l'objectif standard, comme
+avant — inchangé volontairement, pas un contexte où l'objectif du jour a un sens.
+

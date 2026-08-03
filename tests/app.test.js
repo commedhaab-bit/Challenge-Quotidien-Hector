@@ -1825,6 +1825,33 @@ const cssText = __rawHtml + __cssSource;
   }
   console.log('OK: cartes a chronometre allegees (uniquement XX min XX s, plus de cumul brut en SEC)');
 
+  // --- 82bis. Desynchronisation carte accueil / fiche detail (bug de prod signale) :
+  // apres avoir augmente l objectif DU JOUR via le crayon editTarget() (entry.targetOverride),
+  // le libelle "goal" de la carte affichait TOUJOURS l objectif standard resolu au lieu de
+  // l objectif du jour reellement utilise par getTarget() sur la fiche detail -> carte et
+  // fiche montraient 2 chiffres differents pour le meme defi. ---
+  const pompesForOverride = CHALLENGE_LIBRARY.find(x => x.name === 'Pompes');
+  const resolvedPompesOverride = resolveChallenge(pompesForOverride);
+  state = emptyDayState();
+  state.challenges[pompesForOverride.id] = { sets: [], targetOverride: resolvedPompesOverride.target + 35, done: false, hardcoreDone: false, hardcoreAnnounced: false };
+  activeToday = new Set([pompesForOverride.id]);
+  currentChallengeId = pompesForOverride.id;
+  __assertEq(getTarget(), resolvedPompesOverride.target + 35, 'la fiche detail (getTarget()) doit utiliser l objectif du jour modifie');
+  const cardWithOverrideHtml = renderChallengeCard(pompesForOverride, 'today');
+  __assertOk(cardWithOverrideHtml.includes((resolvedPompesOverride.target + 35) + ' reps'), 'la carte doit afficher le MEME objectif du jour que la fiche detail, pas l objectif standard');
+  __assertOk(!cardWithOverrideHtml.includes(resolvedPompesOverride.target + ' reps'), 'l ancien objectif standard ne doit plus apparaitre sur la carte une fois l objectif du jour modifie');
+  // La ligne "En cours" (une fois une 1ere serie loggee) doit rester cohérente avec ce meme objectif.
+  state.challenges[pompesForOverride.id].sets = [10];
+  const cardWithOverrideProgressHtml = renderChallengeCard(pompesForOverride, 'today');
+  __assertOk(cardWithOverrideProgressHtml.includes('10/' + (resolvedPompesOverride.target + 35)), 'la ligne "En cours" doit aussi refleter l objectif du jour modifie');
+  // En mode bibliotheque (aucune notion de "jour" en cours), l objectif standard reste affiche tel quel.
+  const libCardIgnoresOverrideHtml = renderChallengeCard(pompesForOverride, 'library');
+  __assertOk(libCardIgnoresOverrideHtml.includes(resolvedPompesOverride.target + ' reps'), 'la bibliotheque doit continuer d afficher l objectif standard (pas de contexte "aujourd hui" a y refleter)');
+  state = emptyDayState();
+  activeToday = new Set();
+  currentChallengeId = null;
+  console.log('OK: la carte d accueil et la fiche detail affichent desormais le meme objectif (respecte l objectif du jour modifie)');
+
   // --- 83. Heatmap : un mois n est libelle que s il est ENTIEREMENT visible, càd que
   // son 1er jour est present dans la fenetre de 26 semaines (comme le graphique de
   // contributions GitHub : le libelle marque la colonne qui contient le jour 1, pas
@@ -1878,7 +1905,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v18'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v19'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3428,6 +3455,23 @@ const cssText = __rawHtml + __cssSource;
   hasSeenTour = false;
   document.getElementById('pwaInstallGate').style.display = 'none';
   console.log('OK: verrou d installation PWA plein ecran (standalone/iOS/Android/repli+echappatoire, aucun gating sur le tour)');
+
+  // --- 159. Hierarchie visuelle de l ecran d execution : +5/+10 (CTA principal, vert
+  // neon #00E676) doivent dominer visuellement la saisie personnalisee "Ajouter"
+  // (action secondaire, style ghost) -- avant ce correctif c etait l inverse
+  // (.qa-btn discret en var(--bg-raised), .custom-add-btn en plein var(--accent)). ---
+  const qaBtnCssIdx = cssText.indexOf('.qa-btn {');
+  __assertOk(qaBtnCssIdx !== -1, 'la regle .qa-btn doit exister dans styles.css');
+  const qaBtnCssBlock = cssText.slice(qaBtnCssIdx, cssText.indexOf('}', qaBtnCssIdx));
+  __assertOk(qaBtnCssBlock.includes('#00E676'), '+5/+10 doivent utiliser le vert neon #00E676 (CTA principal)');
+  __assertOk(!qaBtnCssBlock.includes('var(--bg-raised)') && !qaBtnCssBlock.includes('var(--line)'), '+5/+10 ne doivent plus utiliser les tokens discrets d origine (bouton trop secondaire)');
+
+  const customAddBtnCssIdx = cssText.indexOf('.custom-add-btn {');
+  __assertOk(customAddBtnCssIdx !== -1, 'la regle .custom-add-btn doit exister dans styles.css');
+  const customAddBtnCssBlock = cssText.slice(customAddBtnCssIdx, cssText.indexOf('}', customAddBtnCssIdx));
+  __assertOk(customAddBtnCssBlock.includes('rgba(255, 255, 255, 0.08)'), 'le bouton "Ajouter" doit devenir une action secondaire discrete (ghost)');
+  __assertOk(!customAddBtnCssBlock.includes('var(--accent)'), 'le bouton "Ajouter" ne doit plus utiliser le vert plein var(--accent) (reserve au CTA principal +5/+10)');
+  console.log('OK: hierarchie visuelle ecran execution (+5/+10 CTA principal vert neon, "Ajouter" relegue en action secondaire ghost)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

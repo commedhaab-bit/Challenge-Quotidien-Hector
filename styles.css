@@ -2645,23 +2645,27 @@
   .quick-add-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: 10px;
+    margin-bottom: 14px;
   }
+  /* CTA principal de l'écran d'exécution : +5/+10 sont la méthode d'interaction
+     privilégiée pendant l'effort, doivent dominer visuellement la saisie
+     personnalisée (.custom-add-row, reléguée en action secondaire ci-dessous). */
   .qa-btn {
-    background: var(--bg-raised);
-    border: 1px solid var(--line);
-    color: var(--chalk);
-    font-size: 15px;
-    font-weight: 700;
-    padding: 14px 4px;
-    border-radius: 10px;
+    background: #00E676;
+    border: none;
+    color: #04170c;
+    font-size: 18px;
+    font-weight: 800;
+    padding: 18px 4px;
+    border-radius: 12px;
     cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 230, 118, 0.35);
     transition: transform 0.08s, background 0.1s;
   }
   .qa-btn:active {
     transform: scale(0.94);
-    background: var(--accent-dim);
+    background: #00c766;
   }
 
   /* TIMER */
@@ -2782,28 +2786,33 @@
     display: flex;
     gap: 8px;
   }
+  /* Saisie personnalisée : action SECONDAIRE (style ghost), volontairement bien
+     moins visible que les boutons +5/+10 ci-dessus — sans ça, le fond plein
+     var(--accent) du bouton "Ajouter" rivalisait avec (voire dominait) les CTA
+     rapides, alors que ceux-ci doivent être la méthode privilégiée pendant l'effort. */
   .custom-add-row input {
     flex: 1;
-    background: var(--bg-raised);
-    border: 1px solid var(--line);
-    color: var(--chalk);
-    font-size: 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--chalk-dim);
+    font-size: 15px;
     padding: 12px 14px;
     border-radius: 10px;
     font-variant-numeric: tabular-nums;
   }
-  .custom-add-row input:focus { outline: 1px solid var(--accent); }
+  .custom-add-row input::placeholder { color: var(--chalk-dim); }
+  .custom-add-row input:focus { outline: 1px solid rgba(255, 255, 255, 0.25); color: var(--chalk); }
   .custom-add-btn {
-    background: var(--accent);
-    color: #0a0d0b;
-    border: none;
-    font-weight: 800;
-    font-size: 14px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--chalk-dim);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    font-weight: 700;
+    font-size: 13px;
     padding: 0 18px;
     border-radius: 10px;
     cursor: pointer;
   }
-  .custom-add-btn:active { transform: scale(0.96); }
+  .custom-add-btn:active { background: rgba(255, 255, 255, 0.14); transform: scale(0.96); }
 
   .undo-row {
     text-align: center;

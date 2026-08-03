@@ -3939,11 +3939,20 @@ function renderChallengeCard(c, mode, index, animate = true) {
   // (jamais "à côté" des reps).
   const weightBelow = c.cat === 'Haltères' ? `<div class="goal-weight">🏋️ ${weightKg}kg</div>` : '';
 
+  // Objectif AFFICHÉ (utilisé aussi bien pour le libellé "goal" que pour le calcul de
+  // progression ci-dessous) : priorité à l'objectif du jour (`entry.targetOverride`,
+  // modifiable via le crayon ✏️ sur la fiche détail via editTarget()) sur l'objectif
+  // standard résolu (`resolved.target`). Avant ce correctif, seule la ligne "En cours"
+  // ci-dessous en tenait compte : le libellé "goal", lui, affichait TOUJOURS
+  // `resolved.target`, ce qui désynchronisait visiblement la carte d'accueil (objectif
+  // standard) de la fiche détail (objectif du jour réellement utilisé par getTarget()).
+  const todayEntry = mode !== 'library' ? state.challenges[c.id] : null;
+  const displayTarget = (todayEntry && todayEntry.targetOverride) || resolved.target;
+
   let rightHtml;
   if (mode === 'library') {
     rightHtml = '';
   } else {
-    const todayEntry = state.challenges[c.id];
     const rel = formatRelative(lastCompleted[c.id]);
     rightHtml = '';
     if (todayEntry && todayEntry.hardcoreDone) {
@@ -3952,8 +3961,7 @@ function renderChallengeCard(c, mode, index, animate = true) {
       rightHtml = `<div class="last-done status-done">✓ Terminé aujourd'hui</div>`;
     } else if (todayEntry && todayEntry.sets.length > 0) {
       const t = todayEntry.sets.reduce((a,b)=>a+b,0);
-      const tgt = todayEntry.targetOverride || resolved.target;
-      rightHtml = `<div class="last-done status-progress">● En cours — ${t}/${tgt}</div>`;
+      rightHtml = `<div class="last-done status-progress">● En cours — ${t}/${displayTarget}</div>`;
     } else if (rel) {
       rightHtml = `<div class="last-done">${rel}</div>`;
     }
@@ -3994,7 +4002,7 @@ function renderChallengeCard(c, mode, index, animate = true) {
         ${communityRibbon}
       </div>
       <div class="goal">
-        ${resolved.unit === 'sec' ? formatSecToReadable(resolved.target) : resolved.target + ' reps'}
+        ${resolved.unit === 'sec' ? formatSecToReadable(displayTarget) : displayTarget + ' reps'}
         ${weightBelow}
         ${rightHtml}
       </div>
