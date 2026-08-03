@@ -1795,19 +1795,9 @@
     font-size: 12px;
     color: var(--chalk-dim);
   }
+  /* Cartes des 2 défis (.picker-item, mêmes classes que l'onglet Défis — nom à
+     gauche, reps/poids à droite) : simple espacement vertical entre elles ici. */
   .community-hero-list { display: flex; flex-direction: column; gap: 10px; }
-  .community-hero-card {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 14px;
-    padding: 12px;
-  }
-  .community-hero-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-  .community-hero-name { font-weight: 700; font-size: 14.5px; color: var(--chalk); }
-  .community-hero-target { font-size: 12.5px; color: var(--chalk-dim); margin-top: 1px; }
   /* Preuve sociale UNE SEULE FOIS pour toute la carte (au-dessus de la liste des 2
      exercices) : compte les membres ayant cliqué sur "Relever le défi", pas les
      complétions par exercice — évite d'afficher 2 chiffres différents et déroutants

@@ -3731,15 +3731,25 @@ async function loadHistoryEntries() {
 function renderCommunityHeroBanner() {
   const { challenge1, challenge2 } = getDailyCommunityChallenges();
   if (!challenge1 || !challenge2) return renderTodayEmptyState();
+  // Même format de carte que l'onglet Défis (.picker-item : nom à gauche, reps/poids
+  // à droite) plutôt qu'une mise en page dédiée — cohérence visuelle demandée entre les
+  // 2 écrans pour le même genre d'information. `no-anim` : ces cartes se re-rendent à
+  // chaque mise à jour temps réel de communityDailyCounts (onSnapshot), l'entrée en
+  // cascade de .picker-item rejouerait donc en boucle sans cette classe.
   const cards = [challenge1, challenge2].map((c) => {
     const resolved = resolveChallenge(c);
     const targetLabel = resolved.unit === 'sec' ? formatSecToReadable(resolved.target) : resolved.target + ' reps';
+    const weightKg = weights[c.id] ?? computeStandardWeight(c, userProfile) ?? 8;
+    const weightBelow = c.cat === 'Haltères' ? `<div class="goal-weight">🏋️ ${weightKg}kg</div>` : '';
     return `
-      <div class="community-hero-card">
+      <div class="picker-item no-anim">
         ${renderExercisePicto(c)}
-        <div class="community-hero-info">
-          <span class="community-hero-name">${escapeHtml(c.name)}</span>
-          <span class="community-hero-target">${targetLabel}</span>
+        <div class="picker-item-body">
+          <span class="name">${escapeHtml(c.name)}</span>
+        </div>
+        <div class="goal">
+          ${targetLabel}
+          ${weightBelow}
         </div>
       </div>
     `;

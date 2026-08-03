@@ -1933,7 +1933,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v20'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v21'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2973,6 +2973,13 @@ const cssText = __rawHtml + __cssSource;
   const heroHtml = document.getElementById('app').innerHTML;
   __assertOk(heroHtml.includes('community-hero-banner'), 'le Hero Banner doit remplacer l ancien ecran vide quand aucun defi n est actif');
   __assertOk(heroHtml.includes(escapeHtml(heroC1.name)) && heroHtml.includes(escapeHtml(heroC2.name)), 'les 2 defis communautaires du jour doivent etre presents sur le banner');
+  // Meme format de carte que l onglet Defis (.picker-item : nom a gauche, reps/poids a
+  // droite via .name/.goal/.goal-weight), plutot qu une mise en page dediee -- coherence
+  // visuelle demandee entre les 2 ecrans.
+  __assertOk(heroHtml.includes('picker-item') && heroHtml.includes('class="name"') && heroHtml.includes('class="goal"'), 'les cartes du Hero Banner doivent reutiliser le meme format que l onglet Defis (nom a gauche, reps/poids a droite)');
+  __assertOk(!heroHtml.includes('community-hero-name') && !heroHtml.includes('community-hero-info'), 'l ancienne mise en page dediee (nom/objectif empiles) ne doit plus exister');
+  const heroHasWeightExercise = heroC1.cat === 'Haltères' || heroC2.cat === 'Haltères';
+  __assertEq(heroHtml.includes('goal-weight'), heroHasWeightExercise, 'le poids (comme sur l onglet Defis) ne doit apparaitre que si l un des 2 defis du jour est de categorie Halteres');
   // La preuve sociale (participants) doit etre affichee UNE SEULE FOIS en haut de la
   // carte globale, pas repetee sous chaque exercice avec des chiffres differents
   // (completions1/completions2, qui restent des compteurs distincts, utilises

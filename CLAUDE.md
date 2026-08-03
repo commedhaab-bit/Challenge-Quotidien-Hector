@@ -384,6 +384,17 @@ appelle `acceptAllCommunityChallenges()`, qui ajoute les 2 défis d'un coup dans
 défis et prêtait à confusion (l'utilisateur croyait avoir rejoint "le défi du jour" en
 entier en cliquant une seule carte).
 
+**Cartes du Hero Banner : même format que l'onglet Défis** : `renderCommunityHeroBanner()`
+réutilise désormais TELLES QUELLES les classes `.picker-item`/`.picker-item-body`/
+`.name`/`.goal`/`.goal-weight` (mêmes que `renderChallengeCard()`, mode `'library'`) —
+nom à gauche, reps/poids à droite — plutôt qu'une mise en page dédiée
+(`.community-hero-card`/`.community-hero-info`/`.community-hero-name`/
+`.community-hero-target`, supprimées). Le poids (`weights[c.id] ?? computeStandardWeight(...)`)
+n'apparaît que pour les défis de catégorie `'Haltères'`, exactement comme sur les
+cartes du catalogue. `no-anim` est posé sur ces cartes : sans cette classe, l'entrée
+en cascade de `.picker-item` (`card-pop-in`) rejouerait à chaque mise à jour temps réel
+de `communityDailyCounts` (`onSnapshot`), pas seulement au premier rendu.
+
 **Contraste du bouton "Choisir mon propre défi"** : `.community-hero-choose-btn`
 utilisait `border: 1px solid var(--line)` + `color: var(--chalk-dim)` — ces 2 tokens
 sont volontairement discrets ailleurs dans l'app (séparateurs, texte secondaire), mais
