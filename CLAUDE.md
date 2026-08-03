@@ -314,6 +314,23 @@ appelle `acceptAllCommunityChallenges()`, qui ajoute les 2 défis d'un coup dans
 défis et prêtait à confusion (l'utilisateur croyait avoir rejoint "le défi du jour" en
 entier en cliquant une seule carte).
 
+**Bugs de production déjà rencontrés et corrigés sur le classement** :
+- `deleteMyAccount()` supprimait les données `users/{uid}/kv/*` mais ignorait
+  `leaderboard/{uid}` (créé après coup) — un compte supprimé puis recréé (nouvel uid
+  Firebase, même compte Google) laissait une entrée fantôme trainer indéfiniment dans
+  le classement (vécu : 2 lignes "même nom" visibles après suppression+recréation).
+  Le `batch` de suppression inclut désormais aussi `leaderboard/{uid}`.
+- `loadCommunityLeaderboard()` enveloppait `fetchLeaderboardTop()` et
+  `fetchMyRankAndNeighbors()` dans un seul `Promise.all` : l'échec de l'UNE (ex: un
+  souci propre à la requête d'agrégation du rang) effaçait aussi l'AUTRE alors qu'elle
+  avait réussi — vécu en production ("personne à afficher" alors que des documents
+  `leaderboard` existaient bel et bien). Chaque requête a maintenant son propre
+  try/catch, indépendant.
+- **Note test** : `deleteMyAccount()` n'a toujours aucune couverture par le harnais de
+  test (pré-existant : nécessiterait de mocker `db.batch()` et une vraie requête sur
+  la sous-collection `kv`, jamais fait). Le nouvel appel `batch.delete(leaderboard/{uid})`
+  n'est donc validé que par relecture, pas par un test automatisé.
+
 **Les 3 piliers sont livrés** (défi du jour + Hero Banner, classement 3 vues + onglet
 dédié, Boss Battle + Temple de la renommée `fetchBossBattleArchive()`/
 `renderHallOfFameSection()`, affiché sur l'écran Communauté seulement s'il existe déjà

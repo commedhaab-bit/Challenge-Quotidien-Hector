@@ -321,6 +321,12 @@ async function deleteMyAccount() {
     const snap = await db.collection('users').doc(uid).collection('kv').get();
     const batch = db.batch();
     snap.forEach(doc => batch.delete(doc.ref));
+    // Sans ça, la ligne de classement publique (leaderboard/{uid}) reste orpheline
+    // après suppression du compte — le compte recréé obtient un NOUVEL uid Firebase
+    // (même s'il s'agit du même compte Google), laissant l'ancienne entrée trainer
+    // indéfiniment dans le classement (déjà vécu : 2 lignes "Hector HAAB" visibles
+    // après une suppression + recréation de compte).
+    batch.delete(db.collection('leaderboard').doc(uid));
     await batch.commit();
 
     // Tente de supprimer le compte Google Auth lui-même
@@ -1406,21 +1412,33 @@ let communityLeaderboardNeighbors = [];
 let communityTopContributorToday = null;
 let communityBossBattleArchive = [];
 
+// Les 2 requêtes (top N, mon rang+voisins) sont VOLONTAIREMENT indépendantes (pas un
+// seul Promise.all englobant) : avec Promise.all, l'échec de l'une (ex: la requête de
+// rang qui a sa propre config d'index/agrégation) effaçait aussi l'autre alors qu'elle
+// avait réussi — déjà vécu en production (top 20 vidé à tort par un souci isolé au
+// rang). Chaque échec reste maintenant cantonné à sa propre partie de l'écran.
+// Les 2 requêtes (top N, mon rang+voisins) sont VOLONTAIREMENT indépendantes (pas un
+// seul Promise.all englobant) : avec Promise.all, l'échec de l'une (ex: la requête de
+// rang qui a sa propre config d'index/agrégation) effaçait aussi l'autre alors qu'elle
+// avait réussi — déjà vécu en production (top 20 vidé à tort par un souci isolé au
+// rang). Chaque échec reste maintenant cantonné à sa propre partie de l'écran.
 async function loadCommunityLeaderboard(view) {
   communityLeaderboardLoading = true;
   render();
   try {
-    const [top, rankInfo] = await Promise.all([
-      fetchLeaderboardTop(view, 20),
-      fetchMyRankAndNeighbors(view),
-    ]);
-    communityLeaderboardTop = top;
+    communityLeaderboardTop = await fetchLeaderboardTop(view, 20);
+  } catch (e) {
+    communityLeaderboardTop = [];
+    console.error('leaderboard top fetch failed', e);
+  }
+  try {
+    const rankInfo = await fetchMyRankAndNeighbors(view);
     communityLeaderboardRank = rankInfo.rank;
     communityLeaderboardNeighbors = rankInfo.neighbors;
   } catch (e) {
-    communityLeaderboardTop = [];
     communityLeaderboardRank = null;
     communityLeaderboardNeighbors = [];
+    console.error('leaderboard rank fetch failed', e);
   }
   communityLeaderboardLoading = false;
   render();

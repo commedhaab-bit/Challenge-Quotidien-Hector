@@ -3116,6 +3116,22 @@ const cssText = __rawHtml + __cssSource;
   __resetCommunityMocks();
   console.log('OK: la synchronisation du classement se fait aussi au demarrage (pas seulement sur un nouveau gain XP/serie)');
 
+  // --- 154. loadCommunityLeaderboard() : l echec de la requete de rang/voisins ne
+  // doit JAMAIS vider le top N alors qu il a reussi (deja vecu en production : un
+  // Promise.all englobant les 2 requetes effacait le top 20 a tort a cause d un
+  // souci isole au rang) -- chaque requete garde son propre etat d echec ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'test-uid', displayName: 'Alice', email: 'a@test.com', photoURL: '' };
+  await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Alice', streakCount: 3 }, { merge: true });
+  const realCurrentUser154 = currentUser;
+  currentUser = null; // fait echouer fetchMyRankAndNeighbors() (reference currentUser.uid), sans toucher fetchLeaderboardTop()
+  await loadCommunityLeaderboard('streaks');
+  currentUser = realCurrentUser154;
+  __assertEq(communityLeaderboardTop.length, 1, 'le top N doit rester peuple meme si la requete de rang/voisins echoue independamment');
+  __assertEq(communityLeaderboardRank, null, 'le rang doit rester null (pas de valeur fantome) quand sa propre requete a echoue');
+  __resetCommunityMocks();
+  console.log('OK: le top N du classement et le rang/voisins ont des etats d echec independants');
+
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });
 `;
