@@ -1878,7 +1878,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v15'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v16'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3327,13 +3327,32 @@ const cssText = __rawHtml + __cssSource;
   const declinedGateHtml = document.getElementById('pwaInstallGate').innerHTML;
   __assertOk(!declinedGateHtml.includes('Application installée'), 'un prompt refuse ne doit jamais afficher le message de succes');
 
-  // Echappatoire : masque le verrou et persiste le choix (localStorage, propre a
-  // cet appareil/navigateur -- jamais synchronise via Firestore).
+  // Desktop (ni iOS ni Android) : repli specifique avec une echappatoire de DEBOGAGE
+  // tres discrete -- prioritaire meme si beforeinstallprompt est disponible (Chrome
+  // desktop le supporte aussi), car le message "installe sur mobile" n a de sens que
+  // sur ordinateur.
   __mockLocalStorageStore.clear();
-  deferredInstallPrompt = null;
-  navigator.userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Firefox/120.0'; // navigateur qui ne proposera jamais de beforeinstallprompt ni n est iOS
+  navigator.userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Firefox/120.0';
+  navigator.platform = 'Linux x86_64';
+  __assertOk(isDesktopDevice(), 'un navigateur desktop (ni iOS ni Android) doit etre detecte comme tel');
+  deferredInstallPrompt = { prompt() {}, userChoice: Promise.resolve({}) }; // meme disponible, ne doit pas primer sur le repli desktop
   updatePwaInstallGate();
-  __assertEq(document.getElementById('pwaInstallGate').style.display, 'flex', 'pre-requis : le verrou (repli generique) doit etre visible avant de tester l echappatoire');
+  const desktopGateHtml = document.getElementById('pwaInstallGate').innerHTML;
+  __assertOk(desktopGateHtml.includes('gate-debug-bypass-btn'), 'sur desktop, l echappatoire doit etre la variante TRES discrete (debug), pas le bouton normal du repli mobile');
+  __assertOk(!desktopGateHtml.includes("Installer l'application en 1 clic"), 'le bouton d installation Android ne doit jamais apparaitre sur desktop, meme si beforeinstallprompt est disponible');
+
+  navigator.userAgent = 'Mozilla/5.0 (Linux; Android 10)'; // vrai mobile Android : ne doit jamais etre traite comme desktop
+  navigator.platform = 'Linux armv8l';
+  __assertOk(!isDesktopDevice(), 'un vrai appareil Android ne doit jamais etre detecte comme desktop');
+  deferredInstallPrompt = null;
+
+  // Echappatoire (repli mobile generique) : masque le verrou et persiste le choix
+  // (localStorage, propre a cet appareil/navigateur -- jamais synchronise via Firestore).
+  navigator.userAgent = 'Mozilla/5.0 (Android 10; Mobile; rv:120.0) Gecko/120.0 Firefox/120.0'; // Firefox mobile : jamais de beforeinstallprompt, mais pas "desktop" non plus
+  updatePwaInstallGate();
+  __assertEq(document.getElementById('pwaInstallGate').style.display, 'flex', 'pre-requis : le verrou (repli generique mobile) doit etre visible avant de tester l echappatoire');
+  const mobileFallbackHtml = document.getElementById('pwaInstallGate').innerHTML;
+  __assertOk(mobileFallbackHtml.includes('gate-bypass-btn') && !mobileFallbackHtml.includes('gate-debug-bypass-btn'), 'sur mobile (Firefox Android), le repli doit utiliser le bouton normal, pas la variante debug reservee au desktop');
   bypassPwaInstallGate();
   __assertEq(document.getElementById('pwaInstallGate').style.display, 'none', 'l echappatoire doit masquer le verrou immediatement');
   updatePwaInstallGate();

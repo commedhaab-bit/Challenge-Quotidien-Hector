@@ -479,6 +479,13 @@ function isIosDevice() {
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+// Desktop = ni iOS ni Android (pas un vrai téléphone/tablette mobile) : sert
+// uniquement à proposer une échappatoire de DEBOGAGE très discrète (voir plus bas),
+// jamais montrée sur un vrai appareil mobile.
+function isDesktopDevice() {
+  return !isIosDevice() && !/Android/i.test(navigator.userAgent);
+}
+
 // Échappatoire volontaire (validée explicitement, pas une demande initiale) pour les
 // navigateurs qui ne pourront JAMAIS proposer d'installation PWA réelle (desktop,
 // Firefox mobile, navigateur intégré d'une app tierce type Instagram/TikTok) : sans
@@ -543,9 +550,18 @@ function buildPwaInstallGateHtml(platform) {
   if (platform === 'installed') {
     return header + `<div class="gate-success">✅ Application installée !<br>Ouvre-la depuis ton écran d'accueil.</div>`;
   }
-  // Repli : navigateur qui ne proposera jamais d'installation PWA réelle (desktop,
-  // Firefox mobile, navigateur intégré d'une app tierce) — jamais de fausse instruction,
-  // et une échappatoire pour ne pas bloquer sans issue.
+  if (platform === 'desktop') {
+    // Echappatoire de DEBOGAGE très discrète (petit lien en coin, pas un vrai bouton) :
+    // sert uniquement au développement/debug depuis un ordinateur, jamais montrée sur
+    // un vrai appareil mobile (voir isDesktopDevice()).
+    return header + `
+      <p class="gate-fallback-text">Ouvre ce lien depuis ton téléphone (Android ou iPhone) pour installer l'application.</p>
+      <button class="gate-debug-bypass-btn" onclick="bypassPwaInstallGate()">Continuer quand même</button>
+    `;
+  }
+  // Repli : navigateur mobile qui ne proposera jamais d'installation PWA réelle
+  // (Firefox mobile, navigateur intégré d'une app tierce) — jamais de fausse
+  // instruction, et une échappatoire pour ne pas bloquer sans issue.
   return header + `
     <p class="gate-fallback-text">Ouvre ce lien depuis Chrome (Android) ou Safari (iPhone) pour installer l'application.</p>
     <button class="gate-bypass-btn" onclick="bypassPwaInstallGate()">Continuer quand même</button>
@@ -569,6 +585,11 @@ function updatePwaInstallGate() {
   }
   if (isIosDevice()) {
     renderPwaInstallGate('ios');
+  } else if (isDesktopDevice()) {
+    // Priorité au repli desktop (échappatoire de débogage) même si beforeinstallprompt
+    // est disponible (Chrome desktop le supporte aussi) : ce message "installe sur
+    // mobile" n'a de sens que sur ordinateur, jamais sur un vrai appareil mobile.
+    renderPwaInstallGate('desktop');
   } else if (deferredInstallPrompt) {
     renderPwaInstallGate('android');
   } else {

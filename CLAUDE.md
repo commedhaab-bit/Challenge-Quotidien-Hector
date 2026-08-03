@@ -428,16 +428,22 @@ opaque. `isRunningStandalonePwa()`/`isIosDevice()` réutilisées telles quelles
 (`matchMedia('(display-mode: standalone)')`/`navigator.standalone`, iPad détecté via
 `maxTouchPoints > 1` malgré un user-agent "Macintosh" depuis iPadOS 13).
 
-**3 variantes de contenu** (`buildPwaInstallGateHtml()`) : iOS (guide 3 étapes
+**4 variantes de contenu** (`buildPwaInstallGateHtml()`) : iOS (guide 3 étapes
 Partager → Sur l'écran d'accueil → Ouvrir l'app, pas de `beforeinstallprompt` sur
 Safari), Android/Chrome (`deferredInstallPrompt.prompt()` via un gros bouton — après
 acceptation, affiche un état "Application installée, ouvre l'icône" et ne referme
 JAMAIS le verrou tout seul : l'utilisateur est encore dans l'onglet navigateur, pas
-dans l'app standalone), et un **repli générique + échappatoire** pour tout navigateur
-qui ne proposera jamais d'installation PWA réelle (desktop, Firefox mobile, navigateur
+dans l'app standalone), **desktop** (`isDesktopDevice()` = ni iOS ni Android via
+`/Android/i` sur le user-agent — **prioritaire même si `beforeinstallprompt` est
+disponible**, Chrome desktop le supporte aussi, mais le message "installe sur mobile"
+n'a de sens que sur ordinateur) avec une échappatoire `.gate-debug-bypass-btn`
+**volontairement quasi invisible** (petit lien en coin, opacité 0.35, sert au
+développement/débogage — jamais mis en avant comme une vraie option), et un **repli
+générique mobile + échappatoire normale** (`.gate-bypass-btn`) pour tout navigateur
+MOBILE qui ne proposera jamais d'installation PWA réelle (Firefox mobile, navigateur
 intégré d'une app tierce type Instagram/TikTok) — validé explicitement avec
-l'utilisateur : sans cette échappatoire (`bypassPwaInstallGate()`), ces visiteurs
-resteraient bloqués sans aucune issue.
+l'utilisateur : sans cette échappatoire (`bypassPwaInstallGate()`, commune aux 2 replis),
+ces visiteurs resteraient bloqués sans aucune issue.
 
 **Remplace l'ancienne bannière douce** (ancrée au-dessus de la tab-bar, fermable,
 affichée seulement après le tour guidé) — devenue du code mort avec ce verrou strict
