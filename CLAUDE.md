@@ -246,10 +246,20 @@ jamais fusionné dans `xpTotal`) suivent le même mécanisme de reset hebdomadai
 de privé) ; `leaderboardOptOut` (toggle Paramètres, défaut désactivé = participation
 active) fait un no-op silencieux côté sync ET supprime le document existant côté
 `toggleLeaderboardOptOut()` (pas juste ignoré en lecture, pour ne laisser aucune
-trace publique). Rang exact via une requête d'agrégation `count()` (jamais de lecture
-de tout le classement) ; voisins directs via 2 requêtes bornées `limit(2)` de part et
-d'autre (`fetchMyRankAndNeighbors`), pas un scan complet — reste efficace quelle que
-soit la taille du classement.
+trace publique).
+
+**`fetchMyRankAndNeighbors()` : PAS de `.count()`, corrigé après un vrai bug de prod** —
+la première version utilisait une requête d'agrégation `count()` pour le rang exact ;
+`TypeError: ...count is not a function` observé en production a confirmé que cette API
+n'est PAS disponible sur le SDK Firestore **compat** 10.13.0 réellement chargé ici
+(malgré la doc officielle qui la présente comme disponible côté SDK modulaire). Ne
+JAMAIS réintroduire `.count()` sur une requête compat sans revérifier en conditions
+réelles. Remplacé par UNE lecture ordonnée complète de la vue (`orderBy(field).get()`,
+sans `limit`) + calcul du rang/des voisins par position dans le tableau côté client —
+réutilise exactement la même requête/le même index composite que `fetchLeaderboardTop()`
+(une seule vue "Hebdo" à indexer, pas deux). Limite assumée : le coût (lectures) grandit
+avec la taille TOTALE du classement, pas seulement le nombre affiché — acceptable pour
+une communauté de taille modeste, à revoir si le classement grossit beaucoup.
 
 **Pilier 3 livré (Boss Battle)** : contrairement au schéma initial du plan, le doc
 partagé `community/bossBattle_{weekStart}` (`bossBattleDocRef()`) ne stocke QUE
@@ -336,10 +346,15 @@ dédié, Boss Battle + Temple de la renommée `fetchBossBattleArchive()`/
 `renderHallOfFameSection()`, affiché sur l'écran Communauté seulement s'il existe déjà
 au moins une victoire archivée — pas d'état "vide" traité comme une erreur). Points
 non vérifiables par le harnais de test (mock DOM, pas un vrai navigateur), à confirmer
-visuellement à l'usage réel : rendu de la tab-bar à 5 onglets sur un écran étroit, et
-disponibilité réelle de l'API d'agrégation `count()` sur le SDK Firestore **compat**
-10.13.0 utilisé ici (documentée côté SDK JS modulaire depuis longtemps, jamais testée
-ici que via le mock).
+visuellement à l'usage réel : rendu de la tab-bar à 5 onglets sur un écran étroit.
+(L'API d'agrégation `count()` mentionnée ici à l'origine s'est révélée indisponible en
+production — voir plus haut, déjà corrigé.)
+
+**Bugs de production déjà rencontrés et corrigés sur le classement Hebdo** :
+- Vue "Hebdomadaire" : nécessite un index composite Firestore (`xpWeekStart` + `xpWeekly`)
+  — Firestore renvoie une erreur `FAILED_PRECONDITION`/"query requires an index" avec un
+  lien direct de création tant qu'il n'existe pas. Normal, pas un bug : à créer une fois
+  via ce lien (ou proactivement dans la console).
 
 ## Pictogrammes d'exercices (sujet en cours)
 Chaque défi a une clé d'icône (`getExercisePictogramKey`), ex: `squats`, `pompes`,

@@ -1983,20 +1983,33 @@ async function fetchLeaderboardTop(view, n = 20) {
 // Rang exact (via count(), sans jamais lire tout le classement) + les 2 voisins juste
 // au-dessus et juste en-dessous de l'utilisateur — pas seulement le top N, pour que
 // n'importe qui (même loin du sommet) se voie situé dans le classement.
+// Calcule le rang ET les voisins directs à partir d'UNE SEULE lecture ordonnée
+// complète (pas de requête d'agrégation count()) : `.count()` s'est révélé absent du
+// SDK Firestore compat réellement chargé ici (10.13.0) malgré la documentation
+// (TypeError "count is not a function" observé en production) — remplacé par un calcul
+// de position côté client, plus simple et qui réutilise EXACTEMENT la même requête/le
+// même index composite que fetchLeaderboardTop() (une seule vue "Hebdo" à indexer, pas
+// deux). Limite assumée : le coût (nombre de lectures) grandit avec la taille totale
+// du classement, pas seulement le nombre affiché — acceptable pour une communauté de
+// taille modeste ; à revoir si le classement grossit beaucoup.
 async function fetchMyRankAndNeighbors(view) {
   const field = leaderboardFieldForView(view);
-  const myDoc = await db.collection('leaderboard').doc(currentUser.uid).get();
-  const myValue = (myDoc.exists && myDoc.data()[field]) || 0;
-  const aboveCount = await leaderboardBaseQuery(view).where(field, '>', myValue).count().get();
-  const rank = aboveCount.data().count + 1;
-  const aboveSnap = await leaderboardBaseQuery(view).where(field, '>', myValue).orderBy(field, 'asc').limit(2).get();
-  const belowSnap = await leaderboardBaseQuery(view).where(field, '<', myValue).orderBy(field, 'desc').limit(2).get();
-  const above = aboveSnap.docs.map(d => ({ uid: d.id, ...d.data() })).reverse();
-  const below = belowSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
-  const me = myDoc.exists
-    ? { uid: currentUser.uid, ...myDoc.data() }
-    : { uid: currentUser.uid, displayName: currentUser.displayName || 'Toi', [field]: myValue };
-  return { rank, neighbors: [...above, me, ...below] };
+  const snap = await leaderboardBaseQuery(view).orderBy(field, 'desc').get();
+  const all = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  let myIdx = all.findIndex(e => e.uid === currentUser.uid);
+  if (myIdx === -1) {
+    const myDoc = await db.collection('leaderboard').doc(currentUser.uid).get();
+    const myValue = (myDoc.exists && myDoc.data()[field]) || 0;
+    const me = myDoc.exists
+      ? { uid: currentUser.uid, ...myDoc.data() }
+      : { uid: currentUser.uid, displayName: currentUser.displayName || 'Toi', [field]: myValue };
+    myIdx = all.findIndex(e => (e[field] || 0) < myValue);
+    if (myIdx === -1) myIdx = all.length;
+    all.splice(myIdx, 0, me);
+  }
+  const rank = myIdx + 1;
+  const neighbors = all.slice(Math.max(0, myIdx - 2), Math.min(all.length, myIdx + 3));
+  return { rank, neighbors };
 }
 
 // Ne déclenche aucune popup elle-même : renvoie juste les niveaux avant/après pour
