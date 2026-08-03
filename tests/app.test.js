@@ -2793,15 +2793,49 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!!dailyOtherDate.challenge1 && !!dailyOtherDate.challenge2, 'une autre date doit aussi resoudre 2 defis valides');
   console.log('OK: defi du jour communautaire deterministe (identique pour tous, sans backend)');
 
-  // --- 139. Communaute (fondations) : cible hebdomadaire du Boss Battle, deterministe
-  // par semaine calendaire (meme lundi -> meme cible pour toute la communaute) ---
-  const bossA = getWeeklyBossBattleTarget('2026-08-10');
-  const bossB = getWeeklyBossBattleTarget('2026-08-10');
-  __assertEq(bossA.targetChallengeId, bossB.targetChallengeId, 'meme lundi de semaine -> meme defi cible (deterministe)');
-  const bossChallenge = CHALLENGE_LIBRARY.find(c => c.id === bossA.targetChallengeId);
-  __assertOk(!!bossChallenge, 'le defi cible du Boss Battle doit exister dans CHALLENGE_LIBRARY');
-  __assertEq(bossA.targetAmount, bossChallenge.target * BOSS_BATTLE_TARGET_MULTIPLIER, 'la cible doit etre le target de base multiplie par la constante de tuning');
-  console.log('OK: cible hebdomadaire du Boss Battle deterministe (identique pour toute la communaute)');
+  // --- 139. Communaute (fondations) : exercice hebdomadaire du Boss Battle,
+  // deterministe par semaine calendaire (meme lundi -> meme exercice, reste pur/
+  // synchrone -- seule la CIBLE CHIFFREE a besoin d une lecture Firestore) ---
+  const bossChallengeA = getWeeklyBossBattleChallenge('2026-08-10');
+  const bossChallengeB = getWeeklyBossBattleChallenge('2026-08-10');
+  __assertEq(bossChallengeA.id, bossChallengeB.id, 'meme lundi de semaine -> meme exercice cible (deterministe)');
+  __assertOk(CHALLENGE_LIBRARY.some(c => c.id === bossChallengeA.id), 'l exercice cible du Boss Battle doit exister dans CHALLENGE_LIBRARY');
+  console.log('OK: exercice hebdomadaire du Boss Battle deterministe (identique pour toute la communaute)');
+
+  // --- 139bis. Cible adaptative : plancher (x2 l objectif journalier standard) sans
+  // historique, puis ratio "multiples de l objectif standard" (sans unite) de la
+  // semaine precedente x1.15, RECONVERTI dans l unite du defi de CETTE semaine --
+  // deux exercices differents n ont pas le meme volume naturel (ex: pompes vs
+  // squats), et reps/secondes ne sont jamais comparables directement : recopier le
+  // nombre brut d une semaine a l autre serait incoherent des que l exercice change.
+  __resetCommunityMocks();
+  const noHistoryTarget = await computeWeeklyBossBattleTarget('2026-08-10');
+  __assertEq(noHistoryTarget.targetAmount, Math.round(BOSS_BATTLE_FLOOR_RATIO * bossChallengeA.target), 'sans historique (1ere semaine ou mock reinitialise), la cible doit retomber sur le plancher (x2 l objectif standard)');
+
+  // Assertion independante (sans reutiliser previousWeekStartKey() des 2 cotes) : le
+  // 3 aout 2026 est un lundi, donc le lundi de la semaine precedant le 10 aout 2026
+  // (un autre lundi) doit etre exactement le 3 aout 2026 -- 7 jours avant, pas 6/8.
+  __assertEq(previousWeekStartKey('2026-08-10'), '2026-08-03', 'le lundi de la semaine precedente doit etre exactement 7 jours avant (03/08, pas 02/08 ni 04/08)');
+
+  const prevWeekStartForTest = previousWeekStartKey('2026-08-10');
+  const prevChallengeForTest = getWeeklyBossBattleChallenge(prevWeekStartForTest);
+  await bossBattleDocRef(prevWeekStartForTest).set({ currentProgress: prevChallengeForTest.target * 100 }, { merge: true }); // "100x l objectif standard" reellement accompli la semaine precedente
+  const adaptiveTarget = await computeWeeklyBossBattleTarget('2026-08-10');
+  const expectedRatio = Math.max(BOSS_BATTLE_FLOOR_RATIO, 100 * BOSS_BATTLE_GROWTH_FACTOR);
+  __assertEq(adaptiveTarget.targetAmount, Math.round(expectedRatio * bossChallengeA.target), 'la cible doit etre le ratio de la semaine precedente (x1.15) reconverti dans l unite du defi de CETTE semaine, jamais le nombre brut recopie tel quel');
+  __resetCommunityMocks();
+  console.log('OK: cible adaptative du Boss Battle (plancher sans historique, ratio normalise entre exercices differents sinon)');
+
+  // --- 139ter. Le cache de la cible adaptative ne doit JAMAIS servir une valeur
+  // perimee d une AUTRE semaine (getWeeklyBossBattleTarget() doit renvoyer null tant
+  // qu il n a pas ete rafraichi pour la semaine demandee, plutot que la derniere
+  // valeur en cache d une semaine differente) ---
+  communityBossBattleTargetCache = { weekStart: '2000-01-03', targetChallengeId: 1, targetAmount: 999 };
+  __assertEq(getWeeklyBossBattleTarget('2026-08-10'), null, 'une cible en cache pour une AUTRE semaine ne doit jamais etre servie a tort pour la semaine demandee');
+  await refreshWeeklyBossBattleTargetCache('2026-08-10');
+  __assertOk(getWeeklyBossBattleTarget('2026-08-10') !== null, 'apres rafraichissement pour la bonne semaine, la cible doit etre disponible');
+  communityBossBattleTargetCache = null;
+  console.log('OK: le cache de la cible adaptative ne sert jamais une valeur perimee d une autre semaine');
 
   // --- 140. Mock Firestore generique (collections communautaires top-level) : get/set
   // avec merge, FieldValue.increment, requetes where/orderBy/limit/count, onSnapshot,
@@ -2970,11 +3004,12 @@ const cssText = __rawHtml + __cssSource;
   activeTab = 'today';
   console.log('OK: classement 3 vues + rang exact avec voisins directs (barre ancree)');
 
-  __resetCommunityMocks();
   // --- 147. Pilier 3 : chaque serie loggee sur le defi cible de la semaine contribue
   // a la jauge collective (Boss Battle), pas seulement la completion du defi ---
   __resetCommunityMocks();
   currentUser = { uid: 'test-uid', displayName: 'Alice', email: 'a@test.com', photoURL: '' };
+  communityBossBattleTargetCache = null; // force un recalcul frais (mock tout juste reinitialise)
+  await refreshWeeklyBossBattleTargetCache();
   const bossTarget = getWeeklyBossBattleTarget();
   const bossChallenge147 = CHALLENGE_LIBRARY.find(c => c.id === bossTarget.targetChallengeId);
   activeToday = new Set([bossChallenge147.id]);

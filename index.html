@@ -1339,15 +1339,75 @@ function getDailyCommunityChallenges(dateStr = todayKey) {
   };
 }
 
-// Objectif de la jauge collective ("Boss Battle") : un exercice + une cible chiffrée
-// tirés une fois par semaine calendaire (même semaine -> même cible pour tout le monde).
-// Le multiplicateur est une constante de tuning produit (facile/dur), ajustable sans
-// discussion d'architecture si le rythme ne convient pas.
-const BOSS_BATTLE_TARGET_MULTIPLIER = 500;
-function getWeeklyBossBattleTarget(weekStartStr = mondayOfWeek(new Date())) {
-  const challenge = pickDeterministic(CHALLENGE_LIBRARY, weekStartStr + ':boss');
+// Exercice de la jauge collective ("Boss Battle") : tiré une fois par semaine
+// calendaire (même semaine -> même exercice pour tout le monde). Reste PURE/
+// synchrone (pas de Firestore) — seule la CIBLE CHIFFRÉE (ci-dessous) a besoin d'une
+// lecture réseau, pas le choix de l'exercice lui-même.
+function getWeeklyBossBattleChallenge(weekStartStr = mondayOfWeek(new Date())) {
+  return pickDeterministic(CHALLENGE_LIBRARY, weekStartStr + ':boss');
+}
+
+function previousWeekStartKey(weekStartStr) {
+  const [y, m, d] = weekStartStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() - 7);
+  return dateKey(date);
+}
+
+// Cible adaptative : ajustée à l'activité RÉELLE de la semaine précédente, plutôt
+// qu'une constante fixe irréaliste dès que la communauté est petite. Exprimée en
+// "multiples de l'objectif journalier standard" (challenge.target), un ratio SANS
+// UNITÉ (reps/reps ou sec/sec), avant d'être reconverti dans l'unité du défi de
+// CETTE semaine — nécessaire car deux défis différents (ex: pompes vs squats) n'ont
+// pas le même volume naturel, et reps/secondes ne sont de toute façon jamais
+// comparables directement.
+const BOSS_BATTLE_GROWTH_FACTOR = 1.15; // +15% par rapport au resultat reel de la semaine precedente
+const BOSS_BATTLE_FLOOR_RATIO = 2; // plancher : au moins 2x l'objectif journalier standard, meme sans historique
+
+// Lecture d'UN SEUL document à clé déterministe (jamais une requête de comptage) :
+// tous les clients lisent le MÊME document immuable (semaine passée, terminée) et
+// calculent donc, chacun indépendamment, exactement la même valeur — aucun cache à
+// écrire ni course entre clients à gérer, contrairement à un comptage d'utilisateurs
+// actifs qui aurait nécessité de mettre la cible en cache côté document partagé.
+async function computeWeeklyBossBattleTarget(weekStartStr = mondayOfWeek(new Date())) {
+  const challenge = getWeeklyBossBattleChallenge(weekStartStr);
   if (!challenge) return null;
-  return { targetChallengeId: challenge.id, targetAmount: challenge.target * BOSS_BATTLE_TARGET_MULTIPLIER };
+  let ratio = 0;
+  try {
+    const prevWeekStart = previousWeekStartKey(weekStartStr);
+    const prevChallenge = getWeeklyBossBattleChallenge(prevWeekStart);
+    const prevDoc = await bossBattleDocRef(prevWeekStart).get();
+    if (prevDoc.exists && prevChallenge && prevChallenge.target > 0) {
+      ratio = (prevDoc.data().currentProgress || 0) / prevChallenge.target;
+    }
+  } catch (e) {
+    ratio = 0; // repli sur le plancher si la lecture echoue (hors-ligne, etc.)
+  }
+  const effectiveRatio = Math.max(BOSS_BATTLE_FLOOR_RATIO, ratio * BOSS_BATTLE_GROWTH_FACTOR);
+  return { targetChallengeId: challenge.id, targetAmount: Math.round(effectiveRatio * challenge.target) };
+}
+
+// La cible calculée nécessite désormais une lecture Firestore : mise en cache ici
+// (rafraîchie une fois par semaine, comme communityBossBattleProgress) pour que les
+// fonctions de rendu/contribution restent SYNCHRONES — reste néanmoins identique
+// partout, puisque chaque client la recalcule à partir de la même donnée immuable.
+let communityBossBattleTargetCache = null; // { weekStart, targetChallengeId, targetAmount }
+
+async function refreshWeeklyBossBattleTargetCache(weekStartStr = mondayOfWeek(new Date())) {
+  if (communityBossBattleTargetCache && communityBossBattleTargetCache.weekStart === weekStartStr) return;
+  const target = await computeWeeklyBossBattleTarget(weekStartStr);
+  if (target) communityBossBattleTargetCache = { weekStart: weekStartStr, ...target };
+}
+
+// Accès synchrone (cache déjà résolu) utilisé par le rendu/les contributions —
+// renvoie null tant que refreshWeeklyBossBattleTargetCache() n'a pas encore résolu le
+// cache pour cette semaine précise (ex: tout début du démarrage) ; tous les
+// appelants gèrent déjà ce cas comme "rien à afficher/compter pour l'instant".
+function getWeeklyBossBattleTarget(weekStartStr = mondayOfWeek(new Date())) {
+  if (communityBossBattleTargetCache && communityBossBattleTargetCache.weekStart === weekStartStr) {
+    return { targetChallengeId: communityBossBattleTargetCache.targetChallengeId, targetAmount: communityBossBattleTargetCache.targetAmount };
+  }
+  return null;
 }
 
 // ==== COMMUNAUTÉ : DÉFI DU JOUR (Hero Banner + preuve sociale) ====
@@ -4612,6 +4672,7 @@ async function continueStartApp() {
   await loadActiveToday(); // vient après loadState() : dépend de todayKey
   await evaluateStreakOnLoad(); // vient après loadState() : dépend de todayKey
   startCommunityDailyListener(); // vient après loadState() : dépend de todayKey
+  await refreshWeeklyBossBattleTargetCache(); // AVANT startBossBattleListener() : la detection de victoire lit getWeeklyBossBattleTarget() de facon synchrone
   startBossBattleListener();
   startRecentContributionsListener();
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday

@@ -263,9 +263,9 @@ une communauté de taille modeste, à revoir si le classement grossit beaucoup.
 
 **Pilier 3 livré (Boss Battle)** : contrairement au schéma initial du plan, le doc
 partagé `community/bossBattle_{weekStart}` (`bossBattleDocRef()`) ne stocke QUE
-`currentProgress` — `targetChallengeId`/`targetAmount` restent toujours re-dérivés via
-`getWeeklyBossBattleTarget()` (pur/déterministe), ce qui élimine tout risque de course
-à l'initialisation ("qui écrit la cible en premier cette semaine ?"). `addSet()`
+`currentProgress` — `targetChallengeId` reste toujours re-dérivé de façon pure/
+déterministe (`getWeeklyBossBattleChallenge()`), ce qui élimine tout risque de course
+à l'initialisation ("qui écrit l'exercice en premier cette semaine ?"). `addSet()`
 appelle `registerBossBattleContributionIfNeeded()` TÔT (avant le calcul de
 `willComplete` — chaque série loggée contribue, pas seulement la complétion du défi),
 qui incrémente à la fois `currentProgress` et un agrégat `dailyContributors/{date}_{uid}`
@@ -279,6 +279,39 @@ que le document n'existe pas (`existing.exists`) — **nécessaire** : si 2 util
 sont actifs au moment exact du franchissement, leurs 2 clients détectent chacun la
 victoire et appellent `handleBossBattleVictory()` en parallèle ; sans cette garde, le
 second écraserait l'archive du premier avec une progression finale différente.
+
+**Cible adaptative du Boss Battle (`targetAmount`)** : n'est plus une constante fixe
+(`challenge.target × 500`, irréaliste dès que peu d'utilisateurs sont actifs) mais
+calculée à partir du résultat RÉEL de la semaine précédente
+(`computeWeeklyBossBattleTarget()`) :
+```
+ratio = currentProgress_semaine_precedente ÷ target_du_defi_de_la_semaine_precedente
+targetAmount = round(max(2, ratio × 1.15) × target_du_defi_de_CETTE_semaine)
+```
+Le `ratio` est un nombre **sans unité** ("combien de fois l'objectif journalier
+standard d'une personne, cumulé sur la semaine") — **indispensable** pour ne jamais
+comparer des nombres bruts entre 2 défis différents : deux exercices n'ont pas le même
+volume naturel (ex: squats vs pompes), et reps/secondes (ex: Gainage) ne sont de toute
+façon jamais comparables directement. On divise TOUJOURS par le target du défi DE LA
+SEMAINE QUI A PRODUIT LE NOMBRE, puis on reconvertit dans l'unité du défi de la
+semaine EN COURS — piège déjà identifié en revue : diviser/multiplier par le mauvais
+target (celui de la mauvaise semaine) casse silencieusement la normalisation. Plancher
+`× 2` si aucun historique (1ère semaine, ou lecture échouée).
+
+**Conséquence architecturale : n'est plus pure/synchrone**, contrairement au reste des
+fonctions de génération déterministe — nécessite UNE lecture Firestore (le document,
+immuable, de la semaine précédente, jamais une requête de comptage). Mis en cache dans
+`communityBossBattleTargetCache` (`{weekStart, targetChallengeId, targetAmount}`),
+rafraîchi une fois par semaine via `refreshWeeklyBossBattleTargetCache()` (appelée
+dans `continueStartApp()`, **avant** `startBossBattleListener()` qui dépend de la
+version synchrone `getWeeklyBossBattleTarget()` pour détecter le franchissement).
+Cette dernière renvoie `null` tant que le cache n'a pas encore été résolu pour la
+semaine demandée (ou s'il contient la valeur d'une AUTRE semaine) — tous les appelants
+gèrent déjà ce cas comme "rien à afficher/compter pour l'instant". Aucune course entre
+clients à gérer malgré l'aspect "calculé" : le document source (semaine précédente,
+terminée) est immuable, donc chaque client calcule indépendamment exactement la même
+valeur — contrairement à `bossBattleArchive`, pas besoin de la stocker/protéger
+côté serveur.
 
 **⚠️ Règles de sécurité Firestore requises (hors de ce dépôt)** : les collections
 `leaderboard`/`community`/`bossBattleArchive` (+ sous-collections `dailyContributors`/
