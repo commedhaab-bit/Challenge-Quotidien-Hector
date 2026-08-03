@@ -1850,7 +1850,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v9'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v10'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2961,6 +2961,78 @@ const cssText = __rawHtml + __cssSource;
   console.log('OK: classement 3 vues + rang exact avec voisins directs (barre ancree)');
 
   __resetCommunityMocks();
+  // --- 147. Pilier 3 : chaque serie loggee sur le defi cible de la semaine contribue
+  // a la jauge collective (Boss Battle), pas seulement la completion du defi ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'test-uid', displayName: 'Alice', email: 'a@test.com', photoURL: '' };
+  const bossTarget = getWeeklyBossBattleTarget();
+  const bossChallenge147 = CHALLENGE_LIBRARY.find(c => c.id === bossTarget.targetChallengeId);
+  activeToday = new Set([bossChallenge147.id]);
+  state = emptyDayState();
+  currentChallengeId = bossChallenge147.id;
+  stats[bossChallenge147.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  await addSet(10); // serie partielle, ne complete pas le defi (sauf objectif tres bas)
+  let bossDoc = await bossBattleDocRef().get();
+  __assertOk(bossDoc.exists && bossDoc.data().currentProgress === 10, 'une simple serie (pas forcement la completion) doit deja contribuer a la jauge collective');
+  await addSet(5);
+  bossDoc = await bossBattleDocRef().get();
+  __assertEq(bossDoc.data().currentProgress, 15, 'les contributions doivent s additionner au fil des series');
+  const contributorDoc = await bossBattleDocRef().collection('dailyContributors').doc(todayKey + '_test-uid').get();
+  __assertOk(contributorDoc.exists && contributorDoc.data().amount === 15, 'l agregat par jour/utilisateur (badge Contributeur du jour) doit suivre les memes contributions');
+
+  // Un defi qui n est PAS la cible de la semaine ne doit jamais contribuer.
+  const otherChallenge147 = CHALLENGE_LIBRARY.find(c => c.id !== bossChallenge147.id);
+  currentChallengeId = otherChallenge147.id;
+  activeToday = new Set([otherChallenge147.id]);
+  stats[otherChallenge147.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  await addSet(999);
+  bossDoc = await bossBattleDocRef().get();
+  __assertEq(bossDoc.data().currentProgress, 15, 'un defi different de la cible hebdomadaire ne doit jamais contribuer a la jauge collective');
+  currentChallengeId = null;
+  activeToday = new Set();
+  console.log('OK: contributions a la jauge collective (chaque serie compte, uniquement sur le defi cible de la semaine)');
+
+  // --- 148. Victoire du Boss Battle : detection du franchissement + archive create-only ---
+  __resetCommunityMocks();
+  popupQueue = []; popupOpen = false;
+  startBossBattleListener();
+  await Promise.resolve().then(() => {}).then(() => {}); // laisse le get() initial de l abonnement se resoudre
+  __assertEq(communityBossBattleProgress, 0, 'la jauge doit demarrer a 0 si aucune contribution n existe encore cette semaine');
+  await bossBattleDocRef().set({ currentProgress: bossTarget.targetAmount }, { merge: true });
+  await Promise.resolve().then(() => {}).then(() => {}).then(() => {});
+  __assertEq(communityBossBattleProgress, bossTarget.targetAmount, 'la progression en memoire doit suivre le document partage en temps reel');
+  __assertOk(popupOpen, 'franchir la cible doit declencher la popup de victoire');
+  __assertOk(currentPopupHtml.includes('Objectif communautaire atteint'), 'la popup doit annoncer la victoire collective');
+  document.getElementById('appPopupCloseX').onclick();
+  const archiveDoc = await db.collection('bossBattleArchive').doc(mondayOfWeek(new Date())).get();
+  __assertOk(archiveDoc.exists, 'la victoire doit etre archivee (Temple de la renommee) des le 1er franchissement');
+  __assertEq(archiveDoc.data().finalProgress, bossTarget.targetAmount, 'l archive doit garder la progression finale reelle');
+  // Une contribution supplementaire APRES la victoire ne doit jamais re-declencher la popup ni dupliquer l archive.
+  popupQueue = []; popupOpen = false;
+  await bossBattleDocRef().set({ currentProgress: firebase.firestore.FieldValue.increment(50) }, { merge: true });
+  await Promise.resolve().then(() => {}).then(() => {}).then(() => {});
+  __assertOk(!popupOpen, 'une contribution apres la victoire deja detectee ne doit pas redeclencher la popup');
+  // 2 clients qui detectent le franchissement quasi simultanement (2 utilisateurs actifs
+  // au meme instant) ne doivent jamais ecraser l archive definitive du 1er : simule un
+  // 2e appel direct a handleBossBattleVictory() avec une progression finale differente.
+  await handleBossBattleVictory(mondayOfWeek(new Date()), bossTarget, bossTarget.targetAmount + 999);
+  const archiveDocAfterSecondCall = await db.collection('bossBattleArchive').doc(mondayOfWeek(new Date())).get();
+  __assertEq(archiveDocAfterSecondCall.data().finalProgress, bossTarget.targetAmount, 'l archive create-only ne doit jamais etre ecrasee par un 2e franchissement detecte en parallele');
+  console.log('OK: victoire du Boss Battle detectee une seule fois, archivee (create-only, jamais dupliquee)');
+
+  // --- 149. Ecran Communaute : jauge collective affichee avec pourcentage + badge
+  // Contributeur du jour ---
+  communityTopContributorToday = { displayName: 'Bob', amount: 42 };
+  activeTab = 'community';
+  const bossBattleSectionHtml = renderBossBattleSection();
+  __assertOk(bossBattleSectionHtml.includes('boss-battle-card') && bossBattleSectionHtml.includes(escapeHtml(bossChallenge147.name)), 'la jauge collective doit afficher le defi cible de la semaine');
+  __assertOk(bossBattleSectionHtml.includes('100%'), 'le pourcentage affiche doit refleter la progression (ici deja au maximum apres la victoire simulee)');
+  __assertOk(bossBattleSectionHtml.includes('Contributeur du jour') && bossBattleSectionHtml.includes('Bob'), 'le badge Contributeur du jour doit afficher le plus gros contributeur du jour');
+  communityTopContributorToday = null;
+  activeTab = 'today';
+  __resetCommunityMocks();
+  console.log('OK: ecran Communaute affiche la jauge collective + le badge Contributeur du jour');
+
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });
 `;

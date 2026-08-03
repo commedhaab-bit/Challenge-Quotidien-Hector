@@ -251,12 +251,33 @@ de tout le classement) ; voisins directs via 2 requêtes bornées `limit(2)` de 
 d'autre (`fetchMyRankAndNeighbors`), pas un scan complet — reste efficace quelle que
 soit la taille du classement.
 
+**Pilier 3 livré (Boss Battle)** : contrairement au schéma initial du plan, le doc
+partagé `community/bossBattle_{weekStart}` (`bossBattleDocRef()`) ne stocke QUE
+`currentProgress` — `targetChallengeId`/`targetAmount` restent toujours re-dérivés via
+`getWeeklyBossBattleTarget()` (pur/déterministe), ce qui élimine tout risque de course
+à l'initialisation ("qui écrit la cible en premier cette semaine ?"). `addSet()`
+appelle `registerBossBattleContributionIfNeeded()` TÔT (avant le calcul de
+`willComplete` — chaque série loggée contribue, pas seulement la complétion du défi),
+qui incrémente à la fois `currentProgress` et un agrégat `dailyContributors/{date}_{uid}`
+(sert uniquement au badge "Contributeur du jour", `fetchTopContributorToday()`).
+`startBossBattleListener()` détecte le franchissement de la cible en comparant la
+valeur EN MÉMOIRE avant/après (`previous < target && next >= target`) — ne se
+déclenche donc qu'une fois par session au moment réel du franchissement, jamais en
+rouvrant l'app sur une cible déjà atteinte. `handleBossBattleVictory()` écrit
+`bossBattleArchive/{weekStart}` (Temple de la renommée, batch 5) en vérifiant d'abord
+que le document n'existe pas (`existing.exists`) — **nécessaire** : si 2 utilisateurs
+sont actifs au moment exact du franchissement, leurs 2 clients détectent chacun la
+victoire et appellent `handleBossBattleVictory()` en parallèle ; sans cette garde, le
+second écraserait l'archive du premier avec une progression finale différente.
+
 **⚠️ Règles de sécurité Firestore requises (hors de ce dépôt)** : les collections
-`leaderboard`/`community` ne fonctionneront PAS en production tant que des règles
-Firestore autorisant leur lecture/écriture n'auront pas été ajoutées dans la console
-Firebase (texte exact dans le plan `generic-riding-gizmo.md`) — les règles par défaut
-Firestore refusent tout accès à une collection non explicitement autorisée. Le
-harnais de test ne peut pas vérifier ça (mock local, pas de vraies règles).
+`leaderboard`/`community`/`bossBattleArchive` (+ sous-collections `dailyContributors`/
+`contributions`) ne fonctionneront PAS en production tant que des règles Firestore
+autorisant leur lecture/écriture n'auront pas été ajoutées dans la console Firebase
+(texte exact dans le plan `generic-riding-gizmo.md`, à étendre pour `bossBattleArchive`
+en `allow create` seul, jamais `update`) — les règles par défaut Firestore refusent
+tout accès à une collection non explicitement autorisée. Le harnais de test ne peut
+pas vérifier ça (mock local, pas de vraies règles).
 
 ## Pictogrammes d'exercices (sujet en cours)
 Chaque défi a une clé d'icône (`getExercisePictogramKey`), ex: `squats`, `pompes`,

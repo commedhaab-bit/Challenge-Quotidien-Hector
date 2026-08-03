@@ -1060,6 +1060,7 @@ function switchTab(tab) {
   }
   if (tab === 'community') {
     loadCommunityLeaderboard(communityLeaderboardView);
+    fetchTopContributorToday().then((c) => { communityTopContributorToday = c; render(); });
   }
 }
 
@@ -1393,6 +1394,7 @@ let communityLeaderboardLoading = false;
 let communityLeaderboardTop = [];
 let communityLeaderboardRank = null;
 let communityLeaderboardNeighbors = [];
+let communityTopContributorToday = null;
 
 async function loadCommunityLeaderboard(view) {
   communityLeaderboardLoading = true;
@@ -1418,6 +1420,102 @@ function switchCommunityLeaderboardView(view) {
   if (view === communityLeaderboardView) return;
   communityLeaderboardView = view;
   loadCommunityLeaderboard(view);
+}
+
+// ==== COMMUNAUTÉ : JAUGE COLLECTIVE ("BOSS BATTLE") ====
+// Contrairement au modèle du plan initial, le document partagé ne stocke QUE
+// currentProgress : targetChallengeId/targetAmount sont toujours re-dérivés via
+// getWeeklyBossBattleTarget() (pur, déterministe) — élimine tout risque de course à
+// l'initialisation du document ("qui écrit le 1er la cible cette semaine ?").
+let communityBossBattleProgress = 0;
+let communityBossBattleUnsub = null;
+
+function bossBattleDocRef(weekStartStr = mondayOfWeek(new Date())) {
+  return db.collection('community').doc('bossBattle_' + weekStartStr);
+}
+
+// Abonnement temps réel (comme le compteur du défi du jour) : appelé une seule fois
+// au démarrage. Détecte le franchissement de la cible EN DIRECT (comparaison avec la
+// valeur précédemment en mémoire, jamais relue depuis un stockage persistant) : ne se
+// déclenche donc qu'une fois par session pour les clients ouverts au moment exact du
+// franchissement, jamais en rouvrant l'app après coup sur une cible déjà atteinte.
+function startBossBattleListener() {
+  if (communityBossBattleUnsub) communityBossBattleUnsub();
+  const weekStart = mondayOfWeek(new Date());
+  const target = getWeeklyBossBattleTarget(weekStart);
+  communityBossBattleUnsub = bossBattleDocRef(weekStart).onSnapshot((snap) => {
+    const previous = communityBossBattleProgress;
+    const next = snap.exists ? (snap.data().currentProgress || 0) : 0;
+    communityBossBattleProgress = next;
+    if (target && previous < target.targetAmount && next >= target.targetAmount) {
+      handleBossBattleVictory(weekStart, target, next);
+    }
+    render();
+  });
+}
+
+async function handleBossBattleVictory(weekStart, target, finalProgress) {
+  const challenge = CHALLENGE_LIBRARY.find(c => c.id === target.targetChallengeId);
+  if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 140]);
+  fireConfetti();
+  playSuccessSound();
+  enqueuePopup({
+    epic: true,
+    icon: '🏆',
+    title: 'Objectif communautaire atteint !',
+    subtitle: `La communauté a validé ${finalProgress.toLocaleString('fr-FR')} ${challenge ? challenge.name.toLowerCase() : ''} cette semaine !`,
+  });
+  try {
+    // "create-only" cote client (en plus de la regle Firestore equivalente) : si 2
+    // clients detectent le franchissement quasi simultanement (2 utilisateurs actifs
+    // au meme instant), un seul doit ecrire l'archive definitive.
+    // "create-only" cote client (en plus de la regle Firestore equivalente) : si 2
+    // clients detectent le franchissement quasi simultanement (2 utilisateurs actifs
+    // au meme instant), un seul doit ecrire l'archive definitive.
+    const archiveRef = db.collection('bossBattleArchive').doc(weekStart);
+    const existing = await archiveRef.get();
+    if (!existing.exists) {
+      await archiveRef.set({
+        targetChallengeId: target.targetChallengeId,
+        targetAmount: target.targetAmount,
+        finalProgress,
+        completedAt: Date.now(),
+      });
+    }
+  } catch (e) {
+    reportSaveError('boss battle archive failed', e);
+  }
+}
+
+// Appelée depuis addSet(), TÔT (pas seulement à la complétion du défi — chaque série
+// loggée compte pour la jauge collective) si le défi en cours est la cible de la
+// semaine. Incrémente à la fois le compteur partagé ET l'agrégat "par jour/par
+// utilisateur" (dailyContributors), qui sert uniquement au badge Contributeur du jour.
+async function registerBossBattleContributionIfNeeded(challengeId, amount) {
+  const weekStart = mondayOfWeek(new Date());
+  const target = getWeeklyBossBattleTarget(weekStart);
+  if (!target || target.targetChallengeId !== challengeId) return;
+  try {
+    await bossBattleDocRef(weekStart).set(
+      { currentProgress: firebase.firestore.FieldValue.increment(amount) },
+      { merge: true }
+    );
+    await bossBattleDocRef(weekStart).collection('dailyContributors').doc(todayKey + '_' + currentUser.uid).set(
+      { uid: currentUser.uid, displayName: currentUser.displayName || 'Athlète', date: todayKey, amount: firebase.firestore.FieldValue.increment(amount) },
+      { merge: true }
+    );
+  } catch (e) {
+    reportSaveError('boss battle contribution failed', e);
+  }
+}
+
+// "Contributeur du jour" : le plus gros contributeur des dernières 24h (approximé par
+// la date du jour, pas une fenêtre glissante à la seconde près).
+async function fetchTopContributorToday() {
+  const weekStart = mondayOfWeek(new Date());
+  const snap = await bossBattleDocRef(weekStart).collection('dailyContributors')
+    .where('date', '==', todayKey).orderBy('amount', 'desc').limit(1).get();
+  return snap.empty ? null : snap.docs[0].data();
 }
 
 // Appelé une fois au chargement de l'app (après loadState(), donc todayKey connu) :
@@ -2794,6 +2892,7 @@ async function addSet(amount) {
   if (amount <= 0) return;
   const entry = getEntry(currentChallengeId);
   entry.sets.push(amount);
+  await registerBossBattleContributionIfNeeded(currentChallengeId, amount); // chaque serie compte, pas seulement la complétion du défi
   const total = getTotal();
   const target = getTarget();
   const willComplete = total >= target && !entry.done;
@@ -4075,6 +4174,34 @@ function renderLeaderboardRow(entry, rank, view, highlight) {
   `;
 }
 
+// Jauge collective ("Boss Battle") : objectif hebdomadaire déterministe (même exercice/
+// cible pour toute la communauté), progression en temps réel (communityBossBattleProgress,
+// tenue par startBossBattleListener()), badge "Contributeur du jour" si quelqu'un a déjà
+// contribué aujourd'hui.
+function renderBossBattleSection() {
+  const weekStart = mondayOfWeek(new Date());
+  const target = getWeeklyBossBattleTarget(weekStart);
+  if (!target) return '';
+  const challenge = CHALLENGE_LIBRARY.find(c => c.id === target.targetChallengeId);
+  if (!challenge) return '';
+  const pct = Math.min(100, Math.round((communityBossBattleProgress / target.targetAmount) * 100));
+  const unitLabel = challenge.unit === 'sec' ? 'sec' : 'reps';
+  const contributorHtml = communityTopContributorToday
+    ? `<div class="boss-battle-contributor">👑 Contributeur du jour : ${escapeHtml(communityTopContributorToday.displayName || 'Athlète')} (${communityTopContributorToday.amount} ${unitLabel})</div>`
+    : '';
+  return `
+    <div class="boss-battle-card">
+      <div class="boss-battle-header">
+        <span class="boss-battle-badge">⚔️ Objectif communautaire de la semaine</span>
+      </div>
+      <div class="boss-battle-goal">${escapeHtml(challenge.name)} — ${communityBossBattleProgress.toLocaleString('fr-FR')} / ${target.targetAmount.toLocaleString('fr-FR')} ${unitLabel}</div>
+      <div class="boss-battle-track"><div class="boss-battle-fill" style="width:${pct}%"></div></div>
+      <div class="boss-battle-pct">${pct}%</div>
+      ${contributorHtml}
+    </div>
+  `;
+}
+
 function renderCommunityScreen() {
   const views = [
     { id: 'streaks', label: 'Séries' },
@@ -4107,6 +4234,7 @@ function renderCommunityScreen() {
     <h1 class="title">Communauté</h1>
     <div class="subtitle">Classement, défis partagés et objectifs collectifs</div>
     ${leaderboardOptOut ? `<div class="community-optout-notice">Tu ne participes pas au classement (activable dans Paramètres).</div>` : ''}
+    ${renderBossBattleSection()}
     <div class="leaderboard-tabs">
       ${views.map(v => `<button class="leaderboard-tab-btn${communityLeaderboardView === v.id ? ' active' : ''}" onclick="switchCommunityLeaderboardView('${v.id}')">${v.label}</button>`).join('')}
     </div>
@@ -4321,6 +4449,7 @@ async function continueStartApp() {
   await loadActiveToday(); // vient après loadState() : dépend de todayKey
   await evaluateStreakOnLoad(); // vient après loadState() : dépend de todayKey
   startCommunityDailyListener(); // vient après loadState() : dépend de todayKey
+  startBossBattleListener();
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).
