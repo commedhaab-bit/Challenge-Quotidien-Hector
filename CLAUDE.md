@@ -279,6 +279,16 @@ en `allow create` seul, jamais `update`) — les règles par défaut Firestore r
 tout accès à une collection non explicitement autorisée. Le harnais de test ne peut
 pas vérifier ça (mock local, pas de vraies règles).
 
+**Les 3 piliers sont livrés** (défi du jour + Hero Banner, classement 3 vues + onglet
+dédié, Boss Battle + Temple de la renommée `fetchBossBattleArchive()`/
+`renderHallOfFameSection()`, affiché sur l'écran Communauté seulement s'il existe déjà
+au moins une victoire archivée — pas d'état "vide" traité comme une erreur). Points
+non vérifiables par le harnais de test (mock DOM, pas un vrai navigateur), à confirmer
+visuellement à l'usage réel : rendu de la tab-bar à 5 onglets sur un écran étroit, et
+disponibilité réelle de l'API d'agrégation `count()` sur le SDK Firestore **compat**
+10.13.0 utilisé ici (documentée côté SDK JS modulaire depuis longtemps, jamais testée
+ici que via le mock).
+
 ## Pictogrammes d'exercices (sujet en cours)
 Chaque défi a une clé d'icône (`getExercisePictogramKey`), ex: `squats`, `pompes`,
 `dumbbell_generic`. Système à 3 niveaux de repli automatique dans

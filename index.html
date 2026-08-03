@@ -1061,6 +1061,7 @@ function switchTab(tab) {
   if (tab === 'community') {
     loadCommunityLeaderboard(communityLeaderboardView);
     fetchTopContributorToday().then((c) => { communityTopContributorToday = c; render(); });
+    fetchBossBattleArchive().then((a) => { communityBossBattleArchive = a; render(); });
   }
 }
 
@@ -1395,6 +1396,7 @@ let communityLeaderboardTop = [];
 let communityLeaderboardRank = null;
 let communityLeaderboardNeighbors = [];
 let communityTopContributorToday = null;
+let communityBossBattleArchive = [];
 
 async function loadCommunityLeaderboard(view) {
   communityLeaderboardLoading = true;
@@ -1516,6 +1518,13 @@ async function fetchTopContributorToday() {
   const snap = await bossBattleDocRef(weekStart).collection('dailyContributors')
     .where('date', '==', todayKey).orderBy('amount', 'desc').limit(1).get();
   return snap.empty ? null : snap.docs[0].data();
+}
+
+// Temple de la renommée : les victoires collectives passées (Boss Battle atteint),
+// les plus récentes en premier — simple mémoire/fierté collective à long terme.
+async function fetchBossBattleArchive(n = 10) {
+  const snap = await db.collection('bossBattleArchive').orderBy('completedAt', 'desc').limit(n).get();
+  return snap.docs.map(d => ({ weekStart: d.id, ...d.data() }));
 }
 
 // Appelé une fois au chargement de l'app (après loadState(), donc todayKey connu) :
@@ -4202,6 +4211,34 @@ function renderBossBattleSection() {
   `;
 }
 
+// Temple de la renommée : mémoire des victoires collectives passées (Boss Battle
+// atteint), la plus récente en premier. Rien à afficher tant qu'aucune semaine n'a
+// encore été remportée — pas un état "vide" traité comme une erreur, juste un module
+// qui n'apparaît pas encore.
+function renderHallOfFameSection() {
+  if (communityBossBattleArchive.length === 0) return '';
+  const rows = communityBossBattleArchive.map(entry => {
+    const challenge = CHALLENGE_LIBRARY.find(c => c.id === entry.targetChallengeId);
+    const unitLabel = challenge && challenge.unit === 'sec' ? 'sec' : 'reps';
+    const [y, m, d] = entry.weekStart.split('-').map(Number);
+    const weekLabel = formatDateLabel(new Date(y, m - 1, d));
+    return `
+      <div class="hall-of-fame-row">
+        <span class="hall-of-fame-icon">🏆</span>
+        <div class="hall-of-fame-info">
+          <span class="hall-of-fame-name">${escapeHtml(challenge ? challenge.name : 'Défi supprimé')}</span>
+          <span class="hall-of-fame-week">Semaine du ${weekLabel}</span>
+        </div>
+        <span class="hall-of-fame-value">${entry.finalProgress.toLocaleString('fr-FR')} ${unitLabel}</span>
+      </div>
+    `;
+  }).join('');
+  return `
+    <div class="section-label">Temple de la renommée</div>
+    <div class="hall-of-fame-list">${rows}</div>
+  `;
+}
+
 function renderCommunityScreen() {
   const views = [
     { id: 'streaks', label: 'Séries' },
@@ -4235,6 +4272,7 @@ function renderCommunityScreen() {
     <div class="subtitle">Classement, défis partagés et objectifs collectifs</div>
     ${leaderboardOptOut ? `<div class="community-optout-notice">Tu ne participes pas au classement (activable dans Paramètres).</div>` : ''}
     ${renderBossBattleSection()}
+    ${renderHallOfFameSection()}
     <div class="leaderboard-tabs">
       ${views.map(v => `<button class="leaderboard-tab-btn${communityLeaderboardView === v.id ? ' active' : ''}" onclick="switchCommunityLeaderboardView('${v.id}')">${v.label}</button>`).join('')}
     </div>

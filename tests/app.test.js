@@ -1850,7 +1850,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v10'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v11'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3032,6 +3032,23 @@ const cssText = __rawHtml + __cssSource;
   activeTab = 'today';
   __resetCommunityMocks();
   console.log('OK: ecran Communaute affiche la jauge collective + le badge Contributeur du jour');
+
+  // --- 150. Temple de la renommee : rien tant qu aucune victoire, puis liste des
+  // semaines gagnees (plus recente en premier) une fois des archives disponibles ---
+  __resetCommunityMocks();
+  communityBossBattleArchive = [];
+  __assertEq(renderHallOfFameSection(), '', 'aucun module ne doit apparaitre tant qu aucune semaine n a ete remportee (pas un etat vide traite comme une erreur)');
+  const hofChallenge = CHALLENGE_LIBRARY.find(c => c.id === bossTarget.targetChallengeId);
+  await db.collection('bossBattleArchive').doc('2026-08-03').set({ targetChallengeId: hofChallenge.id, targetAmount: 50000, finalProgress: 50120, completedAt: 1000 });
+  await db.collection('bossBattleArchive').doc('2026-08-10').set({ targetChallengeId: hofChallenge.id, targetAmount: 50000, finalProgress: 51000, completedAt: 2000 });
+  communityBossBattleArchive = await fetchBossBattleArchive();
+  __assertEq(communityBossBattleArchive.map(e => e.weekStart), ['2026-08-10', '2026-08-03'], 'les victoires doivent etre triees de la plus recente a la plus ancienne');
+  const hofHtml = renderHallOfFameSection();
+  __assertOk(hofHtml.includes('Temple de la renommée') && hofHtml.includes('hall-of-fame-row'), 'le Temple de la renommee doit lister les victoires collectives passees');
+  __assertOk(hofHtml.includes(escapeHtml(hofChallenge.name)) && hofHtml.includes('51'), 'chaque entree doit afficher le defi et la progression finale reelle');
+  communityBossBattleArchive = [];
+  __resetCommunityMocks();
+  console.log('OK: Temple de la renommee (victoires collectives passees, triees de la plus recente a la plus ancienne)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

@@ -796,6 +796,28 @@
     font-weight: 600;
   }
 
+  /* Temple de la renommee : victoires collectives passees du Boss Battle */
+  .hall-of-fame-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 18px;
+  }
+  .hall-of-fame-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .hall-of-fame-icon { font-size: 18px; flex-shrink: 0; }
+  .hall-of-fame-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .hall-of-fame-name { font-size: 13.5px; font-weight: 700; color: var(--chalk); }
+  .hall-of-fame-week { font-size: 11.5px; color: var(--chalk-dim); margin-top: 1px; }
+  .hall-of-fame-value { font-size: 12.5px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+
   .cal-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
