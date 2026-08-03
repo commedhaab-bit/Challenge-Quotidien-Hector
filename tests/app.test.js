@@ -1855,6 +1855,15 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
 
+  // --- 86bis. Service worker : ignore les requetes non http(s) (ex: chrome-extension://
+  // injectees par une extension du navigateur) AVANT tout traitement -- Cache.put() ne
+  // supporte que http(s) et levait une exception non interceptee sur ces schemas ---
+  const fetchListenerIdx = __swSource.indexOf("addEventListener('fetch'");
+  const guardIdx = __swSource.indexOf("event.request.url.startsWith('http')", fetchListenerIdx);
+  __assertOk(fetchListenerIdx !== -1 && guardIdx !== -1, 'le handler fetch doit filtrer les schemas non http(s) avant toute mise en cache');
+  __assertOk(guardIdx < __swSource.indexOf('cache.put', fetchListenerIdx), 'le filtre de schema doit intervenir AVANT le premier cache.put (sinon l exception reste possible)');
+  console.log('OK: service worker ignore les requetes non http(s) (chrome-extension:// etc.)');
+
   // --- 87. Demarrage : loadAppData() (chemin rapide, document consolide deja
   // migre) charge a elle seule customChallenges/CHALLENGES en UNE lecture, sans
   // aucun appel separe a loadChallenges() (fusion Firestore, #28) ---

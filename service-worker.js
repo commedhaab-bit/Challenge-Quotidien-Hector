@@ -24,6 +24,15 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Ignore tout ce qui n'est pas une requête http(s) classique (ex: chrome-extension://
+  // injectée par une extension du navigateur — Grammarly, gestionnaire de mots de passe,
+  // devtools...). Cache.put() ne supporte QUE http(s) et lève une exception non
+  // interceptée sur ces schémas, d'où les "Uncaught TypeError: Request scheme
+  // chrome-extension is unsupported" observés en prod : rien à voir avec l'appli
+  // elle-même, juste ce SW qui tentait de mettre en cache une requête qui ne lui
+  // était pas destinée.
+  if (!event.request.url.startsWith('http')) return;
+
   // Ne jamais mettre en cache les appels Firebase/Google (données live)
   if (event.request.url.includes('firebaseio.com') ||
       event.request.url.includes('googleapis.com') ||
