@@ -237,6 +237,10 @@ async function loadAppData() {
     hasShield = sd.hasShield !== undefined ? sd.hasShield : true;
     lastShieldResetWeek = sd.lastShieldResetWeek || null;
     xpTotal = d.xpTotal ?? 0;
+    const xwd = d.xpWeeklyData ?? {};
+    xpWeekly = xwd.xpWeekly || 0;
+    xpWeekStart = xwd.xpWeekStart || null;
+    leaderboardOptOut = d.leaderboardOptOut ?? false;
     voiceCoachEnabled = d.voiceCoachEnabled ?? true;
     hasSeenTour = d.hasSeenTour ?? false;
     lastCompleted = d.lastCompleted ?? {};
@@ -254,7 +258,7 @@ async function loadAppData() {
   await Promise.all([
     loadProfile(), loadChallenges(), loadWeights(), loadLastCompleted(), loadStats(),
     loadBadges(), loadDailyActivity(), loadManualTargetOverrides(), loadStreakData(),
-    loadXp(), loadVoiceCoachEnabled(), loadHasSeenTour(),
+    loadXp(), loadXpWeekly(), loadLeaderboardOptOut(), loadVoiceCoachEnabled(), loadHasSeenTour(),
   ]);
   if (userProfile) {
     await appDataDocRef().set({
@@ -263,6 +267,8 @@ async function loadAppData() {
       manualTargetOverrides,
       streakData: { streakCount, lastCompletedDate, hasShield, lastShieldResetWeek },
       xpTotal,
+      xpWeeklyData: { xpWeekly, xpWeekStart },
+      leaderboardOptOut,
       voiceCoachEnabled,
       hasSeenTour,
       lastCompleted,
@@ -1052,6 +1058,9 @@ function switchTab(tab) {
       render();
     });
   }
+  if (tab === 'community') {
+    loadCommunityLeaderboard(communityLeaderboardView);
+  }
 }
 
 // Active/désactive un défi pour aujourd'hui uniquement (persisté par date, cf activeToday).
@@ -1220,6 +1229,7 @@ async function loadStreakData() {
 }
 async function saveStreakData() {
   await saveAppField('streakData', { streakCount, lastCompletedDate, hasShield, lastShieldResetWeek });
+  await syncLeaderboardEntry();
 }
 
 function mondayOfWeek(d) {
@@ -1372,6 +1382,42 @@ function hoursRemainingToday() {
   const midnight = new Date(now);
   midnight.setHours(24, 0, 0, 0);
   return Math.max(0, Math.ceil((midnight - now) / 3600000));
+}
+
+// ==== COMMUNAUTÉ : CLASSEMENT (onglet dédié) ====
+// Chargement asynchrone mis en cache dans ces variables (même principe que
+// historyEntries/historyLoading pour le Journal) : render() reste synchrone et se
+// contente de lire ce qui a déjà été chargé.
+let communityLeaderboardView = 'streaks'; // 'streaks' | 'weekly' | 'alltime'
+let communityLeaderboardLoading = false;
+let communityLeaderboardTop = [];
+let communityLeaderboardRank = null;
+let communityLeaderboardNeighbors = [];
+
+async function loadCommunityLeaderboard(view) {
+  communityLeaderboardLoading = true;
+  render();
+  try {
+    const [top, rankInfo] = await Promise.all([
+      fetchLeaderboardTop(view, 20),
+      fetchMyRankAndNeighbors(view),
+    ]);
+    communityLeaderboardTop = top;
+    communityLeaderboardRank = rankInfo.rank;
+    communityLeaderboardNeighbors = rankInfo.neighbors;
+  } catch (e) {
+    communityLeaderboardTop = [];
+    communityLeaderboardRank = null;
+    communityLeaderboardNeighbors = [];
+  }
+  communityLeaderboardLoading = false;
+  render();
+}
+
+function switchCommunityLeaderboardView(view) {
+  if (view === communityLeaderboardView) return;
+  communityLeaderboardView = view;
+  loadCommunityLeaderboard(view);
 }
 
 // Appelé une fois au chargement de l'app (après loadState(), donc todayKey connu) :
@@ -1681,6 +1727,17 @@ function enqueueLevelPopups(levelBefore, levelAfter) {
 
 // ==== XP, NIVEAUX & TITRES D'ATHLÈTE ====
 let xpTotal = 0;
+// XP de la semaine calendaire en cours (classement "Hebdomadaire", reset le lundi) —
+// champ SÉPARÉ de xpTotal (jamais fusionné dedans) pour ne rien changer au modèle
+// existant : `xpWeekStart` (lundi de la semaine du dernier ajout) suit exactement le
+// même mécanisme que `lastShieldResetWeek` (mondayOfWeek() comparé à chaque écriture).
+let xpWeekly = 0;
+let xpWeekStart = null;
+// Participation au classement communautaire (activée par défaut, désactivable dans
+// Paramètres) : si désactivée, syncLeaderboardEntry() ne doit RIEN écrire, et le doc
+// leaderboard/{uid} déjà existant doit être supprimé (pas juste ignoré en lecture,
+// pour ne laisser aucune trace publique une fois l'utilisateur retiré).
+let leaderboardOptOut = false;
 
 async function loadXp() {
   try { const res = await dbGet('xpTotal'); xpTotal = parseInt(res.value, 10) || 0; }
@@ -1689,13 +1746,112 @@ async function loadXp() {
 async function saveXp() {
   await saveAppField('xpTotal', xpTotal);
 }
+async function loadXpWeekly() {
+  try {
+    const res = await dbGet('xpWeeklyData');
+    const d = JSON.parse(res.value);
+    xpWeekly = d.xpWeekly || 0;
+    xpWeekStart = d.xpWeekStart || null;
+  } catch (e) {
+    xpWeekly = 0;
+    xpWeekStart = null;
+  }
+}
+async function saveXpWeekly() {
+  await saveAppField('xpWeeklyData', { xpWeekly, xpWeekStart });
+}
+async function loadLeaderboardOptOut() {
+  try { const res = await dbGet('leaderboardOptOut'); leaderboardOptOut = res.value === 'true'; }
+  catch (e) { leaderboardOptOut = false; }
+}
+async function saveLeaderboardOptOut() {
+  await saveAppField('leaderboardOptOut', leaderboardOptOut);
+}
+
+// Écrit (merge) la ligne publique et minimale de classement de l'utilisateur — jamais
+// le document appData complet (profil/poids restent privés). No-op silencieux si
+// l'utilisateur a désactivé sa participation.
+async function syncLeaderboardEntry() {
+  if (leaderboardOptOut || !currentUser) return;
+  try {
+    await db.collection('leaderboard').doc(currentUser.uid).set({
+      displayName: currentUser.displayName || 'Athlète',
+      photoURL: currentUser.photoURL || '',
+      streakCount,
+      xpWeekly,
+      xpWeekStart,
+      xpTotal,
+      lastActiveDate: todayKey,
+    }, { merge: true });
+  } catch (e) {
+    reportSaveError('leaderboard sync failed', e);
+  }
+}
+
+async function toggleLeaderboardOptOut() {
+  leaderboardOptOut = !leaderboardOptOut;
+  await saveLeaderboardOptOut();
+  if (leaderboardOptOut) {
+    try { await db.collection('leaderboard').doc(currentUser.uid).delete(); }
+    catch (e) { reportSaveError('leaderboard opt-out delete failed', e); }
+  } else {
+    await syncLeaderboardEntry();
+  }
+  render();
+}
+
+function leaderboardFieldForView(view) {
+  if (view === 'streaks') return 'streakCount';
+  if (view === 'weekly') return 'xpWeekly';
+  return 'xpTotal';
+}
+
+// Base de la requête classement pour une vue donnée : la vue "Hebdomadaire" est en
+// plus filtrée sur la semaine calendaire en cours (xpWeekStart), sinon une entrée
+// jamais rafraîchie depuis une semaine précédente resterait affichée à tort.
+function leaderboardBaseQuery(view) {
+  let q = db.collection('leaderboard');
+  if (view === 'weekly') q = q.where('xpWeekStart', '==', mondayOfWeek(new Date()));
+  return q;
+}
+
+async function fetchLeaderboardTop(view, n = 20) {
+  const field = leaderboardFieldForView(view);
+  const snap = await leaderboardBaseQuery(view).orderBy(field, 'desc').limit(n).get();
+  return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+}
+
+// Rang exact (via count(), sans jamais lire tout le classement) + les 2 voisins juste
+// au-dessus et juste en-dessous de l'utilisateur — pas seulement le top N, pour que
+// n'importe qui (même loin du sommet) se voie situé dans le classement.
+async function fetchMyRankAndNeighbors(view) {
+  const field = leaderboardFieldForView(view);
+  const myDoc = await db.collection('leaderboard').doc(currentUser.uid).get();
+  const myValue = (myDoc.exists && myDoc.data()[field]) || 0;
+  const aboveCount = await leaderboardBaseQuery(view).where(field, '>', myValue).count().get();
+  const rank = aboveCount.data().count + 1;
+  const aboveSnap = await leaderboardBaseQuery(view).where(field, '>', myValue).orderBy(field, 'asc').limit(2).get();
+  const belowSnap = await leaderboardBaseQuery(view).where(field, '<', myValue).orderBy(field, 'desc').limit(2).get();
+  const above = aboveSnap.docs.map(d => ({ uid: d.id, ...d.data() })).reverse();
+  const below = belowSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  const me = myDoc.exists
+    ? { uid: currentUser.uid, ...myDoc.data() }
+    : { uid: currentUser.uid, displayName: currentUser.displayName || 'Toi', [field]: myValue };
+  return { rank, neighbors: [...above, me, ...below] };
+}
+
 // Ne déclenche aucune popup elle-même : renvoie juste les niveaux avant/après pour
 // laisser l'appelant décider de l'ordre d'affichage (ex: popup de complétion d'abord,
 // puis éventuellement level up / nouveau titre).
 async function awardXp(amount) {
   const levelBefore = computeLevel(xpTotal);
   xpTotal += amount;
+  const wk = mondayOfWeek(new Date());
+  if (xpWeekStart !== wk) { xpWeekly = 0; xpWeekStart = wk; }
+  xpWeekly += amount;
   await saveXp();
+  await saveXpWeekly();
+  await syncLeaderboardEntry();
   const levelAfter = computeLevel(xpTotal);
   return { levelBefore, levelAfter };
 }
@@ -2855,6 +3011,11 @@ function render(animate) {
     return;
   }
 
+  if (activeTab === 'community') {
+    applyContent(app, renderCommunityScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
+    return;
+  }
+
   let html = '';
 
   if (!currentChallengeId) {
@@ -3699,6 +3860,12 @@ function renderSettingsSection() {
         </div>
         <button class="switch${voiceCoachEnabled ? ' on' : ''}" onclick="toggleVoiceCoach()"><span class="switch-knob"></span></button>
       </div>
+      <div class="settings-row">
+        <div class="settings-row-label">🌍 Classement communautaire
+          <div class="settings-row-desc">Affiche ton nom, ta série et ton XP dans le classement partagé avec les autres utilisateurs.</div>
+        </div>
+        <button class="switch${leaderboardOptOut ? '' : ' on'}" onclick="toggleLeaderboardOptOut()"><span class="switch-knob"></span></button>
+      </div>
     </div>
   `;
 }
@@ -3888,6 +4055,66 @@ async function importUserData(event) {
   render(true);
 }
 
+// Une ligne de classement (top N ou barre de rang ancrée) : avatar/initiale, nom,
+// valeur formatée selon la vue (jours de série vs XP). `highlight` marque la ligne
+// de l'utilisateur courant dans la barre de rang.
+function renderLeaderboardRow(entry, rank, view, highlight) {
+  const value = entry[leaderboardFieldForView(view)] || 0;
+  const valueLabel = view === 'streaks' ? `🔥 ${value} j` : `⚡ ${value} XP`;
+  const name = entry.displayName || 'Athlète';
+  const avatar = entry.photoURL
+    ? `<img src="${escapeHtml(entry.photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
+    : `<div class="leaderboard-avatar-fallback">${escapeHtml(name.charAt(0).toUpperCase())}</div>`;
+  return `
+    <div class="leaderboard-row${highlight ? ' me' : ''}">
+      <span class="leaderboard-rank">#${rank}</span>
+      ${avatar}
+      <span class="leaderboard-name">${escapeHtml(name)}</span>
+      <span class="leaderboard-value">${valueLabel}</span>
+    </div>
+  `;
+}
+
+function renderCommunityScreen() {
+  const views = [
+    { id: 'streaks', label: 'Séries' },
+    { id: 'weekly', label: 'Hebdo' },
+    { id: 'alltime', label: 'Légendes' },
+  ];
+  const topHtml = communityLeaderboardLoading
+    ? `<div class="history-empty">Chargement…</div>`
+    : (communityLeaderboardTop.length === 0
+      ? `<div class="history-empty">Personne à afficher pour l'instant.</div>`
+      : communityLeaderboardTop.map((e, i) => renderLeaderboardRow(e, i + 1, communityLeaderboardView, e.uid === currentUser.uid)).join(''));
+
+  // communityLeaderboardNeighbors est ordonné [au-dessus de moi..., moi, ...en-dessous
+  // de moi] (voir fetchMyRankAndNeighbors) : le rang de chaque voisin se déduit donc de
+  // sa position relative à la mienne dans ce tableau, sans nouvelle requête.
+  let rankBarHtml = '';
+  if (!communityLeaderboardLoading && communityLeaderboardRank) {
+    const meIdx = communityLeaderboardNeighbors.findIndex(e => e.uid === currentUser.uid);
+    rankBarHtml = `
+      <div class="rank-bar">
+        ${communityLeaderboardNeighbors.map((e, i) => renderLeaderboardRow(e, communityLeaderboardRank - (meIdx - i), communityLeaderboardView, e.uid === currentUser.uid).replace('leaderboard-row', 'leaderboard-row rank-bar-row')).join('')}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="header">
+      <div class="date">${formatDateLabel(new Date())}</div>
+    </div>
+    <h1 class="title">Communauté</h1>
+    <div class="subtitle">Classement, défis partagés et objectifs collectifs</div>
+    ${leaderboardOptOut ? `<div class="community-optout-notice">Tu ne participes pas au classement (activable dans Paramètres).</div>` : ''}
+    <div class="leaderboard-tabs">
+      ${views.map(v => `<button class="leaderboard-tab-btn${communityLeaderboardView === v.id ? ' active' : ''}" onclick="switchCommunityLeaderboardView('${v.id}')">${v.label}</button>`).join('')}
+    </div>
+    <div class="leaderboard-list">${topHtml}</div>
+    ${rankBarHtml}
+  `;
+}
+
 function renderAccountTabScreen() {
   if (settingsScreenOpen) {
     return renderSettingsScreen();
@@ -3913,6 +4140,7 @@ function renderTabBar() {
     { id: 'today',   icon: '🏋️‍♂️', label: "Aujourd'hui" },
     { id: 'library',  icon: '🎯', label: 'Défis' },
     { id: 'history',  icon: '📓', label: 'Journal' },
+    { id: 'community', icon: '🌍', label: 'Commu' },
     { id: 'account',  icon: '👤', label: 'Profil' },
   ];
   return `
@@ -4055,7 +4283,7 @@ function getSuggestion() {
 function applyShortcutTabFromUrl() {
   const params = new URLSearchParams(location.search);
   const tab = params.get('tab');
-  if (['today', 'history', 'library', 'account'].includes(tab)) {
+  if (['today', 'history', 'library', 'community', 'account'].includes(tab)) {
     activeTab = tab;
   }
   if (params.has('tab')) {

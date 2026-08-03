@@ -637,6 +637,117 @@
   .share-stats-btn:active { transform: scale(0.98); }
   .share-icon { flex-shrink: 0; }
 
+  /* COMMUNAUTÉ — onglet dédié (classement 3 vues + barre de rang ancrée) */
+  .community-optout-notice {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 12.5px;
+    color: var(--chalk-dim);
+    margin-bottom: 16px;
+  }
+  .leaderboard-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .leaderboard-tab-btn {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--chalk-dim);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+  .leaderboard-tab-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0a0d0b;
+  }
+  .leaderboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    /* espace pour ne jamais laisser la derniere ligne cachee sous la barre de rang
+       ancree + la tab-bar */
+    margin-bottom: 140px;
+  }
+  .leaderboard-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .leaderboard-row.me {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset;
+  }
+  .leaderboard-rank {
+    font-size: 12.5px;
+    font-weight: 800;
+    color: var(--chalk-dim);
+    width: 28px;
+    flex-shrink: 0;
+  }
+  .leaderboard-avatar, .leaderboard-avatar-fallback {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .leaderboard-avatar { object-fit: cover; border: 1px solid var(--line); }
+  .leaderboard-avatar-fallback {
+    background: var(--accent-dim);
+    color: #0a0d0b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 14px;
+  }
+  .leaderboard-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--chalk);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .leaderboard-value {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+  /* Barre de rang ancrée en bas (au-dessus de la tab-bar, z-index 500) : rang exact
+     de l'utilisateur + ses voisins directs, toujours visible pendant le défilement
+     du classement. */
+  .rank-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    max-width: 480px;
+    margin: 0 auto;
+    background: var(--bg-raised);
+    border-top: 1px solid var(--line);
+    padding: 8px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 480;
+  }
+  .rank-bar-row { padding: 6px 10px; }
+
   .cal-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);

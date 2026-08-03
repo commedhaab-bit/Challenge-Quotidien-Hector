@@ -234,6 +234,30 @@ mode `'today'` uniquement). `registerCommunityCompletionIfNeeded()` (appelée da
 `willComplete` le même jour pour le même défi ; sans cette garde, la preuve
 sociale communautaire serait gonflable artificiellement.
 
+**Pilier 2 livré (classement + onglet Communauté)** : 5ᵉ onglet `community`
+(`renderTabBar()`/dispatch dans `render()`), écran `renderCommunityScreen()` avec 3
+vues (`streaks`/`weekly`/`alltime`, `communityLeaderboardView`) et une barre de rang
+fixe (`.rank-bar`, au-dessus de la tab-bar) montrant le rang exact + 2 voisins de
+chaque côté. `xpWeekly`/`xpWeekStart` (nouveau champ séparé `appData.xpWeeklyData`,
+jamais fusionné dans `xpTotal`) suivent le même mécanisme de reset hebdomadaire que
+`lastShieldResetWeek` (comparaison à `mondayOfWeek(new Date())`). `awardXp()` et
+`saveStreakData()` appellent `syncLeaderboardEntry()` (écrit UNIQUEMENT
+`leaderboard/{uid}`, jamais `appData` — nom/photo/streak/XP publics seulement, rien
+de privé) ; `leaderboardOptOut` (toggle Paramètres, défaut désactivé = participation
+active) fait un no-op silencieux côté sync ET supprime le document existant côté
+`toggleLeaderboardOptOut()` (pas juste ignoré en lecture, pour ne laisser aucune
+trace publique). Rang exact via une requête d'agrégation `count()` (jamais de lecture
+de tout le classement) ; voisins directs via 2 requêtes bornées `limit(2)` de part et
+d'autre (`fetchMyRankAndNeighbors`), pas un scan complet — reste efficace quelle que
+soit la taille du classement.
+
+**⚠️ Règles de sécurité Firestore requises (hors de ce dépôt)** : les collections
+`leaderboard`/`community` ne fonctionneront PAS en production tant que des règles
+Firestore autorisant leur lecture/écriture n'auront pas été ajoutées dans la console
+Firebase (texte exact dans le plan `generic-riding-gizmo.md`) — les règles par défaut
+Firestore refusent tout accès à une collection non explicitement autorisée. Le
+harnais de test ne peut pas vérifier ça (mock local, pas de vraies règles).
+
 ## Pictogrammes d'exercices (sujet en cours)
 Chaque défi a une clé d'icône (`getExercisePictogramKey`), ex: `squats`, `pompes`,
 `dumbbell_generic`. Système à 3 niveaux de repli automatique dans

@@ -189,6 +189,10 @@ function makeMockCollection(store) {
         store.set(id, next);
         notifyDoc(id);
       },
+      async delete() {
+        store.delete(id);
+        notifyDoc(id);
+      },
       onSnapshot(cb) {
         if (!listenersByDoc.has(id)) listenersByDoc.set(id, new Set());
         listenersByDoc.get(id).add(cb);
@@ -974,10 +978,20 @@ const cssText = __rawHtml + __cssSource;
   voiceCoachEnabled = true;
   let settingsHtml = renderSettingsSection();
   __assertOk(settingsHtml.includes('Coach vocal'), 'la section parametres doit proposer le coach vocal');
-  __assertOk(settingsHtml.includes('switch on'), 'le switch doit apparaitre actif quand voiceCoachEnabled=true');
+  // Isole le bloc du switch Coach vocal (une autre ligne de reglages, le classement
+  // communautaire, utilise aussi la classe .switch juste apres dans le meme HTML) :
+  // du label Coach vocal jusqu au prochain settings-row-label (debut de la ligne suivante).
+  function extractVoiceRow(html) {
+    const start = html.indexOf('Coach vocal');
+    const nextRow = html.indexOf('settings-row-label', start + 1);
+    return html.slice(start, nextRow === -1 ? html.length : nextRow);
+  }
+  let voiceRowHtml = extractVoiceRow(settingsHtml);
+  __assertOk(voiceRowHtml.includes('switch on'), 'le switch doit apparaitre actif quand voiceCoachEnabled=true');
   voiceCoachEnabled = false;
   settingsHtml = renderSettingsSection();
-  __assertOk(!settingsHtml.includes('switch on'), 'le switch ne doit pas apparaitre actif quand voiceCoachEnabled=false');
+  voiceRowHtml = extractVoiceRow(settingsHtml);
+  __assertOk(!voiceRowHtml.includes('switch on'), 'le switch ne doit pas apparaitre actif quand voiceCoachEnabled=false');
   voiceCoachEnabled = true;
   currentUser = { displayName: 'Test', email: 't@test.com', photoURL: '' };
   settingsScreenOpen = false;
@@ -1836,7 +1850,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v8'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v9'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2872,6 +2886,81 @@ const cssText = __rawHtml + __cssSource;
   activeToday = new Set();
   console.log('OK: compteur de validations communautaire incremente une seule fois par defi/par jour');
 
+  // --- 144. Pilier 2 : nouvel onglet Communaute + syncLeaderboardEntry (XP hebdo
+  // avec reset lundi, streak) ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'test-uid', displayName: 'Alice', email: 'a@test.com', photoURL: '' };
+  leaderboardOptOut = false;
+  const communityTabBarHtml = renderTabBar();
+  __assertOk(communityTabBarHtml.includes("switchTab('community')"), 'un 5e onglet Communaute doit exister dans la tab-bar');
+
+  xpTotal = 0; xpWeekly = 0; xpWeekStart = null;
+  await awardXp(80);
+  let myLbDoc = await db.collection('leaderboard').doc('test-uid').get();
+  __assertOk(myLbDoc.exists, 'awardXp() doit synchroniser une entree de classement');
+  __assertEq(myLbDoc.data().xpTotal, 80, 'xpTotal synchronise doit correspondre');
+  __assertEq(myLbDoc.data().xpWeekly, 80, 'xpWeekly doit demarrer a la valeur gagnee cette semaine');
+  const wkNow = mondayOfWeek(new Date());
+  __assertEq(myLbDoc.data().xpWeekStart, wkNow, 'xpWeekStart doit etre le lundi de la semaine courante');
+  await awardXp(20);
+  myLbDoc = await db.collection('leaderboard').doc('test-uid').get();
+  __assertEq(myLbDoc.data().xpWeekly, 100, 'un 2e gain la meme semaine doit s additionner');
+  // Simule un ancien xpWeekStart (semaine precedente) : le prochain gain doit repartir a zero.
+  xpWeekStart = '2000-01-03';
+  await awardXp(15);
+  myLbDoc = await db.collection('leaderboard').doc('test-uid').get();
+  __assertEq(myLbDoc.data().xpWeekly, 15, 'un nouveau lundi doit remettre xpWeekly a zero avant d ajouter le nouveau gain');
+  __assertEq(myLbDoc.data().xpTotal, 115, 'xpTotal, lui, ne doit jamais etre remis a zero (historique a vie)');
+
+  streakCount = 4;
+  await saveStreakData();
+  myLbDoc = await db.collection('leaderboard').doc('test-uid').get();
+  __assertEq(myLbDoc.data().streakCount, 4, 'saveStreakData() doit aussi synchroniser le classement (serie)');
+  console.log('OK: onglet Communaute + synchronisation classement (XP hebdo avec reset lundi, XP total, serie)');
+
+  // --- 145. Toggle vie privee : desactiver retire le doc public, reactiver le recree ---
+  await toggleLeaderboardOptOut();
+  __assertOk(leaderboardOptOut, 'toggleLeaderboardOptOut doit activer le retrait');
+  const deletedDoc = await db.collection('leaderboard').doc('test-uid').get();
+  __assertOk(!deletedDoc.exists, 'se retirer du classement doit supprimer le document public existant (pas juste l ignorer en lecture)');
+  await awardXp(5);
+  const stillGoneDoc = await db.collection('leaderboard').doc('test-uid').get();
+  __assertOk(!stillGoneDoc.exists, 'tant que le retrait est actif, aucune synchronisation ne doit recreer le document');
+  await toggleLeaderboardOptOut();
+  __assertOk(!leaderboardOptOut, 'toggleLeaderboardOptOut doit pouvoir revenir en arriere');
+  const recreatedDoc = await db.collection('leaderboard').doc('test-uid').get();
+  __assertOk(recreatedDoc.exists, 'reactiver la participation doit resynchroniser immediatement le document');
+  console.log('OK: toggle vie privee du classement (suppression reelle du document, resynchronisation a la reactivation)');
+
+  // --- 146. Classement 3 vues + rang exact avec voisins directs ---
+  __resetCommunityMocks();
+  await db.collection('leaderboard').doc('uidA').set({ displayName: 'Alice', streakCount: 10, xpTotal: 500, xpWeekly: 50, xpWeekStart: wkNow }, { merge: true });
+  await db.collection('leaderboard').doc('uidB').set({ displayName: 'Bob', streakCount: 8, xpTotal: 300, xpWeekly: 90, xpWeekStart: wkNow }, { merge: true });
+  await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Moi', streakCount: 5, xpTotal: 150, xpWeekly: 20, xpWeekStart: wkNow }, { merge: true });
+  await db.collection('leaderboard').doc('uidD').set({ displayName: 'Dan', streakCount: 3, xpTotal: 50, xpWeekly: 5, xpWeekStart: wkNow }, { merge: true });
+
+  const topStreaks = await fetchLeaderboardTop('streaks', 20);
+  __assertEq(topStreaks.map(e => e.displayName), ['Alice', 'Bob', 'Moi', 'Dan'], 'la vue Series doit trier par streakCount decroissant');
+  const topAlltime = await fetchLeaderboardTop('alltime', 20);
+  __assertEq(topAlltime.map(e => e.displayName), ['Alice', 'Bob', 'Moi', 'Dan'], 'la vue Legendes doit trier par xpTotal decroissant');
+  const topWeekly = await fetchLeaderboardTop('weekly', 20);
+  __assertEq(topWeekly.map(e => e.displayName), ['Bob', 'Alice', 'Moi', 'Dan'], 'la vue Hebdomadaire doit trier par xpWeekly decroissant');
+
+  const myRankInfo = await fetchMyRankAndNeighbors('alltime');
+  __assertEq(myRankInfo.rank, 3, 'mon rang exact (via count()) doit tenir compte de tous les scores superieurs au mien');
+  __assertEq(myRankInfo.neighbors.map(e => e.displayName), ['Alice', 'Bob', 'Moi', 'Dan'], 'les voisins directs doivent inclure les 2 au-dessus et en-dessous (ici tout le classement, 4 personnes)');
+
+  activeTab = 'today';
+  activeTab = 'community';
+  communityLeaderboardView = 'alltime';
+  await loadCommunityLeaderboard('alltime');
+  const communityHtml = renderCommunityScreen();
+  __assertOk(communityHtml.includes('leaderboard-tabs') && communityHtml.includes('leaderboard-row'), 'l ecran Communaute doit afficher les onglets et les lignes de classement');
+  __assertOk(communityHtml.includes('rank-bar') && communityHtml.includes('Moi'), 'la barre de rang ancree doit afficher ma ligne parmi mes voisins');
+  activeTab = 'today';
+  console.log('OK: classement 3 vues + rang exact avec voisins directs (barre ancree)');
+
+  __resetCommunityMocks();
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });
 `;
