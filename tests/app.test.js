@@ -1836,7 +1836,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v7'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v8'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2818,6 +2818,59 @@ const cssText = __rawHtml + __cssSource;
   const afterReset = await db.collection('leaderboard').doc('uid1').get();
   __assertOk(!afterReset.exists, '__resetCommunityMocks() doit repartir d un etat vide entre les tests');
   console.log('OK: mock Firestore generique (merge, increment, requetes, onSnapshot, sous-collections)');
+
+  // --- 141. Pilier 1 : Hero Banner communautaire remplace l ecran vide par defaut
+  // (accompagnement sans effort de choix + preuve sociale/FOMO) ---
+  __resetCommunityMocks();
+  todayKey = '2026-08-10';
+  const { challenge1: heroC1, challenge2: heroC2 } = getDailyCommunityChallenges(todayKey);
+  activeToday = new Set();
+  state = emptyDayState();
+  communityDailyCounts = { completions1: 3, completions2: 7 };
+  activeTab = 'today';
+  currentChallengeId = null;
+  render(false);
+  const heroHtml = document.getElementById('app').innerHTML;
+  __assertOk(heroHtml.includes('community-hero-banner'), 'le Hero Banner doit remplacer l ancien ecran vide quand aucun defi n est actif');
+  __assertOk(heroHtml.includes(escapeHtml(heroC1.name)) && heroHtml.includes(escapeHtml(heroC2.name)), 'les 2 defis communautaires du jour doivent etre presents sur le banner');
+  __assertOk(heroHtml.includes('3 membre') && heroHtml.includes('7 membre'), 'la preuve sociale (nombre de validations) doit etre affichee par defi');
+  __assertOk(heroHtml.includes('acceptCommunityChallenge(' + heroC1.id + ')') && heroHtml.includes('acceptCommunityChallenge(' + heroC2.id + ')'), 'chaque defi doit avoir un CTA pour l accepter immediatement');
+  __assertOk(heroHtml.includes("switchTab('library')"), 'un CTA doit permettre de choisir un defi personnalise a la place');
+  console.log('OK: Hero Banner communautaire affiche par defaut quand aucun defi n est actif');
+
+  // --- 142. Accepter un defi communautaire l active exactement comme +Activer, et
+  // fait disparaitre le Hero Banner (remplace par la liste normale) ---
+  await acceptCommunityChallenge(heroC1.id);
+  __assertOk(activeToday.has(heroC1.id), 'acceptCommunityChallenge doit activer le defi pour aujourd hui');
+  render(false);
+  const afterAcceptHtml = document.getElementById('app').innerHTML;
+  __assertOk(!afterAcceptHtml.includes('community-hero-banner'), 'le Hero Banner doit disparaitre des qu un defi (communautaire ou personnel) est actif');
+  __assertOk(afterAcceptHtml.includes('community-card-ribbon'), 'le defi accepte doit garder un ruban communautaire sur sa carte dans la liste normale');
+  __assertOk(afterAcceptHtml.includes('🌍 3'), 'le ruban doit afficher le compteur de validations en cours (preuve sociale conservee apres acceptation)');
+  activeToday = new Set();
+  console.log('OK: accepter un defi communautaire l active normalement et masque le banner (FOMO conserve via le ruban)');
+
+  // --- 143. Completer un defi communautaire incremente le compteur partage
+  // (community/dailyChallenge_{date}), une seule fois par jour et par defi ---
+  activeToday = new Set([heroC1.id]);
+  state = emptyDayState();
+  currentChallengeId = heroC1.id;
+  stats[heroC1.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  const targetC1 = resolveChallenge(heroC1).target;
+  await addSet(targetC1);
+  const dailyDocAfter = await communityDailyChallengeDocRef(todayKey).get();
+  __assertOk(dailyDocAfter.exists, 'terminer un defi communautaire doit creer/mettre a jour le doc partage du jour');
+  __assertEq(dailyDocAfter.data().completions1, 1, 'completer le defi 1 doit incrementer completions1');
+  // Annuler puis re-valider le meme defi le meme jour (undoLast -> addSet) ne doit
+  // JAMAIS re-incrementer : sans garde-fou, ce cycle gonflerait artificiellement la
+  // preuve sociale partagee par toute la communaute.
+  await undoLast();
+  await addSet(targetC1);
+  const dailyDocAfter2 = await communityDailyChallengeDocRef(todayKey).get();
+  __assertEq(dailyDocAfter2.data().completions1, 1, 'un defi deja compte aujourd hui ne doit jamais etre recompte, meme apres un cycle annuler/revalider (pas de gonflement artificiel de la preuve sociale)');
+  currentChallengeId = null;
+  activeToday = new Set();
+  console.log('OK: compteur de validations communautaire incremente une seule fois par defi/par jour');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

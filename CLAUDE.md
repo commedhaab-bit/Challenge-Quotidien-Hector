@@ -219,6 +219,21 @@ après proposition détaillée (voir plan `generic-riding-gizmo.md`). Conséquen
   même pour l'état initial (fidèle au vrai SDK) : un test qui s'abonne doit laisser
   passer au moins un tick de microtask avant de lire la valeur reçue.
 
+**Pilier 1 livré (défi du jour + Hero Banner)** : `renderCommunityHeroBanner()`
+remplace `renderTodayEmptyState()` par défaut sur l'accueil (branche `today` sans
+`currentChallengeId`, quand `activeToday` est vide) — le repli sur l'ancien écran
+vide n'existe plus qu'en cas d'échec de résolution des défis (bibliothèque vide).
+`acceptCommunityChallenge(id)` réutilise `toggleActiveToday()` telle quelle, pas de
+chemin de données parallèle. La preuve sociale (`communityDailyCounts`, tenue à
+jour par `startCommunityDailyListener()` via `onSnapshot`) reste visible même après
+acceptation via `.community-card-ribbon` sur la carte (`renderChallengeCard`,
+mode `'today'` uniquement). `registerCommunityCompletionIfNeeded()` (appelée dans
+`addSet()`) incrémente le compteur partagé une seule fois par défi/par jour via
+`state.communityCounted` — **nécessaire** : `undoLast()` peut repasser
+`entry.done` à `false`, donc un cycle annuler/revalider peut redéclencher
+`willComplete` le même jour pour le même défi ; sans cette garde, la preuve
+sociale communautaire serait gonflable artificiellement.
+
 ## Pictogrammes d'exercices (sujet en cours)
 Chaque défi a une clé d'icône (`getExercisePictogramKey`), ex: `squats`, `pompes`,
 `dumbbell_generic`. Système à 3 niveaux de repli automatique dans

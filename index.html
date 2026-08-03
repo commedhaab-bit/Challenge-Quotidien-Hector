@@ -1303,6 +1303,77 @@ function getWeeklyBossBattleTarget(weekStartStr = mondayOfWeek(new Date())) {
   return { targetChallengeId: challenge.id, targetAmount: challenge.target * BOSS_BATTLE_TARGET_MULTIPLIER };
 }
 
+// ==== COMMUNAUTÉ : DÉFI DU JOUR (Hero Banner + preuve sociale) ====
+// Compteurs de validations du jour (communaute/dailyChallenge_{date}), tenus à jour en
+// temps réel via onSnapshot — jamais relus manuellement ailleurs, render() se contente
+// de lire cette valeur déjà en mémoire (même principe que dailyActivity/weekData).
+let communityDailyCounts = { completions1: 0, completions2: 0 };
+let communityDailyUnsub = null;
+
+function communityDailyChallengeDocRef(dateStr = todayKey) {
+  return db.collection('community').doc('dailyChallenge_' + dateStr);
+}
+
+// Appelé une seule fois au démarrage (continueStartApp()) : s'abonne au doc du jour,
+// re-render à chaque changement (un autre utilisateur qui valide le défi du jour doit
+// faire bouger le compteur affiché, sans recharger la page — effet "ça bouge en direct").
+function startCommunityDailyListener() {
+  if (communityDailyUnsub) communityDailyUnsub();
+  communityDailyUnsub = communityDailyChallengeDocRef().onSnapshot((snap) => {
+    const d = snap.exists ? snap.data() : null;
+    communityDailyCounts = { completions1: (d && d.completions1) || 0, completions2: (d && d.completions2) || 0 };
+    render();
+  });
+}
+
+// Active un défi communautaire pour aujourd'hui, exactement comme le bouton "+ Activer"
+// de l'onglet Défis (toggleActiveToday) — le Hero Banner n'est qu'un raccourci vers la
+// même mécanique, pas un chemin de données parallèle.
+async function acceptCommunityChallenge(id) {
+  if (!activeToday.has(id)) await toggleActiveToday(id);
+  else render();
+}
+
+// Retourne 1/2 si ce défi est l'un des 2 défis communautaires du jour (pour le ruban +
+// le compteur affichés sur sa carte), sinon null.
+function getCommunityDailySlot(challengeId) {
+  const { challenge1, challenge2 } = getDailyCommunityChallenges();
+  if (challenge1 && challenge1.id === challengeId) return 1;
+  if (challenge2 && challenge2.id === challengeId) return 2;
+  return null;
+}
+
+// Incrémente le compteur "validé aujourd'hui" du défi communautaire concerné — une
+// seule fois par utilisateur et par jour (state.communityCounted, remis à zéro chaque
+// jour comme le reste de `state`), sinon un utilisateur qui rejoue plusieurs séries sur
+// le même défi gonflerait artificiellement la preuve sociale.
+async function registerCommunityCompletionIfNeeded(challengeId) {
+  const slot = getCommunityDailySlot(challengeId);
+  if (!slot) return;
+  if (!state.communityCounted) state.communityCounted = [];
+  if (state.communityCounted.includes(challengeId)) return;
+  state.communityCounted.push(challengeId);
+  try {
+    await communityDailyChallengeDocRef().set(
+      { ['completions' + slot]: firebase.firestore.FieldValue.increment(1) },
+      { merge: true }
+    );
+  } catch (e) {
+    reportSaveError('community completion increment failed', e);
+  }
+}
+
+// Appelé une seule fois au démarrage (après loadAppData()) : le Hero Banner + timer
+// d'expiration ont besoin d'une valeur "maintenant" pour l'estimation d'heures
+// restantes avant minuit — pas besoin d'un setInterval dédié, un re-render suffisant
+// se produit déjà à chaque interaction (le decompte n'a pas besoin d'être à la seconde).
+function hoursRemainingToday() {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  return Math.max(0, Math.ceil((midnight - now) / 3600000));
+}
+
 // Appelé une fois au chargement de l'app (après loadState(), donc todayKey connu) :
 // recharge le bouclier hebdomadaire si besoin, puis vérifie si un ou plusieurs jours
 // ont été manqués depuis la dernière validation.
@@ -2594,6 +2665,7 @@ async function addSet(amount) {
     weekData[todayKey] = true;
     lastCompleted[currentChallengeId] = Date.now();
     await saveLastCompleted();
+    await registerCommunityCompletionIfNeeded(currentChallengeId);
 
     const isFirstCompletionOfDay = !dailyActivity[todayKey];
     dailyActivity[todayKey] = (dailyActivity[todayKey] || 0) + 1;
@@ -2795,7 +2867,7 @@ function render(animate) {
     `;
     const activeChallenges = CHALLENGES.filter(c => activeToday.has(c.id)).map(resolveChallenge);
     if (activeChallenges.length === 0) {
-      html += renderTodayEmptyState();
+      html += renderCommunityHeroBanner();
     } else {
     html += `<div class="today-content-flex">`;
     const suggestion = getSuggestion();
@@ -3012,6 +3084,43 @@ async function loadHistoryEntries() {
     }
   });
   historyEntries = entries;
+}
+
+// Hero Banner communautaire : remplace l'ancien état vide générique quand aucun défi
+// n'est encore sélectionné aujourd'hui (accompagnement "sans effort de choix" + FOMO).
+// Repli sur renderTodayEmptyState() si les défis communautaires ne se résolvent pas
+// (bibliothèque vide) — ne doit jamais laisser un écran cassé.
+function renderCommunityHeroBanner() {
+  const { challenge1, challenge2 } = getDailyCommunityChallenges();
+  if (!challenge1 || !challenge2) return renderTodayEmptyState();
+  const cards = [
+    { c: challenge1, count: communityDailyCounts.completions1 },
+    { c: challenge2, count: communityDailyCounts.completions2 },
+  ].map(({ c, count }) => {
+    const resolved = resolveChallenge(c);
+    const targetLabel = resolved.unit === 'sec' ? formatSecToReadable(resolved.target) : resolved.target + ' reps';
+    return `
+      <div class="community-hero-card">
+        ${renderExercisePicto(c)}
+        <div class="community-hero-info">
+          <span class="community-hero-name">${escapeHtml(c.name)}</span>
+          <span class="community-hero-target">${targetLabel}</span>
+          <span class="community-hero-proof">🔥 ${count} membre${count === 1 ? '' : 's'} l'ont déjà validé aujourd'hui</span>
+        </div>
+        <button class="community-hero-accept-btn" onclick="event.stopPropagation(); acceptCommunityChallenge(${c.id})">Relever le défi</button>
+      </div>
+    `;
+  }).join('');
+  return `
+    <div class="community-hero-banner">
+      <div class="community-hero-header">
+        <span class="community-hero-badge">🌍 Défi communautaire du jour</span>
+        <span class="community-hero-timer">⏳ Encore ${hoursRemainingToday()}h</span>
+      </div>
+      <div class="community-hero-list">${cards}</div>
+      <button class="community-hero-choose-btn" onclick="switchTab('library')">Choisir mon propre défi</button>
+    </div>
+  `;
 }
 
 function renderTodayEmptyState() {
@@ -3233,11 +3342,22 @@ function renderChallengeCard(c, mode, index, animate = true) {
   const delayStyle = index !== undefined ? ` style="animation-delay:${Math.min(index, 8) * 40}ms"` : '';
   const noAnimClass = animate ? '' : ' no-anim';
 
+  // Ruban + compteur "défi communautaire du jour" : garde le FOMO vivant même une
+  // fois le défi accepté (sinon toute trace communautaire disparaîtrait dès l'activation).
+  // Uniquement sur l'accueil ("today") — pas de sens dans la bibliothèque, qui liste
+  // tous les défis possibles, pas seulement ceux du jour.
+  const communitySlot = mode === 'today' ? getCommunityDailySlot(c.id) : null;
+  const communityCount = communitySlot === 1 ? communityDailyCounts.completions1 : communitySlot === 2 ? communityDailyCounts.completions2 : 0;
+  const communityRibbon = communitySlot
+    ? `<span class="community-card-ribbon" title="Défi communautaire du jour — ${communityCount} validé(s) aujourd'hui">🌍 ${communityCount}</span>`
+    : '';
+
   return `
     <div class="picker-item${noAnimClass}"${delayStyle} onclick="${onclick}">
       ${renderExercisePicto(c)}
       <div class="picker-item-body">
         <span class="name">${escapeHtml(c.name)}</span>
+        ${communityRibbon}
       </div>
       <div class="goal">
         ${resolved.unit === 'sec' ? formatSecToReadable(resolved.target) : resolved.target + ' reps'}
@@ -3972,6 +4092,7 @@ async function continueStartApp() {
   await loadState(); // vient après : dépend de dailyActivity pour les pastilles de la semaine
   await loadActiveToday(); // vient après loadState() : dépend de todayKey
   await evaluateStreakOnLoad(); // vient après loadState() : dépend de todayKey
+  startCommunityDailyListener(); // vient après loadState() : dépend de todayKey
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).
