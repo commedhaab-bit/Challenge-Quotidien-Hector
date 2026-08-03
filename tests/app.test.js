@@ -1878,7 +1878,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v16'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v17'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2911,14 +2911,19 @@ const cssText = __rawHtml + __cssSource;
   const { challenge1: heroC1, challenge2: heroC2 } = getDailyCommunityChallenges(todayKey);
   activeToday = new Set();
   state = emptyDayState();
-  communityDailyCounts = { completions1: 3, completions2: 7 };
+  communityDailyCounts = { completions1: 3, completions2: 7, participants: 5 };
   activeTab = 'today';
   currentChallengeId = null;
   render(false);
   const heroHtml = document.getElementById('app').innerHTML;
   __assertOk(heroHtml.includes('community-hero-banner'), 'le Hero Banner doit remplacer l ancien ecran vide quand aucun defi n est actif');
   __assertOk(heroHtml.includes(escapeHtml(heroC1.name)) && heroHtml.includes(escapeHtml(heroC2.name)), 'les 2 defis communautaires du jour doivent etre presents sur le banner');
-  __assertOk(heroHtml.includes('3 membre') && heroHtml.includes('7 membre'), 'la preuve sociale (nombre de validations) doit etre affichee par defi');
+  // La preuve sociale (participants) doit etre affichee UNE SEULE FOIS en haut de la
+  // carte globale, pas repetee sous chaque exercice avec des chiffres differents
+  // (completions1/completions2, qui restent des compteurs distincts, utilises
+  // seulement par le ruban dans la bibliotheque).
+  __assertOk(heroHtml.includes('community-hero-proof') && heroHtml.includes('5 membres') && heroHtml.includes('ont relevé ce défi aujourd'), 'un unique compteur de participants doit etre affiche en haut de la carte');
+  __assertOk(!heroHtml.includes('3 membre') && !heroHtml.includes('7 membre'), 'les completions par exercice ne doivent plus etre affichees repetees sous chaque carte du Hero Banner');
   __assertOk(heroHtml.includes('acceptAllCommunityChallenges()'), 'un unique bouton doit permettre d accepter les 2 defis communautaires EN UNE FOIS (pas un bouton par carte, source de confusion : n activait qu un seul des 2 defis)');
   __assertOk(!heroHtml.includes('community-hero-accept-btn'), 'les anciens boutons par carte (un seul defi active a la fois) ne doivent plus exister');
   __assertOk(heroHtml.includes("switchTab('library')"), 'un CTA doit permettre de choisir un defi personnalise a la place');
@@ -2933,6 +2938,15 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!afterAcceptHtml.includes('community-hero-banner'), 'le Hero Banner doit disparaitre des qu un defi (communautaire ou personnel) est actif');
   __assertOk(afterAcceptHtml.includes('community-card-ribbon'), 'les defis acceptes doivent garder un ruban communautaire sur leur carte dans la liste normale');
   __assertOk(afterAcceptHtml.includes('🌍 3') && afterAcceptHtml.includes('🌍 7'), 'le ruban doit afficher le compteur de validations en cours pour CHAQUE defi (preuve sociale conservee apres acceptation)');
+  // Le clic sur le bouton unique compte aussi comme UNE participation au defi du jour
+  // (distinct des completions), une seule fois par jour meme si le bouton est cliquable
+  // plusieurs fois (garde-fou state.communityJoined, persiste via saveState()).
+  const participantDocAfterAccept = await communityDailyChallengeDocRef(todayKey).get();
+  __assertEq(participantDocAfterAccept.data().participants, 1, 'accepter le defi communautaire doit incrementer le compteur partage de participants');
+  __assertOk(state.communityJoined, 'le flag de participation du jour doit etre memorise (pour ne jamais recompter le meme utilisateur)');
+  await acceptAllCommunityChallenges();
+  const participantDocAfterSecondClick = await communityDailyChallengeDocRef(todayKey).get();
+  __assertEq(participantDocAfterSecondClick.data().participants, 1, 'un 2e appel le meme jour ne doit jamais recompter la meme participation');
   activeToday = new Set();
   console.log('OK: le bouton unique active les 2 defis communautaires en une fois et masque le banner (FOMO conserve via le ruban)');
 
@@ -3028,9 +3042,61 @@ const cssText = __rawHtml + __cssSource;
   await loadCommunityLeaderboard('alltime');
   const communityHtml = renderCommunityScreen();
   __assertOk(communityHtml.includes('leaderboard-tabs') && communityHtml.includes('leaderboard-row'), 'l ecran Communaute doit afficher les onglets et les lignes de classement');
-  __assertOk(communityHtml.includes('rank-bar') && communityHtml.includes('Moi'), 'la barre de rang ancree doit afficher ma ligne parmi mes voisins');
-  activeTab = 'today';
+  // Ici, seulement 4 personnes au total : "Moi" est deja visible dans le top affiche a
+  // l ecran (limite 20) -> la barre de rang ancree ne doit PAS se dupliquer par-dessus
+  // (2x la meme ligne "Moi" a l ecran serait deroutant).
+  __assertOk(!communityHtml.includes('rank-bar'), 'la barre de rang ancree ne doit PAS s afficher quand mon rang est deja visible dans la liste principale (evite le doublon de ma ligne)');
   console.log('OK: classement 3 vues + rang exact avec voisins directs (barre ancree)');
+
+  // --- 146bis. Masquage intelligent : la barre de rang REAPPARAIT si mon rang n est
+  // PAS dans le top visible (au-dela de la limite de 20 lignes affichees) ---
+  for (let i = 0; i < 25; i++) {
+    await db.collection('leaderboard').doc('extra' + i).set(
+      { displayName: 'Extra' + i, streakCount: 1, xpTotal: 1000 - i, xpWeekly: 1, xpWeekStart: wkNow },
+      { merge: true }
+    );
+  }
+  await loadCommunityLeaderboard('alltime');
+  __assertOk(!communityLeaderboardTop.some(e => e.uid === 'test-uid'), 'avec 29 personnes, mon rang (tres bas) ne doit plus faire partie du top 20 affiche');
+  const communityHtmlBig = renderCommunityScreen();
+  __assertOk(communityHtmlBig.includes('rank-bar') && communityHtmlBig.includes('>Moi<'), 'la barre de rang ancree doit reapparaitre (avec ma ligne) des que mon rang sort du top visible a l ecran');
+  activeTab = 'today';
+  console.log('OK: la barre de rang ancree ne s affiche que si mon rang n est pas deja visible dans la liste principale');
+
+  // --- 146ter. Empty state du classement : incite a inviter des proches tant que la
+  // communaute visible est trop petite (<3) pour etre motivante ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'test-uid', displayName: 'Moi', email: 'a@test.com', photoURL: '' };
+  leaderboardOptOut = false;
+  await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Moi', streakCount: 2, xpTotal: 10, xpWeekly: 10, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
+  activeTab = 'community';
+  communityLeaderboardView = 'streaks';
+  await loadCommunityLeaderboard('streaks');
+  __assertOk(communityLeaderboardTop.length < 3, 'ce scenario doit avoir moins de 3 personnes dans le classement pour tester l empty state');
+  const smallCommunityHtml = renderCommunityScreen();
+  __assertOk(smallCommunityHtml.includes('community-invite-card') && smallCommunityHtml.includes('shareCommunityInvite()'), 'avec moins de 3 personnes, une carte d invitation avec un bouton de partage doit s afficher sous la liste');
+  __assertOk(smallCommunityHtml.includes('Inviter des proches pour pimenter le classement'), 'le texte incitatif exact doit etre affiche');
+
+  // Avec 3 personnes ou plus, l empty state ne doit plus s afficher (la communaute
+  // est deja assez fournie pour etre motivante).
+  await db.collection('leaderboard').doc('uidX').set({ displayName: 'X', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
+  await db.collection('leaderboard').doc('uidY').set({ displayName: 'Y', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
+  await loadCommunityLeaderboard('streaks');
+  __assertOk(communityLeaderboardTop.length >= 3, 'ce 2e scenario doit avoir 3 personnes ou plus');
+  const filledCommunityHtml = renderCommunityScreen();
+  __assertOk(!filledCommunityHtml.includes('community-invite-card'), 'la carte d invitation ne doit plus s afficher des que le classement compte 3 personnes ou plus');
+  activeTab = 'today';
+  console.log('OK: empty state du classement (carte d invitation a partager si moins de 3 membres)');
+
+  // --- 146quater. Contraste du bouton secondaire "Choisir mon propre defi" (#2 CSS) :
+  // ne doit plus utiliser var(--line)/var(--chalk-dim), quasi invisibles sur ce fond
+  // et donnant l impression trompeuse d un bouton desactive ---
+  const chooseBtnCssIdx = cssText.indexOf('.community-hero-choose-btn {');
+  __assertOk(chooseBtnCssIdx !== -1, 'la regle .community-hero-choose-btn doit exister dans styles.css');
+  const chooseBtnCssBlock = cssText.slice(chooseBtnCssIdx, cssText.indexOf('}', chooseBtnCssIdx));
+  __assertOk(chooseBtnCssBlock.includes('rgba(255, 255, 255, 0.15)'), 'la bordure doit etre rehaussee en rgba(255,255,255,0.15) pour un contraste suffisant');
+  __assertOk(!chooseBtnCssBlock.includes('var(--line)') && !chooseBtnCssBlock.includes('var(--chalk-dim)'), 'les anciens tokens quasi invisibles (--line/--chalk-dim) ne doivent plus etre utilises pour ce bouton');
+  console.log('OK: lisibilite rehaussee du bouton secondaire "Choisir mon propre defi"');
 
   // --- 147. Pilier 3 : chaque serie loggee sur le defi cible de la semaine contribue
   // a la jauge collective (Boss Battle), pas seulement la completion du defi ---

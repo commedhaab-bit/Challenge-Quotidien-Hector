@@ -1579,7 +1579,7 @@ function getWeeklyBossBattleTarget(weekStartStr = mondayOfWeek(new Date())) {
 // Compteurs de validations du jour (communaute/dailyChallenge_{date}), tenus à jour en
 // temps réel via onSnapshot — jamais relus manuellement ailleurs, render() se contente
 // de lire cette valeur déjà en mémoire (même principe que dailyActivity/weekData).
-let communityDailyCounts = { completions1: 0, completions2: 0 };
+let communityDailyCounts = { completions1: 0, completions2: 0, participants: 0 };
 let communityDailyUnsub = null;
 
 function communityDailyChallengeDocRef(dateStr = todayKey) {
@@ -1593,7 +1593,11 @@ function startCommunityDailyListener() {
   if (communityDailyUnsub) communityDailyUnsub();
   communityDailyUnsub = communityDailyChallengeDocRef().onSnapshot((snap) => {
     const d = snap.exists ? snap.data() : null;
-    communityDailyCounts = { completions1: (d && d.completions1) || 0, completions2: (d && d.completions2) || 0 };
+    communityDailyCounts = {
+      completions1: (d && d.completions1) || 0,
+      completions2: (d && d.completions2) || 0,
+      participants: (d && d.participants) || 0,
+    };
     render();
   });
 }
@@ -1609,8 +1613,29 @@ async function acceptAllCommunityChallenges() {
   if (challenge1) activeToday.add(challenge1.id);
   if (challenge2) activeToday.add(challenge2.id);
   await saveActiveToday();
+  await registerCommunityParticipantIfNeeded();
   if (navigator.vibrate) navigator.vibrate(10);
   render();
+}
+
+// Compte "j'ai relevé le défi" une seule fois par utilisateur et par jour
+// (state.communityJoined, remis à zéro chaque jour comme state.communityCounted) —
+// distinct de completions1/completions2 (qui suivent l'ACHÈVEMENT de chaque exercice
+// pris séparément) : ce chiffre-ci mesure uniquement combien de membres ont cliqué sur
+// "Relever le défi communautaire du jour", qu'ils aient ensuite fini les 2 exercices
+// ou non. Affiché une seule fois en haut de la carte (pas répété sous chaque exercice).
+async function registerCommunityParticipantIfNeeded() {
+  if (state.communityJoined) return;
+  state.communityJoined = true;
+  await saveState(); // persiste le flag dans le doc "day:" (sinon un simple rechargement de page permettrait de recompter)
+  try {
+    await communityDailyChallengeDocRef().set(
+      { participants: firebase.firestore.FieldValue.increment(1) },
+      { merge: true }
+    );
+  } catch (e) {
+    reportSaveError('community participant increment failed', e);
+  }
 }
 
 // Retourne 1/2 si ce défi est l'un des 2 défis communautaires du jour (pour le ruban +
@@ -3699,10 +3724,7 @@ async function loadHistoryEntries() {
 function renderCommunityHeroBanner() {
   const { challenge1, challenge2 } = getDailyCommunityChallenges();
   if (!challenge1 || !challenge2) return renderTodayEmptyState();
-  const cards = [
-    { c: challenge1, count: communityDailyCounts.completions1 },
-    { c: challenge2, count: communityDailyCounts.completions2 },
-  ].map(({ c, count }) => {
+  const cards = [challenge1, challenge2].map((c) => {
     const resolved = resolveChallenge(c);
     const targetLabel = resolved.unit === 'sec' ? formatSecToReadable(resolved.target) : resolved.target + ' reps';
     return `
@@ -3711,17 +3733,22 @@ function renderCommunityHeroBanner() {
         <div class="community-hero-info">
           <span class="community-hero-name">${escapeHtml(c.name)}</span>
           <span class="community-hero-target">${targetLabel}</span>
-          <span class="community-hero-proof">🔥 ${count} membre${count === 1 ? '' : 's'} l'ont déjà validé aujourd'hui</span>
         </div>
       </div>
     `;
   }).join('');
+  // Un seul compteur de participation en haut de la carte (pas répété sous chaque
+  // exercice avec des chiffres différents) : "participants" compte les membres qui ont
+  // cliqué sur "Relever le défi", indépendamment du fait qu'ils aient ensuite terminé
+  // les 2 exercices — voir registerCommunityParticipantIfNeeded().
+  const participants = communityDailyCounts.participants;
   return `
     <div class="community-hero-banner">
       <div class="community-hero-header">
         <span class="community-hero-badge">🌍 Défi communautaire du jour</span>
         <span class="community-hero-timer">⏳ Encore ${hoursRemainingToday()}h</span>
       </div>
+      <div class="community-hero-proof">🔥 ${participants} membre${participants === 1 ? '' : 's'} ${participants === 1 ? 'a' : 'ont'} relevé ce défi aujourd'hui</div>
       <div class="community-hero-list">${cards}</div>
       <button class="community-hero-accept-all-btn" onclick="acceptAllCommunityChallenges()">Relever le défi communautaire du jour</button>
       <button class="community-hero-choose-btn" onclick="switchTab('library')">Choisir mon propre défi</button>
@@ -4525,6 +4552,26 @@ function renderLeaderboardRow(entry, rank, view, highlight) {
   `;
 }
 
+// Invite à partager le lien de l'app depuis l'écran Communauté (empty state du
+// classement) : navigator.share si disponible (mobile), sinon copie presse-papiers +
+// toast de confirmation — jamais d'échec silencieux si aucun des deux n'est supporté.
+async function shareCommunityInvite() {
+  const text = "Rejoins-moi sur Défi du Jour pour relever le défi communautaire ⚡";
+  const url = location.href;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Défi du Jour', text, url });
+      return;
+    } catch (e) { return; } // annulé par l'utilisateur : pas d'erreur à afficher
+  }
+  try {
+    await navigator.clipboard.writeText(`${text} ${url}`);
+    showToast('Lien copié — partage-le à tes proches ! 🔗');
+  } catch (e) {
+    reportSaveError('share community invite failed', e);
+  }
+}
+
 // Jauge collective ("Boss Battle") : objectif hebdomadaire déterministe (même exercice/
 // cible pour toute la communauté), progression en temps réel (communityBossBattleProgress,
 // tenue par startBossBattleListener()), badge "Contributeur du jour" si quelqu'un a déjà
@@ -4604,8 +4651,12 @@ function renderCommunityScreen() {
   // communityLeaderboardNeighbors est ordonné [au-dessus de moi..., moi, ...en-dessous
   // de moi] (voir fetchMyRankAndNeighbors) : le rang de chaque voisin se déduit donc de
   // sa position relative à la mienne dans ce tableau, sans nouvelle requête.
+  // La barre ne s'affiche QUE si mon rang n'est pas déjà visible dans la liste
+  // affichée à l'écran (sinon on voit 2 fois la même ligne "#1 moi" superposées : la
+  // liste principale montre déjà tout le monde quand la communauté est petite).
+  const meAlreadyVisible = communityLeaderboardTop.some(e => e.uid === currentUser.uid);
   let rankBarHtml = '';
-  if (!communityLeaderboardLoading && communityLeaderboardRank) {
+  if (!communityLeaderboardLoading && communityLeaderboardRank && !meAlreadyVisible) {
     const meIdx = communityLeaderboardNeighbors.findIndex(e => e.uid === currentUser.uid);
     rankBarHtml = `
       <div class="rank-bar">
@@ -4613,6 +4664,18 @@ function renderCommunityScreen() {
       </div>
     `;
   }
+
+  // Encourage à inviter des proches dès que le classement est encore trop petit pour
+  // être motivant (moins de 3 personnes) — sous la liste, pas à la place (on veut
+  // quand même montrer les 1-2 personnes déjà présentes).
+  const inviteHtml = (!communityLeaderboardLoading && communityLeaderboardTop.length < 3)
+    ? `
+      <div class="community-invite-card">
+        <span class="community-invite-text">Inviter des proches pour pimenter le classement ⚡</span>
+        <button class="community-invite-btn" onclick="shareCommunityInvite()">📤 Partager</button>
+      </div>
+    `
+    : '';
 
   return `
     <div class="header">
@@ -4627,6 +4690,7 @@ function renderCommunityScreen() {
       ${views.map(v => `<button class="leaderboard-tab-btn${communityLeaderboardView === v.id ? ' active' : ''}" onclick="switchCommunityLeaderboardView('${v.id}')">${v.label}</button>`).join('')}
     </div>
     <div class="leaderboard-list">${topHtml}</div>
+    ${inviteHtml}
     ${rankBarHtml}
   `;
 }

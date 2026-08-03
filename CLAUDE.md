@@ -234,6 +234,22 @@ mode `'today'` uniquement). `registerCommunityCompletionIfNeeded()` (appelée da
 `willComplete` le même jour pour le même défi ; sans cette garde, la preuve
 sociale communautaire serait gonflable artificiellement.
 
+**Hero Banner : un seul compteur de "participants", pas un par exercice** —
+`communityDailyCounts.participants` (champ `participants` du doc
+`community/dailyChallenge_{date}`) est un compteur **distinct** de
+`completions1`/`completions2` : il mesure combien de membres ont cliqué sur
+"Relever le défi communautaire du jour" (`acceptAllCommunityChallenges()`), PAS
+combien ont fini les 2 exercices. Affiché UNE SEULE FOIS en haut de la carte
+(`.community-hero-proof`) — avant, le Hero Banner répétait la preuve sociale sous
+chaque exercice avec des chiffres différents (`completions1`/`completions2`), ce qui
+créait une confusion ("3 ont validé l'un, 7 l'autre — combien au total ?").
+`registerCommunityParticipantIfNeeded()` incrémente une seule fois par jour via
+`state.communityJoined`, persisté par un `saveState()` explicite (ce flag vit dans
+`state`, pas dans `activeToday` : sans cette sauvegarde, un rechargement de page
+aurait permis de recompter la même participation). Le ruban `.community-card-ribbon`
+dans la bibliothèque, lui, continue d'afficher `completions1`/`completions2` par
+exercice (préservé tel quel — c'est un contexte différent, une fiche par exercice).
+
 **Pilier 2 livré (classement + onglet Communauté)** : 5ᵉ onglet `community`
 (`renderTabBar()`/dispatch dans `render()`), écran `renderCommunityScreen()` avec 3
 vues (`streaks`/`weekly`/`alltime`, `communityLeaderboardView`) et une barre de rang
@@ -247,6 +263,17 @@ de privé) ; `leaderboardOptOut` (toggle Paramètres, défaut désactivé = part
 active) fait un no-op silencieux côté sync ET supprime le document existant côté
 `toggleLeaderboardOptOut()` (pas juste ignoré en lecture, pour ne laisser aucune
 trace publique).
+
+**Masquage intelligent de la barre de rang + empty state d'invitation** — `.rank-bar`
+ne s'affiche QUE si mon rang n'est pas déjà visible dans `communityLeaderboardTop`
+(garde `meAlreadyVisible = communityLeaderboardTop.some(e => e.uid ===
+currentUser.uid)`, `renderCommunityScreen()`) : avec une petite communauté, le top
+affiché (limite 20) contient déjà tout le monde, donc la barre ancrée dupliquait ma
+propre ligne (2× "#1 moi" superposées). Sous la liste, une carte
+`.community-invite-card` ("Inviter des proches pour pimenter le classement ⚡" +
+bouton `shareCommunityInvite()`) apparaît tant que `communityLeaderboardTop.length <
+3` — `shareCommunityInvite()` utilise `navigator.share` si disponible, sinon copie
+dans le presse-papiers + toast (jamais d'échec silencieux).
 
 **`fetchMyRankAndNeighbors()` : PAS de `.count()`, corrigé après un vrai bug de prod** —
 la première version utilisait une requête d'agrégation `count()` pour le rang exact ;
@@ -356,6 +383,15 @@ appelle `acceptAllCommunityChallenges()`, qui ajoute les 2 défis d'un coup dans
 `acceptCommunityChallenge(id)` par carte (supprimé), qui n'activait qu'UN SEUL des 2
 défis et prêtait à confusion (l'utilisateur croyait avoir rejoint "le défi du jour" en
 entier en cliquant une seule carte).
+
+**Contraste du bouton "Choisir mon propre défi"** : `.community-hero-choose-btn`
+utilisait `border: 1px solid var(--line)` + `color: var(--chalk-dim)` — ces 2 tokens
+sont volontairement discrets ailleurs dans l'app (séparateurs, texte secondaire), mais
+sur ce fond précis (`.community-hero-banner`, déjà semi-transparent) ils rendaient le
+bouton quasi invisible, au point de ressembler à un bouton désactivé alors qu'il est
+parfaitement cliquable. Remplacés par `rgba(255, 255, 255, 0.15)` (bordure) et
+`var(--chalk)` (texte) — plus contrastés, réservés à CE bouton précis plutôt que de
+retoucher `--line`/`--chalk-dim` globalement (qui restent corrects partout ailleurs).
 
 **Bugs de production déjà rencontrés et corrigés sur le classement** :
 - `deleteMyAccount()` supprimait les données `users/{uid}/kv/*` mais ignorait

@@ -748,6 +748,35 @@
   }
   .rank-bar-row { padding: 6px 10px; }
 
+  /* Empty state du classement : incite à inviter des proches tant que la communauté
+     visible est trop petite (<3) pour être motivante. Sous la liste, jamais à la
+     place (les 1-2 personnes déjà présentes restent affichées). */
+  .community-invite-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px dashed rgba(255, 255, 255, 0.15);
+    border-radius: 14px;
+    padding: 14px;
+    margin-top: 10px;
+  }
+  .community-invite-text { font-size: 13px; font-weight: 600; color: var(--chalk); flex: 1; min-width: 160px; }
+  .community-invite-btn {
+    background: var(--accent);
+    color: #0a0d0b;
+    border: none;
+    font-weight: 800;
+    font-size: 13px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .community-invite-btn:active { transform: scale(0.97); }
+
   /* Jauge collective ("Boss Battle") : objectif hebdomadaire coopératif */
   .boss-battle-card {
     background: rgba(255, 255, 255, 0.04);
@@ -1779,7 +1808,11 @@
   .community-hero-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
   .community-hero-name { font-weight: 700; font-size: 14.5px; color: var(--chalk); }
   .community-hero-target { font-size: 12.5px; color: var(--chalk-dim); margin-top: 1px; }
-  .community-hero-proof { font-size: 11px; color: var(--accent); margin-top: 4px; }
+  /* Preuve sociale UNE SEULE FOIS pour toute la carte (au-dessus de la liste des 2
+     exercices) : compte les membres ayant cliqué sur "Relever le défi", pas les
+     complétions par exercice — évite d'afficher 2 chiffres différents et déroutants
+     sous chaque exercice. */
+  .community-hero-proof { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 12px; }
   /* CTA principal unique (au-dessus de "Choisir mon propre defi") : active les 2
      defis communautaires du jour EN UNE FOIS. Remplace les anciens boutons "Relever
      le defi" par carte, qui n'activaient qu'UN SEUL des 2 defis et pretaient a
@@ -1798,12 +1831,15 @@
     margin-top: 16px;
   }
   .community-hero-accept-all-btn:active { transform: scale(0.98); }
+  /* Bordure/texte volontairement plus contrastés que var(--line)/var(--chalk-dim) :
+     avec ces tokens (quasi invisibles sur ce fond), ce bouton pourtant bien actif
+     donnait l'impression trompeuse d'être désactivé. */
   .community-hero-choose-btn {
     display: block;
     width: 100%;
     background: none;
-    border: 1px solid var(--line);
-    color: var(--chalk-dim);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--chalk);
     font-size: 13px;
     font-weight: 600;
     padding: 12px;
