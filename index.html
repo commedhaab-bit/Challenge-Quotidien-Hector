@@ -1044,7 +1044,35 @@ window.addEventListener('popstate', () => {
 // toujours de son écran racine (pas de pile d'historique entre onglets, pour
 // une navigation simple et prévisible).
 function switchTab(tab) {
-  if (tab === activeTab) return;
+  if (tab === activeTab) {
+    // Cliquer sur l'onglet déjà actif doit réinitialiser sa pile de navigation
+    // (fiche défi ouverte, formulaire de défi personnalisé, écran Paramètres) et
+    // revenir à la racine — sinon un clic sur "Aujourd'hui" depuis la fiche détail
+    // d'un défi ne faisait RIEN (l'onglet était déjà "today", donc le early-return
+    // bloquait tout). Ferme la même chose que history.back()/goBackOneLevel()
+    // (bouton retour physique), ET appelle aussi history.back() pour consommer
+    // l'entrée d'historique poussée par pushNavState() à l'ouverture de cette
+    // sous-vue — sans ça, un bouton retour physique ultérieur se retrouverait
+    // désynchronisé (une entrée jamais consommée alors que l'app affiche déjà la racine).
+    let hadNestedView = false;
+    if (tab === 'today' && currentChallengeId) {
+      clearTimerState();
+      currentChallengeId = null;
+      hadNestedView = true;
+    } else if (tab === 'library' && editingChallengeId !== null) {
+      editingChallengeId = null;
+      hadNestedView = true;
+    } else if (tab === 'account' && settingsScreenOpen) {
+      settingsScreenOpen = false;
+      hadNestedView = true;
+    }
+    if (hadNestedView) {
+      if (navigator.vibrate) navigator.vibrate(8);
+      render(true);
+      history.back();
+    }
+    return;
+  }
   if (activeTab === 'today') {
     clearTimerState();
     currentChallengeId = null;
@@ -1546,7 +1574,7 @@ async function registerBossBattleContributionIfNeeded(challengeId, amount) {
       { merge: true }
     );
     await bossBattleDocRef(weekStart).collection('dailyContributors').doc(todayKey + '_' + currentUser.uid).set(
-      { uid: currentUser.uid, displayName: currentUser.displayName || 'Athlète', date: todayKey, amount: firebase.firestore.FieldValue.increment(amount) },
+      { uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName), date: todayKey, amount: firebase.firestore.FieldValue.increment(amount) },
       { merge: true }
     );
     // Fil des contributions individuelles (contrairement à dailyContributors, un
@@ -1554,7 +1582,7 @@ async function registerBossBattleContributionIfNeeded(challengeId, amount) {
     // "Untel vient d'ajouter X" affiché sur l'écran Communauté, pour le FOMO en direct.
     await bossBattleDocRef(weekStart).collection('contributions').add({
       uid: currentUser.uid,
-      displayName: currentUser.displayName || 'Athlète',
+      displayName: formatDisplayName(currentUser.displayName),
       amount,
       at: Date.now(),
     });
@@ -1934,7 +1962,7 @@ async function syncLeaderboardEntry() {
   if (leaderboardOptOut || !currentUser) return;
   try {
     await db.collection('leaderboard').doc(currentUser.uid).set({
-      displayName: currentUser.displayName || 'Athlète',
+      displayName: formatDisplayName(currentUser.displayName),
       photoURL: currentUser.photoURL || '',
       streakCount,
       xpWeekly,
@@ -2002,7 +2030,7 @@ async function fetchMyRankAndNeighbors(view) {
     const myValue = (myDoc.exists && myDoc.data()[field]) || 0;
     const me = myDoc.exists
       ? { uid: currentUser.uid, ...myDoc.data() }
-      : { uid: currentUser.uid, displayName: currentUser.displayName || 'Toi', [field]: myValue };
+      : { uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName), [field]: myValue };
     myIdx = all.findIndex(e => (e[field] || 0) < myValue);
     if (myIdx === -1) myIdx = all.length;
     all.splice(myIdx, 0, me);
@@ -2597,6 +2625,25 @@ function escapeHtml(str) {
 // (fin de l'attribut HTML).
 function escapeJsAttr(str) {
   return String(str ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+// Anonymise un nom complet en "Prénom N." (ex: "Jean Dupont" -> "Jean D.", "Sarah" ->
+// "Sarah" inchangé, "Alexandre Martin Dupont" -> "Alexandre D." — seule l'initiale du
+// DERNIER mot est gardée, pas des mots intermédiaires). Appliquée à l'ÉCRITURE (avant
+// même que le nom n'atteigne Firestore, dans syncLeaderboardEntry()/
+// registerBossBattleContributionIfNeeded()) — pas seulement à l'affichage — pour que le
+// nom complet ne soit JAMAIS stocké dans les collections communautaires partagées,
+// lisibles par n'importe quel autre utilisateur authentifié. Idempotente (appliquer
+// deux fois ne change rien : "Jean D." redonne "Jean D."), donc sans risque de
+// ré-appliquer aussi à l'affichage en filet de sécurité sur d'éventuelles données déjà
+// écrites avant ce correctif.
+function formatDisplayName(fullName) {
+  const trimmed = String(fullName ?? '').trim().replace(/\s+/g, ' ');
+  if (!trimmed) return 'Athlète';
+  const parts = trimmed.split(' ');
+  if (parts.length === 1) return parts[0];
+  const lastInitial = parts[parts.length - 1].charAt(0).toUpperCase();
+  return `${parts[0]} ${lastInitial}.`;
 }
 
 // formatSecToReadable / formatTargetLabel vivent désormais dans exercise-data.js
@@ -4235,7 +4282,11 @@ async function importUserData(event) {
 function renderLeaderboardRow(entry, rank, view, highlight) {
   const value = entry[leaderboardFieldForView(view)] || 0;
   const valueLabel = view === 'streaks' ? `🔥 ${value} j` : `⚡ ${value} XP`;
-  const name = entry.displayName || 'Athlète';
+  // formatDisplayName() est déjà appliqué à l'écriture (syncLeaderboardEntry()) : ré-
+  // appliqué ici en filet de sécurité, idempotent, pour tout document déjà écrit avant
+  // ce correctif (nom complet encore stocké, se corrigera de lui-même à la prochaine
+  // synchronisation de son auteur).
+  const name = formatDisplayName(entry.displayName);
   const avatar = entry.photoURL
     ? `<img src="${escapeHtml(entry.photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
     : `<div class="leaderboard-avatar-fallback">${escapeHtml(name.charAt(0).toUpperCase())}</div>`;
@@ -4262,13 +4313,13 @@ function renderBossBattleSection() {
   const pct = Math.min(100, Math.round((communityBossBattleProgress / target.targetAmount) * 100));
   const unitLabel = challenge.unit === 'sec' ? 'sec' : 'reps';
   const contributorHtml = communityTopContributorToday
-    ? `<div class="boss-battle-contributor">👑 Contributeur du jour : ${escapeHtml(communityTopContributorToday.displayName || 'Athlète')} (${communityTopContributorToday.amount} ${unitLabel})</div>`
+    ? `<div class="boss-battle-contributor">👑 Contributeur du jour : ${escapeHtml(formatDisplayName(communityTopContributorToday.displayName))} (${communityTopContributorToday.amount} ${unitLabel})</div>`
     : '';
   // Fil des contributions individuelles (temps réel, ~20 dernières) : FOMO en direct,
   // distinct du badge Contributeur du jour ci-dessus (agrégat, pas un flux d'évènements).
   const feedHtml = communityRecentContributions.length > 0
     ? `<div class="boss-battle-feed">${communityRecentContributions.map(c => `
-        <div class="boss-battle-feed-row">${escapeHtml(c.displayName || 'Athlète')} vient d'ajouter ${c.amount} ${unitLabel}</div>
+        <div class="boss-battle-feed-row">${escapeHtml(formatDisplayName(c.displayName))} vient d'ajouter ${c.amount} ${unitLabel}</div>
       `).join('')}</div>`
     : '';
   return `

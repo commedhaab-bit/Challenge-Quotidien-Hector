@@ -3132,6 +3132,68 @@ const cssText = __rawHtml + __cssSource;
   __resetCommunityMocks();
   console.log('OK: le top N du classement et le rang/voisins ont des etats d echec independants');
 
+  // --- 155. Cliquer sur l onglet deja actif doit reinitialiser sa pile de navigation
+  // (fiche defi ouverte, formulaire, Parametres) et revenir a la racine -- avant ce
+  // correctif, cliquer "Aujourd hui" depuis la fiche detail d un defi ne faisait RIEN
+  // (l onglet etait deja "today", le early-return bloquait tout) ---
+  activeTab = 'today';
+  activeToday = new Set([pompes.id]);
+  await pickChallenge(pompes.id);
+  __assertEq(currentChallengeId, pompes.id, 'pre-requis : la fiche detail doit etre ouverte');
+  switchTab('today');
+  __assertEq(currentChallengeId, null, 'cliquer sur l onglet Aujourd hui deja actif doit fermer la fiche detail et revenir a la racine');
+  render(false);
+  __assertOk(document.getElementById('app').innerHTML.includes('today-content-flex') || document.getElementById('app').innerHTML.includes('community-hero-banner'), 'apres reinitialisation, l accueil doit afficher la liste racine (pas la fiche detail)');
+
+  activeTab = 'library';
+  editingChallengeId = 'new';
+  switchTab('library');
+  __assertEq(editingChallengeId, null, 'cliquer sur l onglet Defis deja actif doit fermer le formulaire de defi personnalise');
+
+  activeTab = 'account';
+  settingsScreenOpen = true;
+  switchTab('account');
+  __assertOk(!settingsScreenOpen, 'cliquer sur l onglet Profil deja actif doit fermer l ecran Parametres');
+  activeTab = 'today';
+  console.log('OK: cliquer sur l onglet deja actif reinitialise la pile de navigation vers la racine');
+
+  // --- 156. formatDisplayName() : anonymise "Prenom Nom" -> "Prenom N.", inchange si
+  // un seul mot, idempotent (re-appliquer ne change rien), repli si vide ---
+  __assertEq(formatDisplayName('Jean Dupont'), 'Jean D.', 'nom+prenom doit devenir Prenom N.');
+  __assertEq(formatDisplayName('Sarah'), 'Sarah', 'un nom seul (1 mot) doit rester inchange');
+  __assertEq(formatDisplayName('Alexandre Martin'), 'Alexandre M.', 'exemple donne par l utilisateur');
+  __assertEq(formatDisplayName('Jean Paul Dupont'), 'Jean D.', 'seule l initiale du DERNIER mot est gardee (pas les mots intermediaires)');
+  __assertEq(formatDisplayName('  Hector   HAAB  '), 'Hector H.', 'espaces superflus normalises, initiale toujours en majuscule meme si le nom est saisi en majuscules');
+  __assertEq(formatDisplayName('Jean D.'), 'Jean D.', 'idempotent : ré-appliquer sur un nom deja anonymise ne doit rien changer (filet de securite a l affichage sans danger)');
+  __assertEq(formatDisplayName(''), 'Athlète', 'nom vide -> repli Athlète (comme l ancien comportement)');
+  __assertEq(formatDisplayName(null), 'Athlète', 'nom absent (null) -> repli Athlète');
+  console.log('OK: formatDisplayName() anonymise correctement (Prenom N., idempotent, repli si vide)');
+
+  // --- 157. formatDisplayName() est applique A L ECRITURE (pas seulement a
+  // l affichage) : le nom complet ne doit JAMAIS atteindre les collections
+  // communautaires partagees, lisibles par n importe quel autre utilisateur ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'test-uid', displayName: 'Jean Dupont', email: 'j@test.com', photoURL: '' };
+  leaderboardOptOut = false;
+  await syncLeaderboardEntry();
+  const privacyLbDoc = await db.collection('leaderboard').doc('test-uid').get();
+  __assertEq(privacyLbDoc.data().displayName, 'Jean D.', 'syncLeaderboardEntry() ne doit jamais ecrire le nom complet, meme si currentUser.displayName est complet');
+
+  const privacyTarget = getWeeklyBossBattleTarget();
+  activeToday = new Set([privacyTarget.targetChallengeId]);
+  state = emptyDayState();
+  currentChallengeId = privacyTarget.targetChallengeId;
+  stats[privacyTarget.targetChallengeId] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  await addSet(10);
+  const privacyContribDoc = await bossBattleDocRef().collection('dailyContributors').doc(todayKey + '_test-uid').get();
+  __assertEq(privacyContribDoc.data().displayName, 'Jean D.', 'l agregat dailyContributors (badge Contributeur du jour) ne doit jamais garder le nom complet');
+  const privacyFeedSnap = await bossBattleDocRef().collection('contributions').orderBy('at', 'desc').limit(1).get();
+  __assertEq(privacyFeedSnap.docs[0].data().displayName, 'Jean D.', 'le fil des contributions individuelles ne doit jamais garder le nom complet');
+  currentChallengeId = null;
+  activeToday = new Set();
+  __resetCommunityMocks();
+  console.log('OK: le nom complet n atteint jamais les collections communautaires partagees (anonymise des l ecriture)');
+
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });
 `;

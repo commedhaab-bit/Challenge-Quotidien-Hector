@@ -350,6 +350,26 @@ visuellement à l'usage réel : rendu de la tab-bar à 5 onglets sur un écran �
 (L'API d'agrégation `count()` mentionnée ici à l'origine s'est révélée indisponible en
 production — voir plus haut, déjà corrigé.)
 
+**Navigation : cliquer sur l'onglet déjà actif réinitialise sa pile** (`switchTab()`) —
+avant, `if (tab === activeTab) return;` bloquait TOUT, y compris fermer une sous-vue
+ouverte (fiche défi, formulaire, Paramètres) : cliquer "Aujourd'hui" depuis la fiche
+détail d'un défi ne faisait rien. Ferme maintenant la sous-vue ET appelle
+`history.back()` pour consommer l'entrée poussée par `pushNavState()` à l'ouverture —
+sans ça, un bouton retour physique ultérieur se retrouverait désynchronisé (l'app déjà
+à la racine, mais une entrée d'historique jamais consommée).
+
+**Confidentialité : `formatDisplayName()`** (`"Prénom Nom"` → `"Prénom N."`, un seul mot
+inchangé, idempotent) appliqué à l'ÉCRITURE dans `syncLeaderboardEntry()` et
+`registerBossBattleContributionIfNeeded()` (dailyContributors + contributions) — le nom
+complet n'atteint JAMAIS les collections communautaires partagées, lisibles par
+n'importe quel autre utilisateur authentifié. Ré-appliqué aussi en filet de sécurité
+dans `renderLeaderboardRow()`/`renderBossBattleSection()` (idempotent, sans danger) pour
+tout document déjà écrit avant ce correctif — se corrige de lui-même à la prochaine
+synchronisation de son auteur, sans backfill manuel nécessaire. `renderAccountSection()`
+(écran Profil, visible uniquement par soi-même) garde volontairement le nom complet —
+seuls les affichages PUBLICS (classement, Contributeur du jour, fil de contributions)
+passent par `formatDisplayName()`.
+
 **Bugs de production déjà rencontrés et corrigés sur le classement Hebdo** :
 - Vue "Hebdomadaire" : nécessite un index composite Firestore (`xpWeekStart` + `xpWeekly`)
   — Firestore renvoie une erreur `FAILED_PRECONDITION`/"query requires an index" avec un
