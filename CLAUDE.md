@@ -279,6 +279,31 @@ en `allow create` seul, jamais `update`) — les règles par défaut Firestore r
 tout accès à une collection non explicitement autorisée. Le harnais de test ne peut
 pas vérifier ça (mock local, pas de vraies règles).
 
+**⚠️ Piège déjà vécu une fois sur ces règles, ne pas répéter** : les blocs `match
+/leaderboard/{uid}`, `match /community/{docId}` et `match /bossBattleArchive/{weekId}`
+doivent être des **frères** de `match /users/{userId}/{document=**}` (même niveau,
+directement sous `match /databases/{database}/documents {}`) — PAS imbriqués à
+l'intérieur du bloc `users`. En Firestore, l'imbrication d'un `match` suit le chemin
+réel des documents, pas une organisation logique : ces 3 collections vivent à la
+racine de la base, pas sous `users/{uid}/...`. Les imbriquer par erreur les laisse
+sans règle réelle (toujours refusées) tout en semblant "rangé" visuellement.
+
+**Fil des contributions individuelles (Boss Battle)** : `registerBossBattleContributionIfNeeded()`
+écrit désormais, en plus de `currentProgress`/`dailyContributors`, un document PAR
+évènement dans `community/bossBattle_{weekStart}/contributions/{autoId}` (jamais
+fusionné, contrairement à `dailyContributors` qui est un agrégat) — alimente
+`communityRecentContributions` (`startRecentContributionsListener()`, `onSnapshot`
+sur `orderBy('at','desc').limit(20)`), affiché sur l'écran Communauté
+(`.boss-battle-feed`) pour le FOMO en direct ("Untel vient d'ajouter X"). Nécessite la
+même règle `dailyContributors` mais sur `contributions` (déjà dans le bloc `community`
+ci-dessus).
+
+**Ruban communautaire visible aussi dans la bibliothèque** : `getCommunityDailySlot(c.id)`
+dans `renderChallengeCard()` n'est plus restreint à `mode === 'today'` — un utilisateur
+parti "choisir son propre défi" (onglet Défis) doit pouvoir quand même repérer le(s)
+défi(s) du jour communautaires en parcourant le catalogue, pas seulement une fois de
+retour sur l'accueil.
+
 **Les 3 piliers sont livrés** (défi du jour + Hero Banner, classement 3 vues + onglet
 dédié, Boss Battle + Temple de la renommée `fetchBossBattleArchive()`/
 `renderHallOfFameSection()`, affiché sur l'écran Communauté seulement s'il existe déjà

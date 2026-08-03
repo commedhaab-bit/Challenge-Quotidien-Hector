@@ -1457,6 +1457,23 @@ function startBossBattleListener() {
   });
 }
 
+// Fil des ~20 dernières contributions individuelles (temps réel), pour le FOMO en
+// direct sur l'écran Communauté ("Untel vient d'ajouter X") — distinct de
+// dailyContributors (agrégat par personne/par jour, sert uniquement au badge
+// Contributeur du jour). Abonnement unique au démarrage, comme les autres listeners
+// communautaires.
+let communityRecentContributions = [];
+let communityContributionsUnsub = null;
+
+function startRecentContributionsListener() {
+  if (communityContributionsUnsub) communityContributionsUnsub();
+  communityContributionsUnsub = bossBattleDocRef().collection('contributions')
+    .orderBy('at', 'desc').limit(20).onSnapshot((snap) => {
+      communityRecentContributions = snap.docs.map(d => d.data());
+      render();
+    });
+}
+
 async function handleBossBattleVictory(weekStart, target, finalProgress) {
   const challenge = CHALLENGE_LIBRARY.find(c => c.id === target.targetChallengeId);
   if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 140]);
@@ -1507,6 +1524,15 @@ async function registerBossBattleContributionIfNeeded(challengeId, amount) {
       { uid: currentUser.uid, displayName: currentUser.displayName || 'Athlète', date: todayKey, amount: firebase.firestore.FieldValue.increment(amount) },
       { merge: true }
     );
+    // Fil des contributions individuelles (contrairement à dailyContributors, un
+    // document PAR évènement, jamais fusionné) : sert uniquement au flux temps réel
+    // "Untel vient d'ajouter X" affiché sur l'écran Communauté, pour le FOMO en direct.
+    await bossBattleDocRef(weekStart).collection('contributions').add({
+      uid: currentUser.uid,
+      displayName: currentUser.displayName || 'Athlète',
+      amount,
+      at: Date.now(),
+    });
   } catch (e) {
     reportSaveError('boss battle contribution failed', e);
   }
@@ -3613,10 +3639,11 @@ function renderChallengeCard(c, mode, index, animate = true) {
   const noAnimClass = animate ? '' : ' no-anim';
 
   // Ruban + compteur "défi communautaire du jour" : garde le FOMO vivant même une
-  // fois le défi accepté (sinon toute trace communautaire disparaîtrait dès l'activation).
-  // Uniquement sur l'accueil ("today") — pas de sens dans la bibliothèque, qui liste
-  // tous les défis possibles, pas seulement ceux du jour.
-  const communitySlot = mode === 'today' ? getCommunityDailySlot(c.id) : null;
+  // fois le défi accepté (sinon toute trace communautaire disparaîtrait dès
+  // l'activation), ET reste visible dans la bibliothèque (mode "library") pour
+  // qu'un utilisateur parti "choisir son propre défi" puisse quand même repérer
+  // le(s) défi(s) du jour communautaires pendant qu'il parcourt le catalogue.
+  const communitySlot = getCommunityDailySlot(c.id);
   const communityCount = communitySlot === 1 ? communityDailyCounts.completions1 : communitySlot === 2 ? communityDailyCounts.completions2 : 0;
   const communityRibbon = communitySlot
     ? `<span class="community-card-ribbon" title="Défi communautaire du jour — ${communityCount} validé(s) aujourd'hui">🌍 ${communityCount}</span>`
@@ -4199,6 +4226,13 @@ function renderBossBattleSection() {
   const contributorHtml = communityTopContributorToday
     ? `<div class="boss-battle-contributor">👑 Contributeur du jour : ${escapeHtml(communityTopContributorToday.displayName || 'Athlète')} (${communityTopContributorToday.amount} ${unitLabel})</div>`
     : '';
+  // Fil des contributions individuelles (temps réel, ~20 dernières) : FOMO en direct,
+  // distinct du badge Contributeur du jour ci-dessus (agrégat, pas un flux d'évènements).
+  const feedHtml = communityRecentContributions.length > 0
+    ? `<div class="boss-battle-feed">${communityRecentContributions.map(c => `
+        <div class="boss-battle-feed-row">${escapeHtml(c.displayName || 'Athlète')} vient d'ajouter ${c.amount} ${unitLabel}</div>
+      `).join('')}</div>`
+    : '';
   return `
     <div class="boss-battle-card">
       <div class="boss-battle-header">
@@ -4208,6 +4242,7 @@ function renderBossBattleSection() {
       <div class="boss-battle-track"><div class="boss-battle-fill" style="width:${pct}%"></div></div>
       <div class="boss-battle-pct">${pct}%</div>
       ${contributorHtml}
+      ${feedHtml}
     </div>
   `;
 }
@@ -4489,6 +4524,7 @@ async function continueStartApp() {
   await evaluateStreakOnLoad(); // vient après loadState() : dépend de todayKey
   startCommunityDailyListener(); // vient après loadState() : dépend de todayKey
   startBossBattleListener();
+  startRecentContributionsListener();
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).

@@ -1850,7 +1850,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v11'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v12'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3058,6 +3058,44 @@ const cssText = __rawHtml + __cssSource;
   communityBossBattleArchive = [];
   __resetCommunityMocks();
   console.log('OK: Temple de la renommee (victoires collectives passees, triees de la plus recente a la plus ancienne)');
+
+  // --- 151. Le ruban "defi communautaire du jour" doit rester visible dans la
+  // bibliotheque (mode 'library'), pas seulement sur l accueil -- sans ca, un
+  // utilisateur parti "choisir son propre defi" ne peut plus reperer le(s) defi(s)
+  // du jour communautaires en parcourant le catalogue ---
+  __resetCommunityMocks();
+  todayKey = '2026-08-10';
+  const { challenge1: libC1 } = getDailyCommunityChallenges(todayKey);
+  const libRibbonHtml = renderChallengeCard(libC1, 'library');
+  __assertOk(libRibbonHtml.includes('community-card-ribbon'), 'le ruban communautaire doit aussi apparaitre sur les cartes de la bibliotheque (mode library), pas seulement sur l accueil');
+  console.log('OK: ruban communautaire visible aussi dans la bibliotheque (mode library)');
+
+  // --- 152. Fil des contributions individuelles au Boss Battle (temps reel, ~20
+  // dernieres) : distinct de dailyContributors (agregat), un document PAR evenement ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'test-uid', displayName: 'Julie', email: 'j@test.com', photoURL: '' };
+  const feedTarget = getWeeklyBossBattleTarget();
+  const feedChallenge = CHALLENGE_LIBRARY.find(c => c.id === feedTarget.targetChallengeId);
+  activeToday = new Set([feedChallenge.id]);
+  state = emptyDayState();
+  currentChallengeId = feedChallenge.id;
+  stats[feedChallenge.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  await addSet(40);
+  const contribSnap = await bossBattleDocRef().collection('contributions').orderBy('at', 'desc').limit(20).get();
+  __assertEq(contribSnap.size, 1, 'chaque contribution doit creer un nouveau document (pas fusionne, contrairement a dailyContributors)');
+  __assertEq(contribSnap.docs[0].data().displayName, 'Julie', 'le document de contribution doit garder le nom affiche de l auteur');
+  __assertEq(contribSnap.docs[0].data().amount, 40, 'le montant de la contribution doit etre celui reellement ajoute');
+
+  startRecentContributionsListener();
+  await Promise.resolve().then(() => {}).then(() => {}).then(() => {});
+  __assertEq(communityRecentContributions.length, 1, 'le listener doit alimenter le fil en temps reel');
+  currentChallengeId = null;
+  activeToday = new Set();
+  const feedSectionHtml = renderBossBattleSection();
+  __assertOk(feedSectionHtml.includes('boss-battle-feed') && feedSectionHtml.includes('Julie') && feedSectionHtml.includes("vient d'ajouter 40"), 'l ecran Communaute doit afficher le fil des dernieres contributions (FOMO en direct)');
+  communityRecentContributions = [];
+  __resetCommunityMocks();
+  console.log('OK: fil des dernieres contributions au Boss Battle (temps reel, FOMO en direct)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

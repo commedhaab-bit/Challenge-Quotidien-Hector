@@ -795,6 +795,22 @@
     margin-top: 8px;
     font-weight: 600;
   }
+  /* Fil des contributions individuelles (temps reel, FOMO en direct) */
+  .boss-battle-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+    max-height: 130px;
+    overflow-y: auto;
+  }
+  .boss-battle-feed-row {
+    font-size: 11.5px;
+    color: var(--chalk-dim);
+    padding: 4px 0;
+    border-top: 1px solid var(--line);
+  }
+  .boss-battle-feed-row:first-child { border-top: none; }
 
   /* Temple de la renommee : victoires collectives passees du Boss Battle */
   .hall-of-fame-list {
