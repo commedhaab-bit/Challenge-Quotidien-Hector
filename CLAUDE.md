@@ -409,38 +409,56 @@ passent par `formatDisplayName()`.
   lien direct de création tant qu'il n'existe pas. Normal, pas un bug : à créer une fois
   via ce lien (ou proactivement dans la console).
 
-## Bannière d'installation PWA intelligente
-Ancrée AU-DESSUS de la tab-bar (même offset `calc(64px + env(safe-area-inset-bottom))`
-que `.rank-bar`), jamais superposée/bloquante. Détection : `isRunningStandalonePwa()`
-(`matchMedia('(display-mode: standalone)')` ou `navigator.standalone`) empêche tout
-affichage si déjà installée ; `isIosDevice()` détecte aussi l'iPad (déclaré "Macintosh"
-en user-agent depuis iPadOS 13, distingué via `maxTouchPoints > 1`, absent des vrais
-Mac). `maybeShowPwaInstallBanner()` (appelée dans `continueStartApp()` ET à chaque
-réception de `beforeinstallprompt`, idempotente) attend `hasSeenTour` (laisse un
-nouvel utilisateur terminer sa découverte avant de lui proposer d'installer) puis
-choisit iOS (guide 2 étapes Partager/Sur l'écran d'accueil, pas de `beforeinstallprompt`
-sur Safari) ou Android/Chrome (`deferredInstallPrompt.prompt()` via un bouton direct) —
-explicitement **rien** sur desktop/navigateur sans `beforeinstallprompt` disponible,
-plutôt qu'un guide générique potentiellement faux.
+## Verrou d'installation PWA plein écran ("PWA First" strict)
+**Décision produit assumée** (pas une simple incitation) : sur un navigateur classique
+(non-standalone), l'installation sur l'écran d'accueil est un préalable OBLIGATOIRE
+avant même l'écran de connexion — onboarding/création de compte/tour guidé n'ont lieu
+que dans la version installée. S'applique à TOUT visiteur non-standalone, y compris un
+compte déjà existant qui rouvrirait le site depuis un onglet/favori classique (validé
+explicitement, pas une évidence : voir historique de conversation).
 
-**Seule exception documentée à "pas de localStorage, tout passe par Firestore"** (cf.
-`hasSeenTour`) : la fermeture de cette bannière (`dismissPwaInstallBanner()`, cooldown
-`PWA_INSTALL_COOLDOWN_DAYS`=14 avant réaffichage) est une préférence propre à CET
-APPAREIL/CE NAVIGATEUR (l'installation elle-même l'est) — la stocker côté compte
-Firestore n'aurait aucun sens (fermer sur un téléphone ne doit pas masquer la bannière
-sur une tablette du même compte).
+`#pwaInstallGate` (`z-index: 99998`, juste sous le filet de sécurité fatal à 99999)
+recouvre TOUT le viewport dès `updatePwaInstallGate()` — appelée une fois,
+inconditionnellement, tout en haut du script (avant même `firebase.initializeApp`
+n'a d'importance : ne dépend d'aucun état d'auth). Bloque par construction toute
+interaction avec `#loginScreen`/`#app` en dessous : **aucun besoin de "pauser" la
+logique d'auth/Firestore** — elle continue de tourner en arrière-plan pour un
+utilisateur déjà connecté, mais reste invisible/inatteignable derrière le recouvrement
+opaque. `isRunningStandalonePwa()`/`isIosDevice()` réutilisées telles quelles
+(`matchMedia('(display-mode: standalone)')`/`navigator.standalone`, iPad détecté via
+`maxTouchPoints > 1` malgré un user-agent "Macintosh" depuis iPadOS 13).
 
-**Bug de test découvert et corrigé en même temps** : ajouter `maybeShowPwaInstallBanner()`
-dans `continueStartApp()` a rendu flaky (~50%) un test totalement indépendant
-("écran de transition onboarding") — la cause réelle n'était PAS ce nouvel appel en
-lui-même, mais un défaut préexistant du harnais : `applyContent(animate=true)` diffère
-son swap DOM de 140ms via un vrai `setTimeout` (voir plus bas) ; un `render(true)` d'un
-test PRÉCÉDENT peut laisser un swap différé encore en attente, qui s'applique alors À
-TORT pendant le test SUIVANT s'il vérifie un état trop tôt après un appel similaire.
-Corrigé en portant la marge d'attente de ce test de 10ms à 300ms (largement sous les
-1600ms de `minDelay` qu'il vérifie par ailleurs) — **si un futur test qui vérifie un
-état juste après un `render(true)` devient flaky, suspecter ce même mécanisme avant
-toute autre piste.**
+**3 variantes de contenu** (`buildPwaInstallGateHtml()`) : iOS (guide 3 étapes
+Partager → Sur l'écran d'accueil → Ouvrir l'app, pas de `beforeinstallprompt` sur
+Safari), Android/Chrome (`deferredInstallPrompt.prompt()` via un gros bouton — après
+acceptation, affiche un état "Application installée, ouvre l'icône" et ne referme
+JAMAIS le verrou tout seul : l'utilisateur est encore dans l'onglet navigateur, pas
+dans l'app standalone), et un **repli générique + échappatoire** pour tout navigateur
+qui ne proposera jamais d'installation PWA réelle (desktop, Firefox mobile, navigateur
+intégré d'une app tierce type Instagram/TikTok) — validé explicitement avec
+l'utilisateur : sans cette échappatoire (`bypassPwaInstallGate()`), ces visiteurs
+resteraient bloqués sans aucune issue.
+
+**Remplace l'ancienne bannière douce** (ancrée au-dessus de la tab-bar, fermable,
+affichée seulement après le tour guidé) — devenue du code mort avec ce verrou strict
+placé AVANT même la connexion : `hasSeenTour` ne peut désormais être vrai qu'après
+être passé par la version installée, donc l'état où l'ancienne bannière s'affichait
+ne peut plus jamais se produire. Supprimée entièrement plutôt que dupliquée
+(`maybeShowPwaInstallBanner`/`dismissPwaInstallBanner`/`PWA_INSTALL_COOLDOWN_DAYS`/
+`#pwaInstallBanner` et son CSS `.pwa-install-banner*`).
+
+**Seule exception documentée à "pas de localStorage, tout passe par Firestore"** :
+l'échappatoire du repli générique (`PWA_INSTALL_GATE_BYPASS_KEY`, mémorisée sans
+expiration) est une préférence propre à CET APPAREIL/CE NAVIGATEUR (l'installation
+elle-même l'est) — la stocker côté compte Firestore n'aurait aucun sens.
+
+**Bug de test découvert et corrigé lors du lot précédent (bannière), toujours valable
+ici** : `applyContent(animate=true)` diffère son swap DOM de 140ms via un vrai
+`setTimeout` — un `render(true)` d'un test précédent peut laisser un swap différé
+encore en attente, qui s'applique alors À TORT pendant le test suivant s'il vérifie un
+état trop tôt après un appel similaire. **Si un futur test qui vérifie un état juste
+après un `render(true)` devient flaky, suspecter ce même mécanisme avant toute autre
+piste** (déjà corrigé une fois en portant une marge d'attente de test de 10ms à 300ms).
 
 ## Pictogrammes d'exercices (sujet en cours)
 Chaque défi a une clé d'icône (`getExercisePictogramKey`), ex: `squats`, `pompes`,

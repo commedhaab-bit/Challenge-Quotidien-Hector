@@ -1878,7 +1878,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v14'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v15'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3257,10 +3257,11 @@ const cssText = __rawHtml + __cssSource;
   __resetCommunityMocks();
   console.log('OK: le nom complet n atteint jamais les collections communautaires partagees (anonymise des l ecriture)');
 
-  // --- 158. Banniere d installation PWA : detection standalone/iOS, gating (deja
-  // installee, onboarding/tour pas encore vu), et contenu par plateforme ---
+  // --- 158. Verrou d installation PWA plein ecran ("PWA First" strict) : detection
+  // standalone/iOS, blocage AVANT meme la connexion (pas de gating sur hasSeenTour
+  // -- s applique aussi aux comptes deja existants), contenu par plateforme, et
+  // echappatoire pour les navigateurs qui ne proposeront jamais d installation reelle ---
   __mockLocalStorageStore.clear();
-  hasSeenTour = true;
   deferredInstallPrompt = null;
   navigator.userAgent = 'Mozilla/5.0 (Linux; Android 10)';
   navigator.platform = 'Linux armv8l';
@@ -3277,65 +3278,71 @@ const cssText = __rawHtml + __cssSource;
   navigator.maxTouchPoints = 0;
   __assertOk(!isIosDevice(), 'un vrai Mac (non tactile) ne doit jamais etre detecte comme iOS');
 
-  // Deja installee (mode standalone) : la banniere ne doit jamais s afficher, MEME
-  // dans un etat par ailleurs eligible (iOS, tour deja vu) -- sinon ce test ne
-  // prouverait rien (l etat "aucune plateforme eligible" masquerait deja la banniere
-  // pour une tout autre raison).
+  // Deja installee (mode standalone) : le verrou ne doit jamais s afficher, MEME
+  // dans un etat par ailleurs eligible (iOS) -- sinon ce test ne prouverait rien.
   navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)';
   window.matchMedia = () => ({ matches: true });
-  maybeShowPwaInstallBanner();
-  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'en mode standalone (deja installee), la banniere ne doit jamais s afficher meme sur un appareil par ailleurs eligible (iOS)');
+  updatePwaInstallGate();
+  __assertEq(document.getElementById('pwaInstallGate').style.display, 'none', 'en mode standalone (deja installee), le verrou ne doit jamais s afficher meme sur un appareil par ailleurs eligible (iOS)');
   window.matchMedia = () => ({ matches: false });
 
-  // Tour pas encore vu : pas de banniere (laisser un nouvel utilisateur terminer sa
-  // decouverte avant de lui proposer d installer).
-  hasSeenTour = false;
-  navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)';
-  maybeShowPwaInstallBanner();
-  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'avant la fin du 1er tour guide, la banniere ne doit pas s afficher');
+  // AUCUN gating sur hasSeenTour (contrairement a l ancienne banniere) : le verrou
+  // bloque AVANT MEME l ecran de connexion, donc aussi un compte deja existant qui
+  // rouvrirait le site depuis un onglet/favori classique.
   hasSeenTour = true;
+  updatePwaInstallGate();
+  __assertEq(document.getElementById('pwaInstallGate').style.display, 'flex', 'le verrou doit s afficher meme si le tour a deja ete vu (compte existant, decision produit assumee)');
 
-  // iOS : guide visuel (2 etapes Partager / Sur l ecran d accueil), pas de bouton d
-  // installation directe (l API navigateur n existe pas sur iOS).
-  maybeShowPwaInstallBanner();
-  const iosBannerHtml = document.getElementById('pwaInstallBanner').innerHTML;
-  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'block', 'sur iOS (tour deja vu, pas encore installee), la banniere doit s afficher');
-  __assertOk(iosBannerHtml.includes('Partager') && iosBannerHtml.includes("Sur l'écran d'accueil"), 'le guide iOS doit expliquer les 2 etapes (Partager puis Sur l ecran d accueil)');
-  __assertOk(!iosBannerHtml.includes("Installer l'application en 1 clic"), 'iOS n a pas de bouton d installation directe (API navigateur absente)');
+  // iOS : guide visuel 3 etapes, pas de bouton d installation directe (l API
+  // navigateur n existe pas sur iOS).
+  const iosGateHtml = document.getElementById('pwaInstallGate').innerHTML;
+  __assertOk(iosGateHtml.includes('Partager') && iosGateHtml.includes("Sur l'écran d'accueil") && iosGateHtml.includes("Ouvre l'application"), 'le guide iOS doit expliquer les 3 etapes (Partager, Sur l ecran d accueil, Ouvrir l app)');
+  __assertOk(!iosGateHtml.includes("Installer l'application en 1 clic"), 'iOS n a pas de bouton d installation directe (API navigateur absente)');
 
-  // Android/Chrome : CTA direct via le prompt natif differe (beforeinstallprompt).
+  // Android/Chrome sans beforeinstallprompt encore intercepte : repli generique
+  // (jamais de fausse instruction), avec l echappatoire volontaire.
   navigator.userAgent = 'Mozilla/5.0 (Linux; Android 10)';
   navigator.platform = 'Linux armv8l';
-  document.getElementById('pwaInstallBanner').style.display = 'none';
-  maybeShowPwaInstallBanner();
-  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'sans beforeinstallprompt intercepte, aucun guide generique fiable a proposer sur Android/desktop');
+  updatePwaInstallGate();
+  const fallbackGateHtml = document.getElementById('pwaInstallGate').innerHTML;
+  __assertEq(document.getElementById('pwaInstallGate').style.display, 'flex', 'sans beforeinstallprompt intercepte, le repli generique doit quand meme s afficher (jamais un ecran vide)');
+  __assertOk(fallbackGateHtml.includes('Continuer quand même'), 'le repli generique doit proposer une echappatoire (navigateurs sans installation PWA reelle possible)');
+
+  // Une fois beforeinstallprompt intercepte : CTA direct.
   let deferredPromptCalled = false;
   deferredInstallPrompt = { prompt() { deferredPromptCalled = true; }, userChoice: Promise.resolve({ outcome: 'accepted' }) };
-  maybeShowPwaInstallBanner();
-  const androidBannerHtml = document.getElementById('pwaInstallBanner').innerHTML;
-  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'block', 'sur Android avec beforeinstallprompt intercepte, la banniere doit s afficher');
-  __assertOk(androidBannerHtml.includes("Installer l'application en 1 clic"), 'le guide Android doit proposer un CTA direct');
-  await triggerPwaInstall();
-  __assertOk(deferredPromptCalled, 'triggerPwaInstall() doit relancer le prompt natif differe');
-  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'apres declenchement du prompt natif, la banniere doit se refermer');
+  updatePwaInstallGate();
+  const androidGateHtml = document.getElementById('pwaInstallGate').innerHTML;
+  __assertOk(androidGateHtml.includes("Installer l'application en 1 clic"), 'le guide Android doit proposer un CTA direct une fois beforeinstallprompt intercepte');
+  await triggerPwaInstallFromGate();
+  __assertOk(deferredPromptCalled, 'triggerPwaInstallFromGate() doit relancer le prompt natif differe');
+  const installedGateHtml = document.getElementById('pwaInstallGate').innerHTML;
+  __assertOk(installedGateHtml.includes('Application installée') && installedGateHtml.includes("écran d'accueil"), 'apres acceptation, le verrou doit inviter a ouvrir l icone installee (pas juste se refermer -- l utilisateur est encore dans l onglet navigateur)');
+  __assertEq(document.getElementById('pwaInstallGate').style.display, 'flex', 'le verrou reste affiche apres installation reussie : l utilisateur doit encore ouvrir l icone, il n est pas encore dans la version standalone');
 
-  // Fermeture manuelle : persiste le refus (localStorage) et respecte un cooldown,
-  // sans "assommer" l utilisateur a chaque rechargement.
-  __mockLocalStorageStore.clear(); // triggerPwaInstall() ci-dessus a deja pose un dismiss timestamp (installation reussie = fermeture) : repart d un etat propre pour tester la fermeture manuelle isolement
-  deferredInstallPrompt = { prompt() {}, userChoice: Promise.resolve({}) };
-  maybeShowPwaInstallBanner();
-  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'block', 'pre-requis : la banniere doit etre visible avant de tester sa fermeture');
-  dismissPwaInstallBanner();
-  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'fermer la banniere doit la masquer immediatement');
-  maybeShowPwaInstallBanner();
-  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'apres fermeture, la banniere ne doit pas revenir avant la fin du cooldown, meme si beforeinstallprompt est toujours disponible');
-  __mockLocalStorageStore.set(PWA_INSTALL_DISMISS_KEY, String(Date.now() - (PWA_INSTALL_COOLDOWN_DAYS + 1) * 86400000));
-  maybeShowPwaInstallBanner();
-  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'block', 'une fois le cooldown ecoule, la banniere doit pouvoir se reafficher');
+  // Prompt REFUSE (dismissed) : ne doit jamais afficher le message de succes --
+  // repli sur le bouton Android normal pour retenter, pas de faux "installe".
+  deferredInstallPrompt = { prompt() {}, userChoice: Promise.resolve({ outcome: 'dismissed' }) };
+  await triggerPwaInstallFromGate();
+  const declinedGateHtml = document.getElementById('pwaInstallGate').innerHTML;
+  __assertOk(!declinedGateHtml.includes('Application installée'), 'un prompt refuse ne doit jamais afficher le message de succes');
+
+  // Echappatoire : masque le verrou et persiste le choix (localStorage, propre a
+  // cet appareil/navigateur -- jamais synchronise via Firestore).
   __mockLocalStorageStore.clear();
   deferredInstallPrompt = null;
-  document.getElementById('pwaInstallBanner').style.display = 'none';
-  console.log('OK: banniere d installation PWA (standalone/iOS/gating tour, contenu par plateforme, cooldown de fermeture)');
+  navigator.userAgent = 'Mozilla/5.0 (X11; Linux x86_64) Firefox/120.0'; // navigateur qui ne proposera jamais de beforeinstallprompt ni n est iOS
+  updatePwaInstallGate();
+  __assertEq(document.getElementById('pwaInstallGate').style.display, 'flex', 'pre-requis : le verrou (repli generique) doit etre visible avant de tester l echappatoire');
+  bypassPwaInstallGate();
+  __assertEq(document.getElementById('pwaInstallGate').style.display, 'none', 'l echappatoire doit masquer le verrou immediatement');
+  updatePwaInstallGate();
+  __assertEq(document.getElementById('pwaInstallGate').style.display, 'none', 'apres l echappatoire, le verrou ne doit jamais revenir sur CET appareil/navigateur, meme apres un nouveau chargement');
+  __mockLocalStorageStore.clear();
+  deferredInstallPrompt = null;
+  hasSeenTour = false;
+  document.getElementById('pwaInstallGate').style.display = 'none';
+  console.log('OK: verrou d installation PWA plein ecran (standalone/iOS/Android/repli+echappatoire, aucun gating sur le tour)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

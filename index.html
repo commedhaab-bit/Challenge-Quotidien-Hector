@@ -55,7 +55,11 @@
 <div id="offlineBanner" class="top-banner top-banner-offline" style="display:none;">
   📡 Hors ligne — tes données seront synchronisées au retour du réseau
 </div>
-<div id="pwaInstallBanner" class="pwa-install-banner" style="display:none;"></div>
+<!-- Verrou d'installation PWA plein écran ("PWA First" strict) : z-index au-dessus
+     de TOUT (y compris #loginScreen/#app ci-dessous), masqué uniquement en mode
+     standalone (app déjà installée) ou après l'échappatoire volontaire pour les
+     navigateurs qui ne pourront jamais proposer d'installation réelle. -->
+<div id="pwaInstallGate" class="pwa-install-gate" style="display:none;"></div>
 
 <div id="loginScreen" class="login-screen" style="display:none;">
   <div class="emoji">💪</div>
@@ -444,21 +448,24 @@ window.addEventListener('online', updateOfflineBanner);
 window.addEventListener('offline', updateOfflineBanner);
 updateOfflineBanner();
 
-// ==== PWA : BANNIÈRE D'INSTALLATION INTELLIGENTE ====
-// Ancrée AU-DESSUS de la tab-bar (jamais superposée, jamais bloquante pour la
-// navigation — même schéma vertical que .rank-bar). Ne s'affiche jamais si l'app
-// tourne déjà en PWA installée, ni pendant l'onboarding/avant la fin du 1er tour
-// guidé (hasSeenTour) — laisse un tout nouvel utilisateur terminer sa découverte
-// avant de lui proposer d'installer.
+// ==== PWA : VERROU D'INSTALLATION PLEIN ÉCRAN ("PWA First" strict) ====
+// Stratégie voulue : l'installation sur l'écran d'accueil est un préalable
+// OBLIGATOIRE, avant même l'écran de connexion — onboarding/création de compte/tour
+// guidé n'ont lieu que dans la version installée (standalone). Tant que l'app tourne
+// dans un navigateur classique, ce verrou plein écran (z-index au-dessus de tout,
+// y compris #loginScreen/#app) bloque visuellement ET par interception des clics
+// tout le reste — aucune tentative de "pauser" la logique d'auth en dessous (inutile :
+// l'utilisateur ne peut de toute façon rien voir ni cliquer derrière ce recouvrement).
+// S'applique à TOUT visiteur non-standalone, y compris un compte déjà existant qui
+// rouvrirait le site depuis un onglet/favori classique (décision produit assumée).
 //
-// Seule exception documentée à "pas de localStorage dans cette app, tout passe par
-// Firestore" (cf. hasSeenTour) : le fait d'avoir DÉJÀ fermé cette bannière est une
-// préférence propre à CET APPAREIL/CE NAVIGATEUR précis (l'installation elle-même
-// l'est), pas une donnée de compte à synchroniser — la stocker dans Firestore ferait
-// par exemple ré-afficher/masquer la bannière sur un téléphone selon ce qui a été
-// fermé sur une tablette, ce qui n'a aucun sens.
-const PWA_INSTALL_DISMISS_KEY = 'pwaInstallBannerDismissedAt';
-const PWA_INSTALL_COOLDOWN_DAYS = 14; // ne pas "assommer" l'utilisateur a chaque rechargement, mais reproposer apres un temps raisonnable
+// Remplace l'ancienne bannière douce (ancrée au-dessus de la tab-bar, fermable,
+// affichée seulement après le tour guidé) : avec ce verrou strict AVANT même l'écran
+// de connexion, un utilisateur non-standalone n'atteint plus jamais l'état où
+// l'ancienne bannière aurait pu s'afficher (hasSeenTour ne peut être vrai qu'après
+// être passé par la version installée) — code devenu mort, remplacé plutôt que
+// dupliqué.
+const PWA_INSTALL_GATE_BYPASS_KEY = 'pwaInstallGateBypassed';
 let deferredInstallPrompt = null;
 
 function isRunningStandalonePwa() {
@@ -472,89 +479,113 @@ function isIosDevice() {
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-function wasPwaInstallBannerRecentlyDismissed() {
-  const dismissedAt = parseInt(localStorage.getItem(PWA_INSTALL_DISMISS_KEY), 10);
-  if (!dismissedAt) return false;
-  return (Date.now() - dismissedAt) / 86400000 < PWA_INSTALL_COOLDOWN_DAYS;
+// Échappatoire volontaire (validée explicitement, pas une demande initiale) pour les
+// navigateurs qui ne pourront JAMAIS proposer d'installation PWA réelle (desktop,
+// Firefox mobile, navigateur intégré d'une app tierce type Instagram/TikTok) : sans
+// ça, ces visiteurs resteraient bloqués sans aucune issue. Mémorisée par appareil/
+// navigateur (localStorage, comme la fermeture de l'ancienne bannière) — pas une
+// donnée de compte à synchroniser via Firestore.
+function isPwaInstallGateBypassed() {
+  try { return localStorage.getItem(PWA_INSTALL_GATE_BYPASS_KEY) === 'true'; }
+  catch (e) { return false; }
+}
+function bypassPwaInstallGate() {
+  try { localStorage.setItem(PWA_INSTALL_GATE_BYPASS_KEY, 'true'); } catch (e) { /* navigation privee : tant pis, rebloquera au prochain chargement */ }
+  hidePwaInstallGate();
 }
 
-function dismissPwaInstallBanner() {
-  try { localStorage.setItem(PWA_INSTALL_DISMISS_KEY, String(Date.now())); } catch (e) { /* navigation privee : tant pis, redemandera au prochain chargement */ }
-  const banner = document.getElementById('pwaInstallBanner');
-  if (banner) banner.style.display = 'none';
+function hidePwaInstallGate() {
+  const gate = document.getElementById('pwaInstallGate');
+  if (gate) gate.style.display = 'none';
 }
 
 // Déclenché par le bouton Android ("Installer en 1 clic") : relance le prompt natif
-// du navigateur déjà intercepté/différé par beforeinstallprompt ci-dessous.
-async function triggerPwaInstall() {
+// déjà intercepté/différé par beforeinstallprompt ci-dessous. Contrairement à
+// l'ancienne bannière, ne referme JAMAIS le verrou après coup — l'utilisateur est
+// encore dans l'onglet navigateur, pas dans l'app installée : on affiche plutôt un
+// message de succès invitant à l'ouvrir depuis l'écran d'accueil.
+async function triggerPwaInstallFromGate() {
   if (!deferredInstallPrompt) return;
   const promptEvent = deferredInstallPrompt;
   deferredInstallPrompt = null;
   promptEvent.prompt();
-  try { await promptEvent.userChoice; } catch (e) { /* ignore */ }
-  dismissPwaInstallBanner();
+  let outcome = null;
+  try { outcome = (await promptEvent.userChoice).outcome; } catch (e) { /* ignore */ }
+  if (outcome === 'accepted') {
+    renderPwaInstallGate('installed');
+  } else {
+    // Refusé : relaisse une chance d'essayer à nouveau (pas de beforeinstallprompt
+    // à rejouer nous-mêmes, mais deferredInstallPrompt reste null jusqu'à ce que le
+    // navigateur en émette un nouveau — repli sur le générique en attendant).
+    updatePwaInstallGate();
+  }
 }
 
-function buildPwaInstallBannerHtml(platform) {
+function buildPwaInstallGateHtml(platform) {
+  const header = `
+    <img src="icon-192.png" class="gate-logo-img" alt="Défi du Jour">
+    <h1 class="gate-title">Bienvenue sur Défi du Jour ⚡</h1>
+    <p class="gate-subtitle">Installe l'application sur ton téléphone pour commencer ton aventure.</p>
+  `;
   if (platform === 'ios') {
-    return `
-      <button class="pwa-install-close-btn" onclick="dismissPwaInstallBanner()" aria-label="Fermer">✕</button>
-      <div class="pwa-install-title">Installe Défi du Jour sur ton iPhone 📲</div>
-      <div class="pwa-install-steps">
-        <div class="pwa-install-step"><span class="pwa-install-step-icon">📤</span><span>Touche le bouton <strong>Partager</strong> en bas de Safari</span></div>
-        <div class="pwa-install-step"><span class="pwa-install-step-icon">➕</span><span>Sélectionne <strong>Sur l'écran d'accueil</strong></span></div>
+    return header + `
+      <div class="gate-steps">
+        <div class="gate-step"><span class="gate-step-num">1</span><span class="gate-step-icon">📤</span><span class="gate-step-text">Touche le bouton <strong>Partager</strong>, en bas de ton écran Safari</span></div>
+        <div class="gate-step"><span class="gate-step-num">2</span><span class="gate-step-icon">➕</span><span class="gate-step-text">Fais défiler et touche <strong>Sur l'écran d'accueil</strong></span></div>
+        <div class="gate-step"><span class="gate-step-num">3</span><span class="gate-step-icon">🚀</span><span class="gate-step-text"><strong>Ouvre l'application</strong> depuis ton écran d'accueil pour créer ton compte !</span></div>
       </div>
-      <div class="pwa-install-arrow">⌄</div>
+      <div class="gate-arrow">⌄</div>
     `;
   }
-  return `
-    <button class="pwa-install-close-btn" onclick="dismissPwaInstallBanner()" aria-label="Fermer">✕</button>
-    <div class="pwa-install-title">Installe Défi du Jour sur ton téléphone 📲</div>
-    <button class="pwa-install-cta-btn" onclick="triggerPwaInstall()">Installer l'application en 1 clic</button>
+  if (platform === 'android') {
+    return header + `<button class="gate-install-btn" onclick="triggerPwaInstallFromGate()">Installer l'application en 1 clic 📲</button>`;
+  }
+  if (platform === 'installed') {
+    return header + `<div class="gate-success">✅ Application installée !<br>Ouvre-la depuis ton écran d'accueil.</div>`;
+  }
+  // Repli : navigateur qui ne proposera jamais d'installation PWA réelle (desktop,
+  // Firefox mobile, navigateur intégré d'une app tierce) — jamais de fausse instruction,
+  // et une échappatoire pour ne pas bloquer sans issue.
+  return header + `
+    <p class="gate-fallback-text">Ouvre ce lien depuis Chrome (Android) ou Safari (iPhone) pour installer l'application.</p>
+    <button class="gate-bypass-btn" onclick="bypassPwaInstallGate()">Continuer quand même</button>
   `;
 }
 
-function showPwaInstallBanner(platform) {
-  const banner = document.getElementById('pwaInstallBanner');
-  if (!banner) return;
-  banner.innerHTML = buildPwaInstallBannerHtml(platform);
-  banner.classList.toggle('ios', platform === 'ios');
-  banner.style.display = 'block';
+function renderPwaInstallGate(platform) {
+  const gate = document.getElementById('pwaInstallGate');
+  if (!gate) return;
+  gate.innerHTML = buildPwaInstallGateHtml(platform);
+  gate.style.display = 'flex';
 }
 
-// Appelée une fois au démarrage complet (continueStartApp()) ET à chaque réception
-// tardive de beforeinstallprompt (Chrome peut le déclencher après coup, selon ses
-// propres heuristiques d'engagement) — idempotente, sans effet si rien à montrer.
-function maybeShowPwaInstallBanner() {
-  // Cache EXPLICITEMENT la bannière dès qu'une condition d'éligibilité n'est plus
-  // remplie (pas seulement "ne rien faire") : fonction idempotente qui reflète
-  // toujours l'éligibilité ACTUELLE, sans dépendre d'un état initial supposé.
-  if (isRunningStandalonePwa() || !hasSeenTour || wasPwaInstallBannerRecentlyDismissed()) {
-    const banner = document.getElementById('pwaInstallBanner');
-    if (banner) banner.style.display = 'none';
+// Point d'entrée : appelé une fois tout au démarrage du script, puis à chaque
+// réception tardive de beforeinstallprompt/appinstalled (le navigateur peut les
+// déclencher après coup, selon ses propres heuristiques d'engagement) — idempotent.
+function updatePwaInstallGate() {
+  if (isRunningStandalonePwa() || isPwaInstallGateBypassed()) {
+    hidePwaInstallGate();
     return;
   }
   if (isIosDevice()) {
-    showPwaInstallBanner('ios');
+    renderPwaInstallGate('ios');
   } else if (deferredInstallPrompt) {
-    showPwaInstallBanner('android');
+    renderPwaInstallGate('android');
   } else {
-    // Autre navigateur (desktop sans beforeinstallprompt, etc.) : aucun guide
-    // générique fiable à proposer, on n'affiche rien plutôt qu'une instruction fausse.
-    const banner = document.getElementById('pwaInstallBanner');
-    if (banner) banner.style.display = 'none';
+    renderPwaInstallGate('fallback');
   }
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
-  maybeShowPwaInstallBanner();
+  updatePwaInstallGate();
 });
 window.addEventListener('appinstalled', () => {
   deferredInstallPrompt = null;
-  dismissPwaInstallBanner();
+  renderPwaInstallGate('installed');
 });
+updatePwaInstallGate();
 
 // CHALLENGE_LIBRARY vit désormais dans exercise-data.js (script classique chargé
 // avant celui-ci, voir <head>) — reste un global, aucun changement d'usage ici.
@@ -4788,7 +4819,6 @@ async function continueStartApp() {
   await refreshWeeklyBossBattleTargetCache(); // AVANT startBossBattleListener() : la detection de victoire lit getWeeklyBossBattleTarget() de facon synchrone
   startBossBattleListener();
   startRecentContributionsListener();
-  maybeShowPwaInstallBanner();
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).
