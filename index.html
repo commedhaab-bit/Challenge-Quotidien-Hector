@@ -55,6 +55,7 @@
 <div id="offlineBanner" class="top-banner top-banner-offline" style="display:none;">
   📡 Hors ligne — tes données seront synchronisées au retour du réseau
 </div>
+<div id="pwaInstallBanner" class="pwa-install-banner" style="display:none;"></div>
 
 <div id="loginScreen" class="login-screen" style="display:none;">
   <div class="emoji">💪</div>
@@ -442,6 +443,118 @@ function updateOfflineBanner() {
 window.addEventListener('online', updateOfflineBanner);
 window.addEventListener('offline', updateOfflineBanner);
 updateOfflineBanner();
+
+// ==== PWA : BANNIÈRE D'INSTALLATION INTELLIGENTE ====
+// Ancrée AU-DESSUS de la tab-bar (jamais superposée, jamais bloquante pour la
+// navigation — même schéma vertical que .rank-bar). Ne s'affiche jamais si l'app
+// tourne déjà en PWA installée, ni pendant l'onboarding/avant la fin du 1er tour
+// guidé (hasSeenTour) — laisse un tout nouvel utilisateur terminer sa découverte
+// avant de lui proposer d'installer.
+//
+// Seule exception documentée à "pas de localStorage dans cette app, tout passe par
+// Firestore" (cf. hasSeenTour) : le fait d'avoir DÉJÀ fermé cette bannière est une
+// préférence propre à CET APPAREIL/CE NAVIGATEUR précis (l'installation elle-même
+// l'est), pas une donnée de compte à synchroniser — la stocker dans Firestore ferait
+// par exemple ré-afficher/masquer la bannière sur un téléphone selon ce qui a été
+// fermé sur une tablette, ce qui n'a aucun sens.
+const PWA_INSTALL_DISMISS_KEY = 'pwaInstallBannerDismissedAt';
+const PWA_INSTALL_COOLDOWN_DAYS = 14; // ne pas "assommer" l'utilisateur a chaque rechargement, mais reproposer apres un temps raisonnable
+let deferredInstallPrompt = null;
+
+function isRunningStandalonePwa() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+
+// iPadOS 13+ se déclare "Macintosh" dans le user-agent (mode bureau par défaut) :
+// détecté via le support tactile multipoint, absent des vrais Mac.
+function isIosDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function wasPwaInstallBannerRecentlyDismissed() {
+  const dismissedAt = parseInt(localStorage.getItem(PWA_INSTALL_DISMISS_KEY), 10);
+  if (!dismissedAt) return false;
+  return (Date.now() - dismissedAt) / 86400000 < PWA_INSTALL_COOLDOWN_DAYS;
+}
+
+function dismissPwaInstallBanner() {
+  try { localStorage.setItem(PWA_INSTALL_DISMISS_KEY, String(Date.now())); } catch (e) { /* navigation privee : tant pis, redemandera au prochain chargement */ }
+  const banner = document.getElementById('pwaInstallBanner');
+  if (banner) banner.style.display = 'none';
+}
+
+// Déclenché par le bouton Android ("Installer en 1 clic") : relance le prompt natif
+// du navigateur déjà intercepté/différé par beforeinstallprompt ci-dessous.
+async function triggerPwaInstall() {
+  if (!deferredInstallPrompt) return;
+  const promptEvent = deferredInstallPrompt;
+  deferredInstallPrompt = null;
+  promptEvent.prompt();
+  try { await promptEvent.userChoice; } catch (e) { /* ignore */ }
+  dismissPwaInstallBanner();
+}
+
+function buildPwaInstallBannerHtml(platform) {
+  if (platform === 'ios') {
+    return `
+      <button class="pwa-install-close-btn" onclick="dismissPwaInstallBanner()" aria-label="Fermer">✕</button>
+      <div class="pwa-install-title">Installe Défi du Jour sur ton iPhone 📲</div>
+      <div class="pwa-install-steps">
+        <div class="pwa-install-step"><span class="pwa-install-step-icon">📤</span><span>Touche le bouton <strong>Partager</strong> en bas de Safari</span></div>
+        <div class="pwa-install-step"><span class="pwa-install-step-icon">➕</span><span>Sélectionne <strong>Sur l'écran d'accueil</strong></span></div>
+      </div>
+      <div class="pwa-install-arrow">⌄</div>
+    `;
+  }
+  return `
+    <button class="pwa-install-close-btn" onclick="dismissPwaInstallBanner()" aria-label="Fermer">✕</button>
+    <div class="pwa-install-title">Installe Défi du Jour sur ton téléphone 📲</div>
+    <button class="pwa-install-cta-btn" onclick="triggerPwaInstall()">Installer l'application en 1 clic</button>
+  `;
+}
+
+function showPwaInstallBanner(platform) {
+  const banner = document.getElementById('pwaInstallBanner');
+  if (!banner) return;
+  banner.innerHTML = buildPwaInstallBannerHtml(platform);
+  banner.classList.toggle('ios', platform === 'ios');
+  banner.style.display = 'block';
+}
+
+// Appelée une fois au démarrage complet (continueStartApp()) ET à chaque réception
+// tardive de beforeinstallprompt (Chrome peut le déclencher après coup, selon ses
+// propres heuristiques d'engagement) — idempotente, sans effet si rien à montrer.
+function maybeShowPwaInstallBanner() {
+  // Cache EXPLICITEMENT la bannière dès qu'une condition d'éligibilité n'est plus
+  // remplie (pas seulement "ne rien faire") : fonction idempotente qui reflète
+  // toujours l'éligibilité ACTUELLE, sans dépendre d'un état initial supposé.
+  if (isRunningStandalonePwa() || !hasSeenTour || wasPwaInstallBannerRecentlyDismissed()) {
+    const banner = document.getElementById('pwaInstallBanner');
+    if (banner) banner.style.display = 'none';
+    return;
+  }
+  if (isIosDevice()) {
+    showPwaInstallBanner('ios');
+  } else if (deferredInstallPrompt) {
+    showPwaInstallBanner('android');
+  } else {
+    // Autre navigateur (desktop sans beforeinstallprompt, etc.) : aucun guide
+    // générique fiable à proposer, on n'affiche rien plutôt qu'une instruction fausse.
+    const banner = document.getElementById('pwaInstallBanner');
+    if (banner) banner.style.display = 'none';
+  }
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  maybeShowPwaInstallBanner();
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  dismissPwaInstallBanner();
+});
 
 // CHALLENGE_LIBRARY vit désormais dans exercise-data.js (script classique chargé
 // avant celui-ci, voir <head>) — reste un global, aucun changement d'usage ici.
@@ -4675,6 +4788,7 @@ async function continueStartApp() {
   await refreshWeeklyBossBattleTargetCache(); // AVANT startBossBattleListener() : la detection de victoire lit getWeeklyBossBattleTarget() de facon synchrone
   startBossBattleListener();
   startRecentContributionsListener();
+  maybeShowPwaInstallBanner();
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).

@@ -109,6 +109,15 @@ function makeEl(id) {
 }
 
 const store = new Map(); // simule Firestore (ancien modele cle/valeur) : key -> JSON string
+// Simule localStorage (seul usage de ce mecanisme dans l'app : dismiss de la banniere
+// d'installation PWA, une preference propre a CET appareil, cf. commentaire index.html).
+const mockLocalStorageStore = new Map();
+const mockLocalStorage = {
+  getItem(key) { return mockLocalStorageStore.has(key) ? mockLocalStorageStore.get(key) : null; },
+  setItem(key, value) { mockLocalStorageStore.set(key, String(value)); },
+  removeItem(key) { mockLocalStorageStore.delete(key); },
+  clear() { mockLocalStorageStore.clear(); },
+};
 const elementsById = new Map(); // simule le DOM : meme element retourne par id (ex: 'app')
 const sandboxSpokenLog = []; // simule window.speechSynthesis : phrases prononcees, dans l'ordre
 const mockLocation = { search: '', pathname: '/index.html' }; // simule window.location (raccourcis PWA, ?tab=...)
@@ -299,6 +308,10 @@ const sandbox = {
     addEventListener(){}, removeEventListener(){},
     innerWidth: 400, innerHeight: 800, scrollY: 0,
     caches: mockCachesApi, // pour le test `'caches' in window` de forceAppUpdate()
+    // Simule (display-mode: standalone) : false par defaut (navigateur classique,
+    // PWA pas encore installee) ; certains tests reassignent matchMedia entierement
+    // pour simuler le mode standalone.
+    matchMedia(query) { return { matches: false, media: query, addListener(){}, removeListener(){} }; },
     AudioContext: function(){ return { createOscillator(){ return { connect(){}, start(){}, stop(){}, frequency:{} }; }, createGain(){ return { connect(){}, gain:{ setValueAtTime(){}, linearRampToValueAtTime(){}, exponentialRampToValueAtTime(){} } }; }, currentTime: 0, state: 'running', resume(){} }; },
     speechSynthesis: {
       cancel(){ /* no-op : le log ne garde que les phrases reellement prononcees */ },
@@ -317,6 +330,13 @@ const sandbox = {
     vibrate(){ return true; },
     onLine: true,
     serviceWorker: { getRegistrations: async () => mockSwRegistrations },
+    // Valeurs neutres par defaut (ni iOS ni "Mac tactile") : les tests qui simulent
+    // un appareil precis reassignent ces champs directement (meme convention que
+    // navigator.onLine ci-dessus).
+    userAgent: 'Mozilla/5.0 (Linux; Android 10)',
+    platform: 'Linux armv8l',
+    maxTouchPoints: 0,
+    standalone: undefined,
   },
   caches: mockCachesApi,
   history: {
@@ -361,7 +381,9 @@ const sandbox = {
   alert(msg){ console.log('  [alert]', msg); },
   confirm(msg){ return true; },
   prompt(msg, def){ return def; },
+  localStorage: mockLocalStorage,
   __store: store,
+  __mockLocalStorageStore: mockLocalStorageStore,
   __appDataStore: appDataStore, // { exists, data } du document consolide simule (voir plus haut)
   __mockCacheKeys: mockCacheKeys, // Cache Storage simule (forceAppUpdate)
   __mockSwRegistrations: mockSwRegistrations, // ServiceWorkerRegistration simulees (forceAppUpdate)
@@ -696,7 +718,13 @@ const cssText = __rawHtml + __cssSource;
   onboardingTransitionPhase = null;
   guidedTourStep = null;
   const finishPromise = finishProfileOnboarding();
-  await new Promise(r => setTimeout(r, 10)); // laisse passer le microtask saveProfile() avant de verifier la phase
+  // Marge volontairement large (> le defer de 140ms d applyContent(animate=true),
+  // cf. CLAUDE.md) : un test precedent peut avoir laisse un render(true) EN ATTENTE
+  // de son propre swap differe de 140ms (setTimeout reel, jamais annule entre tests) ;
+  // sans cette marge, ce swap perime peut s appliquer PENDANT la verification de CE
+  // test et ecraser a tort le contenu qu on veut observer ici. Reste tres en-dessous
+  // des 1600ms de minDelay que ce test verifie justement ne pas etre encore ecoule.
+  await new Promise(r => setTimeout(r, 300));
   __assertEq(onboardingTransitionPhase, 'loading', 'juste apres l appel, la phase doit etre "loading"');
   const loadingHtml = document.getElementById('app').innerHTML;
   __assertOk(loadingHtml.includes('Calcul de tes objectifs'), 'l ecran de chargement doit afficher le message de calcul');
@@ -1850,7 +1878,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v13'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v14'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3228,6 +3256,86 @@ const cssText = __rawHtml + __cssSource;
   activeToday = new Set();
   __resetCommunityMocks();
   console.log('OK: le nom complet n atteint jamais les collections communautaires partagees (anonymise des l ecriture)');
+
+  // --- 158. Banniere d installation PWA : detection standalone/iOS, gating (deja
+  // installee, onboarding/tour pas encore vu), et contenu par plateforme ---
+  __mockLocalStorageStore.clear();
+  hasSeenTour = true;
+  deferredInstallPrompt = null;
+  navigator.userAgent = 'Mozilla/5.0 (Linux; Android 10)';
+  navigator.platform = 'Linux armv8l';
+  navigator.maxTouchPoints = 0;
+  navigator.standalone = undefined;
+  __assertOk(!isIosDevice(), 'un user-agent Android ne doit pas etre detecte comme iOS');
+
+  navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)';
+  __assertOk(isIosDevice(), 'un user-agent iPhone doit etre detecte comme iOS');
+  navigator.userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)';
+  navigator.platform = 'MacIntel';
+  navigator.maxTouchPoints = 5;
+  __assertOk(isIosDevice(), 'un iPad (declare Macintosh, tactile multipoint) doit etre detecte comme iOS malgre le user-agent');
+  navigator.maxTouchPoints = 0;
+  __assertOk(!isIosDevice(), 'un vrai Mac (non tactile) ne doit jamais etre detecte comme iOS');
+
+  // Deja installee (mode standalone) : la banniere ne doit jamais s afficher, MEME
+  // dans un etat par ailleurs eligible (iOS, tour deja vu) -- sinon ce test ne
+  // prouverait rien (l etat "aucune plateforme eligible" masquerait deja la banniere
+  // pour une tout autre raison).
+  navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)';
+  window.matchMedia = () => ({ matches: true });
+  maybeShowPwaInstallBanner();
+  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'en mode standalone (deja installee), la banniere ne doit jamais s afficher meme sur un appareil par ailleurs eligible (iOS)');
+  window.matchMedia = () => ({ matches: false });
+
+  // Tour pas encore vu : pas de banniere (laisser un nouvel utilisateur terminer sa
+  // decouverte avant de lui proposer d installer).
+  hasSeenTour = false;
+  navigator.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)';
+  maybeShowPwaInstallBanner();
+  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'avant la fin du 1er tour guide, la banniere ne doit pas s afficher');
+  hasSeenTour = true;
+
+  // iOS : guide visuel (2 etapes Partager / Sur l ecran d accueil), pas de bouton d
+  // installation directe (l API navigateur n existe pas sur iOS).
+  maybeShowPwaInstallBanner();
+  const iosBannerHtml = document.getElementById('pwaInstallBanner').innerHTML;
+  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'block', 'sur iOS (tour deja vu, pas encore installee), la banniere doit s afficher');
+  __assertOk(iosBannerHtml.includes('Partager') && iosBannerHtml.includes("Sur l'écran d'accueil"), 'le guide iOS doit expliquer les 2 etapes (Partager puis Sur l ecran d accueil)');
+  __assertOk(!iosBannerHtml.includes("Installer l'application en 1 clic"), 'iOS n a pas de bouton d installation directe (API navigateur absente)');
+
+  // Android/Chrome : CTA direct via le prompt natif differe (beforeinstallprompt).
+  navigator.userAgent = 'Mozilla/5.0 (Linux; Android 10)';
+  navigator.platform = 'Linux armv8l';
+  document.getElementById('pwaInstallBanner').style.display = 'none';
+  maybeShowPwaInstallBanner();
+  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'sans beforeinstallprompt intercepte, aucun guide generique fiable a proposer sur Android/desktop');
+  let deferredPromptCalled = false;
+  deferredInstallPrompt = { prompt() { deferredPromptCalled = true; }, userChoice: Promise.resolve({ outcome: 'accepted' }) };
+  maybeShowPwaInstallBanner();
+  const androidBannerHtml = document.getElementById('pwaInstallBanner').innerHTML;
+  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'block', 'sur Android avec beforeinstallprompt intercepte, la banniere doit s afficher');
+  __assertOk(androidBannerHtml.includes("Installer l'application en 1 clic"), 'le guide Android doit proposer un CTA direct');
+  await triggerPwaInstall();
+  __assertOk(deferredPromptCalled, 'triggerPwaInstall() doit relancer le prompt natif differe');
+  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'apres declenchement du prompt natif, la banniere doit se refermer');
+
+  // Fermeture manuelle : persiste le refus (localStorage) et respecte un cooldown,
+  // sans "assommer" l utilisateur a chaque rechargement.
+  __mockLocalStorageStore.clear(); // triggerPwaInstall() ci-dessus a deja pose un dismiss timestamp (installation reussie = fermeture) : repart d un etat propre pour tester la fermeture manuelle isolement
+  deferredInstallPrompt = { prompt() {}, userChoice: Promise.resolve({}) };
+  maybeShowPwaInstallBanner();
+  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'block', 'pre-requis : la banniere doit etre visible avant de tester sa fermeture');
+  dismissPwaInstallBanner();
+  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'fermer la banniere doit la masquer immediatement');
+  maybeShowPwaInstallBanner();
+  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'none', 'apres fermeture, la banniere ne doit pas revenir avant la fin du cooldown, meme si beforeinstallprompt est toujours disponible');
+  __mockLocalStorageStore.set(PWA_INSTALL_DISMISS_KEY, String(Date.now() - (PWA_INSTALL_COOLDOWN_DAYS + 1) * 86400000));
+  maybeShowPwaInstallBanner();
+  __assertEq(document.getElementById('pwaInstallBanner').style.display, 'block', 'une fois le cooldown ecoule, la banniere doit pouvoir se reafficher');
+  __mockLocalStorageStore.clear();
+  deferredInstallPrompt = null;
+  document.getElementById('pwaInstallBanner').style.display = 'none';
+  console.log('OK: banniere d installation PWA (standalone/iOS/gating tour, contenu par plateforme, cooldown de fermeture)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

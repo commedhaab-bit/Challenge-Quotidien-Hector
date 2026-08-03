@@ -409,6 +409,39 @@ passent par `formatDisplayName()`.
   lien direct de création tant qu'il n'existe pas. Normal, pas un bug : à créer une fois
   via ce lien (ou proactivement dans la console).
 
+## Bannière d'installation PWA intelligente
+Ancrée AU-DESSUS de la tab-bar (même offset `calc(64px + env(safe-area-inset-bottom))`
+que `.rank-bar`), jamais superposée/bloquante. Détection : `isRunningStandalonePwa()`
+(`matchMedia('(display-mode: standalone)')` ou `navigator.standalone`) empêche tout
+affichage si déjà installée ; `isIosDevice()` détecte aussi l'iPad (déclaré "Macintosh"
+en user-agent depuis iPadOS 13, distingué via `maxTouchPoints > 1`, absent des vrais
+Mac). `maybeShowPwaInstallBanner()` (appelée dans `continueStartApp()` ET à chaque
+réception de `beforeinstallprompt`, idempotente) attend `hasSeenTour` (laisse un
+nouvel utilisateur terminer sa découverte avant de lui proposer d'installer) puis
+choisit iOS (guide 2 étapes Partager/Sur l'écran d'accueil, pas de `beforeinstallprompt`
+sur Safari) ou Android/Chrome (`deferredInstallPrompt.prompt()` via un bouton direct) —
+explicitement **rien** sur desktop/navigateur sans `beforeinstallprompt` disponible,
+plutôt qu'un guide générique potentiellement faux.
+
+**Seule exception documentée à "pas de localStorage, tout passe par Firestore"** (cf.
+`hasSeenTour`) : la fermeture de cette bannière (`dismissPwaInstallBanner()`, cooldown
+`PWA_INSTALL_COOLDOWN_DAYS`=14 avant réaffichage) est une préférence propre à CET
+APPAREIL/CE NAVIGATEUR (l'installation elle-même l'est) — la stocker côté compte
+Firestore n'aurait aucun sens (fermer sur un téléphone ne doit pas masquer la bannière
+sur une tablette du même compte).
+
+**Bug de test découvert et corrigé en même temps** : ajouter `maybeShowPwaInstallBanner()`
+dans `continueStartApp()` a rendu flaky (~50%) un test totalement indépendant
+("écran de transition onboarding") — la cause réelle n'était PAS ce nouvel appel en
+lui-même, mais un défaut préexistant du harnais : `applyContent(animate=true)` diffère
+son swap DOM de 140ms via un vrai `setTimeout` (voir plus bas) ; un `render(true)` d'un
+test PRÉCÉDENT peut laisser un swap différé encore en attente, qui s'applique alors À
+TORT pendant le test SUIVANT s'il vérifie un état trop tôt après un appel similaire.
+Corrigé en portant la marge d'attente de ce test de 10ms à 300ms (largement sous les
+1600ms de `minDelay` qu'il vérifie par ailleurs) — **si un futur test qui vérifie un
+état juste après un `render(true)` devient flaky, suspecter ce même mécanisme avant
+toute autre piste.**
+
 ## Pictogrammes d'exercices (sujet en cours)
 Chaque défi a une clé d'icône (`getExercisePictogramKey`), ex: `squats`, `pompes`,
 `dumbbell_generic`. Système à 3 niveaux de repli automatique dans
