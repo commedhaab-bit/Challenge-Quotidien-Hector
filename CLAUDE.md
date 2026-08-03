@@ -304,6 +304,16 @@ parti "choisir son propre défi" (onglet Défis) doit pouvoir quand même repér
 défi(s) du jour communautaires en parcourant le catalogue, pas seulement une fois de
 retour sur l'accueil.
 
+**Hero Banner : un seul CTA active les 2 défis à la fois** : les 2 cartes du Hero
+Banner sont désormais purement informatives (icône/nom/objectif/preuve sociale), sans
+bouton chacune. Un unique gros bouton `.community-hero-accept-all-btn`
+("Relever le défi communautaire du jour", au-dessus de "Choisir mon propre défi")
+appelle `acceptAllCommunityChallenges()`, qui ajoute les 2 défis d'un coup dans
+`activeToday` puis persiste/rend une seule fois — remplace l'ancien
+`acceptCommunityChallenge(id)` par carte (supprimé), qui n'activait qu'UN SEUL des 2
+défis et prêtait à confusion (l'utilisateur croyait avoir rejoint "le défi du jour" en
+entier en cliquant une seule carte).
+
 **Les 3 piliers sont livrés** (défi du jour + Hero Banner, classement 3 vues + onglet
 dédié, Boss Battle + Temple de la renommée `fetchBossBattleArchive()`/
 `renderHallOfFameSection()`, affiché sur l'écran Communauté seulement s'il existe déjà

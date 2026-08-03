@@ -1850,7 +1850,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v12'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v13'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2857,21 +2857,22 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(heroHtml.includes('community-hero-banner'), 'le Hero Banner doit remplacer l ancien ecran vide quand aucun defi n est actif');
   __assertOk(heroHtml.includes(escapeHtml(heroC1.name)) && heroHtml.includes(escapeHtml(heroC2.name)), 'les 2 defis communautaires du jour doivent etre presents sur le banner');
   __assertOk(heroHtml.includes('3 membre') && heroHtml.includes('7 membre'), 'la preuve sociale (nombre de validations) doit etre affichee par defi');
-  __assertOk(heroHtml.includes('acceptCommunityChallenge(' + heroC1.id + ')') && heroHtml.includes('acceptCommunityChallenge(' + heroC2.id + ')'), 'chaque defi doit avoir un CTA pour l accepter immediatement');
+  __assertOk(heroHtml.includes('acceptAllCommunityChallenges()'), 'un unique bouton doit permettre d accepter les 2 defis communautaires EN UNE FOIS (pas un bouton par carte, source de confusion : n activait qu un seul des 2 defis)');
+  __assertOk(!heroHtml.includes('community-hero-accept-btn'), 'les anciens boutons par carte (un seul defi active a la fois) ne doivent plus exister');
   __assertOk(heroHtml.includes("switchTab('library')"), 'un CTA doit permettre de choisir un defi personnalise a la place');
   console.log('OK: Hero Banner communautaire affiche par defaut quand aucun defi n est actif');
 
-  // --- 142. Accepter un defi communautaire l active exactement comme +Activer, et
-  // fait disparaitre le Hero Banner (remplace par la liste normale) ---
-  await acceptCommunityChallenge(heroC1.id);
-  __assertOk(activeToday.has(heroC1.id), 'acceptCommunityChallenge doit activer le defi pour aujourd hui');
+  // --- 142. Le bouton unique active les 2 defis communautaires EN UNE FOIS, et fait
+  // disparaitre le Hero Banner (remplace par la liste normale) ---
+  await acceptAllCommunityChallenges();
+  __assertOk(activeToday.has(heroC1.id) && activeToday.has(heroC2.id), 'acceptAllCommunityChallenges doit activer les 2 defis communautaires du jour, pas seulement un');
   render(false);
   const afterAcceptHtml = document.getElementById('app').innerHTML;
   __assertOk(!afterAcceptHtml.includes('community-hero-banner'), 'le Hero Banner doit disparaitre des qu un defi (communautaire ou personnel) est actif');
-  __assertOk(afterAcceptHtml.includes('community-card-ribbon'), 'le defi accepte doit garder un ruban communautaire sur sa carte dans la liste normale');
-  __assertOk(afterAcceptHtml.includes('🌍 3'), 'le ruban doit afficher le compteur de validations en cours (preuve sociale conservee apres acceptation)');
+  __assertOk(afterAcceptHtml.includes('community-card-ribbon'), 'les defis acceptes doivent garder un ruban communautaire sur leur carte dans la liste normale');
+  __assertOk(afterAcceptHtml.includes('🌍 3') && afterAcceptHtml.includes('🌍 7'), 'le ruban doit afficher le compteur de validations en cours pour CHAQUE defi (preuve sociale conservee apres acceptation)');
   activeToday = new Set();
-  console.log('OK: accepter un defi communautaire l active normalement et masque le banner (FOMO conserve via le ruban)');
+  console.log('OK: le bouton unique active les 2 defis communautaires en une fois et masque le banner (FOMO conserve via le ruban)');
 
   // --- 143. Completer un defi communautaire incremente le compteur partage
   // (community/dailyChallenge_{date}), une seule fois par jour et par defi ---

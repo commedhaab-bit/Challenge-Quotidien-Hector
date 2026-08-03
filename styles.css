@@ -1780,18 +1780,24 @@
   .community-hero-name { font-weight: 700; font-size: 14.5px; color: var(--chalk); }
   .community-hero-target { font-size: 12.5px; color: var(--chalk-dim); margin-top: 1px; }
   .community-hero-proof { font-size: 11px; color: var(--accent); margin-top: 4px; }
-  .community-hero-accept-btn {
-    background: var(--accent);
+  /* CTA principal unique (au-dessus de "Choisir mon propre defi") : active les 2
+     defis communautaires du jour EN UNE FOIS. Remplace les anciens boutons "Relever
+     le defi" par carte, qui n'activaient qu'UN SEUL des 2 defis et pretaient a
+     confusion (l'intention est de rejoindre les 2 defis du jour ensemble). */
+  .community-hero-accept-all-btn {
+    display: block;
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent-dim), var(--accent));
     color: #0a0d0b;
     border: none;
     font-weight: 800;
-    font-size: 12.5px;
-    padding: 10px 14px;
-    border-radius: 10px;
+    font-size: 14.5px;
+    padding: 14px;
+    border-radius: 12px;
     cursor: pointer;
-    flex-shrink: 0;
+    margin-top: 16px;
   }
-  .community-hero-accept-btn:active { transform: scale(0.95); }
+  .community-hero-accept-all-btn:active { transform: scale(0.98); }
   .community-hero-choose-btn {
     display: block;
     width: 100%;

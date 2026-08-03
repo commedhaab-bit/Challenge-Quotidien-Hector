@@ -1339,12 +1339,19 @@ function startCommunityDailyListener() {
   });
 }
 
-// Active un défi communautaire pour aujourd'hui, exactement comme le bouton "+ Activer"
-// de l'onglet Défis (toggleActiveToday) — le Hero Banner n'est qu'un raccourci vers la
-// même mécanique, pas un chemin de données parallèle.
-async function acceptCommunityChallenge(id) {
-  if (!activeToday.has(id)) await toggleActiveToday(id);
-  else render();
+// Active les 2 défis communautaires du jour EN UNE FOIS (bouton unique du Hero
+// Banner) : cliquer une carte individuellement prêtait à confusion (n'activait QUE ce
+// défi précis, alors que l'intention du bouton "Relever le défi communautaire du
+// jour" est bien de rejoindre les 2 en même temps). Écrit directement dans
+// activeToday (pas 2 appels à toggleActiveToday, pour ne persister/re-render qu'une
+// seule fois) — même persistance que toggleActiveToday (saveActiveToday()).
+async function acceptAllCommunityChallenges() {
+  const { challenge1, challenge2 } = getDailyCommunityChallenges();
+  if (challenge1) activeToday.add(challenge1.id);
+  if (challenge2) activeToday.add(challenge2.id);
+  await saveActiveToday();
+  if (navigator.vibrate) navigator.vibrate(10);
+  render();
 }
 
 // Retourne 1/2 si ce défi est l'un des 2 défis communautaires du jour (pour le ruban +
@@ -3403,7 +3410,6 @@ function renderCommunityHeroBanner() {
           <span class="community-hero-target">${targetLabel}</span>
           <span class="community-hero-proof">🔥 ${count} membre${count === 1 ? '' : 's'} l'ont déjà validé aujourd'hui</span>
         </div>
-        <button class="community-hero-accept-btn" onclick="event.stopPropagation(); acceptCommunityChallenge(${c.id})">Relever le défi</button>
       </div>
     `;
   }).join('');
@@ -3414,6 +3420,7 @@ function renderCommunityHeroBanner() {
         <span class="community-hero-timer">⏳ Encore ${hoursRemainingToday()}h</span>
       </div>
       <div class="community-hero-list">${cards}</div>
+      <button class="community-hero-accept-all-btn" onclick="acceptAllCommunityChallenges()">Relever le défi communautaire du jour</button>
       <button class="community-hero-choose-btn" onclick="switchTab('library')">Choisir mon propre défi</button>
     </div>
   `;
