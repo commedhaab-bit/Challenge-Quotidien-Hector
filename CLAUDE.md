@@ -187,6 +187,38 @@ personnalisé (sans `.floating`, dans le flux, au-dessus du titre).
   `computeStandardWeight`), calibrés pour que le profil de référence
   (homme 32 ans intermédiaire IMC~26) redonne ~les anciens objectifs fixes
 
+## Communauté (en cours — fondations livrées, UI à venir)
+Objectif : dimension communautaire/virale (défi du jour partagé, classement, jauge
+collective "Boss Battle") **sans aucun backend** — décision explicite de l'utilisateur
+après proposition détaillée (voir plan `generic-riding-gizmo.md`). Conséquences :
+- **Génération déterministe** (`hashStringToSeed`/`mulberry32`/`pickDeterministic`,
+  `index.html` juste après `daysBetween`) : le défi du jour
+  (`getDailyCommunityChallenges(dateStr)`) et la cible hebdo du Boss Battle
+  (`getWeeklyBossBattleTarget(weekStartStr)`) sont calculés indépendamment par CHAQUE
+  client, seedés par la date/le lundi de la semaine (`mondayOfWeek()`) — tous les
+  clients qui évaluent la même seed obtiennent EXACTEMENT le même résultat, sans
+  écriture ni lecture Firestore. Le défi 1 est toujours filtré sur
+  `cat === 'Gainage / Core'`, jamais un autre filtre.
+- **Classement/jauge collective = écritures client directes**, protégées par des
+  règles de sécurité Firestore qui bornent les valeurs (jamais de decrease, delta
+  plafonné par écriture) plutôt que par une validation serveur. Un utilisateur
+  technique pourrait forger de fausses données ; risque assumé pour une app fitness
+  sans enjeu financier. Ne jamais réintroduire de Cloud Function sans en rediscuter
+  avec l'utilisateur d'abord (changement d'architecture, pas un détail d'implémentation).
+- **Nouvelles collections Firestore top-level, additives** (`leaderboard/{uid}`,
+  `community/...`) — ne touchent jamais `users/{uid}/kv/*`. Règles de sécurité
+  exactes à ajouter dans la console Firebase : voir le plan `generic-riding-gizmo.md`.
+- **Mock Firestore générique du harnais de test** (`tests/app.test.js`,
+  `makeMockCollection`) : contrairement à la chaîne `users/kv/appData` existante
+  (mock dédié, inchangé), toute nouvelle collection top-level (`leaderboard`,
+  `community`) passe par ce mock générique qui simule `get`/`set({merge})`/
+  `FieldValue.increment`/`where`/`orderBy`/`limit`/`startAt`/`count()`/`onSnapshot`/
+  sous-collections/`add()`. Volontairement scopé aux formes de requêtes réellement
+  utilisées ici, PAS un émulateur Firestore général. `__resetCommunityMocks()` vide
+  tout entre les tests. `onSnapshot` déclenche son callback de façon **asynchrone**
+  même pour l'état initial (fidèle au vrai SDK) : un test qui s'abonne doit laisser
+  passer au moins un tick de microtask avant de lire la valeur reçue.
+
 ## Pictogrammes d'exercices (sujet en cours)
 Chaque défi a une clé d'icône (`getExercisePictogramKey`), ex: `squats`, `pompes`,
 `dumbbell_generic`. Système à 3 niveaux de repli automatique dans

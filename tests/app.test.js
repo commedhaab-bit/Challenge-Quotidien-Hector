@@ -152,6 +152,126 @@ function makeAppDataDocRef() {
   };
 }
 
+// Mock Firestore générique pour les nouvelles collections communautaires top-level
+// (leaderboard, community + sous-collections) : contrairement à la chaîne users/kv/appData
+// ci-dessus (conservée telle quelle, inchangée), ce mock est scopé aux formes de requêtes
+// réellement utilisées par les fonctionnalités communautaires (where/orderBy/limit/
+// startAt/count/onSnapshot), PAS un émulateur Firestore complet.
+function __mockFieldValueIncrement(n) { return { __increment: n }; }
+function __applyMockMergeValue(current, incoming) {
+  if (incoming && typeof incoming === 'object' && '__increment' in incoming) {
+    return (typeof current === 'number' ? current : 0) + incoming.__increment;
+  }
+  return incoming;
+}
+function makeMockCollection(store) {
+  const listenersByDoc = new Map();
+  const subcollections = new Map();
+
+  function notifyDoc(id) {
+    const set = listenersByDoc.get(id);
+    if (!set) return;
+    const data = store.get(id);
+    for (const cb of set) cb({ exists: data !== undefined, data: () => (data ? JSON.parse(JSON.stringify(data)) : undefined), id });
+  }
+
+  function makeDocRef(id) {
+    return {
+      id,
+      async get() {
+        const data = store.get(id);
+        return { exists: data !== undefined, data: () => (data ? JSON.parse(JSON.stringify(data)) : undefined), id };
+      },
+      async set(fields, opts) {
+        const current = store.get(id) || {};
+        const next = (opts && opts.merge) ? { ...current } : {};
+        for (const [k, v] of Object.entries(fields)) next[k] = __applyMockMergeValue(current[k], v);
+        store.set(id, next);
+        notifyDoc(id);
+      },
+      onSnapshot(cb) {
+        if (!listenersByDoc.has(id)) listenersByDoc.set(id, new Set());
+        listenersByDoc.get(id).add(cb);
+        this.get().then((snap) => cb(snap));
+        return () => listenersByDoc.get(id).delete(cb);
+      },
+      collection(subName) {
+        if (!subcollections.has(id)) subcollections.set(id, new Map());
+        const subMap = subcollections.get(id);
+        if (!subMap.has(subName)) subMap.set(subName, new Map());
+        return makeMockCollection(subMap.get(subName));
+      },
+    };
+  }
+
+  function makeQuery(filters, sort, limitN) {
+    function evalFilter(data, f) {
+      const val = data[f.field];
+      if (f.op === '==') return val === f.value;
+      if (f.op === '>') return val > f.value;
+      if (f.op === '>=') return val >= f.value;
+      if (f.op === '<') return val < f.value;
+      if (f.op === '<=') return val <= f.value;
+      return true;
+    }
+    function results() {
+      let arr = [...store.entries()].map(([id, data]) => ({ id, data }));
+      for (const f of filters) arr = arr.filter(({ data }) => evalFilter(data, f));
+      if (sort) {
+        arr.sort((a, b) => {
+          const av = a.data[sort.field], bv = b.data[sort.field];
+          const cmp = av > bv ? 1 : (av < bv ? -1 : 0);
+          return sort.dir === 'desc' ? -cmp : cmp;
+        });
+      }
+      if (limitN != null) arr = arr.slice(0, limitN);
+      return arr;
+    }
+    return {
+      where(field, op, value) { return makeQuery([...filters, { field, op, value }], sort, limitN); },
+      orderBy(field, dir) { return makeQuery(filters, { field, dir: dir || 'asc' }, limitN); },
+      limit(n) { return makeQuery(filters, sort, n); },
+      startAt(value) {
+        if (!sort) return makeQuery(filters, sort, limitN);
+        const op = sort.dir === 'desc' ? '<=' : '>=';
+        return makeQuery([...filters, { field: sort.field, op, value }], sort, limitN);
+      },
+      async get() {
+        const arr = results();
+        return {
+          empty: arr.length === 0,
+          size: arr.length,
+          docs: arr.map(({ id, data }) => ({ id, data: () => JSON.parse(JSON.stringify(data)) })),
+          forEach(cb) { arr.forEach(({ id, data }) => cb({ id, data: () => JSON.parse(JSON.stringify(data)) })); },
+        };
+      },
+      count() {
+        return {
+          async get() {
+            return { data: () => ({ count: results().length }) };
+          },
+        };
+      },
+      onSnapshot(cb) {
+        this.get().then(cb);
+        return () => {};
+      },
+    };
+  }
+
+  return {
+    doc(id) { return makeDocRef(id != null ? String(id) : 'auto_' + Math.random().toString(36).slice(2)); },
+    async add(data) {
+      const ref = makeDocRef('auto_' + Math.random().toString(36).slice(2));
+      await ref.set(data, {});
+      return ref;
+    },
+    where(field, op, value) { return makeQuery([{ field, op, value }], null, null); },
+    orderBy(field, dir) { return makeQuery([], { field, dir: dir || 'asc' }, null); },
+  };
+}
+const mockTopCollections = new Map();
+
 const sandbox = {
   console,
   Math, Date, JSON, Set, Map, Array, Object, Number, String, Promise,
@@ -215,20 +335,25 @@ const sandbox = {
     firestore(){
       return {
         enablePersistence: () => Promise.resolve(),
-        collection(){
-          return {
-            doc(){
-              return {
-                collection(){
-                  return { doc: () => makeAppDataDocRef() };
-                },
-              };
-            },
-          };
+        collection(name){
+          if (name === 'users') {
+            return {
+              doc(){
+                return {
+                  collection(){
+                    return { doc: () => makeAppDataDocRef() };
+                  },
+                };
+              },
+            };
+          }
+          if (!mockTopCollections.has(name)) mockTopCollections.set(name, makeMockCollection(new Map()));
+          return mockTopCollections.get(name);
         },
       };
     },
   },
+  __resetCommunityMocks: () => mockTopCollections.clear(),
   alert(msg){ console.log('  [alert]', msg); },
   confirm(msg){ return true; },
   prompt(msg, def){ return def; },
@@ -254,6 +379,10 @@ const sandbox = {
     if (sa !== sb) throw new Error(`ASSERT FAIL: ${msg}\n  attendu: ${sb}\n  obtenu:  ${sa}`);
   },
 };
+// firebase.firestore.FieldValue.increment(...) est une propriete STATIQUE du namespace
+// firestore (pas de l'instance renvoyee par firebase.firestore()) : attachee ici sur la
+// fonction elle-meme, comme dans le vrai SDK compat.
+sandbox.firebase.firestore.FieldValue = { increment: __mockFieldValueIncrement };
 sandbox.globalThis = sandbox;
 sandbox.self = sandbox;
 vm.createContext(sandbox);
@@ -2627,6 +2756,68 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!journalShareHtml.includes('📤 Partager'), 'l ancien emoji de partage ne doit plus apparaitre devant le texte du bouton');
   activeTab = 'today';
   console.log('OK: icone de partage des stats remplacee par un SVG epure style iOS');
+
+  // --- 138. Communaute (fondations) : defi du jour communautaire genere de facon
+  // deterministe (meme seed = date -> meme resultat sur tous les clients, sans backend) ---
+  const dailyA = getDailyCommunityChallenges('2026-08-10');
+  const dailyB = getDailyCommunityChallenges('2026-08-10');
+  __assertOk(!!dailyA.challenge1 && !!dailyA.challenge2, 'les 2 defis communautaires doivent etre resolus');
+  __assertEq(dailyA.challenge1.id, dailyB.challenge1.id, 'meme date -> meme defi 1 (deterministe, aucun hasard reel)');
+  __assertEq(dailyA.challenge2.id, dailyB.challenge2.id, 'meme date -> meme defi 2 (deterministe)');
+  __assertEq(dailyA.challenge1.cat, 'Gainage / Core', 'le defi 1 doit toujours venir de la categorie Gainage / Core');
+  __assertOk(dailyA.challenge2.cat !== 'Gainage / Core', 'le defi 2 doit venir d une autre categorie');
+  const dailyOtherDate = getDailyCommunityChallenges('2026-12-25');
+  __assertOk(!!dailyOtherDate.challenge1 && !!dailyOtherDate.challenge2, 'une autre date doit aussi resoudre 2 defis valides');
+  console.log('OK: defi du jour communautaire deterministe (identique pour tous, sans backend)');
+
+  // --- 139. Communaute (fondations) : cible hebdomadaire du Boss Battle, deterministe
+  // par semaine calendaire (meme lundi -> meme cible pour toute la communaute) ---
+  const bossA = getWeeklyBossBattleTarget('2026-08-10');
+  const bossB = getWeeklyBossBattleTarget('2026-08-10');
+  __assertEq(bossA.targetChallengeId, bossB.targetChallengeId, 'meme lundi de semaine -> meme defi cible (deterministe)');
+  const bossChallenge = CHALLENGE_LIBRARY.find(c => c.id === bossA.targetChallengeId);
+  __assertOk(!!bossChallenge, 'le defi cible du Boss Battle doit exister dans CHALLENGE_LIBRARY');
+  __assertEq(bossA.targetAmount, bossChallenge.target * BOSS_BATTLE_TARGET_MULTIPLIER, 'la cible doit etre le target de base multiplie par la constante de tuning');
+  console.log('OK: cible hebdomadaire du Boss Battle deterministe (identique pour toute la communaute)');
+
+  // --- 140. Mock Firestore generique (collections communautaires top-level) : get/set
+  // avec merge, FieldValue.increment, requetes where/orderBy/limit/count, onSnapshot,
+  // sous-collections -- fondation du harnais de test pour les batches suivants ---
+  __resetCommunityMocks();
+  await db.collection('leaderboard').doc('uid1').set({ displayName: 'Alice', xpTotal: 100 }, { merge: true });
+  const uid1Snap = await db.collection('leaderboard').doc('uid1').get();
+  __assertOk(uid1Snap.exists && uid1Snap.data().displayName === 'Alice' && uid1Snap.data().xpTotal === 100, 'set/get basique sur une collection communautaire simulee');
+  await db.collection('leaderboard').doc('uid1').set({ streakCount: 5 }, { merge: true });
+  const uid1Snap2 = await db.collection('leaderboard').doc('uid1').get();
+  __assertOk(uid1Snap2.data().xpTotal === 100 && uid1Snap2.data().streakCount === 5, 'un set en merge:true ne doit jamais ecraser les autres champs deja presents');
+  await db.collection('leaderboard').doc('uid1').set({ xpTotal: firebase.firestore.FieldValue.increment(50) }, { merge: true });
+  const uid1Snap3 = await db.collection('leaderboard').doc('uid1').get();
+  __assertEq(uid1Snap3.data().xpTotal, 150, 'FieldValue.increment() doit incrementer atomiquement la valeur existante');
+
+  await db.collection('leaderboard').doc('uid2').set({ displayName: 'Bob', xpTotal: 300 }, { merge: true });
+  await db.collection('leaderboard').doc('uid3').set({ displayName: 'Chloe', xpTotal: 50 }, { merge: true });
+  const topByXp = await db.collection('leaderboard').orderBy('xpTotal', 'desc').limit(2).get();
+  __assertEq(topByXp.docs.map(d => d.data().displayName), ['Bob', 'Alice'], 'orderBy(desc)+limit doit renvoyer les 2 plus hauts XP dans l ordre');
+  const countAboveMine = await db.collection('leaderboard').where('xpTotal', '>', 150).count().get();
+  __assertEq(countAboveMine.data().count, 1, 'count() doit compter uniquement les documents au-dessus du seuil (rang exact sans lire tout le classement)');
+
+  let lastSnapshotXp = null;
+  const unsub = db.collection('leaderboard').doc('uid1').onSnapshot((snap) => { lastSnapshotXp = snap.data() ? snap.data().xpTotal : null; });
+  await Promise.resolve().then(() => {}).then(() => {}); // laisse la microtask du get() initial de onSnapshot se resoudre
+  __assertEq(lastSnapshotXp, 150, 'onSnapshot doit etre declenche avec l etat courant a l abonnement');
+  await db.collection('leaderboard').doc('uid1').set({ xpTotal: 999 }, { merge: true });
+  __assertEq(lastSnapshotXp, 999, 'onSnapshot doit etre re-declenche a chaque ecriture sur le document ecoute (temps reel)');
+  unsub();
+
+  await db.collection('community').doc('bossBattle_2026-08-10').collection('contributions').add({ uid: 'uid1', amount: 20 });
+  await db.collection('community').doc('bossBattle_2026-08-10').collection('contributions').add({ uid: 'uid2', amount: 40 });
+  const contribs = await db.collection('community').doc('bossBattle_2026-08-10').collection('contributions').orderBy('amount', 'desc').get();
+  __assertEq(contribs.size, 2, 'une sous-collection doit accumuler ses propres documents independamment du document parent');
+  __assertEq(contribs.docs[0].data().amount, 40, 'orderBy doit fonctionner aussi sur une sous-collection');
+  __resetCommunityMocks();
+  const afterReset = await db.collection('leaderboard').doc('uid1').get();
+  __assertOk(!afterReset.exists, '__resetCommunityMocks() doit repartir d un etat vide entre les tests');
+  console.log('OK: mock Firestore generique (merge, increment, requetes, onSnapshot, sous-collections)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });
