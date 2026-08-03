@@ -3098,6 +3098,24 @@ const cssText = __rawHtml + __cssSource;
   __resetCommunityMocks();
   console.log('OK: fil des dernieres contributions au Boss Battle (temps reel, FOMO en direct)');
 
+  // --- 153. continueStartApp() doit synchroniser l entree de classement AU DEMARRAGE,
+  // pas seulement sur un nouveau gain XP/serie -- garanti par evaluateStreakOnLoad(),
+  // qui appelle INCONDITIONNELLEMENT saveStreakData() (donc syncLeaderboardEntry())
+  // a chaque demarrage, meme si rien n a change. Sans cette garantie, un utilisateur
+  // qui a deja de l XP/une serie mais n a rien valide depuis l ajout du classement
+  // n apparaitrait jamais dedans tant qu il n aurait pas complete un NOUVEAU defi ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'test-uid', displayName: 'Alice', email: 'a@test.com', photoURL: '' };
+  leaderboardOptOut = false;
+  xpTotal = 250; xpWeekly = 0; xpWeekStart = null; streakCount = 7;
+  await continueStartApp();
+  const startupLbDoc = await db.collection('leaderboard').doc('test-uid').get();
+  __assertOk(startupLbDoc.exists, 'l entree de classement doit exister des le demarrage, meme sans nouvelle validation de defi');
+  __assertEq(startupLbDoc.data().xpTotal, 250, 'la synchronisation au demarrage doit reprendre l XP deja existant');
+  __assertEq(startupLbDoc.data().streakCount, 7, 'la synchronisation au demarrage doit reprendre la serie deja existante');
+  __resetCommunityMocks();
+  console.log('OK: la synchronisation du classement se fait aussi au demarrage (pas seulement sur un nouveau gain XP/serie)');
+
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });
 `;
