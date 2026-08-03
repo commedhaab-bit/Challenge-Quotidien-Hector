@@ -708,9 +708,12 @@ l'inverse : `.qa-btn` utilisait `var(--bg-raised)`/`var(--line)` (discret) tandi
 avant que les boutons rapides), alors que +5/+10 doivent être la méthode
 d'interaction privilégiée pendant l'effort. `.qa-btn` est maintenant en
 `#00E676` (vert néon, PAS `var(--accent)` : volontairement une valeur dédiée, plus
-vive, réservée à ce CTA précis) avec `box-shadow` de mise en valeur ; `.custom-add-btn`
-et `.custom-add-row input` sont en `rgba(255,255,255,0.08)` + bordure fine
-`rgba(255,255,255,0.12)`, texte `var(--chalk-dim)`.
+vive, réservée à ce CTA précis) ; `.custom-add-btn` et `.custom-add-row input` sont en
+`rgba(255,255,255,0.08)` + bordure fine `rgba(255,255,255,0.12)`, texte
+`var(--chalk-dim)`. `box-shadow` volontairement DISCRET
+(`0 2px 8px rgba(0,230,118,0.18)`) : une 1ère version plus prononcée
+(`0 4px 16px rgba(0,230,118,0.35)`) a été jugée fatigante pour les yeux — ne pas
+réaugmenter sans qu'on le redemande explicitement.
 
 ## Bug corrigé : désynchronisation objectif carte accueil / fiche détail
 
@@ -728,4 +731,22 @@ en haut de `renderChallengeCard()`, réutilisé par le libellé `.goal` ET la li
 `.status-progress`. En mode `'library'` (catalogue, pas de notion de "jour en cours"),
 `todayEntry` reste `null` et `displayTarget` retombe sur l'objectif standard, comme
 avant — inchangé volontairement, pas un contexte où l'objectif du jour a un sens.
+
+**Ce premier correctif était réel mais INCOMPLET** : l'utilisateur a signalé le MÊME
+symptôme (accueil vs bibliothèque/fiche détail) alors qu'il n'avait JAMAIS modifié
+d'objectif du jour (donc `entry.targetOverride` était `null` des deux côtés — le
+correctif ci-dessus n'y était pour rien). Cause réelle, distincte : dans `render()`
+(branche `today` sans `currentChallengeId`), `activeChallenges` était construit via
+`CHALLENGES.filter(...).map(resolveChallenge)` — déjà résolu — puis passé tel quel à
+`renderChallengeCard()`, qui appelle `resolveChallenge(c)` **une 2ᵉ fois** en interne.
+`computeStandardTarget()` traite alors `c.target` (déjà mis à l'échelle par
+niveau/âge/sexe/IMC) comme s'il s'agissait de l'objectif BRUT de la bibliothèque, et
+réapplique les mêmes coefficients PAR-DESSUS → objectif gonflé sur l'accueil
+uniquement (le mode `'library'`, lui, passe des défis BRUTS filtrés directement dans
+`CHALLENGES`, donc une résolution unique). Exemple concret signalé : Pompes (objectif
+standard 110 avec un profil donné) affichait 110×1.1≈120 sur l'accueil. Corrigé en
+retirant le `.map(resolveChallenge)` de `activeChallenges` — `renderChallengeCard()`
+reste l'unique endroit qui résout, quel que soit le mode. Piège à ne pas réintroduire :
+ne JAMAIS pré-résoudre un défi avant de le passer à `renderChallengeCard()`/
+`resolveChallenge()`, qui ne sont pas idempotents sur un objectif déjà résolu.
 

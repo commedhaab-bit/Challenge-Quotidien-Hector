@@ -1852,6 +1852,34 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = null;
   console.log('OK: la carte d accueil et la fiche detail affichent desormais le meme objectif (respecte l objectif du jour modifie)');
 
+  // --- 82ter. Desynchronisation accueil / bibliotheque SANS AUCUN objectif du jour
+  // modifie (vrai bug de prod signale : Pompes affichait 120 sur l accueil, 110 sur la
+  // bibliotheque/fiche detail, alors qu aucun objectif n avait ete touche). Cause reelle :
+  // l ecran d accueil pre-resolvait deja activeChallenges via
+  // CHALLENGES.filter(...).map(resolveChallenge) AVANT de les passer a
+  // renderChallengeCard(), qui appelle resolveChallenge() une 2e fois en interne -> les
+  // coefficients de profil (niveau/age/sexe/IMC) etaient appliques DEUX FOIS sur
+  // l accueil uniquement (la bibliotheque, elle, passe des defis BRUTS et n est resolue
+  // qu une seule fois). ---
+  delete manualTargetOverrides[pompesForOverride.id];
+  userProfile = { age: 34, sex: 'homme', heightCm: 180, weightKg: 78, level: 'avance' };
+  const singleResolvedPompes = resolveChallenge(pompesForOverride);
+  __assertOk(singleResolvedPompes.target !== pompesForOverride.target, 'ce profil doit reellement faire varier l objectif pour que le test soit probant');
+  state = emptyDayState();
+  activeToday = new Set([pompesForOverride.id]);
+  activeTab = 'today';
+  currentChallengeId = null;
+  render(false);
+  const homeScreenHtml = document.getElementById('app').innerHTML;
+  __assertOk(homeScreenHtml.includes(singleResolvedPompes.target + ' reps'), 'l accueil doit afficher l objectif resolu UNE SEULE fois (identique a resolveChallenge()), pas un objectif double-applique');
+  const libCardSingleResHtml = renderChallengeCard(pompesForOverride, 'library');
+  __assertOk(libCardSingleResHtml.includes(singleResolvedPompes.target + ' reps'), 'la bibliotheque doit afficher exactement le meme objectif que l accueil pour le meme defi non modifie');
+  state = emptyDayState();
+  activeToday = new Set();
+  activeTab = 'today';
+  userProfile = null;
+  console.log('OK: accueil et bibliotheque affichent le meme objectif (plus de double application des coefficients de profil sur l accueil)');
+
   // --- 83. Heatmap : un mois n est libelle que s il est ENTIEREMENT visible, càd que
   // son 1er jour est present dans la fenetre de 26 semaines (comme le graphique de
   // contributions GitHub : le libelle marque la colonne qui contient le jour 1, pas
@@ -1905,7 +1933,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v19'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v20'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');

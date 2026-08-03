@@ -2660,7 +2660,7 @@
     padding: 18px 4px;
     border-radius: 12px;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0, 230, 118, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 230, 118, 0.18);
     transition: transform 0.08s, background 0.1s;
   }
   .qa-btn:active {

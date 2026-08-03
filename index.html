@@ -3496,7 +3496,14 @@ function render(animate) {
       </div>
       <h1 class="title">Défi du jour</h1>
     `;
-    const activeChallenges = CHALLENGES.filter(c => activeToday.has(c.id)).map(resolveChallenge);
+    // Défis BRUTS (non résolus) : renderChallengeCard() appelle déjà resolveChallenge()
+    // en interne. Les pré-résoudre ici aussi provoquait une DOUBLE application des
+    // coefficients de profil (niveau/âge/sexe/IMC) sur l'écran d'accueil UNIQUEMENT
+    // (le mode 'library' passe déjà des défis bruts) : l'objectif y apparaissait donc
+    // plus élevé que sur la fiche détail/l'onglet Défis pour le MÊME défi, sans qu'aucun
+    // objectif n'ait pourtant été modifié manuellement (bug de prod signalé : 120 vs 110
+    // sur Pompes).
+    const activeChallenges = CHALLENGES.filter(c => activeToday.has(c.id));
     if (activeChallenges.length === 0) {
       html += renderCommunityHeroBanner();
     } else {
