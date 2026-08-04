@@ -2215,7 +2215,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v28'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v29'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4262,6 +4262,46 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = null;
   render(false);
   console.log('OK: i18n batch 3 - Aujourd hui + fiche d execution d exercice (reps + chrono sec)');
+
+  // --- 162. i18n batch 4/7 : Defis (bibliotheque + formulaire personnalise) + Journal
+  // -- meme methode que les batches precedents, fonctions de rendu pures appelees
+  // directement (pas de dependance a un render() complet). ---
+  const localeBeforeBatch4 = currentLocale;
+  const editingBefore = editingChallengeId;
+  const searchBefore = librarySearchQuery;
+  const historyEntriesBefore = historyEntries;
+  const historyLoadingBefore = historyLoading;
+
+  editingChallengeId = null;
+  librarySearchQuery = '';
+  currentLocale = 'en';
+  const libraryHtmlEn = renderLibraryScreen();
+  __assertOk(libraryHtmlEn.includes('>Challenges<'), 'le titre de l ecran Defis doit etre traduit');
+  __assertOk(libraryHtmlEn.includes('active') , 'le compteur d actifs par categorie doit passer par tn()');
+
+  editingChallengeId = 'new';
+  currentLocale = 'es';
+  const formHtmlEs = renderChallengeForm();
+  __assertOk(formHtmlEs.includes('Nuevo reto'), 'le titre du formulaire (creation) doit etre traduit en espagnol');
+  __assertOk(formHtmlEs.includes('Guardar'), 'le bouton Enregistrer doit etre traduit en espagnol');
+  __assertOk(formHtmlEs.includes('Repeticiones') && formHtmlEs.includes('Cronómetro'), 'les options d unite du formulaire doivent etre traduites');
+  editingChallengeId = null;
+
+  const historyEntriesBeforeSnapshot = [...historyEntries];
+  historyEntries = [];
+  historyLoading = false;
+  currentLocale = 'en';
+  const historyHtmlEn = renderHistoryScreen();
+  __assertOk(historyHtmlEn.includes('>Log<'), 'le titre du Journal doit etre traduit');
+  __assertOk(historyHtmlEn.includes('No history yet'), 'l etat vide du Journal doit etre traduit');
+  historyEntries = historyEntriesBeforeSnapshot;
+
+  editingChallengeId = editingBefore;
+  librarySearchQuery = searchBefore;
+  historyEntries = historyEntriesBefore;
+  historyLoading = historyLoadingBefore;
+  currentLocale = localeBeforeBatch4;
+  console.log('OK: i18n batch 4 - Defis (bibliotheque + formulaire) + Journal');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

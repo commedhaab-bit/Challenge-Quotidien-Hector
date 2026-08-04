@@ -1144,17 +1144,42 @@ plutôt que de laisser un `'fr-FR'` en dur dans une chaîne fraîchement traduit
 pour le batch 7 sinon), la table `LOCALE_TO_INTL` (déjà posée au batch 1) a été
 branchée ici directement.
 
-**Reste à faire (batches 4 à 7, plan approuvé)** : Défis + formulaire personnalisé +
-Journal (batch 4, ne devrait vérifier `renderChallengeCard()` que par relecture, déjà
-migré) ; Communauté (classement/Boss Battle/Amis/fil d'activité, + correctif
-`exerciseSlug` ci-dessus) (batch 5) ; Profil + onboarding + tour guidé (batch 6) ;
-alertes/popups/toasts (dont `showStreakInfoModal()`/`showDayDetailModal()`,
-délibérément PAS migrés au batch 3 malgré leur présence sur l'écran Aujourd'hui/le
-Journal, pour garder les popups groupés dans un seul batch dédié), `BADGE_DEFS`, dates
-relatives (`formatRelative()`/`formatDateLabel()`, idem — délibérément pas touchés au
-batch 3), ajout du `slug` + traduction des noms/catégories d'exercices dans
-`exercise-data.js`, audit final de chaînes françaises oubliées (batch 7). Tant qu'une
-chaîne n'est pas migrée vers `t()`, elle reste le littéral français en dur —
-comportement identique à aujourd'hui pour un utilisateur FR, aucune régression
-possible entre deux batches.
+**Batch 4 livré : Défis (bibliothèque) + formulaire de défi personnalisé + Journal** —
+`renderLibraryScreen()`/`renderChallengeForm()`/`renderHistoryScreen()`/
+`renderHeatmap()` (hors vocabulaire de dates) migrés vers `t()`/`tn()`.
+`renderChallengeCard()` n'a pas eu besoin d'être retouché (déjà migré au batch 3, ce
+batch n'a fait que vérifier son bon fonctionnement dans le contexte `mode='library'`
+via le test dédié). Le nom "Défi supprimé" (`loadHistoryEntries()`, un historique
+pointant vers un défi personnalisé depuis supprimé) est traduit ici aussi, car il
+alimente directement la liste du Journal — mais son équivalent dans
+`showDayDetailModal()` (une popup) reste volontairement en dur jusqu'au batch 7, pour
+garder tous les sites de popups groupés dans un seul batch.
+
+**Délibérément PAS touchés dans ce batch, réservés au batch 7** : `MONTH_ABBR`
+(`renderHeatmap()`) et les lettres de jour `['L','M','M','J','V','S','D']`
+(`renderHistoryScreen()`, en-tête du calendrier mensuel) — même famille que
+`DOW_LABELS`/`formatDateLabel()`/`formatRelative()`, tout le "vocabulaire de dates"
+est volontairement regroupé dans un seul batch dédié plutôt que dispersé.
+
+**Guillemets adaptés par langue, pas juste le texte** : `library.searchEmpty` utilise
+des guillemets français « » en FR mais des guillemets droits `"..."` en EN/ES — le
+caractère de ponctuation fait partie de la chaîne traduite elle-même (pas un
+symbole codé en dur autour de `{{query}}` dans `index.html`), pour respecter la
+convention typographique de chaque langue plutôt qu'imposer la ponctuation française
+partout.
+
+**`CACHE_NAME` bumpé `v28` → `v29`** (contenu des `locale-*.js` modifié, nouvelles clés
+`library`/`challengeForm`/`history`).
+
+**Reste à faire (batches 5 à 7, plan approuvé)** : Communauté (classement/Boss
+Battle/Amis/fil d'activité, + correctif `exerciseSlug` ci-dessus) (batch 5) ; Profil +
+onboarding + tour guidé (batch 6) ; alertes/popups/toasts (dont
+`showStreakInfoModal()`/`showDayDetailModal()`, délibérément pas migrés malgré leur
+présence sur l'écran Aujourd'hui/le Journal, pour garder les popups groupés dans un
+seul batch dédié), `BADGE_DEFS`, dates relatives/`MONTH_ABBR`/lettres de jour (idem,
+délibérément pas touchés jusqu'ici), ajout du `slug` + traduction des noms/catégories
+d'exercices dans `exercise-data.js`, audit final de chaînes françaises oubliées
+(batch 7). Tant qu'une chaîne n'est pas migrée vers `t()`, elle reste le littéral
+français en dur — comportement identique à aujourd'hui pour un utilisateur FR, aucune
+régression possible entre deux batches.
 
