@@ -1366,7 +1366,7 @@ lancement. Voir les sections précédentes (batches 1 à 7) pour le détail tech
 chaque étape ; les 2 exceptions volontaires ci-dessus (`formatDisplayName()`,
 `showFatalErrorScreen()`) sont les seuls textes intentionnellement non traduits.
 
-## Migration Firestore SDK compat → SDK modulaire (persistance) — chantier en cours (batch 4/6 livré)
+## Migration Firestore SDK compat → SDK modulaire (persistance) — chantier en cours (batch 5/6 livré)
 
 **Pourquoi** : `enablePersistence()` (SDK compat) sera un jour déprécié au profit de
 `FirestoreSettings.cache`, qui n'existe QUE dans le SDK modulaire (vérifié directement
@@ -1459,10 +1459,37 @@ temps. `renderActivityFeedRow()`/le bouton kudos du fil d'activité restent donc
 le mécanisme actuel (texte source `db.collection(...)` injecté dans `onclick`)
 jusqu'au batch 5, où les 2 surfaces + leur transaction seront migrées ensemble.
 
-Reste sur le SDK compat (migration prévue batches 5 et 6, ~90 sites au total
-recensés) : Boss Battle + kudos (+ 2 `onSnapshot`, 3 `runTransaction`, + le correctif
-`renderKudosButton` ci-dessus), suppression de compte + acceptation d'ami
-(2 `db.batch()`).
+**Batch 5** : Boss Battle en entier (`bossBattleDocRef()`, ses 2 `onSnapshot` —
+progression + fil des contributions récentes —, `registerBossBattleContributionIfNeeded()`,
+`fetchTopContributorToday()`, `fetchBossBattleArchive()`, `handleBossBattleVictory()`) ;
+les 3 `runTransaction()` (kudos événement/personne) ; le correctif
+`renderKudosButton()` prévu depuis le batch 4 ; et `communityDailyChallengeDocRef()`
+(+ son `onSnapshot`, oublié du découpage initial — 5e listener recensé dès
+l'exploration mais jamais assigné à un batch, repéré à l'audit de fin de batch 5).
+
+**Correctif `renderKudosButton()` (livré)** : `giveKudosToEvent`/`removeKudosFromEvent`
+acceptent désormais `(surface, entryId)` — `surface` = `'activityFeed'` ou
+`'bossBattleContribution'` — au lieu d'une expression JS à évaluer. `kudosEventDocRef(surface,
+entryId)` reconstruit le ref modulaire correct en interne. Supprime l'eval de source
+JS dans un attribut HTML `onclick` (dépendance cachée à `db` global en syntaxe compat).
+
+**Piège rencontré et corrigé (transactions)** : le mock de transaction (`tx.get()`)
+renvoyait l'instantané COMPAT brut (`exists` propriété) même pour le code migré vers
+`runTransaction()` modulaire — `existing.exists` (sans `()`) est toujours *truthy*
+(une fonction), donc un revert volontaire de `giveKudosToPerson()` vers cette forme a
+bien fait échouer le test "kudos personne" comme attendu, confirmant que ce chemin
+est réellement exercé. Corrigé dans `tests/app.test.js` (`__modularRunTransaction`
+enveloppe désormais `tx.get()` pour renvoyer un instantané `exists()` méthode,
+cohérent avec `getDoc()`/`onSnapshot()`).
+
+`notificationsCollRef()` (compat) est supprimée — ses 2 derniers appelants
+(`giveKudosToEvent`/`giveKudosToPerson`) étaient les seuls restants ; la variante
+modulaire (`notificationsCollRefModular`) reprend simplement le nom `notificationsCollRef`.
+
+Reste sur le SDK compat (migration prévue batch 6, ~90 sites au total recensés) :
+suppression de compte + acceptation d'ami (2 `db.batch()`, les seuls sites Firestore
+compat restants dans `index.html`) + audit final + retrait de `firebase-firestore-
+compat.js`.
 
 **Harnais de test** (`tests/app.test.js`) : `loadFirestoreModular()` (nouvelle fonction
 d'index.html isolant l'`import()`) est remplacée par un double de test

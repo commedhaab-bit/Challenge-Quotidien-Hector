@@ -346,7 +346,17 @@ function __modularOnSnapshot(refOrQuery, cb) {
   return refOrQuery.onSnapshot((snap) => cb('exists' in snap && typeof snap.exists !== 'function' ? __modularSnap(snap) : snap));
 }
 function __modularWriteBatch(dbInstance) { return dbInstance.batch(); }
-function __modularRunTransaction(dbInstance, fn) { return dbInstance.runTransaction(fn); }
+// tx.get() doit renvoyer un instantane MODULAIRE (exists() methode) au code migre,
+// pas l instantane compat brut (exists propriete) que renvoie le mock de transaction
+// compat ci-dessous — meme piege que getDoc()/onSnapshot(), reproduit ici a l identique.
+function __modularRunTransaction(dbInstance, fn) {
+  return dbInstance.runTransaction((tx) => fn({
+    get: (ref) => Promise.resolve(tx.get(ref)).then(__modularSnap),
+    set: (ref, data, opts) => tx.set(ref, data, opts),
+    update: (ref, data) => tx.update(ref, data),
+    delete: (ref) => tx.delete(ref),
+  }));
+}
 
 const sandbox = {
   console,
@@ -2308,7 +2318,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v36'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v37'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3679,7 +3689,7 @@ const cssText = __rawHtml + __cssSource;
 
   // Evenementiel : donner un kudos incremente kudosCount ET pose la preuve kudosBy.
   const feedEntryRef = await db.collection('activityFeed').add({ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Squats', amount: 50, unit: 'reps', at: Date.now(), kudosCount: 0 });
-  await giveKudosToEvent(feedEntryRef);
+  await giveKudosToEvent('activityFeed', feedEntryRef.id);
   let feedEntryDoc = await feedEntryRef.get();
   __assertEq(feedEntryDoc.data().kudosCount, 1, 'donner un kudos doit incrementer kudosCount de 1');
   const kudosByDoc = await feedEntryRef.collection('kudosBy').doc('me-uid').get();
@@ -3688,12 +3698,12 @@ const cssText = __rawHtml + __cssSource;
 
   // Double-tap (2e appel sans avoir retire entre-temps) : ne doit JAMAIS re-incrementer
   // (garde par transaction : preuve deja presente -> avorte sans ecrire).
-  await giveKudosToEvent(feedEntryRef);
+  await giveKudosToEvent('activityFeed', feedEntryRef.id);
   feedEntryDoc = await feedEntryRef.get();
   __assertEq(feedEntryDoc.data().kudosCount, 1, 'un 2e appel sans retrait entre les deux ne doit jamais re-incrementer (protection anti double-comptage)');
 
   // Retrait : decremente et retire la preuve.
-  await removeKudosFromEvent(feedEntryRef);
+  await removeKudosFromEvent('activityFeed', feedEntryRef.id);
   feedEntryDoc = await feedEntryRef.get();
   __assertEq(feedEntryDoc.data().kudosCount, 0, 'retirer un kudos doit decrementer kudosCount');
   const kudosByDocAfterRemove = await feedEntryRef.collection('kudosBy').doc('me-uid').get();
@@ -3701,13 +3711,13 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!myKudosGivenEventIds.has(feedEntryRef.id), 'l etat local doit refleter le retrait');
 
   // Retirer un kudos jamais donne ne doit rien faire (pas de kudosCount negatif).
-  await removeKudosFromEvent(feedEntryRef);
+  await removeKudosFromEvent('activityFeed', feedEntryRef.id);
   feedEntryDoc = await feedEntryRef.get();
   __assertEq(feedEntryDoc.data().kudosCount, 0, 'retirer un kudos jamais donne ne doit jamais faire descendre le compteur sous 0');
 
   // Meme mecanisme reutilise sur les contributions Boss Battle (structure identique).
-  const contribRef = await bossBattleDocRef().collection('contributions').add({ uid: 'amie-uid', displayName: 'Amie B.', amount: 20, at: Date.now(), kudosCount: 0 });
-  await giveKudosToEvent(contribRef);
+  const contribRef = await fsMod.addDoc(fsMod.collection(bossBattleDocRef(), 'contributions'), { uid: 'amie-uid', displayName: 'Amie B.', amount: 20, at: Date.now(), kudosCount: 0 });
+  await giveKudosToEvent('bossBattleContribution', contribRef.id);
   const contribDoc = await contribRef.get();
   __assertEq(contribDoc.data().kudosCount, 1, 'giveKudosToEvent() doit fonctionner identiquement sur une contribution Boss Battle');
 
@@ -3767,27 +3777,27 @@ const cssText = __rawHtml + __cssSource;
   currentUser = { uid: 'amie-uid', displayName: 'Amie Berger', email: 'a@test.com', photoURL: '' };
   await giveKudosToPerson('me-uid');
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
-  let unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  let unread = await fsMod.getDocs(fsMod.query(notificationsCollRef('me-uid'), fsMod.where('read', '==', false)));
   __assertEq(unread.size, 1, 'donner un kudos a une personne doit ecrire exactement 1 notification chez la cible');
   __assertEq(unread.docs[0].data().type, 'kudo', 'le type doit etre "kudo"');
   __assertEq(unread.docs[0].data().fromName, 'Amie B.', 'le nom de l emetteur doit etre deja anonymise DANS la notification elle-meme');
-  const amieUnreadIsolation = await notificationsCollRef('amie-uid').where('read', '==', false).get();
+  const amieUnreadIsolation = await fsMod.getDocs(fsMod.query(notificationsCollRef('amie-uid'), fsMod.where('read', '==', false)));
   __assertEq(amieUnreadIsolation.size, 0, "les notifications sont isolees PAR UTILISATEUR : donner un kudos a 'me-uid' ne doit rien ecrire chez 'amie-uid' (l emetteur)");
 
   // Ecriture : kudos (evenementiel, fil d activite) -> notification chez le
   // PROPRIETAIRE de l evenement (pas chez le votant).
   const myFeedEntryRef = await db.collection('activityFeed').add({ uid: 'me-uid', displayName: 'Moi A.', challengeName: 'Pompes', amount: 20, unit: 'reps', at: Date.now(), kudosCount: 0 });
   currentUser = { uid: 'amie-uid', displayName: 'Amie Berger', email: 'a@test.com', photoURL: '' };
-  await giveKudosToEvent(myFeedEntryRef);
+  await giveKudosToEvent('activityFeed', myFeedEntryRef.id);
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
-  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  unread = await fsMod.getDocs(fsMod.query(notificationsCollRef('me-uid'), fsMod.where('read', '==', false)));
   __assertEq(unread.size, 2, 'un kudos sur mon entree du fil d activite doit aussi m envoyer une notification (le proprietaire de l evenement, pas le votant)');
 
   // Ecriture : demande d ami -> notification chez la CIBLE.
   currentUser = { uid: 'demandeur-uid', displayName: 'Demandeur Dupont', email: 'd@test.com', photoURL: '' };
   await sendFriendRequest('me-uid');
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
-  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  unread = await fsMod.getDocs(fsMod.query(notificationsCollRef('me-uid'), fsMod.where('read', '==', false)));
   __assertEq(unread.size, 3, 'envoyer une demande d ami doit aussi ecrire une notification chez la cible');
   __assertOk(unread.docs.some(d => d.data().type === 'friend_request' && d.data().fromName === 'Demandeur D.'), 'la notification de demande d ami doit porter le bon type et le bon nom anonymise');
 
@@ -3801,8 +3811,8 @@ const cssText = __rawHtml + __cssSource;
   // A. Rattrapage kudos : 2 notifications de kudos deja presentes AVANT l abonnement
   // (simule 2 kudos recus hors ligne) doivent toutes les deux declencher une popup des
   // le tout 1er instantane, dans l ordre de creation (file enqueuePopup).
-  await notificationsCollRef('me-uid').doc().set({ type: 'kudo', fromUid: 'amie-uid', fromName: 'Amie B.', read: false, createdAt: 1000 });
-  await notificationsCollRef('me-uid').doc().set({ type: 'kudo', fromUid: 'bob-uid', fromName: 'Bob M.', read: false, createdAt: 2000 });
+  await fsMod.setDoc(fsMod.doc(notificationsCollRef('me-uid')), { type: 'kudo', fromUid: 'amie-uid', fromName: 'Amie B.', read: false, createdAt: 1000 });
+  await fsMod.setDoc(fsMod.doc(notificationsCollRef('me-uid')), { type: 'kudo', fromUid: 'bob-uid', fromName: 'Bob M.', read: false, createdAt: 2000 });
   startNotificationsListener();
   await new Promise(r => setTimeout(r, 50));
   __assertOk(popupOpen, 'une notification de kudos deja presente AVANT l abonnement doit quand meme declencher une popup des le 1er instantane (rattrapage natif)');
@@ -3812,13 +3822,13 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(popupOpen && currentPopupHtml.includes('Bob M.'), 'la 2e popup (en file) doit ensuite s afficher, celle de Bob M.');
   document.getElementById('appPopupCloseBtn').onclick();
   await new Promise(r => setTimeout(r, 10));
-  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  unread = await fsMod.getDocs(fsMod.query(notificationsCollRef('me-uid'), fsMod.where('read', '==', false)));
   __assertEq(unread.size, 0, 'les 2 notifications de kudos traitees doivent etre marquees lues (plus aucune non-lue)');
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
 
   // B. Rattrapage demande d ami : "Accepter" cree l amitie directement depuis la popup.
   __resetCommunityMocks();
-  await notificationsCollRef('me-uid').doc().set({ type: 'friend_request', fromUid: 'demandeur-uid', fromName: 'Demandeur D.', read: false, createdAt: Date.now() });
+  await fsMod.setDoc(fsMod.doc(notificationsCollRef('me-uid')), { type: 'friend_request', fromUid: 'demandeur-uid', fromName: 'Demandeur D.', read: false, createdAt: Date.now() });
   startNotificationsListener();
   await new Promise(r => setTimeout(r, 50));
   __assertOk(currentConfirmModalHtml.includes("Nouvelle demande d'ami") && currentConfirmModalHtml.includes('Demandeur D.'), 'la demande d ami deja presente AVANT l abonnement doit aussi declencher sa popup des le 1er instantane, nommant le demandeur');
@@ -3833,14 +3843,14 @@ const cssText = __rawHtml + __cssSource;
   // mais la demande reste visible normalement dans l ecran Amis.
   __resetCommunityMocks();
   await db.collection('friendRequests').doc('quelquun-uid_me-uid').set({ fromUid: 'quelquun-uid', toUid: 'me-uid', at: Date.now() });
-  await notificationsCollRef('me-uid').doc().set({ type: 'friend_request', fromUid: 'quelquun-uid', fromName: 'Quelquun Q.', read: false, createdAt: Date.now() });
+  await fsMod.setDoc(fsMod.doc(notificationsCollRef('me-uid')), { type: 'friend_request', fromUid: 'quelquun-uid', fromName: 'Quelquun Q.', read: false, createdAt: Date.now() });
   startNotificationsListener();
   await new Promise(r => setTimeout(r, 50));
   currentConfirmModalEl.querySelector('#confirmModalCancelBtn').onclick();
   await new Promise(r => setTimeout(r, 20));
   const requestStillThere = await db.collection('friendRequests').doc('quelquun-uid_me-uid').get();
   __assertOk(requestStillThere.exists, '"Plus tard" ne doit pas supprimer la demande (juste remise a plus tard, pas un refus)');
-  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  unread = await fsMod.getDocs(fsMod.query(notificationsCollRef('me-uid'), fsMod.where('read', '==', false)));
   __assertEq(unread.size, 0, 'meme refusee pour l instant ("Plus tard"), la notification doit etre marquee lue (pas re-proposee en boucle)');
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
 

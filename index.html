@@ -1947,8 +1947,8 @@ async function computeWeeklyBossBattleTarget(weekStartStr = mondayOfWeek(new Dat
   try {
     const prevWeekStart = previousWeekStartKey(weekStartStr);
     const prevChallenge = getWeeklyBossBattleChallenge(prevWeekStart);
-    const prevDoc = await bossBattleDocRef(prevWeekStart).get();
-    if (prevDoc.exists && prevChallenge && prevChallenge.target > 0) {
+    const prevDoc = await fsMod.getDoc(bossBattleDocRef(prevWeekStart));
+    if (prevDoc.exists() && prevChallenge && prevChallenge.target > 0) {
       ratio = (prevDoc.data().currentProgress || 0) / prevChallenge.target;
     }
   } catch (e) {
@@ -1989,7 +1989,7 @@ let communityDailyCounts = { completions1: 0, completions2: 0, participants: 0 }
 let communityDailyUnsub = null;
 
 function communityDailyChallengeDocRef(dateStr = todayKey) {
-  return db.collection('community').doc('dailyChallenge_' + dateStr);
+  return fsMod.doc(mdb, 'community', 'dailyChallenge_' + dateStr);
 }
 
 // Appelé une seule fois au démarrage (continueStartApp()) : s'abonne au doc du jour,
@@ -1997,8 +1997,8 @@ function communityDailyChallengeDocRef(dateStr = todayKey) {
 // faire bouger le compteur affiché, sans recharger la page — effet "ça bouge en direct").
 function startCommunityDailyListener() {
   if (communityDailyUnsub) communityDailyUnsub();
-  communityDailyUnsub = communityDailyChallengeDocRef().onSnapshot((snap) => {
-    const d = snap.exists ? snap.data() : null;
+  communityDailyUnsub = fsMod.onSnapshot(communityDailyChallengeDocRef(), (snap) => {
+    const d = snap.exists() ? snap.data() : null;
     communityDailyCounts = {
       completions1: (d && d.completions1) || 0,
       completions2: (d && d.completions2) || 0,
@@ -2035,8 +2035,8 @@ async function registerCommunityParticipantIfNeeded() {
   state.communityJoined = true;
   await saveState(); // persiste le flag dans le doc "day:" (sinon un simple rechargement de page permettrait de recompter)
   try {
-    await communityDailyChallengeDocRef().set(
-      { participants: firebase.firestore.FieldValue.increment(1) },
+    await fsMod.setDoc(communityDailyChallengeDocRef(),
+      { participants: fsMod.increment(1) },
       { merge: true }
     );
   } catch (e) {
@@ -2064,8 +2064,8 @@ async function registerCommunityCompletionIfNeeded(challengeId) {
   if (state.communityCounted.includes(challengeId)) return;
   state.communityCounted.push(challengeId);
   try {
-    await communityDailyChallengeDocRef().set(
-      { ['completions' + slot]: firebase.firestore.FieldValue.increment(1) },
+    await fsMod.setDoc(communityDailyChallengeDocRef(),
+      { ['completions' + slot]: fsMod.increment(1) },
       { merge: true }
     );
   } catch (e) {
@@ -2154,16 +2154,17 @@ let communityActivityFeedUnsub = null;
 // 2 formes selon ce qui est "kudos-able" :
 // - Événementiel (fil d'activité + contributions Boss Battle) : 1 kudos PERMANENT par
 //   votant et par événement (comme Strava sur une activité), retrait possible (2e tap
-//   = retire). `giveKudosToEvent(docRef)`/`removeKudosFromEvent(docRef)` sont
-//   génériques, réutilisées sur les 2 surfaces plutôt que dupliquées : les 2 collections
-//   ont EXACTEMENT la même forme (kudosCount sur le doc parent + sous-collection
-//   kudosBy/{voterUid}).
+//   = retire). `giveKudosToEvent(surface, entryId)`/`removeKudosFromEvent(surface,
+//   entryId)` sont génériques, réutilisées sur les 2 surfaces plutôt que dupliquées :
+//   les 2 collections ont EXACTEMENT la même forme (kudosCount sur le doc parent +
+//   sous-collection kudosBy/{voterUid}) — voir kudosEventDocRef().
 // - Personne (classement) : 1 kudos par JOUR et par cible (kudosGiven/{jour}_{votant} —
 //   l'ID intègre déjà la date, donc AUCUN code de reset à écrire, demain = un nouveau
 //   doc), cumul affiché à vie (kudosTotal), PAS de retrait (plus simple, décision
 //   assumée : moins besoin de symétrie qu'un like Strava sur un événement ponctuel).
 //
-// db.runTransaction() (1er vrai usage produit, mock ajouté au batch 1) : lit la preuve
+// runTransaction() (SDK modulaire depuis le batch 5 du chantier de migration Firestore,
+// voir CLAUDE.md ; 1er vrai usage produit, mock ajouté au batch 1) : lit la preuve
 // d'un kudos déjà donné, avorte SANS écrire si c'est déjà le cas, sinon écrit les 2
 // documents liés atomiquement — ferme le trou qu'un simple batch() laisserait ouvert
 // (2 écritures indépendantes que rien ne lie vraiment côté serveur).
@@ -2179,22 +2180,34 @@ let communityActivityFeedUnsub = null;
 let myKudosGivenEventIds = new Set();
 let myKudosGivenToday = new Set();
 
-async function giveKudosToEvent(docRef) {
+// Reconstruit le ref d'un événement kudos-able à partir d'une surface + d'un id —
+// remplace l'ancien mécanisme qui injectait une expression JS source
+// (`db.collection(...)`) littéralement dans un attribut onclick, réévaluée au clic
+// (dépendait de la présence globale de `db` en syntaxe compat). Les 2 collections ont
+// EXACTEMENT la même forme (kudosCount sur le doc parent + sous-collection kudosBy).
+function kudosEventDocRef(surface, entryId) {
+  if (surface === 'activityFeed') return fsMod.doc(mdb, 'activityFeed', entryId);
+  if (surface === 'bossBattleContribution') return fsMod.doc(fsMod.collection(bossBattleDocRef(), 'contributions'), entryId);
+  throw new Error('surface kudos inconnue : ' + surface);
+}
+
+async function giveKudosToEvent(surface, entryId) {
   if (!currentUser) return;
-  const kudosByRef = docRef.collection('kudosBy').doc(currentUser.uid);
+  const docRef = kudosEventDocRef(surface, entryId);
+  const kudosByRef = fsMod.doc(fsMod.collection(docRef, 'kudosBy'), currentUser.uid);
   try {
-    await db.runTransaction(async (tx) => {
+    await fsMod.runTransaction(mdb, async (tx) => {
       const existing = await tx.get(kudosByRef);
-      if (existing.exists) return;
+      if (existing.exists()) return;
       const eventDoc = await tx.get(docRef);
-      const current = eventDoc.exists ? (eventDoc.data().kudosCount || 0) : 0;
-      const ownerUid = eventDoc.exists ? eventDoc.data().uid : null;
+      const current = eventDoc.exists() ? (eventDoc.data().kudosCount || 0) : 0;
+      const ownerUid = eventDoc.exists() ? eventDoc.data().uid : null;
       tx.set(kudosByRef, { at: Date.now() });
       tx.set(docRef, { kudosCount: current + 1 }, { merge: true });
       // Notifie le propriétaire de l'événement (jamais soi-même — déjà exclu côté UI par
       // renderKudosButton(), mais on le revérifie ici côté données par prudence).
       if (ownerUid && ownerUid !== currentUser.uid) {
-        tx.set(notificationsCollRef(ownerUid).doc(), {
+        tx.set(fsMod.doc(notificationsCollRef(ownerUid)), {
           type: 'kudo',
           fromUid: currentUser.uid,
           fromName: formatDisplayName(currentUser.displayName),
@@ -2203,7 +2216,7 @@ async function giveKudosToEvent(docRef) {
         });
       }
     });
-    myKudosGivenEventIds.add(docRef.id);
+    myKudosGivenEventIds.add(entryId);
     if (navigator.vibrate) navigator.vibrate(10);
     render();
   } catch (e) {
@@ -2211,19 +2224,20 @@ async function giveKudosToEvent(docRef) {
   }
 }
 
-async function removeKudosFromEvent(docRef) {
+async function removeKudosFromEvent(surface, entryId) {
   if (!currentUser) return;
-  const kudosByRef = docRef.collection('kudosBy').doc(currentUser.uid);
+  const docRef = kudosEventDocRef(surface, entryId);
+  const kudosByRef = fsMod.doc(fsMod.collection(docRef, 'kudosBy'), currentUser.uid);
   try {
-    await db.runTransaction(async (tx) => {
+    await fsMod.runTransaction(mdb, async (tx) => {
       const existing = await tx.get(kudosByRef);
-      if (!existing.exists) return;
+      if (!existing.exists()) return;
       const eventDoc = await tx.get(docRef);
-      const current = eventDoc.exists ? (eventDoc.data().kudosCount || 0) : 0;
+      const current = eventDoc.exists() ? (eventDoc.data().kudosCount || 0) : 0;
       tx.delete(kudosByRef);
       tx.set(docRef, { kudosCount: Math.max(0, current - 1) }, { merge: true });
     });
-    myKudosGivenEventIds.delete(docRef.id);
+    myKudosGivenEventIds.delete(entryId);
     if (navigator.vibrate) navigator.vibrate(10);
     render();
   } catch (e) {
@@ -2234,17 +2248,17 @@ async function removeKudosFromEvent(docRef) {
 async function giveKudosToPerson(targetUid) {
   if (!currentUser || targetUid === currentUser.uid) return;
   const entryId = todayKey + '_' + currentUser.uid;
-  const targetRef = db.collection('leaderboard').doc(targetUid);
-  const givenRef = targetRef.collection('kudosGiven').doc(entryId);
+  const targetRef = fsMod.doc(mdb, 'leaderboard', targetUid);
+  const givenRef = fsMod.doc(fsMod.collection(targetRef, 'kudosGiven'), entryId);
   try {
-    await db.runTransaction(async (tx) => {
+    await fsMod.runTransaction(mdb, async (tx) => {
       const existing = await tx.get(givenRef);
-      if (existing.exists) return; // déjà donné aujourd'hui à cette personne
+      if (existing.exists()) return; // déjà donné aujourd'hui à cette personne
       const targetDoc = await tx.get(targetRef);
-      const current = targetDoc.exists ? (targetDoc.data().kudosTotal || 0) : 0;
+      const current = targetDoc.exists() ? (targetDoc.data().kudosTotal || 0) : 0;
       tx.set(givenRef, { voterUid: currentUser.uid, date: todayKey, at: Date.now() });
       tx.set(targetRef, { kudosTotal: current + 1 }, { merge: true });
-      tx.set(notificationsCollRef(targetUid).doc(), {
+      tx.set(fsMod.doc(notificationsCollRef(targetUid)), {
         type: 'kudo',
         fromUid: currentUser.uid,
         fromName: formatDisplayName(currentUser.displayName),
@@ -2261,15 +2275,14 @@ async function giveKudosToPerson(targetUid) {
 }
 
 // Bouton réutilisé par le fil d'activité ET le fil de contributions Boss Battle (même
-// forme de document, voir plus haut) : `docRefJsExpr` est une expression JS (chaîne),
-// pas une valeur — insérée telle quelle dans l'attribut onclick, reconstruite au clic
-// plutôt que sérialisée (un DocumentReference ne peut pas transiter par un attribut
-// HTML). Jamais affiché sur son propre événement.
-function renderKudosButton(docRefJsExpr, entryId, kudosCount, isMine) {
+// forme de document, voir kudosEventDocRef()) : `surface` + `entryId` (jamais une
+// expression JS à évaluer, voir kudosEventDocRef()). Jamais affiché sur son propre
+// événement.
+function renderKudosButton(surface, entryId, kudosCount, isMine) {
   if (isMine) return '';
   const alreadyGiven = myKudosGivenEventIds.has(entryId);
   const action = alreadyGiven ? 'removeKudosFromEvent' : 'giveKudosToEvent';
-  return `<button class="kudos-btn${alreadyGiven ? ' given' : ''}" onclick="event.stopPropagation(); ${action}(${docRefJsExpr})">👏 ${kudosCount || 0}</button>`;
+  return `<button class="kudos-btn${alreadyGiven ? ' given' : ''}" onclick="event.stopPropagation(); ${action}('${surface}', '${escapeJsAttr(entryId)}')">👏 ${kudosCount || 0}</button>`;
 }
 
 // ==== NOTIFICATIONS : sous-collection dédiée users/{uid}/notifications, UN SEUL
@@ -2279,13 +2292,7 @@ function renderKudosButton(docRefJsExpr, entryId, kudosCount, isMine) {
 // notification au moment de sa création (fromName), pas relu via fetchPublicProfile()
 // à l'affichage : ça marche même si l'émetteur désactive ensuite son classement (plus
 // d'anonymat forcé rétroactif), et ça évite une lecture supplémentaire par notification.
-// notificationsCollRef() (compat) reste utilisée par giveKudosToEvent()/
-// giveKudosToPerson() (db.runTransaction(), migration prévue batch 5) ; les autres
-// sites (ci-dessous + sendFriendRequest()) sont déjà migrés vers la variante modulaire.
 function notificationsCollRef(uid) {
-  return db.collection('users').doc(uid).collection('notifications');
-}
-function notificationsCollRefModular(uid) {
   return fsMod.collection(mdb, 'users', uid, 'notifications');
 }
 
@@ -2297,7 +2304,7 @@ function startNotificationsListener() {
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
   if (!currentUser) return;
   notificationsUnsub = fsMod.onSnapshot(
-    fsMod.query(notificationsCollRefModular(currentUser.uid), fsMod.where('read', '==', false)),
+    fsMod.query(notificationsCollRef(currentUser.uid), fsMod.where('read', '==', false)),
     (snap) => { processUnreadNotifications(snap); },
   );
 }
@@ -2316,7 +2323,7 @@ async function processUnreadNotifications(snap) {
   for (const doc of docs) {
     const data = doc.data();
     try {
-      await fsMod.setDoc(fsMod.doc(notificationsCollRefModular(myUid), doc.id), { read: true }, { merge: true });
+      await fsMod.setDoc(fsMod.doc(notificationsCollRef(myUid), doc.id), { read: true }, { merge: true });
     } catch (e) {
       reportSaveError('mark notification read failed', e);
       continue;
@@ -2470,7 +2477,7 @@ async function sendFriendRequest(targetUid) {
     await fsMod.setDoc(fsMod.doc(mdb, 'friendRequests', friendRequestId(currentUser.uid, targetUid)), {
       fromUid: currentUser.uid, toUid: targetUid, at: Date.now(),
     });
-    await fsMod.addDoc(notificationsCollRefModular(targetUid), {
+    await fsMod.addDoc(notificationsCollRef(targetUid), {
       type: 'friend_request',
       fromUid: currentUser.uid,
       fromName: formatDisplayName(currentUser.displayName),
@@ -2579,7 +2586,7 @@ let communityBossBattleProgress = 0;
 let communityBossBattleUnsub = null;
 
 function bossBattleDocRef(weekStartStr = mondayOfWeek(new Date())) {
-  return db.collection('community').doc('bossBattle_' + weekStartStr);
+  return fsMod.doc(mdb, 'community', 'bossBattle_' + weekStartStr);
 }
 
 // Abonnement temps réel (comme le compteur du défi du jour) : appelé une seule fois
@@ -2591,9 +2598,9 @@ function startBossBattleListener() {
   if (communityBossBattleUnsub) communityBossBattleUnsub();
   const weekStart = mondayOfWeek(new Date());
   const target = getWeeklyBossBattleTarget(weekStart);
-  communityBossBattleUnsub = bossBattleDocRef(weekStart).onSnapshot((snap) => {
+  communityBossBattleUnsub = fsMod.onSnapshot(bossBattleDocRef(weekStart), (snap) => {
     const previous = communityBossBattleProgress;
-    const next = snap.exists ? (snap.data().currentProgress || 0) : 0;
+    const next = snap.exists() ? (snap.data().currentProgress || 0) : 0;
     communityBossBattleProgress = next;
     if (target && previous < target.targetAmount && next >= target.targetAmount) {
       handleBossBattleVictory(weekStart, target, next);
@@ -2612,13 +2619,15 @@ let communityContributionsUnsub = null;
 
 function startRecentContributionsListener() {
   if (communityContributionsUnsub) communityContributionsUnsub();
-  communityContributionsUnsub = bossBattleDocRef().collection('contributions')
-    .orderBy('at', 'desc').limit(20).onSnapshot((snap) => {
+  communityContributionsUnsub = fsMod.onSnapshot(
+    fsMod.query(fsMod.collection(bossBattleDocRef(), 'contributions'), fsMod.orderBy('at', 'desc'), fsMod.limit(20)),
+    (snap) => {
       // { id: d.id, ...d.data() } (pas juste d.data()) : l'id du document est
       // nécessaire pour cibler les kudos sur une contribution précise.
       communityRecentContributions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       render();
-    });
+    },
+  );
 }
 
 async function handleBossBattleVictory(weekStart, target, finalProgress) {
@@ -2639,10 +2648,10 @@ async function handleBossBattleVictory(weekStart, target, finalProgress) {
     // "create-only" cote client (en plus de la regle Firestore equivalente) : si 2
     // clients detectent le franchissement quasi simultanement (2 utilisateurs actifs
     // au meme instant), un seul doit ecrire l'archive definitive.
-    const archiveRef = db.collection('bossBattleArchive').doc(weekStart);
-    const existing = await archiveRef.get();
-    if (!existing.exists) {
-      await archiveRef.set({
+    const archiveRef = fsMod.doc(mdb, 'bossBattleArchive', weekStart);
+    const existing = await fsMod.getDoc(archiveRef);
+    if (!existing.exists()) {
+      await fsMod.setDoc(archiveRef, {
         targetChallengeId: target.targetChallengeId,
         targetAmount: target.targetAmount,
         finalProgress,
@@ -2663,18 +2672,19 @@ async function registerBossBattleContributionIfNeeded(challengeId, amount) {
   const target = getWeeklyBossBattleTarget(weekStart);
   if (!target || target.targetChallengeId !== challengeId) return;
   try {
-    await bossBattleDocRef(weekStart).set(
-      { currentProgress: firebase.firestore.FieldValue.increment(amount) },
+    await fsMod.setDoc(bossBattleDocRef(weekStart),
+      { currentProgress: fsMod.increment(amount) },
       { merge: true }
     );
-    await bossBattleDocRef(weekStart).collection('dailyContributors').doc(todayKey + '_' + currentUser.uid).set(
-      { uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName), date: todayKey, amount: firebase.firestore.FieldValue.increment(amount) },
+    await fsMod.setDoc(
+      fsMod.doc(fsMod.collection(bossBattleDocRef(weekStart), 'dailyContributors'), todayKey + '_' + currentUser.uid),
+      { uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName), date: todayKey, amount: fsMod.increment(amount) },
       { merge: true }
     );
     // Fil des contributions individuelles (contrairement à dailyContributors, un
     // document PAR évènement, jamais fusionné) : sert uniquement au flux temps réel
     // "Untel vient d'ajouter X" affiché sur l'écran Communauté, pour le FOMO en direct.
-    await bossBattleDocRef(weekStart).collection('contributions').add({
+    await fsMod.addDoc(fsMod.collection(bossBattleDocRef(weekStart), 'contributions'), {
       uid: currentUser.uid,
       displayName: formatDisplayName(currentUser.displayName),
       amount,
@@ -2690,15 +2700,17 @@ async function registerBossBattleContributionIfNeeded(challengeId, amount) {
 // la date du jour, pas une fenêtre glissante à la seconde près).
 async function fetchTopContributorToday() {
   const weekStart = mondayOfWeek(new Date());
-  const snap = await bossBattleDocRef(weekStart).collection('dailyContributors')
-    .where('date', '==', todayKey).orderBy('amount', 'desc').limit(1).get();
+  const snap = await fsMod.getDocs(fsMod.query(
+    fsMod.collection(bossBattleDocRef(weekStart), 'dailyContributors'),
+    fsMod.where('date', '==', todayKey), fsMod.orderBy('amount', 'desc'), fsMod.limit(1),
+  ));
   return snap.empty ? null : snap.docs[0].data();
 }
 
 // Temple de la renommée : les victoires collectives passées (Boss Battle atteint),
 // les plus récentes en premier — simple mémoire/fierté collective à long terme.
 async function fetchBossBattleArchive(n = 10) {
-  const snap = await db.collection('bossBattleArchive').orderBy('completedAt', 'desc').limit(n).get();
+  const snap = await fsMod.getDocs(fsMod.query(fsMod.collection(mdb, 'bossBattleArchive'), fsMod.orderBy('completedAt', 'desc'), fsMod.limit(n)));
   return snap.docs.map(d => ({ weekStart: d.id, ...d.data() }));
 }
 
@@ -5544,7 +5556,7 @@ function renderBossBattleSection() {
     ? `<div class="boss-battle-feed">${communityRecentContributions.map(c => `
         <div class="boss-battle-feed-row">
           <span>${t('community.bossBattle.feedRow', { name: escapeHtml(formatDisplayName(c.displayName)), amount: c.amount, unit: unitLabel })}</span>
-          ${renderKudosButton(`bossBattleDocRef().collection('contributions').doc('${escapeJsAttr(c.id)}')`, c.id, c.kudosCount, currentUser && c.uid === currentUser.uid)}
+          ${renderKudosButton('bossBattleContribution', c.id, c.kudosCount, currentUser && c.uid === currentUser.uid)}
         </div>
       `).join('')}</div>`
     : '';
@@ -5622,7 +5634,7 @@ function renderActivityFeedRow(entry) {
   const amountLabel = entry.unit === 'sec' ? formatSecToReadable(entry.amount) : entry.amount + ' ' + t('exercise.unitRepsLabel');
   const rel = formatRelative(entry.at);
   const isMine = currentUser && entry.uid === currentUser.uid;
-  const kudosHtml = renderKudosButton(`db.collection('activityFeed').doc('${escapeJsAttr(entry.id)}')`, entry.id, entry.kudosCount, isMine);
+  const kudosHtml = renderKudosButton('activityFeed', entry.id, entry.kudosCount, isMine);
   // Repli gracieux : exerciseSlug n'existe que sur les documents écrits après ce champ
   // (voir registerActivityFeedEntryIfNeeded()) ET tant que CHALLENGE_LIBRARY n'a pas
   // encore de slugs réels (batch 7 du chantier i18n) — jusque-là exerciseSlug est
