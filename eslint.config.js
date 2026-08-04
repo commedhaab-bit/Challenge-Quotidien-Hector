@@ -19,6 +19,14 @@ const browserGlobals = {
   URL: 'readonly',
   history: 'readonly',
   firebase: 'readonly',
+  // Moteur de traduction i18n, defini dans le script principal (index.html) mais
+  // partage la meme portee globale (scripts classiques, jamais de vrais modules ES —
+  // voir CLAUDE.md). Surs a appeler depuis exercise-data.js MEME si ce fichier charge
+  // avant : les corps de fonction ne sont evalues qu'a l'APPEL, jamais a la
+  // definition, et formatTargetLabel()/etc. ne sont jamais appelees avant que le
+  // script principal (donc t()/tn()) n'ait fini de s'executer.
+  t: 'readonly',
+  tn: 'readonly',
 };
 
 const nodeGlobals = {

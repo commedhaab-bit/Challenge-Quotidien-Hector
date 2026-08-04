@@ -250,7 +250,7 @@ function setPreferredLanguage(code) {
 function reportSaveError(context, err) {
   console.error(context, err);
   if (navigator.onLine) {
-    showToast('⚠️ Échec de sauvegarde — réessaie ou vérifie ta connexion');
+    showToast(t('popups.saveError'));
   }
 }
 
@@ -403,18 +403,18 @@ async function deleteMyAccount() {
 
   const step1 = await confirmModal({
     icon: '⚠️',
-    title: 'Supprimer définitivement ton compte ?',
-    subtitle: 'Ceci va supprimer DÉFINITIVEMENT toutes tes données : défis, historique, statistiques, records et trophées. Cette action est irréversible.',
-    confirmLabel: 'Continuer',
+    title: t('popups.deleteAccount.step1Title'),
+    subtitle: t('popups.deleteAccount.step1Subtitle'),
+    confirmLabel: t('popups.deleteAccount.step1ConfirmLabel'),
     danger: true,
   });
   if (!step1) return;
 
   const step2 = await confirmModal({
     icon: '⚠️',
-    title: 'Es-tu vraiment certain ?',
-    subtitle: 'Il n\'y aura aucun moyen de récupérer ces données ensuite.',
-    confirmLabel: 'Oui, tout supprimer',
+    title: t('popups.deleteAccount.step2Title'),
+    subtitle: t('popups.deleteAccount.step2Subtitle'),
+    confirmLabel: t('popups.deleteAccount.step2ConfirmLabel'),
     danger: true,
   });
   if (!step2) return;
@@ -451,10 +451,10 @@ async function deleteMyAccount() {
       }
     }
 
-    alert('Ton compte et toutes tes données ont été supprimés.');
+    alert(t('popups.deleteAccount.done'));
     await auth.signOut();
   } catch (e) {
-    alert('Une erreur est survenue pendant la suppression : ' + e.message);
+    alert(t('popups.deleteAccount.error', { message: e.message }));
   }
 }
 
@@ -555,8 +555,8 @@ function updateOfflineBanner() {
   }
   banner.style.display = 'flex';
   banner.textContent = pendingWriteCount > 0
-    ? `📡 Hors ligne — ${pendingWriteCount} modification${pendingWriteCount > 1 ? 's' : ''} en attente de synchronisation`
-    : '📡 Hors ligne — tes données seront synchronisées au retour du réseau';
+    ? tn('popups.offlineBanner.pending', pendingWriteCount)
+    : t('popups.offlineBanner.idle');
 }
 window.addEventListener('online', updateOfflineBanner);
 window.addEventListener('offline', updateOfflineBanner);
@@ -645,40 +645,40 @@ async function triggerPwaInstallFromGate() {
 function buildPwaInstallGateHtml(platform) {
   const header = `
     <img src="icon-192.png" class="gate-logo-img" alt="Défi du Jour">
-    <h1 class="gate-title">Bienvenue sur Défi du Jour ⚡</h1>
-    <p class="gate-subtitle">Installe l'application sur ton téléphone pour commencer ton aventure.</p>
+    <h1 class="gate-title">${t('pwaGate.title')}</h1>
+    <p class="gate-subtitle">${t('pwaGate.subtitle')}</p>
   `;
   if (platform === 'ios') {
     return header + `
       <div class="gate-steps">
-        <div class="gate-step"><span class="gate-step-num">1</span><span class="gate-step-icon">📤</span><span class="gate-step-text">Touche le bouton <strong>Partager</strong>, en bas de ton écran Safari</span></div>
-        <div class="gate-step"><span class="gate-step-num">2</span><span class="gate-step-icon">➕</span><span class="gate-step-text">Fais défiler et touche <strong>Sur l'écran d'accueil</strong></span></div>
-        <div class="gate-step"><span class="gate-step-num">3</span><span class="gate-step-icon">🚀</span><span class="gate-step-text"><strong>Ouvre l'application</strong> depuis ton écran d'accueil pour créer ton compte !</span></div>
+        <div class="gate-step"><span class="gate-step-num">1</span><span class="gate-step-icon">📤</span><span class="gate-step-text">${t('pwaGate.iosStep1')}</span></div>
+        <div class="gate-step"><span class="gate-step-num">2</span><span class="gate-step-icon">➕</span><span class="gate-step-text">${t('pwaGate.iosStep2')}</span></div>
+        <div class="gate-step"><span class="gate-step-num">3</span><span class="gate-step-icon">🚀</span><span class="gate-step-text">${t('pwaGate.iosStep3')}</span></div>
       </div>
       <div class="gate-arrow">⌄</div>
     `;
   }
   if (platform === 'android') {
-    return header + `<button class="gate-install-btn" onclick="triggerPwaInstallFromGate()">Installer l'application en 1 clic 📲</button>`;
+    return header + `<button class="gate-install-btn" onclick="triggerPwaInstallFromGate()">${t('pwaGate.androidInstallBtn')}</button>`;
   }
   if (platform === 'installed') {
-    return header + `<div class="gate-success">✅ Application installée !<br>Ouvre-la depuis ton écran d'accueil.</div>`;
+    return header + `<div class="gate-success">${t('pwaGate.installedMessage')}</div>`;
   }
   if (platform === 'desktop') {
     // Echappatoire de DEBOGAGE très discrète (petit lien en coin, pas un vrai bouton) :
     // sert uniquement au développement/debug depuis un ordinateur, jamais montrée sur
     // un vrai appareil mobile (voir isDesktopDevice()).
     return header + `
-      <p class="gate-fallback-text">Ouvre ce lien depuis ton téléphone (Android ou iPhone) pour installer l'application.</p>
-      <button class="gate-debug-bypass-btn" onclick="bypassPwaInstallGate()">Continuer quand même</button>
+      <p class="gate-fallback-text">${t('pwaGate.desktopFallbackText')}</p>
+      <button class="gate-debug-bypass-btn" onclick="bypassPwaInstallGate()">${t('pwaGate.continueAnyway')}</button>
     `;
   }
   // Repli : navigateur mobile qui ne proposera jamais d'installation PWA réelle
   // (Firefox mobile, navigateur intégré d'une app tierce) — jamais de fausse
   // instruction, et une échappatoire pour ne pas bloquer sans issue.
   return header + `
-    <p class="gate-fallback-text">Ouvre ce lien depuis Chrome (Android) ou Safari (iPhone) pour installer l'application.</p>
-    <button class="gate-bypass-btn" onclick="bypassPwaInstallGate()">Continuer quand même</button>
+    <p class="gate-fallback-text">${t('pwaGate.genericFallbackText')}</p>
+    <button class="gate-bypass-btn" onclick="bypassPwaInstallGate()">${t('pwaGate.continueAnyway')}</button>
   `;
 }
 
@@ -816,8 +816,6 @@ function computeStandardWeight(c, profile) {
 
 // QUICK_ADD vit désormais dans exercise-data.js (script classique chargé avant
 // celui-ci, voir <head>) — reste un global, aucun changement d'usage ici.
-const DOW_LABELS = ['D','L','M','M','J','V','S'];
-
 // CHALLENGES = catalogue complet (CHALLENGE_LIBRARY figé + customChallenges de l'utilisateur),
 // recalculé par rebuildChallenges(). Ne représente PAS la sélection du jour : voir activeToday.
 let customChallenges = [];
@@ -999,11 +997,11 @@ function renderOnboardingTransitionScreen() {
             <div class="preview-title">
               <span>🎯</span>
               <div class="exercise-info">
-                <span class="exercise-name">Pompes</span>
+                <span class="exercise-name">${escapeHtml(challengeDisplayName(previewChallenge))}</span>
                 <span class="exercise-sub">${t('onboarding.transition.exerciseSub')}</span>
               </div>
             </div>
-            <div class="preview-badge">${previewTarget} REPS</div>
+            <div class="preview-badge">${previewTarget} ${t('exercise.unitRepsLabel').toUpperCase()}</div>
           </div>
         </div>
         <p class="pf-onboarding-footnote">${t('onboarding.transition.footnote')}</p>
@@ -1160,31 +1158,31 @@ function profileNext() {
   } else if (profileStep === 1) {
     const val = getWheelPickerValue('pfAge');
     if (isNaN(val) || val < 12 || val > 100) {
-      alert("Merci d'indiquer un âge valide (12 à 100 ans).");
+      alert(t('popups.onboardingValidation.age'));
       return;
     }
     profileDraft.age = val;
   } else if (profileStep === 2) {
     if (!profileDraft.sex) {
-      alert('Merci de sélectionner une option.');
+      alert(t('popups.onboardingValidation.sex'));
       return;
     }
   } else if (profileStep === 3) {
     const h = getWheelPickerValue('pfHeight');
     const w = getWheelPickerValue('pfWeight');
     if (isNaN(h) || h < 100 || h > 250) {
-      alert('Merci d\'indiquer une taille valide (100 à 250 cm).');
+      alert(t('popups.onboardingValidation.height'));
       return;
     }
     if (isNaN(w) || w < 30 || w > 300) {
-      alert('Merci d\'indiquer un poids valide (30 à 300 kg).');
+      alert(t('popups.onboardingValidation.weight'));
       return;
     }
     profileDraft.heightCm = h;
     profileDraft.weightKg = w;
   } else if (profileStep === 4) {
     if (!profileDraft.level) {
-      alert('Merci de sélectionner ton niveau.');
+      alert(t('popups.onboardingValidation.level'));
       return;
     }
     finishProfileOnboarding();
@@ -1461,6 +1459,39 @@ function resolveChallenge(c) {
   return { ...c, target, hardcoreTarget: target * 2 };
 }
 
+/**
+ * Nom d'exercice AFFICHÉ, traduit via c.slug si disponible — `c.name` lui-même reste
+ * TOUJOURS le nom canonique français (jamais modifié), utilisé partout ailleurs dans le
+ * code comme identifiant de recherche (`CHALLENGE_LIBRARY.find(c => c.name === '...')`,
+ * nombreux dans ce fichier) : le traduire à la source aurait cassé tous ces lookups dès
+ * qu'une autre langue est active. Cette fonction est le SEUL point d'affichage — repli
+ * gracieux sur c.name si aucun slug (défis personnalisés, nom tapé par l'utilisateur,
+ * jamais traduisible par nature).
+ */
+function challengeDisplayName(c) {
+  if (!c) return '';
+  return c.slug ? t('exercises.' + c.slug + '.name') : c.name;
+}
+
+// Même principe que challengeDisplayName() ci-dessus, pour les 4 catégories fixes de
+// CHALLENGE_LIBRARY. Une catégorie de défi personnalisé (texte libre tapé par
+// l'utilisateur) ne matche aucune entrée ici : repli sur le texte brut tel quel, jamais
+// une clé cassée/vide. Ne JAMAIS utiliser dans le <datalist> de suggestion de catégorie
+// du formulaire de défi personnalisé (renderChallengeForm()) : la valeur qui y est
+// choisie devient la valeur RÉELLEMENT enregistrée dans `cat` — la traduire ferait
+// créer une catégorie distincte ("Upper Body") au lieu de rejoindre la catégorie
+// canonique existante ("Haut du corps") dès qu'une autre langue est active.
+const CATEGORY_SLUG_BY_NAME = {
+  'Haut du corps': 'upperBody',
+  'Haltères': 'dumbbells',
+  'Gainage / Core': 'core',
+  'Bas du corps': 'lowerBody',
+};
+function translateCategoryName(catName) {
+  const slug = CATEGORY_SLUG_BY_NAME[catName];
+  return slug ? t('categories.' + slug) : catName;
+}
+
 // ==== NAVIGATION ARRIÈRE (bouton/geste retour Android) ====
 // Chaque écran/overlay ouvert pousse une entrée d'historique. Le bouton retour
 // du téléphone déclenche alors un popstate qu'on intercepte pour fermer
@@ -1633,11 +1664,11 @@ async function submitChallengeForm() {
   const hardcoreTarget = hcRaw.trim() === '' ? target * 2 : parseInt(hcRaw, 10);
 
   if (!name || !cat || isNaN(target) || target <= 0) {
-    alert('Merci de remplir tous les champs correctement.');
+    alert(t('popups.challengeForm.invalidFields'));
     return;
   }
   if (isNaN(hardcoreTarget) || hardcoreTarget <= target) {
-    alert("L'objectif hardcore doit être supérieur à l'objectif normal.");
+    alert(t('popups.challengeForm.hardcoreTooLow'));
     return;
   }
 
@@ -1655,9 +1686,9 @@ async function submitChallengeForm() {
 async function deleteChallenge(id) {
   const accepted = await confirmModal({
     icon: '🗑️',
-    title: 'Supprimer ce défi ?',
-    subtitle: 'Ton historique passé sera conservé mais il n\'apparaîtra plus dans la liste.',
-    confirmLabel: 'Supprimer',
+    title: t('popups.deleteChallenge.title'),
+    subtitle: t('popups.deleteChallenge.subtitle'),
+    confirmLabel: t('popups.deleteChallenge.confirmLabel'),
     danger: true,
   });
   if (!accepted) return;
@@ -2221,17 +2252,17 @@ async function processUnreadNotifications(snap) {
     if (data.type === 'kudo') {
       enqueuePopup({
         icon: '👏',
-        title: 'Nouveau kudos !',
-        subtitle: `${data.fromName} vient de t'encourager.`,
-        btnLabel: 'Merci !',
+        title: t('popups.notifications.kudoTitle'),
+        subtitle: t('popups.notifications.kudoSubtitle', { name: data.fromName }),
+        btnLabel: t('popups.notifications.kudoBtn'),
       });
     } else if (data.type === 'friend_request') {
       const accepted = await confirmModal({
         icon: '🤝',
-        title: "Nouvelle demande d'ami",
-        subtitle: `${data.fromName} veut devenir ton ami.`,
-        confirmLabel: 'Accepter',
-        cancelLabel: 'Plus tard',
+        title: t('popups.notifications.friendRequestTitle'),
+        subtitle: t('popups.notifications.friendRequestSubtitle', { name: data.fromName }),
+        confirmLabel: t('popups.notifications.friendRequestAccept'),
+        cancelLabel: t('popups.notifications.friendRequestLater'),
       });
       if (accepted) {
         await acceptFriendRequest(data.fromUid);
@@ -2287,8 +2318,8 @@ async function refreshFriendsData() {
       Promise.all(friendUids.map(uid => fetchPublicProfile(uid))),
       Promise.all(incomingDocs.map(d => fetchPublicProfile(d.fromUid))),
     ]);
-    myFriends = friendUids.map((uid, i) => ({ uid, ...(friendProfiles[i] || { displayName: 'Athlète', photoURL: '' }) }));
-    incomingFriendRequests = incomingDocs.map((d, i) => ({ fromUid: d.fromUid, at: d.at, ...(incomingProfiles[i] || { displayName: 'Athlète', photoURL: '' }) }));
+    myFriends = friendUids.map((uid, i) => ({ uid, ...(friendProfiles[i] || { displayName: t('friends.unknownProfile'), photoURL: '' }) }));
+    incomingFriendRequests = incomingDocs.map((d, i) => ({ fromUid: d.fromUid, at: d.at, ...(incomingProfiles[i] || { displayName: t('friends.unknownProfile'), photoURL: '' }) }));
     // Redémarre le fil d'activité à chaque changement de la liste d'amis (nouvel ami
     // ajouté/retiré change forcément le filtre where('uid','in', ...) de la requête).
     startActivityFeedListener();
@@ -2410,9 +2441,9 @@ async function declineFriendRequest(fromUid) {
 async function removeFriend(uid) {
   const confirmed = await confirmModal({
     icon: '👋',
-    title: 'Retirer cet ami ?',
-    subtitle: "Il ne sera plus visible dans ton fil d'activité et ne verra plus le tien.",
-    confirmLabel: 'Retirer',
+    title: t('popups.removeFriend.title'),
+    subtitle: t('popups.removeFriend.subtitle'),
+    confirmLabel: t('popups.removeFriend.confirmLabel'),
     danger: true,
   });
   if (!confirmed) return;
@@ -2521,8 +2552,8 @@ async function handleBossBattleVictory(weekStart, target, finalProgress) {
   enqueuePopup({
     epic: true,
     icon: '🏆',
-    title: 'Objectif communautaire atteint !',
-    subtitle: `La communauté a validé ${finalProgress.toLocaleString('fr-FR')} ${challenge ? challenge.name.toLowerCase() : ''} cette semaine !`,
+    title: t('popups.bossBattleVictory.title'),
+    subtitle: t('popups.bossBattleVictory.subtitle', { amount: finalProgress.toLocaleString(LOCALE_TO_INTL[currentLocale]), name: challenge ? challengeDisplayName(challenge).toLowerCase() : '' }),
   });
   try {
     // "create-only" cote client (en plus de la regle Firestore equivalente) : si 2
@@ -2622,8 +2653,8 @@ async function evaluateStreakOnLoad() {
   if (shieldTriggered) {
     enqueuePopup({
       icon: '🛡️',
-      title: 'Bouclier activé !',
-      subtitle: "Ton bouclier de pause t'a sauvé la série ! 🛡️ Pense à réaliser ton défi aujourd'hui.",
+      title: t('popups.shield.title'),
+      subtitle: t('popups.shield.subtitle'),
     });
   }
 }
@@ -2637,9 +2668,9 @@ async function registerDailyStreak() {
   setTimeout(() => {
     enqueuePopup({
       icon: '🔥',
-      title: '+1 Jour de série !',
+      title: t('popups.streakPlusOne.title'),
       big: streakCount,
-      subtitle: `${streakCount} jour${streakCount > 1 ? 's' : ''} d'affilée ! Continue comme ça 💪`,
+      subtitle: tn('popups.streakPlusOne.subtitle', streakCount),
     });
   }, 900);
 }
@@ -2651,16 +2682,16 @@ function computeStreak() {
 // Explique la série + le bouclier au clic sur la pastille de l'accueil (modal
 // style Duolingo, comme les autres popups de l'app).
 function showStreakInfoModal() {
-  const shieldBadge = `<div class="popup-shield-badge${hasShield ? ' available' : ''}">Bouclier : ${hasShield ? 'Disponible' : 'Inactif'} 🛡️</div>`;
+  const shieldBadge = `<div class="popup-shield-badge${hasShield ? ' available' : ''}">${t('popups.streakInfo.shieldStatus', { status: hasShield ? t('popups.streakInfo.shieldAvailable') : t('popups.streakInfo.shieldInactive') })}</div>`;
   enqueuePopup({
     icon: '🔥',
-    title: 'Série Actuelle',
+    title: t('popups.streakInfo.title'),
     big: streakCount,
     bigHighlight: true,
-    bigLabel: `Jour${streakCount > 1 ? 's' : ''}`,
+    bigLabel: tn('popups.streakInfo.dayLabel', streakCount),
     subtitle: streakCount === 0
-      ? "Aucune série en cours 🔥. Valide un défi aujourd'hui pour allumer la flamme !"
-      : "Félicitations, tu maintiens ta série !",
+      ? t('popups.streakInfo.subtitleEmpty')
+      : t('popups.streakInfo.subtitleActive'),
     badgeLine: shieldBadge,
     closable: true,
   });
@@ -2682,7 +2713,7 @@ async function showDayDetailModal(dayKeyStr) {
         if (!entry.sets || entry.sets.length === 0) continue;
         const c = CHALLENGES.find(x => x.id === Number(cid));
         entries.push({
-          name: c ? c.name : 'Défi supprimé',
+          name: c ? challengeDisplayName(c) : t('history.deletedChallenge'),
           total: entry.sets.reduce((a, b) => a + b, 0),
           target: entry.targetOverride || (c ? c.target : 0),
           unit: c ? c.unit : 'reps',
@@ -2694,11 +2725,11 @@ async function showDayDetailModal(dayKeyStr) {
     entries = [];
   }
   const listHtml = entries.length === 0
-    ? `<div class="history-empty">Aucun défi validé ce jour</div>`
+    ? `<div class="history-empty">${t('popups.dayDetail.empty')}</div>`
     : entries.map(e => `
         <div class="history-entry">
           <div class="hname">${e.name}</div>
-          <div class="hprogress${e.done ? ' done' : ''}">${e.total}/${e.target}${e.unit === 'sec' ? ' sec' : ''}${e.done ? ' ✓' : ''}</div>
+          <div class="hprogress${e.done ? ' done' : ''}">${e.total}/${e.target}${e.unit === 'sec' ? ' ' + t('exercise.unitSecLabelLower') : ''}${e.done ? ' ✓' : ''}</div>
         </div>
       `).join('');
   enqueuePopup({
@@ -2710,7 +2741,7 @@ async function showDayDetailModal(dayKeyStr) {
     title: label,
     listHtml,
     closable: true,
-    btnLabel: 'Fermer',
+    btnLabel: t('common.close'),
   });
 }
 
@@ -2736,7 +2767,7 @@ function buildPopupInnerHtml(next) {
   ` : '';
   return `
     <div class="app-popup-card${next.epic ? ' epic' : ''}">
-      ${next.closable ? `<button class="app-popup-close-x" id="appPopupCloseX" aria-label="Fermer">✕</button>` : ''}
+      ${next.closable ? `<button class="app-popup-close-x" id="appPopupCloseX" aria-label="${t('common.close')}">✕</button>` : ''}
       <div class="app-popup-icon${next.locked ? ' locked' : ''}">${next.icon}</div>
       <div class="app-popup-title">${next.title}</div>
       ${next.big !== undefined ? `<div class="app-popup-big${next.bigHighlight ? ' big-highlight' : ''}">${next.big}</div>` : ''}
@@ -2786,7 +2817,7 @@ function drainPopupQueue() {
 // (.app-popup-overlay/.app-popup-card) pour rester cohérent avec le reste de l'appli.
 let currentConfirmModalHtml = ''; // dernier contenu affiché (introspection/tests, même principe que currentPopupHtml)
 let currentConfirmModalEl = null; // dernier élément popup créé (introspection/tests, pour vérifier la portée de querySelector)
-function confirmModal({ icon = '⚠️', title = '', subtitle = '', confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false } = {}) {
+function confirmModal({ icon = '⚠️', title = '', subtitle = '', confirmLabel = t('common.confirm'), cancelLabel = t('common.cancel'), danger = false } = {}) {
   return new Promise((resolve) => {
     const el = document.createElement('div');
     el.className = 'app-popup-overlay';
@@ -2828,9 +2859,9 @@ function enqueueTrophyPopups(freshBadges) {
       variant: 'trophy',
       epic: true,
       icon: b.icon,
-      title: 'Trophée débloqué !',
-      big: b.label,
-      subtitle: 'Un nouveau trophée rejoint ta collection !',
+      title: t('popups.trophy.unlockedTitle'),
+      big: badgeLabel(b),
+      subtitle: t('popups.trophy.unlockedSubtitle'),
       xp: b.xp,
     });
   }
@@ -2858,15 +2889,15 @@ function showTrophyDetailModal(badgeId) {
   if (!b) return;
   const unlocked = badges.unlocked.includes(b.id);
   const { current, target } = b.progress();
-  const fmt = (n) => b.secondsBased ? formatSecToReadable(Math.round(n)) : Math.round(n).toLocaleString('fr-FR');
+  const fmt = (n) => b.secondsBased ? formatSecToReadable(Math.round(n)) : Math.round(n).toLocaleString(LOCALE_TO_INTL[currentLocale]);
   enqueuePopup({
     icon: b.icon,
     locked: !unlocked,
-    title: unlocked ? 'Trophée débloqué' : 'Trophée verrouillé',
-    big: b.label,
+    title: unlocked ? t('popups.trophy.detailUnlockedTitle') : t('popups.trophy.detailLockedTitle'),
+    big: badgeLabel(b),
     subtitle: unlocked
-      ? 'Bravo, ce trophée fait déjà partie de ta collection !'
-      : 'Continue à progresser pour débloquer ce trophée.',
+      ? t('popups.trophy.detailUnlockedSubtitle')
+      : t('popups.trophy.detailLockedSubtitle'),
     progressPct: Math.min(100, Math.round((current / target) * 100)),
     progressLabel: `${fmt(Math.min(current, target))} / ${fmt(target)}`,
     xp: b.xp,
@@ -2884,16 +2915,16 @@ function enqueueLevelPopups(levelBefore, levelAfter) {
       variant: 'title',
       epic: true,
       icon: '👑',
-      title: 'NOUVEAU TITRE DÉBLOQUÉ',
+      title: t('popups.levelUp.newTitleUnlocked'),
       big: titleAfter,
-      subtitle: `Tu es maintenant ${titleAfter} ! Niveau ${levelAfter}.`,
+      subtitle: t('popups.levelUp.newTitleSubtitle', { title: titleAfter, n: levelAfter }),
     });
   } else {
     enqueuePopup({
       variant: 'levelup',
       icon: '⭐',
-      title: 'Niveau supérieur !',
-      big: 'Niveau ' + levelAfter,
+      title: t('popups.levelUp.title'),
+      big: t('profileTab.levelLabel', { n: levelAfter }),
       subtitle: athleteTitle(levelAfter),
     });
   }
@@ -3083,20 +3114,26 @@ function xpProgress(xp) {
 
 // Titres d'athlète, du niveau 1 au niveau max — source unique utilisée pour le
 // titre courant (athleteTitle) ET pour la carte "Parcours de niveau" (roadmap).
+// `id` (stable, langue-agnostique) remplace l'ancien `title` figé en français : le nom
+// traduit se résout au RENDU via t('athleteTitles.' + id), voir athleteTitle() et
+// renderLevelRoadmapSheet(). `icon` reste séparé (décoratif, jamais traduit).
 const ATHLETE_TITLE_TIERS = [
-  { title: 'Recrue 🥉', maxLevel: 5 },
-  { title: 'Initié 🎖️', maxLevel: 10 },
-  { title: 'Motivé 🥈', maxLevel: 15 },
-  { title: 'Régulier 📅', maxLevel: 20 },
-  { title: 'Athlète 🥇', maxLevel: 26 },
-  { title: 'Guerrier ⚔️', maxLevel: 32 },
-  { title: 'Expert ⚡', maxLevel: 38 },
-  { title: 'Titan 🏆', maxLevel: 43 },
-  { title: 'Demi-Dieu 🌌', maxLevel: 47 },
-  { title: 'Légende Immortelle 👑', maxLevel: Infinity },
+  { id: 'recrue', icon: '🥉', maxLevel: 5 },
+  { id: 'initie', icon: '🎖️', maxLevel: 10 },
+  { id: 'motive', icon: '🥈', maxLevel: 15 },
+  { id: 'regulier', icon: '📅', maxLevel: 20 },
+  { id: 'athlete', icon: '🥇', maxLevel: 26 },
+  { id: 'guerrier', icon: '⚔️', maxLevel: 32 },
+  { id: 'expert', icon: '⚡', maxLevel: 38 },
+  { id: 'titan', icon: '🏆', maxLevel: 43 },
+  { id: 'demidieu', icon: '🌌', maxLevel: 47 },
+  { id: 'legende', icon: '👑', maxLevel: Infinity },
 ];
 function athleteTitle(level) {
-  return ATHLETE_TITLE_TIERS.find(t => level <= t.maxLevel).title;
+  // Parametre renomme `tier` (pas `t`) : meme piege de shadowing deja rencontre 2 fois
+  // (renderChallengeCard() batch 3, renderLevelRoadmapSheet() batch 6).
+  const tier = ATHLETE_TITLE_TIERS.find(tier => level <= tier.maxLevel);
+  return t('athleteTitles.' + tier.id) + ' ' + tier.icon;
 }
 // 50 XP de base + bonus selon le volume (reps/sec) et, pour les haltères, la charge.
 function xpForChallenge(c, total) {
@@ -3144,7 +3181,7 @@ function speak(text, onEnd) {
   try {
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'fr-FR';
+    utterance.lang = LOCALE_TO_INTL[currentLocale];
     if (onEnd) {
       let called = false;
       const finish = () => { if (!called) { called = true; onEnd(); } };
@@ -3176,12 +3213,12 @@ function formatRelative(ms) {
   if (!ms) return null;
   const diff = Date.now() - ms;
   const min = diff / 60000;
-  if (min < 1) return "à l'instant";
-  if (min < 60) return `il y a ${Math.round(min)}min`;
+  if (min < 1) return t('dates.relative.now');
+  if (min < 60) return t('dates.relative.minutesAgo', { n: Math.round(min) });
   const hrs = diff / 3600000;
-  if (hrs < 24) return `il y a ${Math.round(hrs)}h`;
+  if (hrs < 24) return t('dates.relative.hoursAgo', { n: Math.round(hrs) });
   const days = diff / 86400000;
-  return `il y a ${Math.round(days)}j`;
+  return t('dates.relative.daysAgo', { n: Math.round(days) });
 }
 
 let stats = {}; // { [challengeId]: { lifetimeTotal, bestDay:{total,date} } }
@@ -3223,6 +3260,13 @@ const BADGE_DEFS = [
   { id: 'core_6h',    label: '6 heures de gainage cumulées', icon: '🗿', xp: 800,  secondsBased: true, check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 21600, progress: () => ({ current: sumLifetime(CORE_TIME_FAMILY_IDS), target: 21600 }) },
   { id: 'core_24h',   label: '24 heures de gainage cumulées', icon: '🏆', xp: 2000, secondsBased: true, check: () => sumLifetime(CORE_TIME_FAMILY_IDS) >= 86400, progress: () => ({ current: sumLifetime(CORE_TIME_FAMILY_IDS), target: 86400 }) },
 ];
+
+// `label` (ci-dessus) reste TOUJOURS le texte canonique français, jamais modifié — même
+// principe que challengeDisplayName()/c.name : `id` est déjà un identifiant stable
+// réutilisable tel quel comme clé de traduction (badges.<id>, voir locale-*.js).
+function badgeLabel(b) {
+  return t('badges.' + b.id);
+}
 
 /** Charge les cumuls à vie par défi (`stats`), utilisés par `sumLifetime`/les badges. */
 async function loadStats() {
@@ -3373,7 +3417,7 @@ function getLifetimeSummary() {
 }
 
 async function shareStatsImage() {
-  showToast('🖼️ Génération de l\'image…', 1500);
+  showToast(t('popups.shareStats.generating'), 1500);
   const summary = getLifetimeSummary();
   const streak = computeStreak();
   const completions = badges.totalCompletions;
@@ -3401,11 +3445,11 @@ async function shareStatsImage() {
 
   ctx.fillStyle = '#eef2ef';
   ctx.font = '900 66px sans-serif';
-  ctx.fillText('Mes stats', 64, 178);
+  ctx.fillText(t('popups.shareStats.imageTitle'), 64, 178);
 
   ctx.fillStyle = '#8a958e';
   ctx.font = '400 26px sans-serif';
-  ctx.fillText(new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }), 64, 216);
+  ctx.fillText(new Date().toLocaleDateString(LOCALE_TO_INTL[currentLocale], { day: 'numeric', month: 'long', year: 'numeric' }), 64, 216);
 
   ctx.strokeStyle = 'rgba(238,242,239,0.12)';
   ctx.lineWidth = 2;
@@ -3421,30 +3465,30 @@ async function shareStatsImage() {
   }
 
   let y = 380;
-  drawStat(y, 'jours de suite 🔥', String(streak)); y += 160;
-  drawStat(y, 'défis complétés', String(completions)); y += 160;
-  drawStat(y, 'répétitions totales', summary.totalReps.toLocaleString('fr-FR')); y += 160;
+  drawStat(y, t('popups.shareStats.streakLabel'), String(streak)); y += 160;
+  drawStat(y, t('popups.shareStats.completionsLabel'), String(completions)); y += 160;
+  drawStat(y, t('popups.shareStats.repsLabel'), summary.totalReps.toLocaleString(LOCALE_TO_INTL[currentLocale])); y += 160;
   if (summary.totalSeconds > 0) {
-    drawStat(y, 'minutes chronométrées', String(Math.round(summary.totalSeconds / 60)));
+    drawStat(y, t('popups.shareStats.minutesLabel'), String(Math.round(summary.totalSeconds / 60)));
     y += 160;
   }
 
   if (summary.favCat) {
     ctx.fillStyle = '#5fbf7a';
     ctx.font = '700 30px sans-serif';
-    ctx.fillText(`💪 Catégorie favorite : ${summary.favCat}`, 64, y + 10);
+    ctx.fillText(t('popups.shareStats.favCategory', { category: translateCategoryName(summary.favCat) }), 64, y + 10);
   }
 
   ctx.fillStyle = '#eef2ef';
   ctx.font = '600 26px sans-serif';
-  ctx.fillText(`🏆 ${unlockedCount}/${BADGE_DEFS.length} trophées débloqués`, 64, H - 70);
+  ctx.fillText(t('popups.shareStats.trophiesUnlocked', { unlocked: unlockedCount, total: BADGE_DEFS.length }), 64, H - 70);
 
   canvas.toBlob(async (blob) => {
     if (!blob) return;
     const file = new File([blob], 'mes-stats-defi-du-jour.png', { type: 'image/png' });
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: 'Mes stats — Défi du Jour' });
+        await navigator.share({ files: [file], title: t('popups.shareStats.shareTitle') });
         return;
       } catch (e) { /* annulé par l'utilisateur ou échec, on tente le téléchargement */ }
     }
@@ -3487,7 +3531,7 @@ async function saveWeights() {
 async function editWeight() {
   const c = getChallenge();
   const current = weights[c.id] ?? 8;
-  const input = prompt(t('exercise.editWeightPrompt', { name: c.name }), current);
+  const input = prompt(t('exercise.editWeightPrompt', { name: challengeDisplayName(c) }), current);
   if (input === null) return;
   const val = parseFloat(input.replace(',', '.'));
   if (isNaN(val) || val <= 0) return;
@@ -3660,7 +3704,7 @@ function renderExercisePicto(c) {
   // apparaître l'image en fondu, pour ne jamais montrer de pop-in brut.
   return `
     <div class="exercise-picto">
-      <img src="exercices/${key}-static.webp" alt="${escapeHtml(c.name)}" loading="lazy" decoding="async" width="64" height="64"
+      <img src="exercices/${key}-static.webp" alt="${escapeHtml(challengeDisplayName(c))}" loading="lazy" decoding="async" width="64" height="64"
            onload="this.classList.add('loaded'); this.parentElement.classList.add('loaded');"
            onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${key}-static.png';}else{this.style.display='none'; this.nextElementSibling.style.display='flex'; this.parentElement.classList.add('loaded');}">
       <div class="exercise-picto-fallback">${svg}</div>
@@ -3745,7 +3789,7 @@ function beginPrepCountdown(mode) {
     // attend la fin REELLE de l'annonce (callback onend de SpeechSynthesis) avant
     // d'entamer le decompte audible, plutot qu'un delai fixe devine (speak() annule
     // sinon l'utterance en cours si on enchaine trop tot -> phrase coupee mi-mot).
-    speak('Mode Hardcore enclenché !', () => {
+    speak(t('popups.voiceCoach.hardcoreEngaged'), () => {
       if (prepCountdownValue === null) return; // decompte annule entretemps (clearPrepCountdown)
       renderPrepCountdownOverlay();
       speak('3');
@@ -3767,7 +3811,7 @@ function prepCountdownTick() {
     prepCountdownTimeoutId = setTimeout(prepCountdownTick, 1000);
   } else {
     clearPrepCountdown();
-    if (prepCountdownMode === 'start') speak("C'est parti !");
+    if (prepCountdownMode === 'start') speak(t('popups.voiceCoach.go'));
     startTimer();
   }
 }
@@ -3813,7 +3857,7 @@ function announceTimerVoiceCues(elapsed) {
     speak(String(remaining));
   } else if (remaining <= 0 && lastVoiceCueSecond !== 0) {
     lastVoiceCueSecond = 0;
-    speak('Défi terminé ! Bravo !');
+    speak(t('popups.voiceCoach.challengeDone'));
   }
 }
 
@@ -3882,7 +3926,7 @@ function tickTimer() {
   if (!entry.done && projected >= target) {
     stopTimer(elapsed); // arrêt automatique : "Défi terminé !" déjà annoncé ci-dessus, les popups XP/trophée suivent via addSet()
   } else if (entry.done && !entry.hardcoreDone && projected >= hcTarget) {
-    if (voiceCoachEnabled) speak('Mode Hardcore réussi ! Un vrai Titan !');
+    if (voiceCoachEnabled) speak(t('popups.voiceCoach.hardcoreSuccess'));
     stopTimer(elapsed); // arrêt définitif
   }
 }
@@ -3903,8 +3947,8 @@ function pad(n) { return n < 10 ? '0' + n : '' + n; }
 function dateKey(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 
 function formatDateLabel(d) {
-  const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-  const months = ['jan','fév','mar','avr','mai','juin','juil','août','sep','oct','nov','déc'];
+  const days = t('dates.daysFull');
+  const months = t('dates.monthsAbbr');
   return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
 }
 
@@ -4051,8 +4095,8 @@ async function addSet(amount) {
 
     enqueuePopup({
       icon: newRecord ? '🏆' : '✅',
-      title: newRecord ? 'Nouveau record !' : 'Défi complété !',
-      subtitle: `${completedChallenge.name} — ${total} ${completedChallenge.unit === 'sec' ? 'sec' : 'reps'}`,
+      title: newRecord ? t('popups.challengeComplete.newRecordTitle') : t('popups.challengeComplete.doneTitle'),
+      subtitle: `${challengeDisplayName(completedChallenge)} — ${total} ${completedChallenge.unit === 'sec' ? t('exercise.unitSecLabelLower') : t('exercise.unitRepsLabel')}`,
       xp: xpGained,
     });
     enqueueTrophyPopups(freshBadges);
@@ -4065,10 +4109,10 @@ async function addSet(amount) {
       setTimeout(async () => {
         const accept = await confirmModal({
           icon: '🚀',
-          title: 'Nouveau record 3 fois de suite !',
-          subtitle: `Veux-tu augmenter l'objectif par défaut de "${escapeHtml(c.name)}" de ${formatTargetLabel(c.target, c.unit)} à ${formatTargetLabel(suggestedTarget, c.unit)} ?`,
-          confirmLabel: 'Augmenter l\'objectif',
-          cancelLabel: 'Pas maintenant',
+          title: t('popups.recordStreak.title'),
+          subtitle: t('popups.recordStreak.subtitle', { name: escapeHtml(challengeDisplayName(c)), from: formatTargetLabel(c.target, c.unit), to: formatTargetLabel(suggestedTarget, c.unit) }),
+          confirmLabel: t('popups.recordStreak.confirmLabel'),
+          cancelLabel: t('popups.recordStreak.cancelLabel'),
         });
         if (accept) {
           if (c.isCustom) {
@@ -4080,7 +4124,7 @@ async function addSet(amount) {
             manualTargetOverrides[c.id] = suggestedTarget;
             await saveManualTargetOverrides();
           }
-          showToast(`🎯 Objectif mis à jour : ${formatTargetLabel(suggestedTarget, c.unit)}`);
+          showToast(t('popups.recordStreak.updatedToast', { target: formatTargetLabel(suggestedTarget, c.unit) }));
         }
         s.recordStreak = 0;
         await saveStats();
@@ -4107,8 +4151,8 @@ async function addSet(amount) {
     enqueuePopup({
       epic: true,
       icon: '🔥',
-      title: 'MODE HARDCORE complété !',
-      subtitle: `${cForHardcore.name} — ${Math.min(total, hcTarget)} / ${hcTarget} ${cForHardcore.unit === 'sec' ? 'sec' : 'reps'}`,
+      title: t('popups.challengeComplete.hardcoreTitle'),
+      subtitle: `${challengeDisplayName(cForHardcore)} — ${Math.min(total, hcTarget)} / ${hcTarget} ${cForHardcore.unit === 'sec' ? t('exercise.unitSecLabelLower') : t('exercise.unitRepsLabel')}`,
       xp: HARDCORE_XP_BONUS,
     });
     enqueueTrophyPopups(freshHardcoreBadges);
@@ -4263,7 +4307,7 @@ function render(animate) {
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
-        <button class="streak" onclick="showStreakInfoModal()">🔥 ${computeStreak()} j${hasShield ? ' 🛡️' : ''}</button>
+        <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>
       <h1 class="title">${t('today.title')}</h1>
     `;
@@ -4291,7 +4335,7 @@ function render(animate) {
     const cats = [...new Set(activeChallenges.map(c => c.cat))];
     let todayCardIndex = 0; // continu sur toute la liste (pas remis a zero par categorie), pour un seul enchainement visuel
     for (const cat of cats) {
-      html += `<div class="section-label">${escapeHtml(cat)}</div><div class="picker-grid">`;
+      html += `<div class="section-label">${escapeHtml(translateCategoryName(cat))}</div><div class="picker-grid">`;
       for (const c of activeChallenges.filter(x => x.cat === cat)) {
         html += renderChallengeCard(c, 'today', todayCardIndex++);
       }
@@ -4313,7 +4357,7 @@ function render(animate) {
     // silencieuse si aucun des deux n'existe ; aucune requête réseau du tout pour les
     // clés connues comme n'ayant aucune image (PICTOGRAM_ASSET_MISSING).
     const heroImgHtml = PICTOGRAM_ASSET_MISSING.has(heroKey) ? '' : `
-        <img class="exercise-hero-apng" src="exercices/${heroKey}.webp" alt="${t('exercise.demoAlt', { name: escapeHtml(c.name) })}" decoding="async" loading="eager"
+        <img class="exercise-hero-apng" src="exercices/${heroKey}.webp" alt="${t('exercise.demoAlt', { name: escapeHtml(challengeDisplayName(c)) })}" decoding="async" loading="eager"
              onload="this.classList.add('loaded');"
              onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${heroKey}.png';}else{this.remove();}">
     `;
@@ -4324,7 +4368,7 @@ function render(animate) {
       <button class="nav-back-btn floating" onclick="history.back()" aria-label="${t('common.back')}">‹</button>
       <div class="active-card${entry.done ? ' hardcore-engaged' : ''}">
         ${heroImgHtml}
-        <div class="active-name">${escapeHtml(c.name)}</div>
+        <div class="active-name">${escapeHtml(challengeDisplayName(c))}</div>
 
         ${c.cat === 'Haltères' ? `
           <div class="weight-row">
@@ -4441,7 +4485,7 @@ function render(animate) {
     const done = weekData[k];
     html += `
       <div class="week-day">
-        <div class="dow">${DOW_LABELS[d.getDay()]}</div>
+        <div class="dow">${t('dates.dowShort')[d.getDay()]}</div>
         <div class="week-dot${done ? ' done' : ''}${isToday ? ' today' : ''}">${done ? '✓' : d.getDate()}</div>
       </div>
     `;
@@ -4485,7 +4529,7 @@ async function loadHistoryEntries() {
       entries.push({
         key: k,
         date: d,
-        challengeName: c ? c.name : t('history.deletedChallenge'),
+        challengeName: c ? challengeDisplayName(c) : t('history.deletedChallenge'),
         cat: c ? c.cat : '',
         total: entry.sets ? entry.sets.reduce((a,b)=>a+b,0) : 0,
         target: entry.targetOverride || (c ? c.target : 0),
@@ -4511,14 +4555,14 @@ function renderCommunityHeroBanner() {
   // cascade de .picker-item rejouerait donc en boucle sans cette classe.
   const cards = [challenge1, challenge2].map((c) => {
     const resolved = resolveChallenge(c);
-    const targetLabel = resolved.unit === 'sec' ? formatSecToReadable(resolved.target) : resolved.target + ' reps';
+    const targetLabel = resolved.unit === 'sec' ? formatSecToReadable(resolved.target) : resolved.target + ' ' + t('exercise.unitRepsLabel');
     const weightKg = weights[c.id] ?? computeStandardWeight(c, userProfile) ?? 8;
     const weightBelow = c.cat === 'Haltères' ? `<div class="goal-weight">🏋️ ${weightKg}kg</div>` : '';
     return `
       <div class="picker-item no-anim">
         ${renderExercisePicto(c)}
         <div class="picker-item-body">
-          <span class="name">${escapeHtml(c.name)}</span>
+          <span class="name">${escapeHtml(challengeDisplayName(c))}</span>
         </div>
         <div class="goal">
           ${targetLabel}
@@ -4585,7 +4629,7 @@ function renderBadgesStrip() {
         <div class="next-trophy-card" onclick="showTrophyDetailModal('${b.id}')">
           <div class="next-trophy-icon">${b.icon}</div>
           <div class="next-trophy-body">
-            <div class="next-trophy-name">${b.label}</div>
+            <div class="next-trophy-name">${badgeLabel(b)}</div>
             <div class="next-trophy-track"><div class="next-trophy-fill" style="width:${Math.round(pct)}%"></div></div>
           </div>
           <div class="next-trophy-pct">${Math.round(pct)}%</div>
@@ -4788,7 +4832,7 @@ function renderChallengeCard(c, mode, index, animate = true) {
     <div class="picker-item${noAnimClass}"${delayStyle} onclick="${onclick}">
       ${renderExercisePicto(c)}
       <div class="picker-item-body">
-        <span class="name">${escapeHtml(c.name)}</span>
+        <span class="name">${escapeHtml(challengeDisplayName(c))}</span>
         ${communityRibbon}
       </div>
       <div class="goal">
@@ -4836,7 +4880,7 @@ function renderLibraryScreen() {
   libraryAnimatingCat = null;
   for (const cat of cats) {
     let itemsInCat = CHALLENGES.filter(c => c.cat === cat);
-    if (query) itemsInCat = itemsInCat.filter(c => c.name.toLowerCase().includes(query));
+    if (query) itemsInCat = itemsInCat.filter(c => challengeDisplayName(c).toLowerCase().includes(query));
     if (query && itemsInCat.length === 0) continue;
     anyMatch = true;
     const activeCount = itemsInCat.filter(c => activeToday.has(c.id)).length;
@@ -4848,7 +4892,7 @@ function renderLibraryScreen() {
       <div class="accordion${isOpen ? ' open' : ''}">
         <button class="accordion-header" onclick="toggleLibraryCategory('${escapeJsAttr(cat)}')">
           <span class="accordion-chevron">›</span>
-          <span class="accordion-title">${escapeHtml(cat)}</span>
+          <span class="accordion-title">${escapeHtml(translateCategoryName(cat))}</span>
           <span class="accordion-count${activeCount > 0 ? ' has-active' : ''}">${tn('library.activeCount', activeCount)}</span>
         </button>
         ${isOpen ? `<div class="accordion-body">${itemsInCat.map((c, i) => renderChallengeCard(c, 'library', i, shouldAnimate)).join('')}</div>` : ''}
@@ -4951,7 +4995,7 @@ function renderHeatmap() {
   // libellé. Détecter le jour 1 dans chaque colonne (plutôt que le mois du seul Lundi
   // de la colonne) est nécessaire pour ne pas rater le mois en cours quand celui-ci
   // démarre au milieu d'une semaine (ex: 1er tombant un samedi).
-  const MONTH_ABBR = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
+  const MONTH_ABBR = t('dates.monthsAbbrCap');
   let monthsHtml = '';
   for (let col = 0; col < WEEKS; col++) {
     const colDays = days.slice(col * 7, col * 7 + 7);
@@ -4983,7 +5027,7 @@ function renderTrophiesGrid() {
               ${b.icon}
               ${unlocked ? '' : `<span class="badge-lock-badge">${lockIconSVG(11)}</span>`}
             </div>
-            <div class="badge-label">${b.label}</div>
+            <div class="badge-label">${badgeLabel(b)}</div>
           </div>
         `;
       }).join('')}
@@ -5006,7 +5050,7 @@ function renderHistoryScreen() {
   }
   const firstDow = (days[0].getDay() + 6) % 7; // Monday=0
   let calHtml = `<div class="cal-grid">`;
-  ['L','M','M','J','V','S','D'].forEach(l => calHtml += `<div class="cal-dow">${l}</div>`);
+  t('dates.dowShortMonFirst').forEach(l => calHtml += `<div class="cal-dow">${l}</div>`);
   for (let i = 0; i < firstDow; i++) calHtml += `<div class="cal-cell empty"></div>`;
   for (const d of days) {
     const k = dateKey(d);
@@ -5087,7 +5131,7 @@ function renderLevelRoadmapSheet() {
       <div class="roadmap-row${unlocked ? ' unlocked' : ''}${current ? ' current' : ''}">
         <div class="roadmap-row-icon">${current ? '▶' : unlocked ? '✓' : lockIconSVG(14)}</div>
         <div class="roadmap-row-text">
-          <div class="roadmap-row-title">${tier.title}</div>
+          <div class="roadmap-row-title">${t('athleteTitles.' + tier.id)} ${tier.icon}</div>
           <div class="roadmap-row-range">${rangeLabel}</div>
         </div>
       </div>
@@ -5300,15 +5344,15 @@ async function importUserData(event) {
     data = JSON.parse(await file.text());
   } catch (e) {
     event.target.value = '';
-    showToast('❌ Fichier invalide');
+    showToast(t('popups.importData.invalidFile'));
     return;
   }
 
   const accepted = await confirmModal({
     icon: '📥',
-    title: 'Importer ces données ?',
-    subtitle: 'Cela va REMPLACER tes données actuelles (défis personnalisés, statistiques, série, XP...). Cette action est irréversible.',
-    confirmLabel: 'Importer et remplacer',
+    title: t('popups.importData.confirmTitle'),
+    subtitle: t('popups.importData.confirmSubtitle'),
+    confirmLabel: t('popups.importData.confirmLabel'),
     danger: true,
   });
   if (!accepted) {
@@ -5341,7 +5385,7 @@ async function importUserData(event) {
   if (data.todayState && data.todayKey === todayKey) { state = data.todayState; await saveState(); }
 
   event.target.value = '';
-  showToast('✅ Données importées');
+  showToast(t('popups.importData.done'));
   render(true);
 }
 
@@ -5389,7 +5433,7 @@ async function shareCommunityInvite() {
   }
   try {
     await navigator.clipboard.writeText(`${text} ${url}`);
-    showToast('Lien copié — partage-le à tes proches ! 🔗');
+    showToast(t('popups.communityInvite.linkCopied'));
   } catch (e) {
     reportSaveError('share community invite failed', e);
   }
@@ -5425,7 +5469,7 @@ function renderBossBattleSection() {
       <div class="boss-battle-header">
         <span class="boss-battle-badge">${t('community.bossBattle.badge')}</span>
       </div>
-      <div class="boss-battle-goal">${t('community.bossBattle.goal', { name: escapeHtml(challenge.name), progress: communityBossBattleProgress.toLocaleString(LOCALE_TO_INTL[currentLocale]), target: target.targetAmount.toLocaleString(LOCALE_TO_INTL[currentLocale]), unit: unitLabel })}</div>
+      <div class="boss-battle-goal">${t('community.bossBattle.goal', { name: escapeHtml(challengeDisplayName(challenge)), progress: communityBossBattleProgress.toLocaleString(LOCALE_TO_INTL[currentLocale]), target: target.targetAmount.toLocaleString(LOCALE_TO_INTL[currentLocale]), unit: unitLabel })}</div>
       <div class="boss-battle-track"><div class="boss-battle-fill" style="width:${pct}%"></div></div>
       <div class="boss-battle-pct">${pct}%</div>
       ${contributorHtml}
@@ -5449,7 +5493,7 @@ function renderHallOfFameSection() {
       <div class="hall-of-fame-row">
         <span class="hall-of-fame-icon">🏆</span>
         <div class="hall-of-fame-info">
-          <span class="hall-of-fame-name">${escapeHtml(challenge ? challenge.name : t('history.deletedChallenge'))}</span>
+          <span class="hall-of-fame-name">${escapeHtml(challenge ? challengeDisplayName(challenge) : t('history.deletedChallenge'))}</span>
           <span class="hall-of-fame-week">${t('community.hallOfFame.weekOf', { date: weekLabel })}</span>
         </div>
         <span class="hall-of-fame-value">${entry.finalProgress.toLocaleString(LOCALE_TO_INTL[currentLocale])} ${unitLabel}</span>
@@ -5790,7 +5834,7 @@ function getSuggestion() {
   if (!worstCat || worstDays < 3) return null;
 
   const days = Math.floor(worstDays);
-  return tn('today.suggestion', days, { category: worstCat });
+  return tn('today.suggestion', days, { category: translateCategoryName(worstCat) });
 }
 
 

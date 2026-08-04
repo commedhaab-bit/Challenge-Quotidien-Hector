@@ -6,43 +6,51 @@
 // Voir la remarque "ATTENTION : NE PAS mettre defer" dans index.html — le même
 // risque de chargement s'applique ici : garder ce script synchrone.
 
+// `slug` : identifiant stable et langue-agnostique de chaque exercice, indépendant du
+// `name` affiché (traduit via t('exercises.' + slug + '.name'), voir index.html) ET du
+// `id` numérique (déjà utilisé comme clé Firestore/activeToday/manualTargetOverrides,
+// jamais touché). Réutilise TELLES QUELLES les clés déjà existantes de
+// EXERCISE_ICON_BY_NAME ci-dessous plutôt que d'en inventer de nouvelles : ce sont déjà
+// des identifiants stables, uniques et langue-agnostiques par construction. Les défis
+// personnalisés (isCustom, créés via le formulaire) n'ont jamais de slug — leur nom est
+// tapé par l'utilisateur, non traduisible par nature.
 const CHALLENGE_LIBRARY = [
   // ==== Haut du corps (bmiImpact élevé : mouvements qui portent tout le poids du corps) ====
-  { id: 1,  cat: 'Haut du corps', name: 'Pompes', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 1.0 },
-  { id: 3,  cat: 'Haut du corps', name: 'Dips', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 1.0 },
-  { id: 1001, cat: 'Haut du corps', name: 'Pompes diamant', target: 80,  unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 1.0 },
-  { id: 1002, cat: 'Haut du corps', name: 'Pompes déclinées (pieds surélevés)', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 1.0 },
-  { id: 1003, cat: 'Haut du corps', name: 'Pike push-ups (épaules)', target: 50, unit: 'reps', hardcoreTarget: 100, isDefault: false, bmiImpact: 0.9 },
-  { id: 1004, cat: 'Haut du corps', name: 'Superman (extension dos)', target: 60, unit: 'reps', hardcoreTarget: 120, isDefault: false, bmiImpact: 0.4 },
-  { id: 1020, cat: 'Haut du corps', name: 'Tirage élastique', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.2 },
+  { id: 1,  cat: 'Haut du corps', name: 'Pompes', slug: 'pompes', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 1.0 },
+  { id: 3,  cat: 'Haut du corps', name: 'Dips', slug: 'dips', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 1.0 },
+  { id: 1001, cat: 'Haut du corps', name: 'Pompes diamant', slug: 'pompes_diamant', target: 80,  unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 1.0 },
+  { id: 1002, cat: 'Haut du corps', name: 'Pompes déclinées (pieds surélevés)', slug: 'pompes_declinees', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 1.0 },
+  { id: 1003, cat: 'Haut du corps', name: 'Pike push-ups (épaules)', slug: 'pike', target: 50, unit: 'reps', hardcoreTarget: 100, isDefault: false, bmiImpact: 0.9 },
+  { id: 1004, cat: 'Haut du corps', name: 'Superman (extension dos)', slug: 'superman', target: 60, unit: 'reps', hardcoreTarget: 120, isDefault: false, bmiImpact: 0.4 },
+  { id: 1020, cat: 'Haut du corps', name: 'Tirage élastique', slug: 'tirage_elastique', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.2 },
 
   // ==== Haltères (bmiImpact ~nul : le poids déplacé est celui de l'haltère, pas du corps) ====
-  { id: 5,  cat: 'Haltères', name: 'Triceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
-  { id: 6,  cat: 'Haltères', name: 'Biceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
-  { id: 7,  cat: 'Haltères', name: 'Élévations latérales', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 5, armMode: 'total' },
-  { id: 8,  cat: 'Haltères', name: 'Presse cubaine', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
-  { id: 1005, cat: 'Haltères', name: 'Tirage haltères', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0, standardWeightKg: 10, armMode: 'perArm' },
-  { id: 1006, cat: 'Haltères', name: 'Développé épaules haltères', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
-  { id: 1008, cat: 'Haltères', name: 'Extensions triceps nuque', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 6, armMode: 'total' },
-  { id: 1010, cat: 'Haltères', name: 'Squat goblet', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.15, standardWeightKg: 12, armMode: 'total' },
+  { id: 5,  cat: 'Haltères', name: 'Triceps', slug: 'triceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
+  { id: 6,  cat: 'Haltères', name: 'Biceps', slug: 'biceps', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'perArm' },
+  { id: 7,  cat: 'Haltères', name: 'Élévations latérales', slug: 'epaule_raise', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 5, armMode: 'total' },
+  { id: 8,  cat: 'Haltères', name: 'Presse cubaine', slug: 'cuban_press', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
+  { id: 1005, cat: 'Haltères', name: 'Tirage haltères', slug: 'rowing', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0, standardWeightKg: 10, armMode: 'perArm' },
+  { id: 1006, cat: 'Haltères', name: 'Développé épaules haltères', slug: 'developpe_epaules', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 8, armMode: 'total' },
+  { id: 1008, cat: 'Haltères', name: 'Extensions triceps nuque', slug: 'extension_nuque', target: 80, unit: 'reps', hardcoreTarget: 160, isDefault: false, bmiImpact: 0, standardWeightKg: 6, armMode: 'total' },
+  { id: 1010, cat: 'Haltères', name: 'Squat goblet', slug: 'squat_goblet', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.15, standardWeightKg: 12, armMode: 'total' },
 
   // ==== Gainage / Core (bmiImpact modéré : la planche/hollow tiennent le poids du corps, les crunchs moins) ====
-  { id: 9,  cat: 'Gainage / Core', name: 'Planche', target: 300, unit: 'sec', hardcoreTarget: 600, isDefault: true, bmiImpact: 0.7 },
-  { id: 10, cat: 'Gainage / Core', name: 'Crunchs', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0.3 },
-  { id: 11, cat: 'Gainage / Core', name: 'Gainage latéral (2 côtés)', target: 300, unit: 'sec', hardcoreTarget: 600, isDefault: true, bmiImpact: 0.7 },
-  { id: 13, cat: 'Gainage / Core', name: 'Leg raises', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0.4 },
-  { id: 1012, cat: 'Gainage / Core', name: 'Hollow hold', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: false, bmiImpact: 0.5 },
-  { id: 1013, cat: 'Gainage / Core', name: 'V-ups', target: 60, unit: 'reps', hardcoreTarget: 120, isDefault: false, bmiImpact: 0.4 },
-  { id: 1014, cat: 'Gainage / Core', name: 'Bicycle crunches', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false, bmiImpact: 0.3 },
-  { id: 1015, cat: 'Gainage / Core', name: 'Dead bug', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.2 },
+  { id: 9,  cat: 'Gainage / Core', name: 'Planche', slug: 'planche', target: 300, unit: 'sec', hardcoreTarget: 600, isDefault: true, bmiImpact: 0.7 },
+  { id: 10, cat: 'Gainage / Core', name: 'Crunchs', slug: 'crunchs', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0.3 },
+  { id: 11, cat: 'Gainage / Core', name: 'Gainage latéral (2 côtés)', slug: 'gainage_lateral', target: 300, unit: 'sec', hardcoreTarget: 600, isDefault: true, bmiImpact: 0.7 },
+  { id: 13, cat: 'Gainage / Core', name: 'Leg raises', slug: 'leg_raises', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0.4 },
+  { id: 1012, cat: 'Gainage / Core', name: 'Hollow hold', slug: 'hollow_hold', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: false, bmiImpact: 0.5 },
+  { id: 1013, cat: 'Gainage / Core', name: 'V-ups', slug: 'vups', target: 60, unit: 'reps', hardcoreTarget: 120, isDefault: false, bmiImpact: 0.4 },
+  { id: 1014, cat: 'Gainage / Core', name: 'Bicycle crunches', slug: 'bicycle', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false, bmiImpact: 0.3 },
+  { id: 1015, cat: 'Gainage / Core', name: 'Dead bug', slug: 'dead_bug', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.2 },
 
   // ==== Bas du corps (bmiImpact modéré : les jambes sont naturellement conçues pour porter le poids du corps) ====
-  { id: 14, cat: 'Bas du corps', name: 'Squats', target: 200, unit: 'reps', hardcoreTarget: 400, isDefault: true, bmiImpact: 0.5 },
-  { id: 15, cat: 'Bas du corps', name: 'Fentes (2 jambes)', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0.5 },
-  { id: 16, cat: 'Bas du corps', name: 'Chaise (wall sit)', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: true, bmiImpact: 0.6 },
-  { id: 17, cat: 'Bas du corps', name: 'Mollets (calf raises)', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0.4 },
-  { id: 1016, cat: 'Bas du corps', name: 'Fentes bulgares', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.55 },
-  { id: 1019, cat: 'Bas du corps', name: 'Pont fessier (glute bridge)', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false, bmiImpact: 0.3 },
+  { id: 14, cat: 'Bas du corps', name: 'Squats', slug: 'squats', target: 200, unit: 'reps', hardcoreTarget: 400, isDefault: true, bmiImpact: 0.5 },
+  { id: 15, cat: 'Bas du corps', name: 'Fentes (2 jambes)', slug: 'fentes', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: true, bmiImpact: 0.5 },
+  { id: 16, cat: 'Bas du corps', name: 'Chaise (wall sit)', slug: 'chaise', target: 180, unit: 'sec', hardcoreTarget: 360, isDefault: true, bmiImpact: 0.6 },
+  { id: 17, cat: 'Bas du corps', name: 'Mollets (calf raises)', slug: 'mollets', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: true, bmiImpact: 0.4 },
+  { id: 1016, cat: 'Bas du corps', name: 'Fentes bulgares', slug: 'fentes_bulgares', target: 100, unit: 'reps', hardcoreTarget: 200, isDefault: false, bmiImpact: 0.55 },
+  { id: 1019, cat: 'Bas du corps', name: 'Pont fessier (glute bridge)', slug: 'pont_fessier', target: 150, unit: 'reps', hardcoreTarget: 300, isDefault: false, bmiImpact: 0.3 },
 ];
 
 const QUICK_ADD = { reps: [5, 10, 15, 20, 25, 30], sec: [15, 30, 60, 120] };
@@ -67,9 +75,9 @@ function formatSecToReadable(totalSec) {
  */
 function formatTargetLabel(value, unit) {
   if (unit === 'sec') {
-    return `${value} SEC (${formatSecToReadable(value)})`;
+    return `${value} ${t('exercise.unitSecLabel')} (${formatSecToReadable(value)})`;
   }
-  return `${value} reps`;
+  return `${value} ${t('exercise.unitRepsLabel')}`;
 }
 
 /** @type {Record<string, string>} */

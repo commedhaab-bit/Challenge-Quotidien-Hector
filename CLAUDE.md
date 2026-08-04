@@ -1245,15 +1245,124 @@ dans `renderLevelRoadmapSheet()` et `b.label` dans `renderTrophiesGrid()` (donn�
 **`CACHE_NAME` bumpé `v30` → `v31`** (contenu des `locale-*.js` modifié, nouvelles clés
 `tour`/`username`/`onboarding`/`profileTab`).
 
-**Reste à faire (batch 7, plan approuvé)** : alertes/popups/toasts (dont
-`showStreakInfoModal()`/`showDayDetailModal()`/le toast de `shareCommunityInvite()`,
-délibérément pas migrés malgré leur présence sur des écrans déjà traduits, pour garder
-tous les sites de popups groupés dans un seul batch dédié), `BADGE_DEFS`,
-`ATHLETE_TITLE_TIERS`, dates relatives/`MONTH_ABBR`/lettres de jour (idem,
-délibérément pas touchés jusqu'ici), ajout du **vrai** `slug` + traduction des
-noms/catégories d'exercices dans `exercise-data.js` (activera automatiquement le
-correctif `exerciseSlug` du batch 5, sans retoucher le code de lecture/écriture), audit
-final de chaînes françaises oubliées. Tant qu'une chaîne n'est pas migrée vers `t()`,
-elle reste le littéral français en dur — comportement identique à aujourd'hui pour un
-utilisateur FR, aucune régression possible entre deux batches.
+**Batch 7 livré — chantier i18n FR/EN/ES COMPLET (7 batches, tous livrés)** : dernier
+batch, découpé en 5 sous-parties (7a-7e), un seul commit/bump `CACHE_NAME` final.
+
+**7a — vocabulaire de dates** : `formatDateLabel()`/`formatRelative()` migrés vers
+`t('dates.daysFull')`/`t('dates.monthsAbbr')`/`t('dates.relative.*')` (ces 2 premiers
+sont des TABLEAUX retournés tels quels par `t()` — `t()` ne fait `interpolate()` QUE
+sur les valeurs `string`, une valeur non-string comme un tableau est renvoyée
+telle quelle, voir sa propre implémentation). `DOW_LABELS` (const figée) supprimée,
+remplacée par `t('dates.dowShort')[d.getDay()]` directement au point d'usage —
+nécessaire pour réagir à un changement de langue en session, même raison que la
+restructuration de `GUIDED_TOUR_STEPS` au batch 6. Idem pour les lettres du calendrier
+mensuel (`renderHistoryScreen()`) et `MONTH_ABBR` (`renderHeatmap()`).
+
+**7b — `exercise-data.js` : vrai `slug` sur les 29 entrées + traduction complète** —
+réutilise TELLES QUELLES les clés déjà existantes de `EXERCISE_ICON_BY_NAME` comme
+valeurs de `slug` (déjà stables/uniques/langue-agnostiques par construction, aucune
+nouvelle nomenclature à inventer). **Active rétroactivement le correctif
+`exerciseSlug` du batch 5** sans y retoucher : `c.slug` n'était `undefined` que
+temporairement, en attendant ce batch. Nouvelle fonction `challengeDisplayName(c)`
+(juste après `resolveChallenge()`) : SEUL point d'affichage traduit — `c.name`
+lui-même n'est JAMAIS modifié (reste le nom canonique français, utilisé par les
+nombreux `CHALLENGE_LIBRARY.find(c => c.name === '...')` dispersés dans le fichier ;
+le traduire à la source aurait cassé tous ces lookups). Même principe pour les 4
+catégories fixes via `translateCategoryName()`/`CATEGORY_SLUG_BY_NAME` — **piège
+évité explicitement** : ne jamais l'utiliser dans le `<datalist>` de suggestion de
+catégorie du formulaire de défi personnalisé (`renderChallengeForm()`), la valeur
+choisie y devient la valeur RÉELLEMENT stockée dans `cat`, la traduire créerait une
+catégorie distincte au lieu de rejoindre la catégorie canonique existante.
+`formatTargetLabel()` (`exercise-data.js`) appelle désormais `t()`/`tn()` — **1er cas
+d'un fichier externe autre qu'`index.html` qui appelle le moteur i18n** : sûr car les
+corps de fonctions ne s'évaluent qu'à l'APPEL (jamais à la définition), et cette
+fonction n'est jamais appelée avant que le script principal ait fini de s'exécuter,
+malgré l'ordre de chargement (`exercise-data.js` avant le script inline). `t`/`tn`
+ajoutés aux globals ESLint de ce fichier (`eslint.config.js`) pour que `no-undef` ne
+lève pas d'erreur sur cet usage légitime.
+
+**7c — `BADGE_DEFS` (`badgeLabel(b)`, id déjà stable réutilisé tel quel) +
+`ATHLETE_TITLE_TIERS`** (`title: 'Recrue 🥉'` figé → `{id: 'recrue', icon: '🥉'}`
+séparés, résolus au rendu via `t('athleteTitles.' + tier.id) + ' ' + tier.icon`).
+**3ᵉ occurrence du piège de shadowing de variable locale `t`** (après
+`renderChallengeCard()` batch 3 et `renderLevelRoadmapSheet()` batch 6) :
+`ATHLETE_TITLE_TIERS.find(t => level <= t.maxLevel)` dans `athleteTitle()` — renommé
+`tier`. **Ce piège est maintenant confirmé récurrent à 3 reprises** : le nom court `t`
+était déjà largement utilisé comme variable locale/paramètre de callback dans ce
+fichier avant l'i18n (sommes, itérations) — vérifier systématiquement avant d'ajouter
+un appel `t(...)` dans une fonction existante.
+
+**7d — les 39 sites `alert()`/`confirmModal()`/`enqueuePopup()`/`showToast()`** (compte
+exact prédit par le plan initial, confirmé par grep). Tous migrés, y compris :
+`confirmModal()` elle-même (ses paramètres par défaut `confirmLabel`/`cancelLabel`
+passent de `'Confirmer'`/`'Annuler'` figés à `t('common.confirm')`/`t('common.cancel')`
+— valeurs par défaut ES2015, réévaluées à CHAQUE appel sans argument, donc toujours la
+langue courante, jamais figées à la définition) ; `shareStatsImage()` (image PNG
+générée via `<canvas>`, entièrement traduite — titre, libellés de stats, catégorie
+favorite via `translateCategoryName()`, sauf le branding `'DÉFI DU JOUR'`/`'Défi du
+Jour'`, volontairement conservé partout dans l'app comme un nom propre) ;
+`showDayDetailModal()` (reprend `challengeDisplayName(c)`, comme `loadHistoryEntries()`
+au batch 4). **Bug d'inattention corrigé pendant ce batch** : le popup de complétion
+Hardcore (`addSet()`, "MODE HARDCORE complété !") avait été oublié dans un premier
+passage — repéré par une relecture systématique bloc par bloc de tous les sites
+listés par `grep`, pas par un test (leçon : pour un balayage exhaustif comme celui-ci,
+relire CHAQUE site un par un après le premier passage, ne pas se fier uniquement à la
+mémoire du grep initial).
+
+**7e — audit final, 4 sites supplémentaires repérés par relecture systématique du
+fichier entier (heuristique grep sur les caractères accentués français, hors
+commentaires) APRÈS 7a-7d, tous manqués une première fois** :
+- Bandeau hors ligne (`updateOfflineBanner()`) — `tn('popups.offlineBanner.pending',
+  pendingWriteCount)` / `t('popups.offlineBanner.idle')`.
+- Badge de série (`🔥 {{n}} j`) sur l'écran Aujourd'hui — **2ᵉ occurrence** du même
+  motif déjà migré ailleurs (Communauté au batch 5, Profil au batch 6) mais oubliée
+  sur CET écran précis lors du batch 3 ; les 2 occurrences réutilisent
+  `t('community.streakValue', ...)`.
+- Coach vocal (`speak()`) : `utterance.lang` passait de `'fr-FR'` figé à
+  `LOCALE_TO_INTL[currentLocale]` (essentiel pour une prononciation correcte de la
+  synthèse vocale, pas seulement le TEXTE prononcé) + les 4 phrases annoncées
+  (`beginPrepCountdown()`/`announceTimerVoiceCues()`/`toggleTimer()`), désormais
+  traduites via `t('popups.voiceCoach.*')`. Les chiffres du décompte ("3"/"2"/"1")
+  restent des chiffres bruts, universels, aucune traduction nécessaire.
+- Repli client "Athlète" (`refreshFriendsData()`, `fetchPublicProfile()` introuvable —
+  ex: ami ayant désactivé son classement) → `t('friends.unknownProfile')`. **Distinct
+  du repli `'Athlète'` de `formatDisplayName()`** (délibérément laissé en dur,
+  documenté ci-dessous — décision différente pour une raison différente).
+- Verrou d'installation PWA plein écran (`buildPwaInstallGateHtml()`) — 1ʳᵉ chose
+  qu'un nouveau visiteur non-standalone voit, avant même la connexion. Vérifié sûr à
+  traduire : `updatePwaInstallGate()` n'est appelée qu'après l'initialisation complète
+  du moteur i18n (ligne de code, pas juste la définition) dans l'ordre d'exécution du
+  script.
+
+**2 exceptions délibérées, NE PAS traduire par la suite** (décisions prises et
+documentées pendant l'audit, pas des oublis) :
+- `formatDisplayName()` (repli `'Athlète'` quand `fullName` est vide) — cette valeur
+  est ÉCRITE dans Firestore (collections communautaires partagées : leaderboard,
+  dailyContributors, contributions...), lue par TOUS les autres utilisateurs quelle
+  que soit LEUR langue. La traduire ferait apparaître des noms de repli dans des
+  langues différentes selon la langue de l'auteur au moment de l'écriture, sans
+  mécanisme de re-traduction à la lecture (contrairement à `exerciseSlug`, construire
+  un tel mécanisme pour ce cas marginal serait disproportionné). Reste figée en
+  français, comme une constante technique plutôt qu'un texte d'interface.
+- `showFatalErrorScreen()` (écran de secours si une erreur JS non interceptée
+  survient) — son propre commentaire dans le code l'explique déjà : "aucune dépendance
+  à une fonction de l'appli plus bas, qui pourrait elle-même être à l'origine du
+  crash". Ce filet de sécurité doit fonctionner même si le moteur i18n lui-même (ou
+  n'importe quoi d'autre) est la cause du crash — y introduire un appel à `t()`
+  romprait cette garantie d'isolation. Reste en français en dur, volontairement.
+
+**`CACHE_NAME` bumpé `v31` → `v32`** (un seul bump pour tout le batch 7, 7a à 7e).
+
+## Chantier i18n FR/EN/ES — TERMINÉ (7/7 batches livrés)
+
+Application entièrement traduite en français/anglais/espagnol : navigation, tous les
+écrans (Aujourd'hui, fiche d'exécution, Défis, Journal, Communauté, Amis, Profil,
+onboarding, tour guidé, Paramètres), les 39 sites de popups/toasts/alertes, les
+trophées et titres d'athlète, le vocabulaire de dates, le catalogue d'exercices
+(noms + catégories), le coach vocal (texte ET langue de synthèse), le verrou
+d'installation PWA. Sélecteur de langue dans Paramètres (`renderSettingsSection()`).
+Détection automatique (`localStorage` → `navigator.language` → anglais) au premier
+lancement. Voir les sections précédentes (batches 1 à 7) pour le détail technique de
+chaque étape ; les 2 exceptions volontaires ci-dessus (`formatDisplayName()`,
+`showFatalErrorScreen()`) sont les seuls textes intentionnellement non traduits.
 

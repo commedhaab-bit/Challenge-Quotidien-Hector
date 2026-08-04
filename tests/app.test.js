@@ -2215,7 +2215,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v31'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v32'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4309,12 +4309,18 @@ const cssText = __rawHtml + __cssSource;
   const localeBeforeBatch5 = currentLocale;
   currentUser = { uid: 'test-uid', displayName: 'Julie D.', email: 'j@test.com', photoURL: '' };
 
-  // registerActivityFeedEntryIfNeeded() doit ecrire exerciseSlug: null tant que
-  // CHALLENGE_LIBRARY n a pas encore de champ slug reel (batch 7) -- infrastructure
-  // avancee sans effet de bord tant que l ecriture n est pas branchee cote donnees.
+  // registerActivityFeedEntryIfNeeded() doit ecrire le slug reel du defi (desormais
+  // present sur CHALLENGE_LIBRARY depuis le batch 7b) ; un defi personnalise (jamais de
+  // slug par nature) doit lui toujours retomber sur null (c.slug ?? null).
   await registerActivityFeedEntryIfNeeded(pompes, 30);
   const feedWriteSnap = await db.collection('activityFeed').orderBy('at', 'desc').limit(1).get();
-  __assertEq(feedWriteSnap.docs[0].data().exerciseSlug, null, 'exerciseSlug doit etre ecrit a null tant qu aucun defi n a de slug reel (c.slug undefined -> ?? null)');
+  __assertEq(feedWriteSnap.docs[0].data().exerciseSlug, pompes.slug, 'exerciseSlug doit correspondre au slug reel du defi de bibliotheque (desormais peuple depuis le batch 7b)');
+  __assertOk(!!pompes.slug, 'pre-requis : pompes doit avoir un slug reel pour que l assertion ci-dessus soit significative');
+  __resetCommunityMocks(); // evite toute ambiguite de tri si les 2 ecritures partagent le meme Date.now() a la milliseconde pres
+  const customChallengeFixture = { id: 9002, cat: 'Test', name: 'Defi perso sans slug', target: 10, unit: 'reps', isCustom: true };
+  await registerActivityFeedEntryIfNeeded(customChallengeFixture, 10);
+  const customFeedWriteSnap = await db.collection('activityFeed').orderBy('at', 'desc').limit(1).get();
+  __assertEq(customFeedWriteSnap.docs[0].data().exerciseSlug, null, 'un defi personnalise (jamais de slug) doit toujours ecrire exerciseSlug: null');
   __resetCommunityMocks();
 
   currentLocale = 'en';
@@ -4345,14 +4351,15 @@ const cssText = __rawHtml + __cssSource;
   // ET une traduction existent (simule ici le batch 7 en ajoutant temporairement une
   // cle exercises.pompes.name a LOCALE_EN, pour prouver que le CHEMIN existe deja).
   myFriends = [{ uid: 'amie-uid', displayName: 'Amie B.', photoURL: '' }];
-  communityActivityFeed = [{ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Pompes', exerciseSlug: null, amount: 50, unit: 'reps', at: Date.now() }];
+  communityActivityFeed = [{ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Nom francais historique perime', exerciseSlug: null, amount: 50, unit: 'reps', at: Date.now() }];
   const activityFeedFallbackHtmlEn = renderActivityFeedSection();
-  __assertOk(activityFeedFallbackHtmlEn.includes('completed Pompes'), 'sans exerciseSlug, le fil d activite doit retomber sur le challengeName deja stocke (repli gracieux, aucune regression sur les documents existants)');
-  LOCALE_EN.exercises = { pompes: { name: 'Push-ups' } };
-  communityActivityFeed = [{ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Pompes', exerciseSlug: 'pompes', amount: 50, unit: 'reps', at: Date.now() }];
+  __assertOk(activityFeedFallbackHtmlEn.includes('completed Nom francais historique perime'), 'sans exerciseSlug, le fil d activite doit retomber sur le challengeName deja stocke (repli gracieux, ex: document ecrit avant le batch 5)');
+  // exerciseSlug reel + vraie traduction (peuplees depuis le batch 7b) : le nom traduit
+  // doit primer sur challengeName, qui n est ici volontairement PAS "Pompes" (pour
+  // prouver que c est bien exerciseSlug qui pilote l affichage, pas challengeName).
+  communityActivityFeed = [{ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Nom francais historique perime', exerciseSlug: pompes.slug, amount: 50, unit: 'reps', at: Date.now() }];
   const activityFeedSlugHtmlEn = renderActivityFeedSection();
   __assertOk(activityFeedSlugHtmlEn.includes('completed Push-ups'), 'avec exerciseSlug ET une traduction disponible, le nom traduit doit primer sur le challengeName francais stocke');
-  delete LOCALE_EN.exercises;
   communityActivityFeed = [];
   myFriends = [];
 
@@ -4463,6 +4470,214 @@ const cssText = __rawHtml + __cssSource;
   currentLocale = localeBeforeBatch6;
   guidedTourStep = guidedTourStepBefore;
   console.log('OK: i18n batch 6 - Profil + onboarding (profil/transition/tour guide) + pseudo');
+
+  // --- 165. i18n batch 7a/7 : vocabulaire de dates (formatDateLabel/formatRelative/
+  // DOW_LABELS/MONTH_ABBR/lettres du calendrier mensuel), delibrement laisse en
+  // francais dur dans tous les batches precedents jusqu ici. ---
+  const localeBeforeBatch7a = currentLocale;
+  currentLocale = 'en';
+  const dateLabelEn = formatDateLabel(new Date(2026, 6, 31)); // vendredi 31 juillet 2026
+  __assertOk(dateLabelEn.includes('Friday') && dateLabelEn.includes('Jul'), 'formatDateLabel() doit traduire le jour ET le mois en anglais');
+  __assertEq(formatRelative(Date.now() - 30000), 'just now', 'formatRelative() (<1min) doit etre traduit en anglais');
+  __assertEq(formatRelative(Date.now() - 5 * 60000), '5min ago', 'formatRelative() (minutes) doit etre traduit en anglais');
+  __assertEq(formatRelative(Date.now() - 3 * 3600000), '3h ago', 'formatRelative() (heures) doit etre traduit en anglais');
+  __assertEq(formatRelative(Date.now() - 2 * 86400000), '2d ago', 'formatRelative() (jours) doit etre traduit en anglais');
+
+  activeToday = new Set([pompes.id]);
+  currentChallengeId = null;
+  state = emptyDayState();
+  render(false);
+  const weekStripHtmlEn = document.getElementById('app').innerHTML;
+  __assertOk(/class="dow">[SMTWF]</.test(weekStripHtmlEn), 'la bande de semaine (accueil) doit utiliser les lettres de jour traduites (DOW_LABELS -> dates.dowShort)');
+
+  activeTab = 'history';
+  historyEntries = [];
+  historyLoading = false;
+  const historyHtmlEnFull = renderHistoryScreen();
+  __assertOk(historyHtmlEnFull.includes('class="cal-dow">M<') && historyHtmlEnFull.includes('class="cal-dow">S<'), 'l en-tete du calendrier mensuel (Journal) doit utiliser les lettres de jour traduites');
+  activeTab = 'today';
+
+  currentLocale = 'es';
+  const heatmapHtmlEs = renderHeatmap();
+  __assertOk(/heat-month-label">(Ene|Feb|Mar|Abr|May|Jun|Jul|Ago|Sep|Oct|Nov|Dic|)</.test(heatmapHtmlEs), 'les abreviations de mois de la heatmap doivent etre traduites en espagnol (ou vides si aucun 1er du mois dans la colonne)');
+
+  currentLocale = localeBeforeBatch7a;
+  console.log('OK: i18n batch 7a - vocabulaire de dates (formatDateLabel/formatRelative/DOW_LABELS/MONTH_ABBR)');
+
+  // --- 166. i18n batch 7b/7 : slug reel + traduction des noms/categories d exercices
+  // (exercise-data.js) -- challengeDisplayName()/translateCategoryName() et leur
+  // branchement sur les ecrans deja migres (carte de defi, bibliotheque, Boss Battle,
+  // Temple de la renommee, onboarding). ---
+  const localeBeforeBatch7b = currentLocale;
+  __assertOk(CHALLENGE_LIBRARY.every(c => typeof c.slug === 'string' && c.slug.length > 0), 'chaque entree de CHALLENGE_LIBRARY doit desormais avoir un slug reel non vide');
+  const uniqueSlugs = new Set(CHALLENGE_LIBRARY.map(c => c.slug));
+  __assertEq(uniqueSlugs.size, CHALLENGE_LIBRARY.length, 'les slugs doivent tous etre uniques (aucun doublon)');
+
+  currentLocale = 'en';
+  __assertEq(challengeDisplayName(pompes), 'Push-ups', 'challengeDisplayName() doit traduire un defi de bibliotheque via son slug');
+  __assertEq(pompes.name, 'Pompes', 'c.name lui-meme ne doit JAMAIS etre modifie par challengeDisplayName() (reste l identifiant canonique francais utilise par les CHALLENGE_LIBRARY.find(...) partout ailleurs)');
+  const customNoSlug = { id: 9003, name: 'Mon defi maison', isCustom: true };
+  __assertEq(challengeDisplayName(customNoSlug), 'Mon defi maison', 'un defi personnalise (sans slug) doit retomber sur son nom brut, jamais casse');
+  __assertEq(translateCategoryName('Haltères'), 'Dumbbells', 'translateCategoryName() doit traduire une categorie fixe connue');
+  __assertEq(translateCategoryName('Ma categorie perso'), 'Ma categorie perso', 'une categorie inconnue (defi personnalise) doit retomber sur le texte brut tel quel');
+
+  activeToday = new Set([pompes.id]);
+  state = emptyDayState();
+  currentChallengeId = null;
+  render(false);
+  const homeHtmlEn = document.getElementById('app').innerHTML;
+  __assertOk(homeHtmlEn.includes('Push-ups') && homeHtmlEn.includes('Upper body'), 'la carte de defi ET le libelle de categorie doivent etre traduits sur l accueil');
+
+  librarySearchQuery = 'push';
+  const libarySearchHtmlEn = renderLibraryScreen();
+  __assertOk(libarySearchHtmlEn.includes('Push-ups'), 'la recherche de l onglet Defis doit matcher sur le nom TRADUIT, pas seulement le nom francais original');
+  librarySearchQuery = '';
+
+  profileStep = 0; // le previewChallenge de l ecran de transition est toujours "Pompes"
+  onboardingTransitionPhase = 'done';
+  const transitionPreviewHtmlEn = renderOnboardingTransitionScreen();
+  __assertOk(transitionPreviewHtmlEn.includes('Push-ups') && transitionPreviewHtmlEn.includes('REPS'), 'la mini-carte de preview de l onboarding doit afficher le nom d exercice traduit + l unite traduite en majuscules');
+  onboardingTransitionPhase = null;
+
+  communityBossBattleTargetCache = { weekStart: mondayOfWeek(new Date()), targetChallengeId: pompes.id, targetAmount: 1000 };
+  communityBossBattleProgress = 100;
+  const bossBattleHtmlEnBatch7b = renderBossBattleSection();
+  __assertOk(bossBattleHtmlEnBatch7b.includes('Push-ups —'), 'la jauge collective doit afficher le nom d exercice traduit dans son libelle d objectif');
+  communityBossBattleTargetCache = null;
+
+  communityBossBattleArchive = [{ weekStart: '2026-08-03', targetChallengeId: pompes.id, finalProgress: 5000 }];
+  const hofHtmlEnBatch7b = renderHallOfFameSection();
+  __assertOk(hofHtmlEnBatch7b.includes('Push-ups'), 'le Temple de la renommee doit afficher le nom d exercice traduit');
+  communityBossBattleArchive = [];
+
+  activeToday = new Set();
+  state = emptyDayState();
+  currentChallengeId = null;
+  librarySearchQuery = '';
+  currentLocale = localeBeforeBatch7b;
+  render(false);
+  console.log('OK: i18n batch 7b - exercise-data.js (slug reel + traduction noms/categories)');
+
+  // --- 167. i18n batch 7c/7 : BADGE_DEFS (badgeLabel()) + ATHLETE_TITLE_TIERS
+  // (athleteTitle(), id+icon a la place de l ancien title fige en francais). ---
+  const localeBeforeBatch7c = currentLocale;
+  __assertOk(BADGE_DEFS.every(b => typeof b.id === 'string' && b.id.length > 0), 'chaque trophee doit avoir un id stable');
+  __assertOk(ATHLETE_TITLE_TIERS.every(tr => typeof tr.id === 'string' && tr.id.length > 0 && typeof tr.icon === 'string'), 'chaque palier de titre d athlete doit avoir un id stable + une icone separee');
+
+  currentLocale = 'en';
+  const streak3Badge = BADGE_DEFS.find(b => b.id === 'streak_3');
+  __assertEq(badgeLabel(streak3Badge), '3-day streak', 'badgeLabel() doit traduire via l id stable du trophee');
+  __assertEq(streak3Badge.label, '3 jours de suite', 'le champ label original doit rester le texte canonique francais, jamais modifie');
+
+  __assertEq(athleteTitle(1), 'Recruit 🥉', 'athleteTitle() doit traduire le titre ET garder l icone separee, pour le 1er palier');
+  __assertEq(athleteTitle(999), 'Immortal Legend 👑', 'athleteTitle() doit traduire le dernier palier (maxLevel Infinity)');
+
+  const savedXpTotalBatch7c = xpTotal;
+  xpTotal = 50;
+  const roadmapHtmlEnBatch7c = renderLevelRoadmapSheet();
+  __assertOk(roadmapHtmlEnBatch7c.includes('Recruit') && roadmapHtmlEnBatch7c.includes('Immortal Legend'), 'la fiche parcours de niveau doit afficher tous les titres traduits, pas seulement le titre courant');
+  xpTotal = savedXpTotalBatch7c;
+
+  badges.unlocked = [];
+  const trophiesGridHtmlEnBatch7c = renderTrophiesGrid();
+  __assertOk(trophiesGridHtmlEnBatch7c.includes('3-day streak'), 'la grille de trophees (Profil) doit afficher les libelles traduits');
+  const badgesStripHtmlEnBatch7c = renderBadgesStrip();
+  __assertOk(badgesStripHtmlEnBatch7c.includes('day streak') || badgesStripHtmlEnBatch7c.includes('challenges completed'), 'la bande "prochains trophees" (accueil) doit afficher des libelles traduits');
+
+  currentLocale = localeBeforeBatch7c;
+  console.log('OK: i18n batch 7c - BADGE_DEFS (badgeLabel) + ATHLETE_TITLE_TIERS (athleteTitle)');
+
+  // --- 168. i18n batch 7d/7 : les 39 sites alert()/confirmModal()/enqueuePopup()/
+  // showToast() du fichier, + formatTargetLabel() (exercise-data.js) qui appelle
+  // desormais t() lui aussi (SEC/reps traduits partout ou il est utilise). ---
+  const localeBeforeBatch7d = currentLocale;
+
+  __assertEq(formatTargetLabel(100, 'reps'), '100 reps', 'formatTargetLabel() (reps) doit rester identique en francais (repli/langue par defaut)');
+  currentLocale = 'es';
+  __assertOk(formatTargetLabel(90, 'sec').includes('SEG'), 'formatTargetLabel() (sec) doit traduire l unite meme depuis exercise-data.js (SEG en espagnol)');
+
+  currentLocale = 'en';
+  let capturedAlert = null;
+  const realAlert = alert;
+  alert = (msg) => { capturedAlert = msg; };
+  const profileStepBeforeBatch7d = profileStep;
+  const profileDraftBeforeBatch7d = { ...profileDraft };
+  profileStep = 2; // etape sexe : declenche l alerte de validation si rien de selectionne
+  profileDraft.sex = null;
+  profileNext();
+  __assertEq(capturedAlert, 'Please select an option.', 'les alertes de validation de l onboarding profil doivent etre traduites (alert() capture directement)');
+  alert = realAlert;
+  profileStep = profileStepBeforeBatch7d;
+  Object.assign(profileDraft, profileDraftBeforeBatch7d);
+
+  const confirmModalPromise = confirmModal({ title: 'Test' }); // sans confirmLabel/cancelLabel explicites : verifie les VALEURS PAR DEFAUT traduites
+  __assertOk(currentConfirmModalHtml.includes('>Confirm<') && currentConfirmModalHtml.includes('>Cancel<'), 'confirmModal() doit utiliser Confirm/Cancel comme libelles par defaut traduits (pas Confirmer/Annuler fige)');
+  currentConfirmModalEl.querySelector('#confirmModalCancelBtn').onclick();
+  await confirmModalPromise;
+
+  const savedStreakCountBatch7d = streakCount;
+  const savedHasShieldBatch7d = hasShield;
+  streakCount = 1;
+  hasShield = true;
+  showStreakInfoModal();
+  __assertOk(popupQueue.length > 0, 'showStreakInfoModal() doit enfiler une popup');
+  const streakPopup = popupQueue[popupQueue.length - 1];
+  __assertEq(streakPopup.bigLabel, 'Day', 'le libelle de jour (singulier, streakCount=1) doit etre traduit via tn()');
+  __assertOk(streakPopup.subtitle.includes("keeping your streak"), 'le sous-titre "serie active" doit etre traduit');
+  __assertOk(streakPopup.badgeLine.includes('Available'), 'le statut du bouclier doit etre traduit');
+  popupQueue.length = 0;
+  streakCount = savedStreakCountBatch7d;
+  hasShield = savedHasShieldBatch7d;
+
+  const savedOnlineBatch7d = navigator.onLine;
+  navigator.onLine = true;
+  document.getElementById('toast').innerHTML = '';
+  reportSaveError('test', new Error('x'));
+  __assertOk(document.getElementById('toast').innerHTML.includes('Save failed'), 'le toast d erreur de sauvegarde doit etre traduit en anglais');
+  document.getElementById('toast').innerHTML = '';
+  navigator.onLine = savedOnlineBatch7d;
+
+  currentLocale = localeBeforeBatch7d;
+  console.log('OK: i18n batch 7d - popups/toasts/alertes (39 sites) + formatTargetLabel()');
+
+  // --- 169. i18n batch 7e/7 : audit final -- bandeau hors ligne, verrou d installation
+  // PWA, coach vocal (texte ET langue de la synthese vocale), repli client "Athlete"
+  // (fetchPublicProfile absent) : 4 sites reperes par une relecture systematique du
+  // fichier APRES les batches 7a-7d, tous manques une premiere fois. ---
+  const localeBeforeBatch7e = currentLocale;
+
+  currentLocale = 'en';
+  const savedPendingWriteCountBatch7e = pendingWriteCount;
+  const savedOnlineBatch7e = navigator.onLine;
+  navigator.onLine = false;
+  pendingWriteCount = 3;
+  updateOfflineBanner();
+  __assertOk(document.getElementById('offlineBanner').textContent.includes('3 changes pending sync'), 'le bandeau hors ligne (avec ecritures en attente) doit etre traduit en anglais, tn() inclus');
+  pendingWriteCount = 0;
+  updateOfflineBanner();
+  __assertOk(document.getElementById('offlineBanner').textContent.includes('will sync when you reconnect'), 'le bandeau hors ligne (etat neutre) doit etre traduit en anglais');
+  pendingWriteCount = savedPendingWriteCountBatch7e;
+  navigator.onLine = savedOnlineBatch7e;
+  updateOfflineBanner();
+
+  const pwaGateHtmlEn = buildPwaInstallGateHtml('ios');
+  __assertOk(pwaGateHtmlEn.includes('Welcome to Défi du Jour') && pwaGateHtmlEn.includes('Share') && pwaGateHtmlEn.includes('Add to Home Screen'), 'le verrou d installation PWA (iOS) doit etre traduit en anglais');
+  const pwaGateAndroidHtmlEn = buildPwaInstallGateHtml('android');
+  __assertOk(pwaGateAndroidHtmlEn.includes('Install the app in 1 tap'), 'le verrou d installation PWA (Android) doit etre traduit en anglais');
+
+  const savedVoiceCoachBatch7e = voiceCoachEnabled;
+  voiceCoachEnabled = true;
+  const savedSpeakFn = window.speechSynthesis.speak;
+  let lastSpokenLang = null, lastSpokenText = null;
+  window.speechSynthesis.speak = (utt) => { lastSpokenLang = utt.lang; lastSpokenText = utt.text; };
+  speak('test');
+  __assertEq(lastSpokenLang, 'en-US', "l attribut lang de l utterance doit suivre la langue active (plus jamais fr-FR fige), essentiel pour une prononciation correcte");
+  window.speechSynthesis.speak = savedSpeakFn;
+  voiceCoachEnabled = savedVoiceCoachBatch7e;
+  void lastSpokenText;
+
+  currentLocale = localeBeforeBatch7e;
+  console.log('OK: i18n batch 7e - audit final (bandeau hors ligne, verrou PWA, langue coach vocal)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });
