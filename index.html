@@ -384,8 +384,10 @@ async function loadAppData() {
   try {
     doc = await fsMod.getDoc(appDataDocRef());
   } catch (e) {
+    console.error('[DEBUG TEMPORAIRE] loadAppData() : lecture appDataDocRef() a échoué', e, 'uid=', currentUser && currentUser.uid);
     doc = null;
   }
+  console.log('[DEBUG TEMPORAIRE] loadAppData() : doc =', doc, 'exists=', doc && doc.exists && doc.exists(), 'uid=', currentUser && currentUser.uid);
   // doc.exists est une MÉTHODE dans le SDK modulaire (contrairement à la propriété du
   // SDK compat) — piège de migration classique, à vérifier partout ailleurs aussi.
   if (doc && doc.exists()) {
@@ -518,6 +520,7 @@ async function deleteMyAccount() {
 let lastAuthUid = null;
 
 auth.onAuthStateChanged(user => {
+  console.log('[DEBUG TEMPORAIRE] onAuthStateChanged : user=', user && { uid: user.uid, displayName: user.displayName }, 'lastAuthUid=', lastAuthUid, 'mdb=', !!mdb, 'fsMod=', !!fsMod);
   if (user) {
     currentUser = user;
     if (lastAuthUid === user.uid) {
@@ -1077,8 +1080,10 @@ async function loadProfile() {
   try {
     const res = await dbGet('profile');
     userProfile = JSON.parse(res.value);
+    console.log('[DEBUG TEMPORAIRE] loadProfile() : succès, userProfile=', userProfile);
     return true;
   } catch (e) {
+    console.error('[DEBUG TEMPORAIRE] loadProfile() : échec', e, 'uid=', currentUser && currentUser.uid);
     userProfile = null;
     return false;
   }
