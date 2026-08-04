@@ -750,6 +750,9 @@ const cssText = __rawHtml + __cssSource;
   profileDraft = { age: 28, sex: 'femme', heightCm: 165, weightKg: 60, level: 'debutant' };
   onboardingTransitionPhase = null;
   guidedTourStep = null;
+  // Pseudo deja choisi (bypass volontaire du nouveau verrou obligatoire, teste separement
+  // plus loin) : ce test-ci porte specifiquement sur la transition loading -> confirm.
+  username = 'testuser24';
   const finishPromise = finishProfileOnboarding();
   // Marge volontairement large (> le defer de 140ms d applyContent(animate=true),
   // cf. CLAUDE.md) : un test precedent peut avoir laisse un render(true) EN ATTENTE
@@ -770,6 +773,160 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(confirmHtml.includes('preview-header-tag') && confirmHtml.includes("Exemple d'objectif") && confirmHtml.includes('exercise-name') && confirmHtml.includes('exercise-sub'), 'une etiquette EXEMPLE et un sous-libelle doivent rendre explicite que Pompes n est qu un exemple parmi d autres defis calcules');
   __assertOk(confirmHtml.includes('finishOnboardingTransition()'), 'un bouton doit permettre de lancer la suite');
   console.log('OK: écran de transition onboarding (loading -> confirm)');
+
+  // --- 24bis. Pseudo public obligatoire : sanitisation, verrous (nouveau compte /
+  // compte existant), verification de disponibilite en direct, reservation/liberation,
+  // et les 3 routages de finishUsernameSetup() selon le contexte d origine. ---
+  // Ce test appelle le VRAI startApp() (pour tester le verrou "compte existant" tel
+  // qu il se declenche reellement) -- or startApp() appelle loadAppData(), qui ECRASE
+  // en memoire tous les globals ci-dessous avec l etat le plus recemment PERSISTE dans
+  // le document consolide simule (__appDataStore, partage par TOUT le fichier de test),
+  // potentiellement perime par rapport aux mutations directes faites par des tests
+  // precedents qui n appellent pas systematiquement saveX() a chaque etape. Sans ce
+  // snapshot/restore, ce test contaminerait silencieusement l etat des tests suivants
+  // (deja observe : un test XP plus loin recevait un bonus de trophee inattendu).
+  const snap24bis = {
+    userProfile: JSON.parse(JSON.stringify(userProfile)),
+    customChallenges: JSON.parse(JSON.stringify(customChallenges)),
+    manualTargetOverrides: JSON.parse(JSON.stringify(manualTargetOverrides)),
+    streakCount, lastCompletedDate, hasShield, lastShieldResetWeek,
+    xpTotal, xpWeekly, xpWeekStart, leaderboardOptOut, voiceCoachEnabled, hasSeenTour,
+    lastCompleted: JSON.parse(JSON.stringify(lastCompleted)),
+    stats: JSON.parse(JSON.stringify(stats)),
+    badges: JSON.parse(JSON.stringify(badges)),
+    dailyActivity: JSON.parse(JSON.stringify(dailyActivity)),
+    weights: JSON.parse(JSON.stringify(weights)),
+    username,
+    appData: JSON.parse(JSON.stringify(__appDataStore.data)),
+    appDataExists: __appDataStore.exists,
+  };
+  __resetCommunityMocks();
+
+  // Sanitisation a la frappe : minuscules, [a-z0-9_] uniquement, tronque a 20.
+  updateUsernameDraft('H3llo_World!! 42');
+  __assertEq(usernameDraft, 'h3llo_world42', 'la saisie doit etre nettoyee en direct (minuscules, [a-z0-9_] uniquement)');
+  updateUsernameDraft('a'.repeat(30));
+  __assertEq(usernameDraft.length, 20, 'le pseudo doit etre tronque a 20 caracteres');
+
+  // Verrou "nouveau compte" : finishProfileOnboarding() ne doit PAS enchainer sur
+  // l ecran de transition si aucun pseudo n est encore choisi.
+  username = null;
+  onboardingTransitionPhase = null;
+  usernameSetupMode = null;
+  profileDraft = { age: 25, sex: 'homme', heightCm: 178, weightKg: 75, level: 'intermediaire' };
+  await finishProfileOnboarding();
+  __assertEq(usernameSetupMode, 'onboarding', 'sans pseudo, un nouveau compte doit etre bloque sur l ecran de choix de pseudo');
+  __assertEq(onboardingTransitionPhase, null, 'l ecran de transition ne doit PAS demarrer tant que le pseudo n est pas choisi');
+  // render(true) differe le swap DOM de 140ms (cf. applyContent()/CLAUDE.md) : marge large
+  // et deja etablie ailleurs dans ce fichier pour laisser ce swap se produire avant lecture.
+  await new Promise(r => setTimeout(r, 300));
+  const gateHtmlNew = document.getElementById('app').innerHTML;
+  __assertOk(gateHtmlNew.includes('Choisis ton pseudo') && !gateHtmlNew.includes('nav-back-btn'), 'le verrou "nouveau compte" doit etre infranchissable (aucun bouton retour)');
+
+  // Verrou "compte existant" (cree avant cette fonctionnalite) : startApp() doit
+  // bloquer de la meme facon, sans jamais appeler proceedAfterProfile().
+  usernameSetupMode = null;
+  await dbSet('activeToday:' + dateKey(new Date()), JSON.stringify([]));
+  await startApp();
+  __assertEq(usernameSetupMode, 'gate', 'un compte deja onboarde mais sans pseudo doit etre bloque au demarrage (verrou "gate")');
+  const gateHtmlExisting = document.getElementById('app').innerHTML;
+  __assertOk(gateHtmlExisting.includes('Choisis ton pseudo') && !gateHtmlExisting.includes('nav-back-btn'), 'le verrou "gate" doit lui aussi etre infranchissable');
+
+  // Verification de disponibilite en direct (debounce reel de 400ms).
+  await usernamesCollRef().doc('alice').set({ uid: 'uid-alice' });
+  updateUsernameDraft('alice');
+  await new Promise(r => setTimeout(r, 500));
+  __assertEq(usernameAvailability, 'taken', 'un pseudo deja reserve doit etre signale "taken" apres verification');
+  updateUsernameDraft('unpseudolibre');
+  await new Promise(r => setTimeout(r, 500));
+  __assertEq(usernameAvailability, 'available', 'un pseudo libre doit etre signale "available" apres verification');
+
+  // finishUsernameSetup() ne doit RIEN faire tant que la disponibilite n est pas confirmee.
+  usernameAvailability = 'checking';
+  await finishUsernameSetup();
+  __assertOk(usernameSetupMode !== null, 'finishUsernameSetup() ne doit rien valider tant que la disponibilite n est pas "available"');
+
+  // Contexte 'gate' : doit reprendre exactement la suite de startApp() (proceedAfterProfile).
+  usernameDraft = 'gateduser';
+  usernameAvailability = 'available';
+  await finishUsernameSetup();
+  __assertEq(username, 'gateduser', 'le pseudo doit etre persiste apres validation');
+  __assertEq(usernameSetupMode, null, 'le verrou doit se refermer une fois le pseudo valide');
+  const gateClaimDoc = await usernamesCollRef().doc('gateduser').get();
+  __assertOk(gateClaimDoc.exists && gateClaimDoc.data().uid === currentUser.uid, 'le pseudo doit etre reserve dans usernames/{pseudo}');
+  const afterGateHtml = document.getElementById('app').innerHTML;
+  __assertOk(!afterGateHtml.includes('Choisis ton pseudo'), 'contexte "gate" : proceedAfterProfile() doit avoir repris la main (retour a l app normale)');
+
+  // Contexte 'onboarding' : doit reprendre exactement la suite de
+  // finishProfileOnboarding() (beginOnboardingTransition -> loading puis confirm).
+  username = null;
+  usernameSetupMode = 'onboarding';
+  usernameDraft = 'onboardeduser';
+  usernameAvailability = 'available';
+  onboardingTransitionPhase = null;
+  const finishUsernamePromise = finishUsernameSetup();
+  await new Promise(r => setTimeout(r, 300));
+  __assertEq(onboardingTransitionPhase, 'loading', 'contexte "onboarding" : doit enchainer sur l ecran de transition (loading)');
+  await finishUsernamePromise;
+  __assertEq(onboardingTransitionPhase, 'confirm', 'contexte "onboarding" : doit terminer sur l ecran de confirmation, comme un choix de pseudo deja fait');
+  __assertEq(username, 'onboardeduser', 'le pseudo du contexte onboarding doit etre persiste');
+
+  // Contexte 'rename' (Parametres) : cree le nouveau pseudo, LIBERE l ancien, ferme
+  // simplement l ecran (pas de chainage vers l onboarding/proceedAfterProfile).
+  usernameSetupMode = 'rename';
+  usernameDraft = 'renameduser';
+  usernameAvailability = 'available';
+  await finishUsernameSetup();
+  __assertEq(username, 'renameduser', 'le renommage doit remplacer le pseudo courant');
+  const oldClaimAfterRename = await usernamesCollRef().doc('onboardeduser').get();
+  __assertOk(!oldClaimAfterRename.exists, 'l ancien pseudo doit etre libere (supprime de usernames/) apres un renommage');
+  const newClaimAfterRename = await usernamesCollRef().doc('renameduser').get();
+  __assertOk(newClaimAfterRename.exists, 'le nouveau pseudo doit etre reserve apres un renommage');
+
+  // goBackOneLevel() : seul le mode 'rename' est dismissible.
+  usernameSetupMode = 'onboarding';
+  goBackOneLevel();
+  __assertEq(usernameSetupMode, 'onboarding', 'le verrou "onboarding" ne doit jamais etre dismissible via le bouton retour');
+  usernameSetupMode = 'gate';
+  goBackOneLevel();
+  __assertEq(usernameSetupMode, 'gate', 'le verrou "gate" ne doit jamais etre dismissible via le bouton retour');
+  usernameSetupMode = 'rename';
+  goBackOneLevel();
+  __assertEq(usernameSetupMode, null, 'le mode "rename" (depuis Parametres), lui, doit etre dismissible');
+
+  // Ligne Parametres : affiche le pseudo courant + bouton de modification.
+  username = 'monpseudo';
+  const settingsHtmlWithUsername = renderSettingsSection();
+  __assertOk(settingsHtmlWithUsername.includes('@monpseudo') && settingsHtmlWithUsername.includes('openUsernameRename()'), 'Parametres doit afficher le pseudo courant avec un moyen de le modifier');
+
+  usernameSetupMode = null;
+  usernameDraft = '';
+  usernameAvailability = null;
+  __resetCommunityMocks();
+  // Restauration complete (voir commentaire de snapshot ci-dessus).
+  userProfile = snap24bis.userProfile;
+  customChallenges = snap24bis.customChallenges;
+  manualTargetOverrides = snap24bis.manualTargetOverrides;
+  streakCount = snap24bis.streakCount;
+  lastCompletedDate = snap24bis.lastCompletedDate;
+  hasShield = snap24bis.hasShield;
+  lastShieldResetWeek = snap24bis.lastShieldResetWeek;
+  xpTotal = snap24bis.xpTotal;
+  xpWeekly = snap24bis.xpWeekly;
+  xpWeekStart = snap24bis.xpWeekStart;
+  leaderboardOptOut = snap24bis.leaderboardOptOut;
+  voiceCoachEnabled = snap24bis.voiceCoachEnabled;
+  hasSeenTour = snap24bis.hasSeenTour;
+  lastCompleted = snap24bis.lastCompleted;
+  stats = snap24bis.stats;
+  badges = snap24bis.badges;
+  dailyActivity = snap24bis.dailyActivity;
+  weights = snap24bis.weights;
+  username = snap24bis.username;
+  rebuildChallenges();
+  __appDataStore.data = snap24bis.appData;
+  __appDataStore.exists = snap24bis.appDataExists;
+  console.log('OK: pseudo public obligatoire (sanitisation, verrous nouveau/compte-existant, disponibilite en direct, renommage, dismissible seulement en mode rename)');
 
   // --- 25. Tour guidé : carte 0 = bienvenue neutre (meme onglet que la carte 1),
   // puis visite des 4 onglets, se marque comme vu ---
@@ -1966,7 +2123,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v21'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v22'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');

@@ -1876,6 +1876,37 @@
     border-radius: 10px;
   }
   .form-field input:focus, .form-field select:focus { outline: 1px solid var(--accent); }
+
+  /* Écran de choix/renommage de pseudo (renderUsernameSetupScreen()) */
+  .username-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0 14px;
+  }
+  .username-input-row:focus-within { outline: 1px solid var(--accent); }
+  .username-input-row .username-at { color: var(--chalk-dim); font-size: 15px; font-weight: 700; }
+  .username-input-row input {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--chalk);
+    font-size: 15px;
+    padding: 12px 0;
+  }
+  .username-input-row input:focus { outline: none; }
+  .username-availability {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--chalk-dim);
+    margin-top: 8px;
+  }
+  .username-availability.available { color: var(--good); }
+  .username-availability.taken { color: var(--danger); }
+
   .form-row-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;

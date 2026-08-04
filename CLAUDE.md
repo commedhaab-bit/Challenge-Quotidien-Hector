@@ -761,3 +761,67 @@ reste l'unique endroit qui résout, quel que soit le mode. Piège à ne pas réi
 ne JAMAIS pré-résoudre un défi avant de le passer à `renderChallengeCard()`/
 `resolveChallenge()`, qui ne sont pas idempotents sur un objectif déjà résolu.
 
+## Pseudo public obligatoire (chantier amis/fil d'activité/kudos, batch 2/6)
+
+Premier étage d'un chantier plus large (voir plan) : pseudo public choisi à la création
+du compte (jamais optionnel), permettant une recherche exacte sans jamais exposer le
+vrai nom (contrairement à `formatDisplayName()` qui l'anonymise). Modèle :
+`usernames/{pseudoEnMinuscules}` = `{ uid }` — le pseudo est TOUJOURS stocké/affiché en
+minuscules (pas de casse préservée séparément, volontairement simple), sanitizé À LA
+FRAPPE (`sanitizeUsernameInput()` : `[a-z0-9_]` uniquement, 3-20 caractères, aucun
+caractère invalide ne peut même être tapé) plutôt que validé après coup.
+
+**`usernameSetupMode` (`null | 'onboarding' | 'gate' | 'rename'`)** distingue 3 contextes
+d'un seul et même écran (`renderUsernameSetupScreen()`) :
+- `'onboarding'` : nouveau compte, juste après le questionnaire de profil
+  (`finishProfileOnboarding()` route ici si `!username` au lieu d'enchaîner directement
+  sur `beginOnboardingTransition()` — fonction extraite de l'ancien corps de
+  `finishProfileOnboarding()` pour être réutilisable depuis `finishUsernameSetup()`).
+- `'gate'` : compte déjà onboardé mais créé avant cette fonctionnalité — `startApp()`
+  bloque (verrou plein écran) juste après le check `!userProfile` existant, avant
+  `proceedAfterProfile()`.
+- `'rename'` : déclenché depuis Paramètres (`openUsernameRename()`), seul contexte
+  dismissible via le bouton retour (`goBackOneLevel()` ne referme QUE ce mode —
+  `'onboarding'`/`'gate'` sont volontairement infranchissables, même philosophie que
+  `#pwaInstallGate`).
+
+Les 3 contextes convergent dans `finishUsernameSetup()` : réserve le nouveau pseudo
+(`usernames/{lower}.set(...)`, PAS de merge — un échec ici, ex. pris entre-temps par
+quelqu'un d'autre côté vraies règles Firestore, retombe proprement sur l'état "taken"),
+libère l'ancien si renommage (`previousUsername !== newUsername`), persiste
+`username` via `saveAppField()`, puis route selon le contexte d'origine :
+`beginOnboardingTransition()` / `proceedAfterProfile()` / simple fermeture d'écran.
+
+**Piège évité dans le branchement `'gate'`** : la première version appelait `render(true)`
+juste avant `await proceedAfterProfile()`. Comme `applyContent(animate=true)` DIFFÈRE le
+swap DOM réel de 140ms (`setTimeout`, cf. avertissement plus haut sur les tests
+intermittents), ce `render(true)` programmait un repaint périmé qui s'exécutait ~140ms
+*après* le vrai render (immédiat, `animate` par défaut) déclenché par
+`continueStartApp()` à la fin de `proceedAfterProfile()` — écrasant l'app fraîchement
+chargée avec le contenu du verrou déjà fermé. Corrigé en supprimant ce `render(true)`
+intermédiaire, inutile (rien à afficher entre la fermeture du verrou et le prochain
+render réel).
+
+**Vérification en direct de la disponibilité** (`updateUsernameDraft()` → debounce
+400ms → `checkUsernameAvailability()`) : `usernameCheckSeq` (incrémenté à chaque
+frappe) évite qu'une vérification périmée (réseau plus lent, déclenchée par une frappe
+précédente) n'écrase le résultat d'une vérification plus récente. Le champ
+`#usernameSetupInput` réutilise EXACTEMENT le filet de restauration du focus/curseur du
+champ de recherche Défis (`render()` capture `document.activeElement`/`selectionStart`
+avant `applyContent()`, les restaure dans le callback `afterRender`) — sans ça,
+`render()` appelé à chaque frappe (pour la vérif en direct) ne laisserait taper qu'un
+seul caractère à la fois.
+
+**Leçon de test importante** : un test qui appelle le VRAI `startApp()` (pour tester le
+verrou `'gate'` tel qu'il se déclenche réellement) déclenche `loadAppData()`, qui
+ÉCRASE en mémoire une bonne quinzaine de globals (`badges`, `stats`, `xpTotal`,
+`customChallenges`, `weights`, etc.) avec l'état le plus récemment PERSISTÉ dans
+`__appDataStore` (partagé par TOUT le fichier de test) — potentiellement périmé par
+rapport aux mutations directes faites par des tests précédents qui n'appellent pas
+systématiquement `saveX()` à chaque étape. Observé concrètement : un test XP bien plus
+loin dans le fichier recevait un bonus de trophée inattendu (+100 XP), causé par cette
+contamination silencieuse. Tout futur test qui appelle `startApp()`/`loadAppData()` au
+milieu du fichier DOIT snapshotter (clone JSON) puis restaurer l'intégralité de ces
+globals + `__appDataStore.data`/`.exists` — voir le test "pseudo public obligatoire"
+pour le patron exact à copier.
+

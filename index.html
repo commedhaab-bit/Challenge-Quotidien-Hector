@@ -235,6 +235,7 @@ async function loadAppData() {
   if (doc && doc.exists) {
     const d = doc.data();
     userProfile = d.profile ?? null;
+    username = d.username ?? null;
     customChallenges = (d.customChallenges ?? []).map(c => ({ ...c, isCustom: true }));
     manualTargetOverrides = d.manualTargetOverrides ?? {};
     const sd = d.streakData ?? {};
@@ -381,6 +382,9 @@ auth.onAuthStateChanged(user => {
     currentChallengeId = null;
     editingChallengeId = null;
     libraryOpenCats = new Set();
+    usernameSetupMode = null;
+    usernameDraft = '';
+    usernameAvailability = null;
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
@@ -733,6 +737,23 @@ let showProfileOnboarding = false;
 let profileStep = 0;
 let profileDraft = { age: null, sex: null, heightCm: null, weightKg: null, level: null };
 
+// ==== PSEUDO PUBLIC (obligatoire) ====
+// Identifiant public choisi à la création du compte (jamais optionnel), qui permet à
+// un ami de vous retrouver par recherche exacte SANS jamais exposer le vrai nom
+// (contrairement à formatDisplayName() qui anonymise le nom réel, le pseudo, lui, est
+// volontairement choisi pour être partagé). usernameSetupMode distingue 3 contextes
+// d'affichage du même écran renderUsernameSetupScreen() : 'onboarding' (nouveau compte,
+// juste après le questionnaire de profil), 'gate' (compte existant créé avant cette
+// fonctionnalité, verrou plein écran comme le repli PWA — voir startApp()), 'rename'
+// (déclenché depuis Paramètres, dismissible via le bouton retour, contrairement aux 2
+// premiers qui sont volontairement infranchissables).
+let username = null;
+let usernameSetupMode = null; // null | 'onboarding' | 'gate' | 'rename'
+let usernameDraft = '';
+let usernameAvailability = null; // null | 'checking' | 'available' | 'taken'
+let usernameCheckSeq = 0;
+let usernameCheckTimer = null;
+
 // Écran de transition juste après l'onboarding profil : null (aucun),
 // 'loading' (calcul en cours) ou 'confirm' (message + bouton de lancement).
 let onboardingTransitionPhase = null;
@@ -1070,6 +1091,23 @@ async function finishProfileOnboarding() {
   userProfile = { ...profileDraft };
   await saveProfile();
   showProfileOnboarding = false;
+  // Pseudo obligatoire : un nouveau compte doit le choisir avant de continuer
+  // (renderUsernameSetupScreen() enchaînera lui-même sur beginOnboardingTransition()
+  // une fois le pseudo validé, voir finishUsernameSetup()).
+  if (!username) {
+    usernameSetupMode = 'onboarding';
+    render(true);
+    return;
+  }
+  await beginOnboardingTransition();
+}
+
+/**
+ * Suite commune de finishProfileOnboarding() une fois le profil ET le pseudo prêts —
+ * factorisée pour être réutilisable depuis finishUsernameSetup() (mode 'onboarding'),
+ * qui reprend exactement ici après le choix du pseudo.
+ */
+async function beginOnboardingTransition() {
   onboardingTransitionPhase = 'loading';
   render(true);
   // Délai minimum pour que l'écran de chargement ne clignote pas si les
@@ -1078,6 +1116,151 @@ async function finishProfileOnboarding() {
   await Promise.all([proceedAfterProfile(), minDelay]);
   onboardingTransitionPhase = 'confirm';
   render(true);
+}
+
+// ==== PSEUDO PUBLIC : recherche/réservation ====
+function usernamesCollRef() {
+  return db.collection('usernames');
+}
+
+// Autorise uniquement [a-z0-9_], 3-20 caractères : évite accents/emoji/homoglyphes
+// (garde une recherche exacte triviale et sans ambiguïté visuelle), sanitize à la
+// frappe plutôt que d'afficher une erreur de format (aucun caractère invalide ne peut
+// même être tapé).
+function sanitizeUsernameInput(raw) {
+  return String(raw ?? '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20);
+}
+
+/**
+ * Appelée à chaque frappe (oninput) : sanitize + relance une vérification de
+ * disponibilité debattue (400ms). `usernameCheckSeq` évite qu'une vérification
+ * périmée (déclenchée par une frappe précédente, réseau plus lent) n'écrase le
+ * résultat d'une vérification plus récente.
+ */
+function updateUsernameDraft(value) {
+  usernameDraft = sanitizeUsernameInput(value);
+  usernameAvailability = null;
+  render();
+  if (usernameCheckTimer) clearTimeout(usernameCheckTimer);
+  const mySeq = ++usernameCheckSeq;
+  if (usernameDraft.length < 3) return; // trop court, pas la peine d'interroger Firestore
+  usernameCheckTimer = setTimeout(() => checkUsernameAvailability(usernameDraft, mySeq), 400);
+}
+
+async function checkUsernameAvailability(candidate, seq) {
+  usernameAvailability = 'checking';
+  render();
+  try {
+    const doc = await usernamesCollRef().doc(candidate).get();
+    if (seq !== usernameCheckSeq) return; // une frappe plus recente a deja lance une autre verif
+    usernameAvailability = doc.exists ? 'taken' : 'available';
+  } catch (e) {
+    if (seq !== usernameCheckSeq) return;
+    usernameAvailability = null;
+    reportSaveError('username availability check failed', e);
+  }
+  render();
+}
+
+// Ouvre l'écran de renommage depuis Paramètres — seul contexte dismissible (voir
+// goBackOneLevel()).
+function openUsernameRename() {
+  usernameSetupMode = 'rename';
+  usernameDraft = '';
+  usernameAvailability = null;
+  pushNavState();
+  render(true);
+}
+
+/**
+ * Valide le pseudo choisi (3 contextes possibles, voir usernameSetupMode) : réserve
+ * le nouveau pseudo (`usernames/{lower}`), libère l'ancien s'il y en avait un
+ * (renommage), persiste `username` sur le profil, puis enchaîne selon le contexte
+ * d'origine :
+ * - 'onboarding' (nouveau compte) -> reprend exactement la suite de
+ *   finishProfileOnboarding() via beginOnboardingTransition().
+ * - 'gate' (compte existant sans pseudo) -> reprend exactement la suite de
+ *   startApp() via proceedAfterProfile().
+ * - 'rename' (Paramètres) -> ferme simplement l'écran, retour à Paramètres.
+ */
+async function finishUsernameSetup() {
+  if (usernameAvailability !== 'available') return;
+  const newUsername = usernameDraft;
+  const previousUsername = username;
+  const mode = usernameSetupMode;
+  try {
+    await usernamesCollRef().doc(newUsername).set({ uid: currentUser.uid });
+  } catch (e) {
+    // Quelqu'un d'autre a pu prendre ce pseudo entre la vérification et la validation
+    // (fenêtre de course assumée, comme ailleurs dans ce projet) : les règles Firestore
+    // rejettent alors l'écriture, on retombe proprement sur l'état "déjà pris".
+    reportSaveError('claim username failed', e);
+    usernameAvailability = 'taken';
+    render();
+    return;
+  }
+  if (previousUsername && previousUsername !== newUsername) {
+    try { await usernamesCollRef().doc(previousUsername).delete(); }
+    catch (e) { reportSaveError('release old username failed', e); }
+  }
+  username = newUsername;
+  await saveAppField('username', username);
+  usernameSetupMode = null;
+  usernameDraft = '';
+  usernameAvailability = null;
+  if (mode === 'onboarding') {
+    await beginOnboardingTransition();
+  } else if (mode === 'gate') {
+    // Pas de render(true) intermédiaire ici : proceedAfterProfile() -> continueStartApp()
+    // se termine déjà par son propre render() (immédiat) une fois les données chargées —
+    // un render(true) ici programmerait un repaint DIFFÉRÉ (140ms, cf. applyContent())
+    // qui écraserait ensuite ce render immédiat avec le contenu périmé du verrou.
+    await proceedAfterProfile();
+  } else {
+    render(true); // 'rename' : retour à Paramètres, rien d'autre ne se produit après
+  }
+}
+
+function renderUsernameSetupScreen() {
+  const isRename = usernameSetupMode === 'rename';
+  const title = isRename ? 'Modifier mon pseudo' : 'Choisis ton pseudo ⚡';
+  const subtitle = isRename
+    ? "Ton nouveau pseudo remplace l'ancien immédiatement — il redevient disponible pour quelqu'un d'autre."
+    : "Cet identifiant public permet à tes amis de te retrouver, sans jamais exposer ton vrai nom. Tu pourras le changer plus tard dans Paramètres.";
+  const backBtn = isRename
+    ? `<button class="nav-back-btn floating" onclick="history.back()" aria-label="Retour">‹</button>`
+    : '';
+  let statusHtml = '';
+  if (usernameDraft.length > 0 && usernameDraft.length < 3) {
+    const remaining = 3 - usernameDraft.length;
+    statusHtml = `<div class="username-availability">Encore ${remaining} caractère${remaining > 1 ? 's' : ''}...</div>`;
+  } else if (usernameAvailability === 'checking') {
+    statusHtml = `<div class="username-availability">Vérification...</div>`;
+  } else if (usernameAvailability === 'available') {
+    statusHtml = `<div class="username-availability available">✅ Disponible</div>`;
+  } else if (usernameAvailability === 'taken') {
+    statusHtml = `<div class="username-availability taken">❌ Déjà pris, essaie autre chose</div>`;
+  }
+  return `
+    ${backBtn}
+    <div class="profile-onboarding onboarding-screen">
+      <div class="onboarding-content">
+        <div class="pf-welcome-badge">🏷️</div>
+        <h1 class="pf-welcome-title">${title}</h1>
+        <p class="pf-welcome-desc pf-welcome-desc-short">${subtitle}</p>
+        <div class="form-field">
+          <div class="username-input-row">
+            <span class="username-at">@</span>
+            <input type="text" id="usernameSetupInput" value="${escapeHtml(usernameDraft)}"
+                   oninput="updateUsernameDraft(this.value)" placeholder="pseudo" autocomplete="off"
+                   autocapitalize="off" spellcheck="false" maxlength="20">
+          </div>
+          ${statusHtml}
+        </div>
+      </div>
+      <button class="onboarding-cta" onclick="finishUsernameSetup()">${isRename ? 'Enregistrer' : 'Continuer'}</button>
+    </div>
+  `;
 }
 
 /**
@@ -1181,6 +1364,16 @@ function pushNavState() {
  * bouton retour du téléphone quitte l'application au lieu de le fermer.
  */
 function goBackOneLevel() {
+  // Seul le mode 'rename' (déclenché depuis Paramètres) est dismissible — 'onboarding'
+  // et 'gate' sont volontairement infranchissables (pseudo obligatoire, même principe
+  // que le repli PWA).
+  if (usernameSetupMode === 'rename') {
+    usernameSetupMode = null;
+    usernameDraft = '';
+    usernameAvailability = null;
+    render(true);
+    return;
+  }
   if (settingsScreenOpen) {
     settingsScreenOpen = false;
     render(true);
@@ -3453,6 +3646,23 @@ function render(animate) {
     return;
   }
 
+  if (usernameSetupMode) {
+    // Même filet de restauration du focus/curseur que le champ de recherche Défis
+    // (updateUsernameDraft() appelle render() à chaque frappe pour la vérif de
+    // disponibilité en direct) : sans ça, un seul caractère taperait à la fois.
+    const usernameEl = document.activeElement;
+    const usernameWasFocused = !!(usernameEl && usernameEl.id === 'usernameSetupInput');
+    const usernameCaret = usernameWasFocused ? usernameEl.selectionStart : null;
+    applyContent(app, renderUsernameSetupScreen(), animate, () => {
+      if (!usernameWasFocused) return;
+      const input = document.getElementById('usernameSetupInput');
+      if (!input) return;
+      input.focus();
+      if (usernameCaret !== null && input.setSelectionRange) input.setSelectionRange(usernameCaret, usernameCaret);
+    });
+    return;
+  }
+
   if (activeTab === 'history') {
     applyContent(app, renderHistoryScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
     return;
@@ -4353,6 +4563,12 @@ function renderSettingsSection() {
     <div class="section-label">Paramètres</div>
     <div class="settings-card">
       <div class="settings-row">
+        <div class="settings-row-label">🏷️ Pseudo : @${escapeHtml(username || '')}
+          <div class="settings-row-desc">Ton identifiant public — utilisé par tes amis pour te retrouver.</div>
+        </div>
+        <button class="icon-btn" onclick="openUsernameRename()" aria-label="Modifier le pseudo">✏️</button>
+      </div>
+      <div class="settings-row">
         <div class="settings-row-label">🔊 Coach vocal
           <div class="settings-row-desc">Annonce le compte à rebours de préparation et la fin du défi à voix haute.</div>
         </div>
@@ -4908,6 +5124,14 @@ async function startApp() {
     profileStep = 0;
     profileDraft = { age: null, sex: null, heightCm: null, weightKg: null, level: null };
     showProfileOnboarding = true;
+    render();
+    return;
+  }
+  // Compte déjà onboardé mais créé avant l'introduction du pseudo obligatoire (ou
+  // onboarding profil déjà terminé sans avoir pu finir le choix du pseudo) : verrou
+  // plein écran infranchissable, même principe que le repli PWA (#pwaInstallGate).
+  if (!username) {
+    usernameSetupMode = 'gate';
     render();
     return;
   }
