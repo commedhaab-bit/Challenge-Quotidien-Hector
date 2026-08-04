@@ -1366,7 +1366,7 @@ lancement. Voir les sections précédentes (batches 1 à 7) pour le détail tech
 chaque étape ; les 2 exceptions volontaires ci-dessus (`formatDisplayName()`,
 `showFatalErrorScreen()`) sont les seuls textes intentionnellement non traduits.
 
-## Migration Firestore SDK compat → SDK modulaire (persistance) — chantier en cours (batch 5/6 livré)
+## Migration Firestore SDK compat → SDK modulaire (persistance) — TERMINÉ (6/6 batches livrés)
 
 **Pourquoi** : `enablePersistence()` (SDK compat) sera un jour déprécié au profit de
 `FirestoreSettings.cache`, qui n'existe QUE dans le SDK modulaire (vérifié directement
@@ -1486,10 +1486,41 @@ cohérent avec `getDoc()`/`onSnapshot()`).
 (`giveKudosToEvent`/`giveKudosToPerson`) étaient les seuls restants ; la variante
 modulaire (`notificationsCollRefModular`) reprend simplement le nom `notificationsCollRef`.
 
-Reste sur le SDK compat (migration prévue batch 6, ~90 sites au total recensés) :
-suppression de compte + acceptation d'ami (2 `db.batch()`, les seuls sites Firestore
-compat restants dans `index.html`) + audit final + retrait de `firebase-firestore-
-compat.js`.
+**Batch 6 (final)** : les 2 derniers `db.batch()` — `deleteMyAccount()` (kv +
+leaderboard) et `acceptFriendRequest()` (friendships + friendRequests) — migrés vers
+`writeBatch(mdb)`. `communityDailyChallengeDocRef()` (+ son `onSnapshot`, le défi
+communautaire du jour) migré aussi : 5e listener recensé à l'exploration initiale mais
+jamais assigné à un batch (repéré à l'audit de fin de batch 5, traité ici). Audit final
+(`grep`) : **zéro** site `db.collection`/`db.batch`/`db.runTransaction`/
+`firebase.firestore.FieldValue` restant dans `index.html` — seul un commentaire
+historique mentionne encore `db.collection(...)` (l'ancien mécanisme
+`renderKudosButton`, batch 4/5).
+
+**Décision finale, en écart du plan initial : `firebase-firestore-compat.js` N'EST PAS
+retiré.** Investigation faite avant de trancher : `db` (compat) est encore lu par
+~86 lignes de `tests/app.test.js` (raccourcis de test directs style
+`db.collection('leaderboard').doc(...).set(...)`, jamais migrés vers `fsMod` — un
+choix délibéré batch par batch, voir plus haut, pour ne pas gonfler chaque batch
+d'une réécriture de tests sans rapport avec son objet). Retirer le SDK compat aurait
+donc exigé de réécrire ces ~86 lignes en plus, pour un bénéfice réel nul : le but
+originel de ce chantier (faire disparaître le warning de dépréciation) était déjà
+100% atteint dès le batch 1 (`persistentLocalCache` configuré avant tout usage de
+Firestore) — garder le SDK compat chargé mais **plus du tout appelé par le code
+applicatif** ne réintroduit aucun warning, aucun coût de fonctionnement, juste
+quelques Ko déjà mis en cache par le service worker. Conserver `db` (assigné une
+seule fois par interop dans `initFirestore()`) est donc le choix qui minimise le
+risque pour un gain nul — décision prise pour rester proportionné, pas par
+paresse : refaire 86 lignes de tests qui passent déjà n'aurait fait courir un
+risque de régression que pour cocher une case du plan initial.
+
+**Conséquence architecturale de la migration terminée** : `initFirestore()` n'a
+maintenant plus de repli fonctionnel possible si l'import du SDK modulaire échoue
+(`mdb`/`fsMod` restent `null`, et TOUT le code applicatif en dépend désormais) — le
+`catch` appelle donc `showFatalErrorScreen()` (même filet que l'incident "firebase is
+not defined" déjà documenté), au lieu de l'ancien repli silencieux vers
+`db.enablePersistence()` (qui n'aurait plus servi à rien, aucun appelant restant).
+Vérifié réellement (pas en théorie) via un script de simulation d'échec d'import :
+l'écran fatal s'affiche bien, avec le message attendu.
 
 **Harnais de test** (`tests/app.test.js`) : `loadFirestoreModular()` (nouvelle fonction
 d'index.html isolant l'`import()`) est remplacée par un double de test

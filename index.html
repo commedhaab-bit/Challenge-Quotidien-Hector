@@ -129,7 +129,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 
-// ==== FIRESTORE : migration progressive vers le SDK modulaire (persistance) ====
+// ==== FIRESTORE : SDK modulaire (persistance) — migration TERMINÉE (6/6 batches),
+// voir CLAUDE.md ====
 // Le nouveau mécanisme de cache persistant (persistentLocalCache, qui remplace l'API
 // enablePersistence() dépréciée) n'existe QUE dans le SDK modulaire (aucun équivalent
 // dans firebase-firestore-compat.js — vérifié directement sur le bundle réel avant
@@ -139,22 +140,21 @@ const auth = firebase.auth();
 // promesse est gardée à part (firestoreReady) et jamais attendue au top-level du
 // script, pour ne rien bloquer avant que ce soit réellement nécessaire.
 //
-// mdb/fsMod (SDK modulaire, pour le code déjà migré) et db (SDK compat, conservé pour
-// tout le code pas encore migré) coexistent le temps de la migration : interop
-// officielle du SDK Firebase, les deux pointent vers la MÊME instance Firestore sous-
-// jacente une fois initFirestore() résolu. Aucun des deux n'est utilisable avant ce
-// moment-là — mais aucun code de l'appli n'y touche avant startApp() (point d'entrée
-// réel vers Firestore, déclenché depuis auth.onAuthStateChanged, jamais pendant le
-// chargement du script), qui attend explicitement firestoreReady en tout premier.
+// db (compat) est CONSERVÉ uniquement pour l'interop avec firebase-auth-compat.js/
+// firebase-app-compat.js (jamais migrés, voir CLAUDE.md) et pour le harnais de test —
+// plus AUCUN code applicatif ne le lit ou ne l'écrit directement, tout passe par
+// fsMod/mdb (SDK modulaire) depuis la fin du batch 6. Une panne de l'import modulaire
+// est donc désormais FATALE (plus de repli fonctionnel possible, voir le catch
+// ci-dessous) : traitée exactement comme l'incident "firebase is not defined" déjà
+// documenté en <head>, via le même filet showFatalErrorScreen().
 let db = null;
 let mdb = null;
 let fsMod = null;
-// Diagnostic exposé dans Paramètres > Dépannage : si la persistance échoue (onglets
-// multiples sans leader, navigation privée, quota IndexedDB, certaines PWA iOS...),
-// chaque écriture Firestore doit atteindre le réseau AVANT de survivre à une
-// fermeture de l'appli — une complétion de défi suivie d'une fermeture immédiate
-// peut alors se perdre silencieusement (aucune queue locale durable). null = pas
-// encore déterminé, true/false = résultat connu.
+// Diagnostic exposé dans Paramètres > Dépannage : si la persistance échoue (navigation
+// privée, quota IndexedDB, certaines PWA iOS...), chaque écriture Firestore doit
+// atteindre le réseau AVANT de survivre à une fermeture de l'appli — une complétion de
+// défi suivie d'une fermeture immédiate peut alors se perdre silencieusement (aucune
+// queue locale durable). null = pas encore déterminé, true/false = résultat connu.
 let firestorePersistenceEnabled = null;
 
 // Import dynamique isolé dans sa propre fonction pour pouvoir être remplacé par un
@@ -174,24 +174,19 @@ async function initFirestore() {
       cache: modular.persistentLocalCache({ tabManager: modular.persistentMultipleTabManager() }),
     });
     fsMod = modular;
-    db = firebase.firestore(); // compat : interopère avec la même instance déjà configurée ci-dessus
+    db = firebase.firestore(); // compat : interop avec auth-compat/app-compat + harnais de test, voir plus haut
     // Contrairement à enablePersistence() (compat), initializeFirestore({cache:...}) n'expose
     // aucune promesse de confirmation : un environnement incompatible (navigation privée sans
     // IndexedDB, très vieux navigateur) retombe silencieusement sur un cache mémoire, sans
     // lever d'erreur ici. Best-effort : on considère la config acquise si l'appel n'a pas jeté.
     firestorePersistenceEnabled = true;
   } catch (err) {
-    // Repli total sur le SDK compat, EXACTEMENT le comportement d'avant cette migration —
-    // import bloqué/trop lent (réseau, bloqueur de script tiers) ne doit jamais empêcher
-    // l'appli de démarrer.
-    console.warn('Firestore modulaire indisponible, repli sur le SDK compat :', err && err.message);
-    db = firebase.firestore();
-    db.enablePersistence({ synchronizeTabs: true }).then(() => {
-      firestorePersistenceEnabled = true;
-    }).catch((e) => {
-      firestorePersistenceEnabled = false;
-      console.warn('Firestore persistence indisponible :', e.code);
-    });
+    // Plus de repli fonctionnel possible (voir commentaire plus haut) : un échec ici
+    // laisse mdb/fsMod à null alors que TOUT le code applicatif en dépend désormais —
+    // traité comme fatal, au même titre que l'incident "firebase is not defined" déjà
+    // documenté en <head>.
+    firestorePersistenceEnabled = false;
+    showFatalErrorScreen(err);
   }
 }
 // Différé d'un tick microtask (Promise.resolve().then(...) plutôt qu'un appel
@@ -485,15 +480,15 @@ async function deleteMyAccount() {
     const uid = currentUser.uid;
 
     // Supprime tous les documents de données de l'utilisateur (kv store)
-    const snap = await db.collection('users').doc(uid).collection('kv').get();
-    const batch = db.batch();
+    const snap = await fsMod.getDocs(fsMod.collection(mdb, 'users', uid, 'kv'));
+    const batch = fsMod.writeBatch(mdb);
     snap.forEach(doc => batch.delete(doc.ref));
     // Sans ça, la ligne de classement publique (leaderboard/{uid}) reste orpheline
     // après suppression du compte — le compte recréé obtient un NOUVEL uid Firebase
     // (même s'il s'agit du même compte Google), laissant l'ancienne entrée trainer
     // indéfiniment dans le classement (déjà vécu : 2 lignes "Hector HAAB" visibles
     // après une suppression + recréation de compte).
-    batch.delete(db.collection('leaderboard').doc(uid));
+    batch.delete(fsMod.doc(mdb, 'leaderboard', uid));
     await batch.commit();
 
     // Tente de supprimer le compte Google Auth lui-même
@@ -2499,9 +2494,9 @@ async function acceptFriendRequest(fromUid) {
   const pairId = friendshipPairId(fromUid, currentUser.uid);
   const [uidA, uidB] = [fromUid, currentUser.uid].sort();
   try {
-    const batch = db.batch();
-    batch.set(db.collection('friendships').doc(pairId), { uidA, uidB, since: Date.now() });
-    batch.delete(db.collection('friendRequests').doc(friendRequestId(fromUid, currentUser.uid)));
+    const batch = fsMod.writeBatch(mdb);
+    batch.set(fsMod.doc(mdb, 'friendships', pairId), { uidA, uidB, since: Date.now() });
+    batch.delete(fsMod.doc(mdb, 'friendRequests', friendRequestId(fromUid, currentUser.uid)));
     await batch.commit();
     if (navigator.vibrate) navigator.vibrate(10);
     if (friendSearchResult && typeof friendSearchResult === 'object' && friendSearchResult.uid === fromUid) {

@@ -2310,15 +2310,17 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(firebaseScriptTags.every(t => !t.includes('defer') && !t.includes('async')), 'les SDK Firebase doivent rester charges de maniere synchrone (coherent avec le script inline non differe)');
   console.log('OK: SDK Firebase + script inline charges de maniere synchrone (pas de defer/async, ordre garanti)');
 
-  // --- 85. Performance : persistance locale Firestore (IndexedDB) activee ---
-  __assertOk(__rawHtml.includes('enablePersistence({ synchronizeTabs: true })'), 'la persistance locale Firestore doit etre activee (cache IndexedDB entre sessions)');
+  // --- 85. Performance : persistance locale Firestore (IndexedDB) activee, via le
+  // SDK modulaire depuis la migration (batches 1 a 6, voir CLAUDE.md) : plus
+  // enablePersistence() (compat, deprecie), mais initializeFirestore({cache:...}). ---
+  __assertOk(__rawHtml.includes('persistentLocalCache(') && __rawHtml.includes('persistentMultipleTabManager('), 'la persistance locale Firestore doit etre activee (cache IndexedDB entre sessions, SDK modulaire)');
   console.log('OK: persistance locale Firestore activee');
 
   // --- 86. Performance : le service worker alimente desormais son cache sur un miss
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v37'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v38'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
