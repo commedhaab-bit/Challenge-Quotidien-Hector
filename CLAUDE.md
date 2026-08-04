@@ -1366,7 +1366,7 @@ lancement. Voir les sections précédentes (batches 1 à 7) pour le détail tech
 chaque étape ; les 2 exceptions volontaires ci-dessus (`formatDisplayName()`,
 `showFatalErrorScreen()`) sont les seuls textes intentionnellement non traduits.
 
-## Migration Firestore SDK compat → SDK modulaire (persistance) — chantier en cours (batch 3/6 livré)
+## Migration Firestore SDK compat → SDK modulaire (persistance) — chantier en cours (batch 4/6 livré)
 
 **Pourquoi** : `enablePersistence()` (SDK compat) sera un jour déprécié au profit de
 `FirestoreSettings.cache`, qui n'existe QUE dans le SDK modulaire (vérifié directement
@@ -1446,13 +1446,23 @@ le helper par `usernameDocRef(name)` qui construit directement le ref complet (m
 pattern que `appDataDocRef()`) — **à vérifier à l'oeil sur chaque site des batches 4/5/6
 restants**, ce mock ne le fera pas automatiquement.
 
-Reste sur le SDK compat (migration prévue batches 4 à 6, ~90 sites au total
-recensés) : fil d'activité (+ son `onSnapshot`, incluant un correctif prévu sur
-`renderKudosButton()` qui injecte aujourd'hui du texte source `db.collection(...)`
-littéral dans un attribut `onclick`), Boss Battle + kudos (+ 2 `onSnapshot`,
-3 `runTransaction` — dont `giveKudosToPerson()`, qui référence `leaderboard/{uid}`
-mais reste compat en bloc tant que sa transaction n'est pas migrée), suppression de
-compte + acceptation d'ami (2 `db.batch()`).
+**Batch 4** : fil d'activité — `registerActivityFeedEntryIfNeeded()` (`addDoc`) et
+`startActivityFeedListener()` (son `onSnapshot`, requête composée
+`query(collection(...), where('uid','in',...), orderBy('at','desc'), limit(30))`).
+**Écart volontaire par rapport au découpage initial du plan** : le correctif
+`renderKudosButton()`/`giveKudosToEvent()`/`removeKudosFromEvent()` prévu pour ce
+batch est reporté au batch 5 — ces 2 fonctions sont **génériques, partagées** entre
+le fil d'activité ET les contributions Boss Battle (même forme de document), et
+utilisent `db.runTransaction()` (compat, migration batch 5) : les migrer maintenant
+aurait cassé soit l'un soit l'autre appelant sans migrer leur transaction en même
+temps. `renderActivityFeedRow()`/le bouton kudos du fil d'activité restent donc sur
+le mécanisme actuel (texte source `db.collection(...)` injecté dans `onclick`)
+jusqu'au batch 5, où les 2 surfaces + leur transaction seront migrées ensemble.
+
+Reste sur le SDK compat (migration prévue batches 5 et 6, ~90 sites au total
+recensés) : Boss Battle + kudos (+ 2 `onSnapshot`, 3 `runTransaction`, + le correctif
+`renderKudosButton` ci-dessus), suppression de compte + acceptation d'ami
+(2 `db.batch()`).
 
 **Harnais de test** (`tests/app.test.js`) : `loadFirestoreModular()` (nouvelle fonction
 d'index.html isolant l'`import()`) est remplacée par un double de test

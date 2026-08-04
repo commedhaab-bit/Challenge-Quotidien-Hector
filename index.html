@@ -2080,7 +2080,7 @@ async function registerCommunityCompletionIfNeeded(challengeId) {
 async function registerActivityFeedEntryIfNeeded(c, total) {
   if (!currentUser || !c) return;
   try {
-    await db.collection('activityFeed').add({
+    await fsMod.addDoc(fsMod.collection(mdb, 'activityFeed'), {
       uid: currentUser.uid,
       displayName: formatDisplayName(currentUser.displayName),
       challengeName: c.name,
@@ -2413,13 +2413,18 @@ function startActivityFeedListener() {
   }
   // Limite Firestore : au plus 30 valeurs dans un where('in', ...) — largement
   // suffisant pour une liste d'amis personnelle, cf. discussion produit.
-  communityActivityFeedUnsub = db.collection('activityFeed')
-    .where('uid', 'in', friendUids.slice(0, 30))
-    .orderBy('at', 'desc').limit(30)
-    .onSnapshot((snap) => {
+  communityActivityFeedUnsub = fsMod.onSnapshot(
+    fsMod.query(
+      fsMod.collection(mdb, 'activityFeed'),
+      fsMod.where('uid', 'in', friendUids.slice(0, 30)),
+      fsMod.orderBy('at', 'desc'),
+      fsMod.limit(30),
+    ),
+    (snap) => {
       communityActivityFeed = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       render();
-    });
+    },
+  );
 }
 
 function openFriendsScreen() {
