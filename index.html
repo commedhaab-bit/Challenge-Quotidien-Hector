@@ -188,6 +188,17 @@ async function initFirestore() {
       cache: modular.persistentLocalCache({ tabManager: modular.persistentMultipleTabManager() }),
     });
     fsMod = modular;
+    // [DEBUG TEMPORAIRE] Diagnostic approfondi (pas une simple relecture de l'echec deja
+    // observe) : inspecte directement mdb/fsMod pour comprendre POURQUOI doc()/collection()
+    // rejette mdb, plutot que de re-deviner un correctif sans donnees.
+    try {
+      console.log('[DEBUG TEMPORAIRE] mdb =', mdb, '| typeof mdb =', typeof mdb, '| mdb.type =', mdb && mdb.type, '| mdb.app =', mdb && mdb.app, '| mdb constructor =', mdb && mdb.constructor && mdb.constructor.name);
+      console.log('[DEBUG TEMPORAIRE] appMod.getApp() =', appMod.getApp(), '| fsMod.doc =', typeof fsMod.doc, '| fsMod.collection =', typeof fsMod.collection);
+      const testColl = fsMod.collection(mdb, 'users');
+      console.log('[DEBUG TEMPORAIRE] fsMod.collection(mdb, "users") a REUSSI :', testColl);
+    } catch (diagErr) {
+      console.error('[DEBUG TEMPORAIRE] fsMod.collection(mdb, "users") a ECHOUE :', diagErr);
+    }
     db = firebase.firestore(); // compat : interop avec auth-compat/app-compat + harnais de test, voir plus haut
     // Contrairement à enablePersistence() (compat), initializeFirestore({cache:...}) n'expose
     // aucune promesse de confirmation : un environnement incompatible (navigation privée sans
