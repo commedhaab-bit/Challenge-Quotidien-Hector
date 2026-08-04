@@ -225,6 +225,11 @@ function makeMockCollection(store) {
       if (f.op === '>=') return val >= f.value;
       if (f.op === '<') return val < f.value;
       if (f.op === '<=') return val <= f.value;
+      // 'in' : utilisé par le fil d'activité filtré par amis (where('uid', 'in', mesAmisUids)).
+      // Comme le vrai SDK, un tableau vide ne doit jamais être envoyé (l'appelant doit s'en
+      // prémunir lui-même) — ici on se contente de ne matcher personne dans ce cas plutôt
+      // que de lever une exception, pour ne pas complexifier le mock au-delà du besoin réel.
+      if (f.op === 'in') return Array.isArray(f.value) && f.value.includes(val);
       return true;
     }
     function results() {
@@ -373,6 +378,34 @@ const sandbox = {
           }
           if (!mockTopCollections.has(name)) mockTopCollections.set(name, makeMockCollection(new Map()));
           return mockTopCollections.get(name);
+        },
+        // batch() : les operations sont simplement appliquees dans l'ordre a commit()
+        // (pas de vraie atomicite/rollback simulee - inutile ici, aucun test ne cree de
+        // vrai conflit concurrent). Suffisant pour verifier qu'un ensemble d'ecritures
+        // liees (ex: accepter une demande d'ami = creer friendships + supprimer
+        // friendRequests) se produit bien EN UN SEUL appel commit().
+        batch() {
+          const ops = [];
+          return {
+            set(docRef, data, opts) { ops.push(() => docRef.set(data, opts)); return this; },
+            update(docRef, data) { ops.push(() => docRef.set(data, { merge: true })); return this; },
+            delete(docRef) { ops.push(() => docRef.delete()); return this; },
+            async commit() { for (const op of ops) await op(); },
+          };
+        },
+        // runTransaction() : meme simplification (pas de vraie isolation/retry sur
+        // conflit) - transaction.get() lit l'etat courant, set/update/delete appliquent
+        // immediatement (comme le batch ci-dessus). Suffit a tester la logique
+        // "lire la preuve-de-kudos, avorter si deja presente, sinon ecrire" portee par
+        // le CODE DE L'APPLICATION lui-meme (pas par le mock).
+        async runTransaction(updateFunction) {
+          const transaction = {
+            get: (docRef) => docRef.get(),
+            set(docRef, data, opts) { docRef.set(data, opts); return transaction; },
+            update(docRef, data) { docRef.set(data, { merge: true }); return transaction; },
+            delete(docRef) { docRef.delete(); return transaction; },
+          };
+          return updateFunction(transaction);
         },
       };
     },
@@ -2958,6 +2991,41 @@ const cssText = __rawHtml + __cssSource;
   const afterReset = await db.collection('leaderboard').doc('uid1').get();
   __assertOk(!afterReset.exists, '__resetCommunityMocks() doit repartir d un etat vide entre les tests');
   console.log('OK: mock Firestore generique (merge, increment, requetes, onSnapshot, sous-collections)');
+
+  // --- 140bis. Extensions du mock Firestore : where(...,'in',...), db.batch(),
+  // db.runTransaction() -- prerequis pour le fil d amis/kudos (aucun des 3 n existait
+  // avant : deleteMyAccount() utilise deja db.batch() en prod sans AUCUNE couverture
+  // de test pour cette raison exacte). ---
+  __resetCommunityMocks();
+  await db.collection('activityFeed').doc('a1').set({ uid: 'alice' }, { merge: true });
+  await db.collection('activityFeed').doc('a2').set({ uid: 'bob' }, { merge: true });
+  await db.collection('activityFeed').doc('a3').set({ uid: 'chloe' }, { merge: true });
+  const inQueryResults = await db.collection('activityFeed').where('uid', 'in', ['alice', 'chloe']).get();
+  __assertEq(inQueryResults.docs.map(d => d.data().uid).sort(), ['alice', 'chloe'], 'where(field,"in",[...]) doit ne matcher que les valeurs presentes dans le tableau');
+  const inQueryEmptyArray = await db.collection('activityFeed').where('uid', 'in', []).get();
+  __assertEq(inQueryEmptyArray.size, 0, 'where(field,"in",[]) (tableau vide) ne doit jamais matcher personne');
+
+  await db.collection('friendRequests').doc('alice_bob').set({ fromUid: 'alice', toUid: 'bob' }, { merge: true });
+  const batch = db.batch();
+  batch.set(db.collection('friendships').doc('alice_bob'), { uidA: 'alice', uidB: 'bob' });
+  batch.delete(db.collection('friendRequests').doc('alice_bob'));
+  await batch.commit();
+  const friendshipAfterBatch = await db.collection('friendships').doc('alice_bob').get();
+  const requestAfterBatch = await db.collection('friendRequests').doc('alice_bob').get();
+  __assertOk(friendshipAfterBatch.exists && !requestAfterBatch.exists, 'db.batch() doit appliquer plusieurs ecritures liees (creer + supprimer) en un seul commit()');
+
+  await db.collection('leaderboard').doc('uid1').set({ kudosTotal: 4 }, { merge: true });
+  const kudosResult = await db.runTransaction(async (tx) => {
+    const doc = await tx.get(db.collection('leaderboard').doc('uid1'));
+    const current = doc.exists ? (doc.data().kudosTotal || 0) : 0;
+    tx.set(db.collection('leaderboard').doc('uid1'), { kudosTotal: current + 1 }, { merge: true });
+    return current + 1;
+  });
+  const uid1AfterTx = await db.collection('leaderboard').doc('uid1').get();
+  __assertEq(kudosResult, 5, 'runTransaction() doit renvoyer la valeur de retour du callback');
+  __assertEq(uid1AfterTx.data().kudosTotal, 5, 'runTransaction() doit lire l etat courant (tx.get) et ecrire (tx.set) dans le meme cycle');
+  __resetCommunityMocks();
+  console.log('OK: extensions du mock Firestore (where in, db.batch, db.runTransaction) pretes pour le fil d amis/kudos');
 
   // --- 141. Pilier 1 : Hero Banner communautaire remplace l ecran vide par defaut
   // (accompagnement sans effort de choix + preuve sociale/FOMO) ---
