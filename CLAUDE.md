@@ -1400,3 +1400,79 @@ introduire un bundler — contredit le choix architectural délibéré de ce pro
 (zéro build, scripts classiques uniquement, voir plus haut). Le warning de
 dépréciation reste donc un inconvénient cosmétique accepté, pas un bug.
 
+## Optimisation quota Firestore (plan Spark gratuit) — 8 mesures livrées, 100% invisibles
+
+**Contexte** : audit demandé pour maximiser le nombre d'utilisateurs actifs/jour sur
+le plan gratuit (50k lectures, 20k écritures/jour) sans aucun changement visible.
+Diagnostic : `fetchMyRankAndNeighbors()` relit tout le classement (aucun `.limit()`,
+déjà documenté comme limite assumée) à CHAQUE visite/changement de vue de l'onglet
+Communauté — coût qui grandit avec le nombre TOTAL de membres du classement (pas
+seulement le DAU), rendant la capacité inversement proportionnelle au succès de
+l'appli. `addSet()` (tap +5/+10, l'action la plus fréquente) écrivait aussi jusqu'à 7
+fois le même document `appData` par complétion d'exercice (`saveStats`/
+`saveLastCompleted`/`saveDailyActivity`/`saveBadges`/`saveXp`/`saveXpWeeklyData`/
+`saveStreakData`, tous de simples wrappers de `saveAppField()`), sans aucun debounce
+même pour des taps rapprochés. Estimation avant/après : ~166 → ~450-600 DAU pour une
+communauté de ~100 membres (voir l'audit complet donné à l'utilisateur pour le détail
+par taille de communauté) ; le plafond structurel lié à la taille du classement (O(N)
+par visite) subsiste et redescendra si la communauté grossit beaucoup — seul un
+agrégat calculé côté serveur (Cloud Function programmée) le supprimerait
+complètement, hors scope d'un changement "invisible côté client".
+
+1. **Regroupement des écritures `appData`** (`beginAppDataBatch()`/`endAppDataBatch()`/
+   `flushAppDataBatchNow()`) : tous les `saveAppField()` appelés à l'intérieur d'un lot
+   (compteur de profondeur, supporte les appels imbriqués comme
+   `addSet()` → `registerDailyStreak()` → `saveStreakData()`) sont fusionnés en UN
+   SEUL `.set({...},{merge:true})`, au lieu d'un appel par champ. Jusqu'à 7→1 sur une
+   complétion d'exercice.
+2. **Debounce des écritures haute fréquence** (`scheduleWorkoutWriteFlush()`/
+   `flushWorkoutWrites()`, 800ms) : `addSet()`/`undoLast()` ne déclenchent plus
+   l'écriture réseau immédiatement à chaque tap — la mise à jour LOCALE reste
+   instantanée, seul l'aller-retour Firestore est différé et fusionné si plusieurs
+   taps se suivent. **Flush forcé, jamais de perte** : `visibilitychange` (vers
+   "hidden" — signal le plus fiable cross-plateforme, y compris PWA mobile) et
+   `pagehide` déclenchent un flush immédiat. Limite connue du mock de test :
+   `document.addEventListener`/`window.addEventListener` sont des no-op dans le
+   harnais (voir `tests/app.test.js`), donc le déclenchement RÉEL par ces événements
+   navigateur n'est testé qu'indirectement (la fonction `flushWorkoutWrites()`
+   elle-même est testée directement) — à vérifier de visu en navigateur réel si
+   possible.
+3. **Classement : un seul scan par visite** (`fetchLeaderboardFullScan()`, cache par
+   vue) : Top N et rang/voisins réutilisent désormais LA MÊME lecture complète
+   (supprime l'ancienne requête `limit(20)` séparée, redondante) ; un changement de
+   vue (streaks/hebdo/all-time) pendant la MÊME visite réutilise le scan déjà en
+   cache. **Zéro perte de fraîcheur** : `invalidateLeaderboardScanCache()` est appelée
+   à CHAQUE entrée sur l'onglet (`switchTab()`) et juste après
+   `syncLeaderboardEntry()` (jamais son propre classement obsolète après une action) —
+   cet écran n'a jamais été temps réel (lecture ponctuelle, jamais un `onSnapshot`),
+   donc aucun changement de comportement pour l'utilisateur, seulement moins de
+   requêtes.
+4. **Cache du Journal** (`historyDayCache`) : les 27 jours PASSÉS (immuables une fois
+   le jour terminé) ne sont lus qu'une fois par session ; seul "aujourd'hui" (encore
+   modifiable) est relu à chaque ouverture. 28 → 1 lecture dès la 2e ouverture de
+   l'onglet dans la même session. Vidé au logout (données par utilisateur).
+5. **Déduplication `syncLeaderboardEntry()`** : `awardXp()` ET
+   `registerDailyStreak()` l'appellent toutes les deux pour un même événement
+   (1ère complétion du jour) — la 2de est désormais différée dans le même lot que #1
+   et fusionnée (1 seule écriture réelle au lieu de 2).
+6. **Cache mémoire `fetchPublicProfile(uid)`** : un même uid (ami visible dans
+   plusieurs listes, `refreshFriendsData()` rappelée après chaque action ami) n'est
+   relu qu'une fois par session.
+7. **Persistance `localStorage` du cache profils** (`publicProfileCacheV1`, TTL 6h) —
+   **3e exception documentée à "pas de localStorage"** (les 2 premières :
+   `PWA_INSTALL_GATE_BYPASS_KEY`, `PREFERRED_LANGUAGE_KEY`), de nature différente :
+   pas une préférence de cet appareil, un cache d'un résultat déjà PUBLIC. Survit à
+   une fermeture/réouverture de la PWA. Les RELATIONS (qui est ami, qui a envoyé une
+   demande) ne sont volontairement JAMAIS mises en cache ainsi — seulement les
+   données de profil (nom/photo, dérivées de Google, qui changent rarement) —
+   pour ne perdre aucune fraîcheur sur ce qui compte réellement (nouvelle demande
+   d'ami visible immédiatement).
+8. **Suspension des listeners `activityFeed`/`contributions Boss Battle` hors de
+   l'onglet Communauté** : ces 2 listeners (les plus "bruyants" en écritures d'autres
+   utilisateurs) ne s'attachent plus au démarrage ni ne restent actifs pendant qu'un
+   autre onglet est affiché (garde `if (activeTab !== 'community') return;` dans
+   `startActivityFeedListener()`/`startRecentContributionsListener()`, détachement
+   explicite en quittant l'onglet dans `switchTab()`, rattachement à la ré-entrée).
+   Le listener de progression Boss Battle (détection de victoire) et les
+   notifications restent volontairement toujours actifs, aucune perte de popup/alerte.
+

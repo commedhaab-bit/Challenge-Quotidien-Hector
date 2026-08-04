@@ -109,6 +109,8 @@ function makeEl(id) {
 }
 
 const store = new Map(); // simule Firestore (ancien modele cle/valeur) : key -> JSON string
+let dbGetDayCallCount = 0; // compte les lectures 'day:...' (voir loadHistoryEntries(), cache des jours passes)
+let dbSetDayCallCount = 0; // compte les ecritures 'day:...' (voir saveState()/scheduleWorkoutWriteFlush())
 // Simule localStorage (2 usages dans l'app, tous deux des preferences propres a CET
 // appareil, jamais des donnees de compte : dismiss de la banniere d'installation PWA,
 // et la langue preferee (i18n) -- cf. commentaires index.html).
@@ -146,12 +148,14 @@ const mockSwRegistrations = [
 // DIRECTEMENT (contrairement a dbGet/dbSet, remplaces plus bas par __dbGet/__dbSet) : il
 // faut donc un vrai mock de la chaine collection('users').doc(uid).collection('kv').doc('appData').
 const appDataStore = { exists: false, data: {} };
+let appDataSetCallCount = 0; // compte les vrais appels .set() (regroupement des écritures, voir beginAppDataBatch())
 function makeAppDataDocRef() {
   return {
     async get() {
       return { exists: appDataStore.exists, data: () => JSON.parse(JSON.stringify(appDataStore.data)) };
     },
     async set(fields, opts) {
+      appDataSetCallCount++;
       if (opts && opts.merge) {
         Object.assign(appDataStore.data, fields);
       } else {
@@ -294,6 +298,8 @@ const mockTopCollections = new Map();
 // UTILISATEUR, contrairement à appDataStore (kv) qui reste volontairement un singleton
 // partagé. Map(uid -> Map(subName -> Map(docId -> data))).
 const usersSubcollections = new Map();
+let leaderboardSetCallCount = 0;
+let leaderboardGetCallCount = 0;
 
 const sandbox = {
   console,
@@ -401,7 +407,21 @@ const sandbox = {
             };
           }
           if (!mockTopCollections.has(name)) mockTopCollections.set(name, makeMockCollection(new Map()));
-          return mockTopCollections.get(name);
+          const coll = mockTopCollections.get(name);
+          // Compte les vraies écritures leaderboard/{uid} (voir syncLeaderboardEntry() /
+          // pendingLeaderboardSync dans index.html) : sert à verifier qu'un seul evenement
+          // (ex: 1ere completion du jour) ne produit plus qu'UNE ecriture, pas 2.
+          if (name === 'leaderboard') {
+            return { ...coll, doc(id) {
+              const ref = coll.doc(id);
+              return {
+                ...ref,
+                async set(fields, opts) { leaderboardSetCallCount++; return ref.set(fields, opts); },
+                async get() { leaderboardGetCallCount++; return ref.get(); }, // voir fetchPublicProfile()
+              };
+            } };
+          }
+          return coll;
         },
         // batch() : les operations sont simplement appliquees dans l'ordre a commit()
         // (pas de vraie atomicite/rollback simulee - inutile ici, aucun test ne cree de
@@ -434,7 +454,15 @@ const sandbox = {
       };
     },
   },
-  __resetCommunityMocks: () => { mockTopCollections.clear(); usersSubcollections.clear(); },
+  __resetCommunityMocks: () => {
+    mockTopCollections.clear();
+    usersSubcollections.clear();
+    // leaderboardScanCache (index.html) est un cache APPLICATIF qui survit entre
+    // scenarios de test (un seul script vm partagé pour toute la suite, voir en tête
+    // de ce fichier) — sans ce nettoyage, un scan mis en cache par un scenario
+    // precedent pourrait fausser un scenario suivant qui repart d'un mock vide.
+    if (typeof sandbox.invalidateLeaderboardScanCache === 'function') sandbox.invalidateLeaderboardScanCache();
+  },
   alert(msg){ console.log('  [alert]', msg); },
   confirm(msg){ return true; },
   prompt(msg, def){ return def; },
@@ -442,6 +470,16 @@ const sandbox = {
   __store: store,
   __mockLocalStorageStore: mockLocalStorageStore,
   __appDataStore: appDataStore, // { exists, data } du document consolide simule (voir plus haut)
+  get __appDataSetCallCount() { return appDataSetCallCount; },
+  __resetAppDataSetCallCount() { appDataSetCallCount = 0; },
+  get __dbGetDayCallCount() { return dbGetDayCallCount; },
+  __resetDbGetDayCallCount() { dbGetDayCallCount = 0; },
+  get __dbSetDayCallCount() { return dbSetDayCallCount; },
+  __resetDbSetDayCallCount() { dbSetDayCallCount = 0; },
+  get __leaderboardSetCallCount() { return leaderboardSetCallCount; },
+  __resetLeaderboardSetCallCount() { leaderboardSetCallCount = 0; },
+  get __leaderboardGetCallCount() { return leaderboardGetCallCount; },
+  __resetLeaderboardGetCallCount() { leaderboardGetCallCount = 0; },
   __mockCacheKeys: mockCacheKeys, // Cache Storage simule (forceAppUpdate)
   __mockSwRegistrations: mockSwRegistrations, // ServiceWorkerRegistration simulees (forceAppUpdate)
   __rawHtml: html, // fichier source complet de index.html (le <style> a ete extrait dans styles.css, voir __cssSource)
@@ -449,10 +487,12 @@ const sandbox = {
   __swSource: swSource, // contenu de service-worker.js (fichier a part, jamais execute par le vm)
   __externalClassicScripts: externalClassicScripts, // exercise-data.js + exercise-pictograms.js concatenes, pour verifier leur contenu (jamais dans __rawHtml, ce sont des fichiers a part)
   __dbGet: async (key) => {
+    if (key.startsWith('day:')) dbGetDayCallCount++; // voir loadHistoryEntries() : verifie le cache des jours passes
     if (!store.has(key)) throw new Error('not found: ' + key);
     return { key, value: store.get(key) };
   },
   __dbSet: async (key, value) => {
+    if (key.startsWith('day:')) dbSetDayCallCount++; // voir saveState()/scheduleWorkoutWriteFlush()
     store.set(key, value);
     return { key, value };
   },
@@ -689,6 +729,8 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(cPicked && cPicked.target > 0, 'getChallenge() doit resoudre un objectif valide');
   stats[pompes.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   await addSet(cPicked.target); // complete le defi du jour
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   __assertOk(state.challenges[pompes.id].done, 'le defi doit etre marque termine apres avoir atteint l objectif');
   __assertEq(state.challenges[pompes.id].sets, [cPicked.target], 'la serie ajoutee doit etre enregistree');
   render(false); // vue detail (fiche active) ne doit pas lever d'exception
@@ -1118,6 +1160,8 @@ const cssText = __rawHtml + __cssSource;
   stats[pompes.id] = { lifetimeTotal: 0, bestDay: { total: cForXp.target, date: todayKey }, recordStreak: 0 }; // evite le chemin "nouveau record"
   const expectedXp = xpForChallenge(cForXp, cForXp.target);
   await addSet(cForXp.target);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   __assertEq(xpTotal, expectedXp, 'xpTotal doit augmenter du montant calcule par xpForChallenge');
   __assertEq(__appDataStore.data.xpTotal, expectedXp, 'xpTotal doit etre persiste dans le document consolide appData');
   __assertOk(popupOpen, 'une popup immersive doit s afficher immediatement a la validation');
@@ -1141,7 +1185,18 @@ const cssText = __rawHtml + __cssSource;
   await pickChallenge(pompes.id);
   const cForStreak = getChallenge();
   stats[pompes.id] = { lifetimeTotal: 0, bestDay: { total: cForStreak.target, date: todayKey }, recordStreak: 0 };
+  __resetAppDataSetCallCount();
+  __resetLeaderboardSetCallCount();
   await addSet(cForStreak.target);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
+  // Optimisation quota Firestore : cette 1ere validation du jour touche stats/
+  // lastCompleted/dailyActivity/badges/xpTotal/xpWeeklyData/streakData (7 champs) ET
+  // appelle syncLeaderboardEntry() 2 fois (awardXp() + registerDailyStreak()) - un seul
+  // ecrit Firestore doit resulter de chaque groupe (regroupement/deduplication, voir
+  // beginAppDataBatch()/pendingLeaderboardSync dans index.html), jamais 7+2.
+  __assertEq(__appDataSetCallCount, 1, 'une completion qui touche 7 champs du document consolide ne doit produire qu UNE SEULE ecriture Firestore (regroupement)');
+  __assertEq(__leaderboardSetCallCount, 1, 'awardXp() et registerDailyStreak() appellent tous deux syncLeaderboardEntry() pour le meme evenement : une seule ecriture reelle doit en resulter (deduplication)');
   __assertEq(streakCount, 1, 'la 1ere validation du jour doit porter la serie a 1');
   __assertEq(lastCompletedDate, todayKey, 'lastCompletedDate doit passer a aujourd hui');
   __assertEq(__appDataStore.data.streakData.streakCount, 1, 'streakCount doit etre persiste dans le document consolide appData');
@@ -1624,6 +1679,8 @@ const cssText = __rawHtml + __cssSource;
   const cForTrophy = getChallenge();
   stats[pompes.id] = { lifetimeTotal: 0, bestDay: { total: cForTrophy.target, date: todayKey }, recordStreak: 0 };
   await addSet(cForTrophy.target);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   __assertOk(popupOpen, 'la popup de completion doit s afficher immediatement');
   __assertOk(currentPopupHtml.includes('Défi complété'), 'la 1ere popup doit etre celle de completion');
   __assertOk(!currentPopupHtml.includes('trophy-chip'), 'la popup de completion ne doit plus integrer de carte trophee');
@@ -1707,6 +1764,8 @@ const cssText = __rawHtml + __cssSource;
   stats[pompes.id] = { lifetimeTotal: 0, bestDay: { total: cFor55.target, date: todayKey }, recordStreak: 0 };
   const expectedXp55 = xpForChallenge(cFor55, cFor55.target) + 100; // +100 = xp du trophee comp_10
   await addSet(cFor55.target);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   __assertEq(xpTotal, 5000 + expectedXp55, 'le total XP doit inclure a la fois le gain du defi ET la recompense du trophee debloque');
   let sc = 0; while (popupOpen && sc < 10) { document.getElementById('appPopupCloseBtn').onclick(); sc++; }
   currentChallengeId = null;
@@ -2215,7 +2274,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v42'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v43'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2938,6 +2997,8 @@ const cssText = __rawHtml + __cssSource;
   stats[pompesForAnim.id] = { lifetimeTotal: 0, bestDay: { total: cRecord.target - 10, date: '2020-01-01' }, recordStreak: 2 };
   popupQueue = []; popupOpen = false;
   await addSet(cRecord.target); // 3e record consecutif -> programme le confirmModal (setTimeout 1400ms)
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   __assertEq(stats[pompesForAnim.id].recordStreak, 3, '3e record consecutif atteint');
   await new Promise(r => setTimeout(r, 1500)); // laisse le setTimeout(1400) declencher confirmModal()
   __assertOk(currentConfirmModalHtml.includes('Nouveau record 3 fois de suite'), 'la modale de suggestion d objectif doit s afficher apres 3 records consecutifs');
@@ -3337,6 +3398,8 @@ const cssText = __rawHtml + __cssSource;
   stats[heroC1.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   const targetC1 = resolveChallenge(heroC1).target;
   await addSet(targetC1);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   const dailyDocAfter = await communityDailyChallengeDocRef(todayKey).get();
   __assertOk(dailyDocAfter.exists, 'terminer un defi communautaire doit creer/mettre a jour le doc partage du jour');
   __assertEq(dailyDocAfter.data().completions1, 1, 'completer le defi 1 doit incrementer completions1');
@@ -3344,7 +3407,11 @@ const cssText = __rawHtml + __cssSource;
   // JAMAIS re-incrementer : sans garde-fou, ce cycle gonflerait artificiellement la
   // preuve sociale partagee par toute la communaute.
   await undoLast();
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   await addSet(targetC1);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   const dailyDocAfter2 = await communityDailyChallengeDocRef(todayKey).get();
   __assertEq(dailyDocAfter2.data().completions1, 1, 'un defi deja compte aujourd hui ne doit jamais etre recompte, meme apres un cycle annuler/revalider (pas de gonflement artificiel de la preuve sociale)');
   currentChallengeId = null;
@@ -3529,6 +3596,8 @@ const cssText = __rawHtml + __cssSource;
   stats[pompes.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   const targetForFeed = getTarget();
   await addSet(targetForFeed);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   let feedSnap = await db.collection('activityFeed').orderBy('at').get();
   __assertEq(feedSnap.size, 1, 'completer un defi doit creer exactement 1 document activityFeed');
   __assertEq(feedSnap.docs[0].data().displayName, 'Moi A.', 'le nom doit etre anonymise des l ecriture (jamais le nom complet)');
@@ -3542,12 +3611,18 @@ const cssText = __rawHtml + __cssSource;
   await pickChallenge(pompes.id);
   stats[pompes.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   await addSet(1); // tres en dessous de l objectif
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   feedSnap = await db.collection('activityFeed').orderBy('at').get();
   __assertEq(feedSnap.size, 1, 'une serie qui ne complete pas le defi ne doit RIEN ajouter au fil (contrairement au Boss Battle)');
   currentChallengeId = null;
 
   // Lecture filtree par amis : l activite d une "amie" n apparait dans mon fil qu une
   // fois qu on est effectivement amis.
+  // Optimisation quota Firestore : ce listener est suspendu hors de l onglet Communaute
+  // (voir switchTab()/startActivityFeedListener()) - il ne se rattache que si activeTab
+  // vaut bien 'community', exactement comme dans l appli reelle.
+  activeTab = 'community';
   await db.collection('activityFeed').add({ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Squats', cat: 'Bas du corps', amount: 50, unit: 'reps', at: Date.now(), kudosCount: 0 });
   startActivityFeedListener();
   __assertEq(communityActivityFeed.length, 0, 'sans etre ami avec amie-uid, son activite ne doit pas apparaitre dans mon fil');
@@ -3571,6 +3646,7 @@ const cssText = __rawHtml + __cssSource;
   if (communityActivityFeedUnsub) { communityActivityFeedUnsub(); communityActivityFeedUnsub = null; }
   communityActivityFeed = [];
   myFriends = [];
+  activeTab = 'today';
   __resetCommunityMocks();
   currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
   console.log('OK: fil d activite global filtre par amis (1 document par defi complete, jamais par serie, filtre where(uid,in,...))');
@@ -3795,6 +3871,13 @@ const cssText = __rawHtml + __cssSource;
       { merge: true }
     );
   }
+  // Optimisation quota Firestore : fetchLeaderboardFullScan() met en cache le scan par
+  // vue pour la visite en cours (voir index.html). Ces 25 ecritures simulent d'AUTRES
+  // utilisateurs qui rejoignent PENDANT la visite deja en cours (146) - dans l'appli
+  // reelle, ce nouveau chargement viendrait d'une VRAIE ré-entree sur l'onglet
+  // (switchTab() invalide le cache a chaque entree, jamais un simple changement de vue
+  // ni une donnee tierce qui change en arriere-plan). On simule cette ré-entree ici.
+  invalidateLeaderboardScanCache();
   await loadCommunityLeaderboard('alltime');
   __assertOk(!communityLeaderboardTop.some(e => e.uid === 'test-uid'), 'avec 29 personnes, mon rang (tres bas) ne doit plus faire partie du top 20 affiche');
   const communityHtmlBig = renderCommunityScreen();
@@ -3820,14 +3903,151 @@ const cssText = __rawHtml + __cssSource;
   // est deja assez fournie pour etre motivante).
   await db.collection('leaderboard').doc('uidX').set({ displayName: 'X', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
   await db.collection('leaderboard').doc('uidY').set({ displayName: 'Y', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
+  invalidateLeaderboardScanCache(); // simule une vraie ré-entree sur l onglet (voir 146bis)
   await loadCommunityLeaderboard('streaks');
   __assertOk(communityLeaderboardTop.length >= 3, 'ce 2e scenario doit avoir 3 personnes ou plus');
   const filledCommunityHtml = renderCommunityScreen();
   __assertOk(!filledCommunityHtml.includes('community-invite-card'), 'la carte d invitation ne doit plus s afficher des que le classement compte 3 personnes ou plus');
   activeTab = 'today';
+
+  // --- 146quater. Optimisation quota Firestore : un changement de VUE pendant la
+  // MEME visite de l onglet reutilise le scan deja en cache (pas de nouvelle lecture
+  // Firestore), mais une vraie ré-entree sur l onglet (invalidateLeaderboardScanCache(),
+  // voir switchTab()) redonne bien des donnees fraiches ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'test-uid', displayName: 'Moi', email: 'a@test.com', photoURL: '' };
+  await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Moi', streakCount: 5, xpTotal: 5, xpWeekly: 5, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
+  await loadCommunityLeaderboard('streaks');
+  __assertEq(communityLeaderboardTop.length, 1, 'etat initial : une seule personne dans le classement');
+  // Mutation DIRECTE du mock (simule un autre utilisateur qui rejoint), SANS passer
+  // par invalidateLeaderboardScanCache() : dans l appli reelle, ceci correspond a un
+  // changement de vue (switchCommunityLeaderboardView()), qui ne doit PAS re-scanner.
+  await db.collection('leaderboard').doc('nouveau-uid').set({ displayName: 'Nouveau', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
+  await loadCommunityLeaderboard('streaks');
+  __assertEq(communityLeaderboardTop.length, 1, 'un changement de vue pendant la MEME visite doit reutiliser le scan deja en cache (le nouvel arrivant n apparait pas tant qu on ne re-entre pas sur l onglet)');
+  // Une vraie ré-entree sur l onglet (via switchTab(), qui invalide le cache) doit en
+  // revanche voir la donnee a jour.
+  invalidateLeaderboardScanCache();
+  await loadCommunityLeaderboard('streaks');
+  __assertEq(communityLeaderboardTop.length, 2, 'une vraie ré-entree sur l onglet Communaute doit toujours voir des donnees fraiches (aucune perte de reactivite)');
+  console.log('OK: le scan du classement est reutilise entre changements de vue (meme visite) mais toujours frais a chaque ré-entree sur l onglet');
   console.log('OK: empty state du classement (carte d invitation a partager si moins de 3 membres)');
 
-  // --- 146quater. Contraste du bouton secondaire "Choisir mon propre defi" (#2 CSS) :
+  // --- 146quater-bis. Optimisation quota Firestore : le Journal met en cache les jours
+  // PASSES (immuables une fois le jour termine) - une 2e ouverture dans la meme session
+  // ne doit relire QUE "aujourd hui" (encore modifiable), jamais les 27 autres jours.
+  // loadHistoryEntries() calcule TOUJOURS sa fenetre de 28 jours depuis le "new Date()"
+  // reel (jamais depuis todayKey, souvent fige a une date fictive par d autres tests
+  // plus haut) : todayKey doit correspondre a la vraie date du jour ici, sinon aucune
+  // des 28 entrees ne correspond a "aujourd hui" et le test ne mesure rien de valide.
+  todayKey = dateKey(new Date());
+  historyDayCache = {};
+  __resetDbGetDayCallCount();
+  const pastDate1 = new Date();
+  pastDate1.setDate(pastDate1.getDate() - 3);
+  const pastKey1 = dateKey(pastDate1);
+  __store.set('day:' + pastKey1, JSON.stringify({ challenges: { [pompes.id]: { sets: [10, 10], targetOverride: null, done: true, hardcoreDone: false, hardcoreAnnounced: false } } }));
+  await loadHistoryEntries();
+  __assertEq(__dbGetDayCallCount, 28, 'la 1ere ouverture du Journal doit lire les 28 jours (aucun n est encore en cache)');
+  __assertOk(historyEntries.some(e => e.key === pastKey1 && e.total === 20), 'l entree du jour passe seede doit apparaitre avec le bon total');
+
+  __resetDbGetDayCallCount();
+  await loadHistoryEntries();
+  __assertEq(__dbGetDayCallCount, 1, '2e ouverture dans la meme session : seul "aujourd hui" (encore modifiable) doit etre relu, les 27 jours passes reutilisent le cache');
+  __assertOk(historyEntries.some(e => e.key === pastKey1 && e.total === 20), 'les entrees des jours passes (servies depuis le cache) doivent rester correctes');
+  console.log('OK: le Journal met en cache les jours passes (immuables), seul "aujourd hui" est relu a chaque ouverture');
+
+  // --- 146quater-ter. Optimisation quota Firestore : fetchPublicProfile(uid) met en
+  // cache le resultat pour la duree de la session - un meme uid redemande plusieurs
+  // fois (ami + demande recue, refreshFriendsData() rappelee apres chaque action) ne
+  // doit relire son profil public qu UNE SEULE fois.
+  publicProfileCache = {};
+  __resetLeaderboardGetCallCount();
+  await db.collection('leaderboard').doc('profil-uid').set({ displayName: 'Alice Dupont', photoURL: 'http://x/a.png' }, { merge: true });
+  const profil1 = await fetchPublicProfile('profil-uid');
+  __assertEq(profil1.displayName, 'Alice D.', 'le profil public doit etre anonymise (formatDisplayName)');
+  __assertEq(__leaderboardGetCallCount, 1, 'le 1er appel doit bien lire Firestore');
+  const profil2 = await fetchPublicProfile('profil-uid');
+  __assertEq(profil2.displayName, 'Alice D.', 'le 2e appel doit renvoyer le meme profil');
+  __assertEq(__leaderboardGetCallCount, 1, 'le 2e appel pour le MEME uid ne doit PAS relire Firestore (cache de session)');
+  console.log('OK: fetchPublicProfile() met en cache le resultat pour la duree de la session');
+
+  // --- 146quater-quinquies. Optimisation quota Firestore : le cache fetchPublicProfile()
+  // survit a une reouverture de la PWA (localStorage, TTL 6h) - simule une reouverture
+  // en vidant le cache MEMOIRE (publicProfileCache = {}) sans toucher au localStorage,
+  // puis recharge depuis le stockage comme le ferait un vrai rechargement de page.
+  __resetLeaderboardGetCallCount();
+  publicProfileCache = {};
+  loadPublicProfileCacheFromStorage();
+  const profil3 = await fetchPublicProfile('profil-uid');
+  __assertEq(profil3.displayName, 'Alice D.', 'le profil doit rester disponible apres une simulation de reouverture');
+  __assertEq(__leaderboardGetCallCount, 0, 'une reouverture dans la fenetre de 6h ne doit RIEN relire depuis Firestore (cache localStorage)');
+  console.log('OK: le cache fetchPublicProfile() survit a une reouverture de la PWA (localStorage, TTL 6h)');
+
+  // --- 146quater-quater. Optimisation quota Firestore : les listeners fil d activite/
+  // contributions Boss Battle ne s attachent QUE si activeTab vaut 'community' (voir
+  // switchTab()) - hors de cet onglet, chaque ecriture d un AUTRE utilisateur sur ces
+  // collections facturerait sinon une lecture a une session qui ne regarde meme pas
+  // cet ecran.
+  activeTab = 'today';
+  myFriends = [{ uid: 'amie-uid', displayName: 'Amie', photoURL: '' }];
+  communityActivityFeedUnsub = null;
+  communityContributionsUnsub = null;
+  startActivityFeedListener();
+  startRecentContributionsListener();
+  __assertOk(communityActivityFeedUnsub === null, 'le listener fil d activite ne doit PAS s attacher hors de l onglet Communaute');
+  __assertOk(communityContributionsUnsub === null, 'le listener contributions Boss Battle ne doit PAS s attacher hors de l onglet Communaute');
+  activeTab = 'community';
+  startActivityFeedListener();
+  startRecentContributionsListener();
+  __assertOk(typeof communityActivityFeedUnsub === 'function', 'le listener fil d activite doit s attacher une fois sur l onglet Communaute');
+  __assertOk(typeof communityContributionsUnsub === 'function', 'le listener contributions Boss Battle doit s attacher une fois sur l onglet Communaute');
+  communityActivityFeedUnsub(); communityActivityFeedUnsub = null;
+  communityContributionsUnsub(); communityContributionsUnsub = null;
+  myFriends = [];
+  activeTab = 'today';
+  console.log('OK: les listeners fil d activite/contributions Boss Battle sont suspendus hors de l onglet Communaute');
+
+  // --- 146quater-sexies. Optimisation quota Firestore : addSet() regroupe (debounce)
+  // les ecritures Firestore (appData + day:{date}) de plusieurs taps rapproches en une
+  // SEULE paire d ecritures, sans jamais retarder la mise a jour LOCALE (deja verifiee
+  // par les tests existants, qui lisent xpTotal/streakCount/etc juste apres addSet()).
+  // flushWorkoutWrites() (force-flush, declenche en vrai par visibilitychange/pagehide)
+  // doit toujours pouvoir provoquer l ecriture reelle sans attendre le debounce, sans
+  // jamais perdre la derniere action.
+  activeToday = new Set([pompes.id]);
+  state = emptyDayState();
+  await pickChallenge(pompes.id);
+  stats[pompes.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  __resetAppDataSetCallCount();
+  __resetDbSetDayCallCount();
+  addSet(1); // sans await : simule un tap - le debounce programme le flush, n ecrit pas encore
+  addSet(1);
+  addSet(1);
+  await new Promise(r => setTimeout(r, 0)); // laisse les 3 appels se derouler (mais PAS le delai du debounce, 800ms)
+  __assertEq(__appDataSetCallCount, 0, 'juste apres 3 taps rapproches, aucune ecriture Firestore ne doit encore avoir eu lieu (debounce en cours)');
+  __assertEq(__dbSetDayCallCount, 0, 'idem pour le document day:{date}');
+  __assertEq(stats[pompes.id].lifetimeTotal, 3, 'la donnee LOCALE doit deja refleter les 3 taps, jamais retardee par le debounce');
+  await flushWorkoutWrites();
+  __assertEq(__appDataSetCallCount, 1, '3 taps rapproches ne doivent produire QU UNE SEULE ecriture Firestore sur le document consolide (debounce)');
+  __assertEq(__dbSetDayCallCount, 1, 'idem pour le document day:{date} (une seule ecriture pour les 3 taps)');
+
+  // Un flush sans rien en attente doit etre un no-op (pas de nouvelle ecriture).
+  await flushWorkoutWrites();
+  __assertEq(__appDataSetCallCount, 1, 'un flush sans ecriture en attente ne doit rien ecrire de plus');
+
+  // Un nouveau tap APRES un flush doit reprogrammer un nouveau debounce independant.
+  addSet(1);
+  await new Promise(r => setTimeout(r, 0));
+  __assertEq(__appDataSetCallCount, 1, 'juste apres ce nouveau tap, pas encore de nouvelle ecriture (nouveau debounce en cours)');
+  await flushWorkoutWrites();
+  __assertEq(__appDataSetCallCount, 2, 'le flush force doit bien ecrire ce nouveau tap (jamais perdu)');
+
+  currentChallengeId = null;
+  activeToday = new Set();
+  console.log('OK: addSet() regroupe plusieurs taps rapproches en une seule paire d ecritures Firestore (debounce), flush force jamais perdu');
+
+  // --- 146quinquies. Contraste du bouton secondaire "Choisir mon propre defi" (#2 CSS) :
   // ne doit plus utiliser var(--line)/var(--chalk-dim), quasi invisibles sur ce fond
   // et donnant l impression trompeuse d un bouton desactive ---
   const chooseBtnCssIdx = cssText.indexOf('.community-hero-choose-btn {');
@@ -3850,9 +4070,13 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = bossChallenge147.id;
   stats[bossChallenge147.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   await addSet(10); // serie partielle, ne complete pas le defi (sauf objectif tres bas)
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   let bossDoc = await bossBattleDocRef().get();
   __assertOk(bossDoc.exists && bossDoc.data().currentProgress === 10, 'une simple serie (pas forcement la completion) doit deja contribuer a la jauge collective');
   await addSet(5);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   bossDoc = await bossBattleDocRef().get();
   __assertEq(bossDoc.data().currentProgress, 15, 'les contributions doivent s additionner au fil des series');
   const contributorDoc = await bossBattleDocRef().collection('dailyContributors').doc(todayKey + '_test-uid').get();
@@ -3864,6 +4088,8 @@ const cssText = __rawHtml + __cssSource;
   activeToday = new Set([otherChallenge147.id]);
   stats[otherChallenge147.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   await addSet(999);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   bossDoc = await bossBattleDocRef().get();
   __assertEq(bossDoc.data().currentProgress, 15, 'un defi different de la cible hebdomadaire ne doit jamais contribuer a la jauge collective');
   currentChallengeId = null;
@@ -3950,11 +4176,17 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = feedChallenge.id;
   stats[feedChallenge.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   await addSet(40);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   const contribSnap = await bossBattleDocRef().collection('contributions').orderBy('at', 'desc').limit(20).get();
   __assertEq(contribSnap.size, 1, 'chaque contribution doit creer un nouveau document (pas fusionne, contrairement a dailyContributors)');
   __assertEq(contribSnap.docs[0].data().displayName, 'Julie', 'le document de contribution doit garder le nom affiche de l auteur');
   __assertEq(contribSnap.docs[0].data().amount, 40, 'le montant de la contribution doit etre celui reellement ajoute');
 
+  // Optimisation quota Firestore : ce listener est suspendu hors de l onglet Communaute
+  // (voir switchTab()/startRecentContributionsListener()), exactement comme le fil
+  // d activite ci-dessus.
+  activeTab = 'community';
   startRecentContributionsListener();
   await Promise.resolve().then(() => {}).then(() => {}).then(() => {});
   __assertEq(communityRecentContributions.length, 1, 'le listener doit alimenter le fil en temps reel');
@@ -3963,6 +4195,8 @@ const cssText = __rawHtml + __cssSource;
   const feedSectionHtml = renderBossBattleSection();
   __assertOk(feedSectionHtml.includes('boss-battle-feed') && feedSectionHtml.includes('Julie') && feedSectionHtml.includes("vient d'ajouter 40"), 'l ecran Communaute doit afficher le fil des dernieres contributions (FOMO en direct)');
   communityRecentContributions = [];
+  if (communityContributionsUnsub) { communityContributionsUnsub(); communityContributionsUnsub = null; }
+  activeTab = 'today';
   __resetCommunityMocks();
   console.log('OK: fil des dernieres contributions au Boss Battle (temps reel, FOMO en direct)');
 
@@ -4053,6 +4287,8 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = privacyTarget.targetChallengeId;
   stats[privacyTarget.targetChallengeId] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   await addSet(10);
+  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  await flushWorkoutWrites();
   const privacyContribDoc = await bossBattleDocRef().collection('dailyContributors').doc(todayKey + '_test-uid').get();
   __assertEq(privacyContribDoc.data().displayName, 'Jean D.', 'l agregat dailyContributors (badge Contributeur du jour) ne doit jamais garder le nom complet');
   const privacyFeedSnap = await bossBattleDocRef().collection('contributions').orderBy('at', 'desc').limit(1).get();

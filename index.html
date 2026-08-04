@@ -295,14 +295,111 @@ function appDataDocRef() {
   return db.collection('users').doc(currentUser.uid).collection('kv').doc('appData');
 }
 
+// Regroupe plusieurs saveAppField() consécutifs (ex: une complétion de défi
+// écrit stats/lastCompleted/dailyActivity/badges/xpTotal/xpWeeklyData/streakData
+// — 7 champs, tous sur le MÊME document) en UN SEUL appel Firestore, au lieu d'un
+// aller-retour réseau par champ. Compteur (pas juste un booléen) : autorise les
+// appels imbriqués (ex: addSet() qui appelle registerDailyStreak(), qui appelle
+// saveStreakData()) sans clôturer le lot prématurément au retour de l'appel
+// imbriqué. 100% invisible : même document, même contenu final, même sémantique
+// merge:true — seul le NOMBRE d'écritures change, jamais la donnée persistée.
+let appDataBatchDepth = 0;
+let pendingAppDataFields = null;
+
+function beginAppDataBatch() {
+  appDataBatchDepth++;
+}
+
+// opts.debounce : voir scheduleWorkoutWriteFlush() plus bas — au lieu d'écrire
+// immédiatement, laisse le flush groupé (addSet()/undoLast()) s'en charger un peu
+// plus tard, pour fusionner plusieurs actions rapprochées.
+async function endAppDataBatch(opts) {
+  appDataBatchDepth--;
+  if (appDataBatchDepth > 0) return;
+  if (opts && opts.debounce) {
+    scheduleWorkoutWriteFlush();
+    return;
+  }
+  await flushAppDataBatchNow();
+}
+
+async function flushAppDataBatchNow() {
+  if (pendingAppDataFields) {
+    const fields = pendingAppDataFields;
+    pendingAppDataFields = null;
+    pendingWriteCount++;
+    updateOfflineBanner();
+    try {
+      await appDataDocRef().set(fields, { merge: true });
+    } catch (e) {
+      reportSaveError('save batched appData failed', e);
+    } finally {
+      pendingWriteCount--;
+      updateOfflineBanner();
+    }
+  }
+  // syncLeaderboardEntry() (voir plus bas) peut aussi avoir été différée pendant ce
+  // lot (ex: appelée depuis awardXp() ET registerDailyStreak() pour un même événement)
+  // : appDataBatchDepth est retombé à 0 avant l'appel à cette fonction, donc cet appel
+  // prend le chemin d'écriture immédiate normal, une seule fois pour tout le lot.
+  if (pendingLeaderboardSync) {
+    pendingLeaderboardSync = false;
+    await syncLeaderboardEntry();
+  }
+}
+
+// Debounce partagé pour les actions haute fréquence de journalisation (addSet()/
+// undoLast(), potentiellement plusieurs taps rapprochés en quelques secondes) :
+// regroupe les 2 écritures réseau (document appData consolidé + day:{date}) de
+// plusieurs actions rapprochées en UNE SEULE paire d'écritures, au lieu d'une paire
+// par action. La mise à jour LOCALE (stats/state en mémoire, render()) reste
+// TOUJOURS immédiate — seul l'aller-retour Firestore est différé de courte durée.
+// AUCUNE perte de donnée possible : un flush FORCÉ et IMMÉDIAT se déclenche dès que
+// l'utilisateur pourrait quitter — voir les écouteurs plus bas (visibilitychange
+// vers "hidden", le signal le plus fiable cross-plateforme y compris PWA mobile,
+// avant même qu'un beforeunload — non garanti sur mobile — ait une chance de se
+// déclencher ; pagehide en secours). Le pire cas est un flush plus TÔT que prévu,
+// jamais plus tard : zéro risque de perte.
+const WORKOUT_WRITE_DEBOUNCE_MS = 800;
+let workoutWriteDebounceTimer = null;
+let workoutFlushPending = false;
+
+function scheduleWorkoutWriteFlush() {
+  workoutFlushPending = true;
+  if (workoutWriteDebounceTimer) clearTimeout(workoutWriteDebounceTimer);
+  workoutWriteDebounceTimer = setTimeout(() => { flushWorkoutWrites(); }, WORKOUT_WRITE_DEBOUNCE_MS);
+}
+
+async function flushWorkoutWrites() {
+  if (workoutWriteDebounceTimer) { clearTimeout(workoutWriteDebounceTimer); workoutWriteDebounceTimer = null; }
+  if (!workoutFlushPending) return;
+  workoutFlushPending = false;
+  await flushAppDataBatchNow();
+  await saveState();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushWorkoutWrites();
+});
+window.addEventListener('pagehide', () => { flushWorkoutWrites(); });
+
 /**
  * Écrit UN SEUL champ du document consolidé, via un merge Firestore natif
  * (`{merge:true}`) qui ne touche jamais les autres champs du même document —
  * même si un autre écran écrit un champ différent au même moment (ex: terminer
  * un défi pendant que les Paramètres modifient les poids d'haltères ailleurs).
  * C'est ce qui rend la fusion sûre face aux écritures concurrentes.
+ *
+ * Si appelée à l'intérieur d'un lot (beginAppDataBatch()/endAppDataBatch()), la
+ * valeur est simplement mise en attente — le vrai appel Firestore n'a lieu qu'à
+ * la fermeture du lot, fusionnant tous les champs modifiés entre-temps.
  */
 async function saveAppField(field, value) {
+  if (appDataBatchDepth > 0) {
+    if (!pendingAppDataFields) pendingAppDataFields = {};
+    pendingAppDataFields[field] = value;
+    return;
+  }
   pendingWriteCount++;
   updateOfflineBanner();
   try {
@@ -499,6 +596,11 @@ auth.onAuthStateChanged(user => {
     myKudosGivenEventIds = new Set();
     myKudosGivenToday = new Set();
     if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+    // Cache du Journal (voir loadHistoryEntries()) : des documents PAR UTILISATEUR
+    // (users/{uid}/kv/day:...) — sans ce nettoyage, un compte B connecté juste après
+    // un compte A sur le même onglet de navigateur verrait à tort l'historique de A.
+    historyDayCache = {};
+    publicProfileCache = {}; // repart propre pour le prochain compte connecté sur cet onglet
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
@@ -1590,6 +1692,16 @@ function switchTab(tab) {
     editingChallengeId = null;
     libraryOpenCats = new Set(); // referme tous les accordéons en quittant l'onglet Défis
     librarySearchQuery = ''; // repart d'une recherche vide au prochain passage sur l'onglet
+  } else if (activeTab === 'community') {
+    // Ces 2 listeners ne servent qu'à l'affichage EN DIRECT de CET onglet (fil
+    // d'activité, dernières contributions Boss Battle) — aucune notification/popup
+    // n'en dépend (contrairement au listener de progression Boss Battle, qui détecte
+    // la victoire et reste donc actif partout), rien ne se perd à les suspendre
+    // pendant qu'on regarde un autre onglet. Sans ça, chaque écriture d'un AUTRE
+    // utilisateur sur ces collections facturerait une lecture à cette session même
+    // pendant qu'elle affiche "Aujourd'hui". Rattachés à la ré-entrée (voir plus bas).
+    if (communityActivityFeedUnsub) { communityActivityFeedUnsub(); communityActivityFeedUnsub = null; }
+    if (communityContributionsUnsub) { communityContributionsUnsub(); communityContributionsUnsub = null; }
   }
   if (navigator.vibrate) navigator.vibrate(8);
   activeTab = tab;
@@ -1604,9 +1716,19 @@ function switchTab(tab) {
     });
   }
   if (tab === 'community') {
+    // Chaque ENTRÉE sur l'onglet doit voir des données fraîches (aucune perte de
+    // réactivité) : invalide le cache de scan avant de charger, pour ne réutiliser un
+    // scan déjà en cache que lors des changements de VUE pendant CETTE visite (voir
+    // fetchLeaderboardFullScan()), jamais d'une visite à l'autre.
+    invalidateLeaderboardScanCache();
     loadCommunityLeaderboard(communityLeaderboardView);
     fetchTopContributorToday().then((c) => { communityTopContributorToday = c; render(); });
     fetchBossBattleArchive().then((a) => { communityBossBattleArchive = a; render(); });
+    // Rattache les 2 listeners suspendus en quittant l'onglet (voir plus haut) —
+    // myFriends est déjà en mémoire (chargé au démarrage), aucune relecture des amis
+    // n'est nécessaire pour ça.
+    startActivityFeedListener();
+    startRecentContributionsListener();
   }
 }
 
@@ -2288,11 +2410,51 @@ function friendshipPairId(uidX, uidY) {
 // supprime son document leaderboard) devient de facto introuvable/non affichable ici
 // aussi — l'opt-out classement vaut opt-out découverte, cohérent plutôt que 2 réglages
 // de vie privée séparés à gérer.
+// Cache mémoire (durée de la session, voir remise à zéro au logout plus bas) : un
+// même uid peut être redemandé plusieurs fois (ami présent dans plusieurs listes,
+// refreshFriendsData() rappelée après chaque action ami) — évite une relecture
+// Firestore identique tant que la session reste ouverte. displayName/photoURL
+// changent rarement (dérivés du profil Google), un cache de session est donc sans
+// impact visible.
+//
+// 3e exception documentée à "pas de localStorage dans cette app" (les 2 premières :
+// PWA_INSTALL_GATE_BYPASS_KEY, PREFERRED_LANGUAGE_KEY) : contrairement aux 2
+// premières (préférences propres À CET APPAREIL), ceci est un cache d'un résultat
+// déjà PUBLIC (comme leaderboard/{uid} lui-même) — persisté pour survivre à une
+// fermeture/réouverture de la PWA (usage typique : plusieurs ouvertures brèves par
+// jour), afin de ne pas rerelire le même profil ami à chaque réouverture. Best-effort
+// (TTL, navigation privée tolérée) : ne cache JAMAIS les relations elles-mêmes (qui
+// est ami, qui a envoyé une demande) — celles-ci restent toujours relues en direct à
+// chaque démarrage (refreshFriendsData()), aucune fraîcheur perdue sur ce qui compte
+// réellement (nouvelle demande d'ami, retrait...).
+const PUBLIC_PROFILE_CACHE_KEY = 'publicProfileCacheV1';
+const PUBLIC_PROFILE_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6h : largement assez court pour un changement de photo/nom Google, largement assez long pour couvrir plusieurs réouvertures dans la même journée
+let publicProfileCache = {};
+
+function loadPublicProfileCacheFromStorage() {
+  try {
+    const raw = localStorage.getItem(PUBLIC_PROFILE_CACHE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && parsed.entries && (Date.now() - parsed.savedAt) < PUBLIC_PROFILE_CACHE_TTL_MS) {
+      publicProfileCache = parsed.entries;
+    }
+  } catch (e) { /* navigation privée/quota/JSON invalide : tant pis, on repart d'un cache vide */ }
+}
+function savePublicProfileCacheToStorage() {
+  try {
+    localStorage.setItem(PUBLIC_PROFILE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), entries: publicProfileCache }));
+  } catch (e) { /* navigation privée/quota : tant pis, le cache reste en mémoire pour cette session uniquement */ }
+}
+loadPublicProfileCacheFromStorage();
+
 async function fetchPublicProfile(uid) {
+  if (Object.prototype.hasOwnProperty.call(publicProfileCache, uid)) return publicProfileCache[uid];
   const doc = await db.collection('leaderboard').doc(uid).get();
-  if (!doc.exists) return null;
-  const d = doc.data();
-  return { displayName: formatDisplayName(d.displayName), photoURL: d.photoURL || '' };
+  const result = doc.exists ? { displayName: formatDisplayName(doc.data().displayName), photoURL: doc.data().photoURL || '' } : null;
+  publicProfileCache[uid] = result;
+  savePublicProfileCacheToStorage();
+  return result;
 }
 
 /**
@@ -2338,6 +2500,12 @@ async function refreshFriendsData() {
 // pas Firestore tant qu'aucun ami n'est ajouté — état vide explicite côté rendu.
 function startActivityFeedListener() {
   if (communityActivityFeedUnsub) { communityActivityFeedUnsub(); communityActivityFeedUnsub = null; }
+  // Suspendu hors de l'onglet Communauté (voir switchTab()) : appelée aussi bien au
+  // démarrage (refreshFriendsData()) qu'après une action ami — dans les 2 cas, si
+  // l'utilisateur n'est pas sur cet onglet (ex: démarrage normal, qui atterrit sur
+  // "Aujourd'hui"), inutile d'ouvrir un listener que personne ne regarde. Rattaché
+  // explicitement à la ré-entrée sur l'onglet (switchTab()).
+  if (activeTab !== 'community') return;
   const friendUids = myFriends.map(f => f.uid);
   if (friendUids.length === 0) {
     communityActivityFeed = [];
@@ -2539,6 +2707,10 @@ let communityContributionsUnsub = null;
 
 function startRecentContributionsListener() {
   if (communityContributionsUnsub) communityContributionsUnsub();
+  communityContributionsUnsub = null;
+  // Suspendu hors de l'onglet Communauté, même raisonnement que
+  // startActivityFeedListener() ci-dessus (voir switchTab()).
+  if (activeTab !== 'community') return;
   communityContributionsUnsub = bossBattleDocRef().collection('contributions')
     .orderBy('at', 'desc').limit(20).onSnapshot((snap) => {
       // { id: d.id, ...d.data() } (pas juste d.data()) : l'id du document est
@@ -2980,8 +3152,22 @@ async function saveLeaderboardOptOut() {
 // Écrit (merge) la ligne publique et minimale de classement de l'utilisateur — jamais
 // le document appData complet (profil/poids restent privés). No-op silencieux si
 // l'utilisateur a désactivé sa participation.
+//
+// Peut être appelée 2 fois pour un seul événement (ex: awardXp() PUIS
+// registerDailyStreak() lors de la 1ère complétion du jour) — écrit à chaque fois
+// EXACTEMENT le même instantané des champs courants, donc la 2e écriture est une
+// pure redite. À l'intérieur d'un lot appData (voir beginAppDataBatch()), l'écriture
+// réelle est différée à la fin du lot : plusieurs appels se fondent en une seule
+// écriture Firestore, avec les valeurs déjà à jour au moment du flush (100%
+// invisible, même document final, juste moins d'allers-retours).
+let pendingLeaderboardSync = false;
+
 async function syncLeaderboardEntry() {
   if (leaderboardOptOut || !currentUser) return;
+  if (appDataBatchDepth > 0) {
+    pendingLeaderboardSync = true;
+    return;
+  }
   try {
     await db.collection('leaderboard').doc(currentUser.uid).set({
       displayName: formatDisplayName(currentUser.displayName),
@@ -2992,6 +3178,11 @@ async function syncLeaderboardEntry() {
       xpTotal,
       lastActiveDate: todayKey,
     }, { merge: true });
+    // Sans ça, un scan de classement déjà en cache (voir fetchLeaderboardFullScan())
+    // afficherait NOTRE PROPRE rang/valeur obsolète après une action qui vient de le
+    // changer (ex: on vient de gagner de l'XP mais l'onglet Communauté montre encore
+    // l'ancien total pendant la fenêtre de cache).
+    invalidateLeaderboardScanCache();
   } catch (e) {
     reportSaveError('leaderboard sync failed', e);
   }
@@ -3003,6 +3194,7 @@ async function toggleLeaderboardOptOut() {
   if (leaderboardOptOut) {
     try { await db.collection('leaderboard').doc(currentUser.uid).delete(); }
     catch (e) { reportSaveError('leaderboard opt-out delete failed', e); }
+    invalidateLeaderboardScanCache();
   } else {
     await syncLeaderboardEntry();
   }
@@ -3024,12 +3216,6 @@ function leaderboardBaseQuery(view) {
   return q;
 }
 
-async function fetchLeaderboardTop(view, n = 20) {
-  const field = leaderboardFieldForView(view);
-  const snap = await leaderboardBaseQuery(view).orderBy(field, 'desc').limit(n).get();
-  return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-}
-
 // Rang exact (via count(), sans jamais lire tout le classement) + les 2 voisins juste
 // au-dessus et juste en-dessous de l'utilisateur — pas seulement le top N, pour que
 // n'importe qui (même loin du sommet) se voie situé dans le classement.
@@ -3038,14 +3224,49 @@ async function fetchLeaderboardTop(view, n = 20) {
 // SDK Firestore compat réellement chargé ici (10.13.0) malgré la documentation
 // (TypeError "count is not a function" observé en production) — remplacé par un calcul
 // de position côté client, plus simple et qui réutilise EXACTEMENT la même requête/le
-// même index composite que fetchLeaderboardTop() (une seule vue "Hebdo" à indexer, pas
-// deux). Limite assumée : le coût (nombre de lectures) grandit avec la taille totale
-// du classement, pas seulement le nombre affiché — acceptable pour une communauté de
-// taille modeste ; à revoir si le classement grossit beaucoup.
-async function fetchMyRankAndNeighbors(view) {
+// même index composite que le Top N (une seule vue "Hebdo" à indexer, pas deux).
+//
+// Cache par vue (streaks/hebdo/all-time), valable UNIQUEMENT pour la visite en cours
+// de l'onglet Communauté (jamais entre 2 visites — voir invalidateLeaderboardScanCache()
+// appelée à CHAQUE entrée sur l'onglet dans switchTab(), donc toujours des données
+// fraîches à l'ouverture) : Top N ET rang/voisins réutilisent la MÊME lecture complète
+// (auparavant 2 requêtes Firestore séparées par vue — Top N limité + scan complet), et
+// un changement de vue PENDANT cette même visite réutilise le résultat déjà en cache au
+// lieu de re-scanner. Invalidé aussi juste après syncLeaderboardEntry() (voir plus bas)
+// pour ne jamais afficher son PROPRE classement obsolète après une action. Aucune perte
+// de fraîcheur pour les données d'AUTRUI : cet écran n'a jamais été temps réel (lecture
+// ponctuelle à chaque entrée/changement de vue, jamais un onSnapshot) — ce cache ne
+// change que le nombre de requêtes, jamais le moment où un rafraîchissement a lieu.
+// Limite assumée qui subsiste : le coût de CE premier scan par vue grandit avec la
+// taille totale du classement, pas seulement le nombre affiché — acceptable pour une
+// communauté de taille modeste ; à revoir avec un agrégat côté serveur si ça grossit
+// beaucoup.
+let leaderboardScanCache = {}; // { [view]: [...] }
+
+function invalidateLeaderboardScanCache() {
+  leaderboardScanCache = {};
+}
+
+async function fetchLeaderboardFullScan(view) {
+  if (leaderboardScanCache[view]) return leaderboardScanCache[view];
   const field = leaderboardFieldForView(view);
   const snap = await leaderboardBaseQuery(view).orderBy(field, 'desc').get();
   const all = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  leaderboardScanCache[view] = all;
+  return all;
+}
+
+async function fetchLeaderboardTop(view, n = 20) {
+  const all = await fetchLeaderboardFullScan(view);
+  return all.slice(0, n);
+}
+
+async function fetchMyRankAndNeighbors(view) {
+  const field = leaderboardFieldForView(view);
+  // Copie défensive : le tableau vient potentiellement du cache partagé ci-dessus
+  // (réutilisé par fetchLeaderboardTop() et par une prochaine visite dans le TTL) —
+  // ne jamais le muter en place (le splice() plus bas sinon corromprait le cache).
+  const all = [...(await fetchLeaderboardFullScan(view))];
   let myIdx = all.findIndex(e => e.uid === currentUser.uid);
   if (myIdx === -1) {
     const myDoc = await db.collection('leaderboard').doc(currentUser.uid).get();
@@ -4053,6 +4274,18 @@ async function pickChallenge(id) {
 
 async function addSet(amount) {
   if (amount <= 0) return;
+  beginAppDataBatch(); // stats/lastCompleted/dailyActivity/badges/xpTotal/xpWeeklyData/streakData : un seul aller-retour Firestore pour tout ce qui suit, voir saveAppField()
+  try {
+    await addSetInner(amount);
+  } finally {
+    // debounce:true : voir scheduleWorkoutWriteFlush() — fusionne l'écriture Firestore
+    // de plusieurs taps rapprochés (+5/+10 répétés) en une seule, sans jamais retarder
+    // la mise à jour locale/le rendu ci-dessus, déjà faits de façon synchrone.
+    await endAppDataBatch({ debounce: true });
+  }
+}
+
+async function addSetInner(amount) {
   const entry = getEntry(currentChallengeId);
   entry.sets.push(amount);
   await registerBossBattleContributionIfNeeded(currentChallengeId, amount); // chaque serie compte, pas seulement la complétion du défi
@@ -4170,11 +4403,26 @@ async function addSet(amount) {
     enqueueLevelPopups(hcLevelBefore, hcLevelAfter);
   }
 
-  await saveState();
+  // Écriture day:{todayKey} confiée au flush groupé : saveStats() plus haut (toujours
+  // appelée, même sans complétion) a déjà mis appDataBatchDepth/pendingAppDataFields
+  // dans l'état qui fera que le endAppDataBatch({debounce:true}) de addSet() (voir
+  // plus haut) programme le flush — celui-ci rejoue aussi saveState(), jamais perdu
+  // (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites()).
   render();
 }
 
 async function undoLast() {
+  beginAppDataBatch();
+  try {
+    await undoLastInner();
+  } finally {
+    // debounce:true : même raisonnement que addSet() plus haut — fusionne l'écriture
+    // Firestore de plusieurs "annuler" rapprochés en une seule.
+    await endAppDataBatch({ debounce: true });
+  }
+}
+
+async function undoLastInner() {
   const entry = getEntry(currentChallengeId);
   const popped = entry.sets.pop();
   const total = getTotal();
@@ -4190,7 +4438,7 @@ async function undoLast() {
     entry.done = false;
     weekData[todayKey] = Object.values(state.challenges).some(e => e.done);
   }
-  await saveState();
+  // Écriture day:{todayKey} confiée au flush groupé (voir addSet(), même mécanisme).
   render();
 }
 
@@ -4516,6 +4764,15 @@ function render(animate) {
 }
 
 /** Charge les 28 derniers jours d'historique (documents `day:{key}`), en parallèle. */
+// Cache mémoire des jours PASSÉS (immuables une fois le jour terminé — jamais
+// "aujourd'hui", qui peut encore changer et n'est donc jamais mis en cache ici) :
+// sans ça, rouvrir l'onglet Journal plusieurs fois dans la même session relit les 28
+// mêmes documents à chaque fois, alors que 27 d'entre eux n'ont pas pu changer depuis
+// la dernière lecture. hasOwnProperty (pas juste un test de vérité) : un jour sans
+// aucune activité est mis en cache comme `null`, qu'il ne faut jamais reconfondre avec
+// "pas encore lu".
+let historyDayCache = {};
+
 async function loadHistoryEntries() {
   const DAYS_BACK = 28;
   const dayInfos = [];
@@ -4527,9 +4784,15 @@ async function loadHistoryEntries() {
   // Lectures Firestore toujours en parallèle (règle du projet) : ce sont 28 documents
   // indépendants, aucune dépendance entre eux ne justifie de les lire en séquentiel
   // (jusqu'à 28 aller-retours réseau l'un après l'autre à chaque ouverture du Journal).
-  const results = await Promise.all(dayInfos.map(({ k }) =>
-    dbGet('day:' + k).then(res => JSON.parse(res.value)).catch(() => null)
-  ));
+  const results = await Promise.all(dayInfos.map(({ k }) => {
+    if (k !== todayKey && Object.prototype.hasOwnProperty.call(historyDayCache, k)) {
+      return historyDayCache[k];
+    }
+    return dbGet('day:' + k).then(res => JSON.parse(res.value)).catch(() => null).then((val) => {
+      if (k !== todayKey) historyDayCache[k] = val;
+      return val;
+    });
+  }));
   const entries = [];
   results.forEach((s, idx) => {
     if (!s || !s.challenges) return;
