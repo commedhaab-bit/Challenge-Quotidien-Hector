@@ -91,7 +91,11 @@
 // secours minimal plutôt que de laisser la page vide/figée sans aucun signal. Posé
 // tout en haut, AVANT l'initialisation Firebase, pour attraper les erreurs les plus
 // précoces. Volontairement écrit en HTML/CSS inline très simple (aucune dépendance à
-// une fonction de l'appli plus bas, qui pourrait elle-même être à l'origine du crash).
+// une fonction de l'appli plus bas, qui pourrait elle-même être à l'origine du crash) —
+// donc AUCUN appel à t()/tn() ici, ce filet doit fonctionner même si le moteur i18n
+// lui-même est la cause du crash. Texte en ANGLAIS en dur (pas français) : cet écran
+// est montré à n'importe quel utilisateur quelle que soit sa langue, et l'anglais est
+// mieux compris qu'un français figé par le public FR/EN/ES de l'appli.
 let fatalErrorShown = false;
 function showFatalErrorScreen(detail) {
   if (fatalErrorShown) return; // n'afficher qu'une seule fois même si plusieurs erreurs surviennent
@@ -101,9 +105,9 @@ function showFatalErrorScreen(detail) {
   el.setAttribute('style', 'position:fixed;inset:0;z-index:99999;background:#0a0d0b;color:#eef2ef;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;');
   el.innerHTML =
     '<div style="font-size:44px;">⚠️</div>' +
-    '<div style="font-size:18px;font-weight:800;">Une erreur est survenue</div>' +
-    '<div style="font-size:14px;color:#8a958e;max-width:320px;line-height:1.5;">L\'application a rencontré un problème inattendu. Recharge la page pour réessayer.</div>' +
-    '<button id="fatalReloadBtn" style="background:#39e97a;color:#0a0d0b;border:none;font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;cursor:pointer;">Recharger</button>';
+    '<div style="font-size:18px;font-weight:800;">Something went wrong</div>' +
+    '<div style="font-size:14px;color:#8a958e;max-width:320px;line-height:1.5;">The app ran into an unexpected problem. Reload the page to try again.</div>' +
+    '<button id="fatalReloadBtn" style="background:#39e97a;color:#0a0d0b;border:none;font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;cursor:pointer;">Reload</button>';
   document.body.appendChild(el);
   document.getElementById('fatalReloadBtn').onclick = () => window.location.reload();
 }
@@ -3668,9 +3672,16 @@ function escapeJsAttr(str) {
 // deux fois ne change rien : "Jean D." redonne "Jean D."), donc sans risque de
 // ré-appliquer aussi à l'affichage en filet de sécurité sur d'éventuelles données déjà
 // écrites avant ce correctif.
+// Repli 'Athlete' (anglais, pas de t()) si fullName est vide : cette valeur est ECRITE
+// dans Firestore (collections communautaires partagees), lue par TOUS les autres
+// utilisateurs quelle que soit LEUR langue — un repli traduit a la source figerait la
+// langue de l'AUTEUR au moment de l'ecriture pour tous les lecteurs (aucun mecanisme de
+// re-traduction a la lecture pour les noms, contrairement a exerciseSlug). L'anglais est
+// le choix le plus largement compris par un public FR/EN/ES, donc le repli "le moins
+// pire" tant qu'il reste dans une seule langue fixe.
 function formatDisplayName(fullName) {
   const trimmed = String(fullName ?? '').trim().replace(/\s+/g, ' ');
-  if (!trimmed) return 'Athlète';
+  if (!trimmed) return 'Athlete';
   const parts = trimmed.split(' ');
   if (parts.length === 1) return parts[0];
   const lastInitial = parts[parts.length - 1].charAt(0).toUpperCase();

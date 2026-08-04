@@ -4033,8 +4033,8 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(formatDisplayName('Jean Paul Dupont'), 'Jean D.', 'seule l initiale du DERNIER mot est gardee (pas les mots intermediaires)');
   __assertEq(formatDisplayName('  Hector   HAAB  '), 'Hector H.', 'espaces superflus normalises, initiale toujours en majuscule meme si le nom est saisi en majuscules');
   __assertEq(formatDisplayName('Jean D.'), 'Jean D.', 'idempotent : ré-appliquer sur un nom deja anonymise ne doit rien changer (filet de securite a l affichage sans danger)');
-  __assertEq(formatDisplayName(''), 'Athlète', 'nom vide -> repli Athlète (comme l ancien comportement)');
-  __assertEq(formatDisplayName(null), 'Athlète', 'nom absent (null) -> repli Athlète');
+  __assertEq(formatDisplayName(''), 'Athlete', 'nom vide -> repli Athlete en anglais (langue fixe, ecrit dans des collections partagees lues par tous, voir CLAUDE.md)');
+  __assertEq(formatDisplayName(null), 'Athlete', 'nom absent (null) -> repli Athlete');
   console.log('OK: formatDisplayName() anonymise correctement (Prenom N., idempotent, repli si vide)');
 
   // --- 157. formatDisplayName() est applique A L ECRITURE (pas seulement a
