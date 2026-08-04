@@ -295,69 +295,6 @@ const mockTopCollections = new Map();
 // partagé. Map(uid -> Map(subName -> Map(docId -> data))).
 const usersSubcollections = new Map();
 
-// ---- Mock du SDK Firestore MODULAIRE (voir loadFirestoreModular()/initFirestore()
-// dans index.html, migration en cours vers ce SDK) ----
-// De FINS wrappers autour du MÊME mock compat ci-dessus (mêmes docRef/query, même
-// magasin en mémoire) : PAS une 2e implémentation parallèle. Nécessaire tant que du
-// code migré (fonctions libres modulaires) et du code pas-encore-migré (chaînage
-// compat) coexistent dans index.html — les deux doivent voir les mêmes données.
-// LIMITE CONNUE DE FIDÉLITÉ : __modularCollection()/__modularDoc() renvoient les MÊMES
-// objets que le mock compat (avec .doc()/.where()/.get()/.set() chaînables), alors que
-// le vrai SDK modulaire n'expose AUCUNE méthode chaînable sur un CollectionReference/
-// DocumentReference (tout passe par les fonctions libres : doc(ref,id), getDoc(ref)...).
-// Ce mock ne DÉTECTERA donc PAS un chaînage compat réintroduit par erreur sur du code
-// migré (ex: `usernamesCollRef().doc(x)` plutôt que `fsMod.doc(mdb,'usernames',x)`,
-// piège réellement rencontré pendant le batch 3) — à vérifier à l'oeil à chaque site
-// migré, ce mock ne le fera pas à ta place.
-// 2 formes reelles de doc() dans le SDK modulaire : doc(firestore, path, ...segments)
-// OU doc(collectionRef, id?) — distinguees ici par duck-typing (une CollectionReference
-// a .doc, pas .collection ; l'instance Firestore racine a .collection, pas .doc).
-function __modularDoc(dbOrCollRef, ...segments) {
-  let ref;
-  if (typeof dbOrCollRef.doc === 'function') {
-    ref = dbOrCollRef.doc(segments[0]);
-    for (let i = 1; i < segments.length; i += 2) ref = ref.collection(segments[i]).doc(segments[i + 1]);
-  } else {
-    ref = dbOrCollRef.collection(segments[0]).doc(segments[1]);
-    for (let i = 2; i < segments.length; i += 2) ref = ref.collection(segments[i]).doc(segments[i + 1]);
-  }
-  return ref;
-}
-function __modularCollection(dbInstance, ...segments) {
-  let ref = dbInstance.collection(segments[0]);
-  for (let i = 1; i < segments.length; i += 2) ref = ref.doc(segments[i]).collection(segments[i + 1]);
-  return ref;
-}
-// exists est une PROPRIÉTÉ dans le mock compat (comme le vrai SDK compat) mais doit
-// devenir une MÉTHODE côté modulaire (comme le vrai SDK modulaire) : piège de
-// migration réel, reproduit ici volontairement pour que les tests l'attrapent.
-function __modularSnap(snap) { return { exists: () => snap.exists, data: snap.data, id: snap.id }; }
-function __modularGetDoc(ref) { return Promise.resolve(ref.get()).then(__modularSnap); }
-function __modularSetDoc(ref, data, opts) { return ref.set(data, opts); }
-function __modularDeleteDoc(ref) { return ref.delete(); }
-function __modularAddDoc(collRef, data) { return collRef.add(data); }
-function __modularGetDocs(queryOrColl) { return queryOrColl.get(); }
-function __modularQuery(base, ...constraints) { return constraints.reduce((q, c) => c(q), base); }
-function __modularWhere(field, op, value) { return (q) => q.where(field, op, value); }
-function __modularOrderBy(field, dir) { return (q) => q.orderBy(field, dir); }
-function __modularLimit(n) { return (q) => q.limit(n); }
-function __modularStartAt(v) { return (q) => q.startAt(v); }
-function __modularOnSnapshot(refOrQuery, cb) {
-  return refOrQuery.onSnapshot((snap) => cb('exists' in snap && typeof snap.exists !== 'function' ? __modularSnap(snap) : snap));
-}
-function __modularWriteBatch(dbInstance) { return dbInstance.batch(); }
-// tx.get() doit renvoyer un instantane MODULAIRE (exists() methode) au code migre,
-// pas l instantane compat brut (exists propriete) que renvoie le mock de transaction
-// compat ci-dessous — meme piege que getDoc()/onSnapshot(), reproduit ici a l identique.
-function __modularRunTransaction(dbInstance, fn) {
-  return dbInstance.runTransaction((tx) => fn({
-    get: (ref) => Promise.resolve(tx.get(ref)).then(__modularSnap),
-    set: (ref, data, opts) => tx.set(ref, data, opts),
-    update: (ref, data) => tx.update(ref, data),
-    delete: (ref) => tx.delete(ref),
-  }));
-}
-
 const sandbox = {
   console,
   Math, Date, JSON, Set, Map, Array, Object, Number, String, Promise,
@@ -433,7 +370,6 @@ const sandbox = {
   location: mockLocation,
   firebase: {
     initializeApp(){},
-    app(){ return {}; }, // passé à initializeFirestore() (interop) : jamais inspecté par ce mock
     auth(){ return { onAuthStateChanged(cb){ /* pilote manuellement depuis le test */ }, signInWithPopup(){ return Promise.resolve(); }, GoogleAuthProvider: function(){} }; },
     firestore(){
       return {
@@ -530,38 +466,6 @@ const sandbox = {
 // firestore (pas de l'instance renvoyee par firebase.firestore()) : attachee ici sur la
 // fonction elle-meme, comme dans le vrai SDK compat.
 sandbox.firebase.firestore.FieldValue = { increment: __mockFieldValueIncrement };
-// Double de test pour loadFirestoreModular() (voir index.html) : remplace le vrai
-// import() reseau par une resolution immediate vers ce mock, adosse au MEME
-// sandbox.firebase.firestore() que le SDK compat (interop reproduite fidelement -
-// mdb et db partagent les memes donnees, exactement comme en production). Rebranche
-// plus bas par testDriver (meme convention que dbGet = __dbGet).
-// loadFirestoreModular() renvoie desormais [appMod, firestoreMod] (Promise.all de 2
-// imports, voir index.html/CLAUDE.md - bug reel corrige : firebase.app() compat
-// n'est pas reconnu par initializeFirestore() modulaire, d'ou appMod.getApp()).
-sandbox.__loadFirestoreModular = () => Promise.resolve([
-  { getApp: () => ({}) }, // appMod : mock minimal, jamais inspecte par initializeFirestore() ci-dessous
-  {
-    initializeFirestore: () => sandbox.firebase.firestore(),
-    persistentLocalCache: (opts) => opts,
-    persistentMultipleTabManager: () => ({}),
-    doc: __modularDoc,
-    getDoc: __modularGetDoc,
-    setDoc: __modularSetDoc,
-    deleteDoc: __modularDeleteDoc,
-    addDoc: __modularAddDoc,
-    getDocs: __modularGetDocs,
-    collection: __modularCollection,
-    query: __modularQuery,
-    where: __modularWhere,
-    orderBy: __modularOrderBy,
-    limit: __modularLimit,
-    startAt: __modularStartAt,
-    onSnapshot: __modularOnSnapshot,
-    writeBatch: __modularWriteBatch,
-    runTransaction: __modularRunTransaction,
-    increment: __mockFieldValueIncrement,
-  },
-]);
 sandbox.globalThis = sandbox;
 sandbox.self = sandbox;
 vm.createContext(sandbox);
@@ -571,12 +475,6 @@ const testDriver = `
 // par la version en memoire injectee par le harnais de test.
 dbGet = __dbGet;
 dbSet = __dbSet;
-// Meme convention : remplace le vrai import() reseau de loadFirestoreModular() par le
-// mock ci-dessus, adosse au meme sandbox.firebase.firestore() que dbGet/dbSet/
-// appDataDocRef. Doit etre fait ICI (synchrone, avant le premier "await" de l'IIFE
-// plus bas) : initFirestore() est differe d'un tick microtask cote index.html
-// precisement pour laisser cette ligne s'executer avant le tout premier appel reel.
-loadFirestoreModular = __loadFirestoreModular;
 // appDataDocRef() (contrairement a dbGet/dbSet) lit currentUser.uid directement : il faut
 // un utilisateur factice des le debut, avant meme le premier test (plusieurs tests le
 // re-assignent plus loin avec la meme forme, sans jamais lire .uid eux-memes).
@@ -587,13 +485,6 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
 const cssText = __rawHtml + __cssSource;
 
 (async () => {
-  // Attend la resolution d'initFirestore() (differee d'un tick microtask cote
-  // index.html) AVANT tout test : garantit que db/mdb/fsMod sont assignes, exactement
-  // comme startApp() (point d'entree reel) l'attend deja lui-meme en production.
-  await firestoreReady;
-  __assertOk(typeof mdb === 'object' && mdb !== null, 'initFirestore() doit avoir resolu mdb (SDK Firestore modulaire) avant le premier test');
-  __assertOk(typeof db === 'object' && db !== null, 'initFirestore() doit avoir assigne db (SDK compat, interop) avant le premier test');
-
   // --- 1. CHALLENGE_LIBRARY sanity ---
   __assertOk(CHALLENGE_LIBRARY.length > 20, 'CHALLENGE_LIBRARY devrait contenir >20 exercices');
   console.log('OK: CHALLENGE_LIBRARY chargee (' + CHALLENGE_LIBRARY.length + ' exercices)');
@@ -1034,7 +925,7 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(gateHtmlExisting.includes('Choisis ton pseudo') && !gateHtmlExisting.includes('nav-back-btn'), 'le verrou "gate" doit lui aussi etre infranchissable');
 
   // Verification de disponibilite en direct (debounce reel de 400ms).
-  await fsMod.setDoc(usernameDocRef('alice'), { uid: 'uid-alice' });
+  await usernamesCollRef().doc('alice').set({ uid: 'uid-alice' });
   updateUsernameDraft('alice');
   await new Promise(r => setTimeout(r, 500));
   __assertEq(usernameAvailability, 'taken', 'un pseudo deja reserve doit etre signale "taken" apres verification');
@@ -1053,8 +944,8 @@ const cssText = __rawHtml + __cssSource;
   await finishUsernameSetup();
   __assertEq(username, 'gateduser', 'le pseudo doit etre persiste apres validation');
   __assertEq(usernameSetupMode, null, 'le verrou doit se refermer une fois le pseudo valide');
-  const gateClaimDoc = await fsMod.getDoc(usernameDocRef('gateduser'));
-  __assertOk(gateClaimDoc.exists() && gateClaimDoc.data().uid === currentUser.uid, 'le pseudo doit etre reserve dans usernames/{pseudo}');
+  const gateClaimDoc = await usernamesCollRef().doc('gateduser').get();
+  __assertOk(gateClaimDoc.exists && gateClaimDoc.data().uid === currentUser.uid, 'le pseudo doit etre reserve dans usernames/{pseudo}');
   const afterGateHtml = document.getElementById('app').innerHTML;
   __assertOk(!afterGateHtml.includes('Choisis ton pseudo'), 'contexte "gate" : proceedAfterProfile() doit avoir repris la main (retour a l app normale)');
 
@@ -1079,10 +970,10 @@ const cssText = __rawHtml + __cssSource;
   usernameAvailability = 'available';
   await finishUsernameSetup();
   __assertEq(username, 'renameduser', 'le renommage doit remplacer le pseudo courant');
-  const oldClaimAfterRename = await fsMod.getDoc(usernameDocRef('onboardeduser'));
-  __assertOk(!oldClaimAfterRename.exists(), 'l ancien pseudo doit etre libere (supprime de usernames/) apres un renommage');
-  const newClaimAfterRename = await fsMod.getDoc(usernameDocRef('renameduser'));
-  __assertOk(newClaimAfterRename.exists(), 'le nouveau pseudo doit etre reserve apres un renommage');
+  const oldClaimAfterRename = await usernamesCollRef().doc('onboardeduser').get();
+  __assertOk(!oldClaimAfterRename.exists, 'l ancien pseudo doit etre libere (supprime de usernames/) apres un renommage');
+  const newClaimAfterRename = await usernamesCollRef().doc('renameduser').get();
+  __assertOk(newClaimAfterRename.exists, 'le nouveau pseudo doit etre reserve apres un renommage');
 
   // goBackOneLevel() : seul le mode 'rename' est dismissible.
   usernameSetupMode = 'onboarding';
@@ -2316,17 +2207,15 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(firebaseScriptTags.every(t => !t.includes('defer') && !t.includes('async')), 'les SDK Firebase doivent rester charges de maniere synchrone (coherent avec le script inline non differe)');
   console.log('OK: SDK Firebase + script inline charges de maniere synchrone (pas de defer/async, ordre garanti)');
 
-  // --- 85. Performance : persistance locale Firestore (IndexedDB) activee, via le
-  // SDK modulaire depuis la migration (batches 1 a 6, voir CLAUDE.md) : plus
-  // enablePersistence() (compat, deprecie), mais initializeFirestore({cache:...}). ---
-  __assertOk(__rawHtml.includes('persistentLocalCache(') && __rawHtml.includes('persistentMultipleTabManager('), 'la persistance locale Firestore doit etre activee (cache IndexedDB entre sessions, SDK modulaire)');
+  // --- 85. Performance : persistance locale Firestore (IndexedDB) activee ---
+  __assertOk(__rawHtml.includes('enablePersistence({ synchronizeTabs: true })'), 'la persistance locale Firestore doit etre activee (cache IndexedDB entre sessions)');
   console.log('OK: persistance locale Firestore activee');
 
   // --- 86. Performance : le service worker alimente desormais son cache sur un miss
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v41'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v42'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3527,20 +3416,20 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(friendSearchResult, 'not-found', 'un pseudo non reserve doit etre signale introuvable');
 
   // Recherche : son propre pseudo.
-  await fsMod.setDoc(usernameDocRef('moipseudo'), { uid: 'me-uid' });
+  await usernamesCollRef().doc('moipseudo').set({ uid: 'me-uid' });
   friendSearchQuery = 'moipseudo';
   await submitFriendSearch();
   __assertEq(friendSearchResult, 'self', 'rechercher son propre pseudo doit etre signale explicitement');
 
   // Recherche : pseudo reserve mais personne introuvable (opt-out classement = opt-out
   // decouverte, effet de bord voulu -- voir fetchPublicProfile()).
-  await fsMod.setDoc(usernameDocRef('fantome'), { uid: 'ghost-uid' });
+  await usernamesCollRef().doc('fantome').set({ uid: 'ghost-uid' });
   friendSearchQuery = 'fantome';
   await submitFriendSearch();
   __assertEq(friendSearchResult, 'not-found', 'un pseudo reserve par quelqu un qui a desactive le classement doit rester introuvable');
 
   // Recherche : trouve, aucune relation encore -> bouton "+ Ajouter".
-  await fsMod.setDoc(usernameDocRef('alicepseudo'), { uid: 'alice-uid' });
+  await usernamesCollRef().doc('alicepseudo').set({ uid: 'alice-uid' });
   await db.collection('leaderboard').doc('alice-uid').set({ displayName: 'Alice Dupont', photoURL: '' }, { merge: true });
   friendSearchQuery = 'alicepseudo';
   await submitFriendSearch();
@@ -3581,7 +3470,7 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(myFriends.some(f => f.uid === 'alice-uid'), 'moi doit aussi voir Alice comme amie, sans qu aucun document dans mon espace personnel n ait ete modifie par Alice');
 
   // Refus (avec un 2e utilisateur, Bob) : supprime juste la demande, ne cree JAMAIS de friendships.
-  await fsMod.setDoc(usernameDocRef('bobpseudo'), { uid: 'bob-uid' });
+  await usernamesCollRef().doc('bobpseudo').set({ uid: 'bob-uid' });
   await db.collection('leaderboard').doc('bob-uid').set({ displayName: 'Bob Martin', photoURL: '' }, { merge: true });
   await sendFriendRequest('bob-uid');
   currentUser = { uid: 'bob-uid', displayName: 'Bob Martin', email: 'b@test.com', photoURL: '' };
@@ -3697,7 +3586,7 @@ const cssText = __rawHtml + __cssSource;
 
   // Evenementiel : donner un kudos incremente kudosCount ET pose la preuve kudosBy.
   const feedEntryRef = await db.collection('activityFeed').add({ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Squats', amount: 50, unit: 'reps', at: Date.now(), kudosCount: 0 });
-  await giveKudosToEvent('activityFeed', feedEntryRef.id);
+  await giveKudosToEvent(feedEntryRef);
   let feedEntryDoc = await feedEntryRef.get();
   __assertEq(feedEntryDoc.data().kudosCount, 1, 'donner un kudos doit incrementer kudosCount de 1');
   const kudosByDoc = await feedEntryRef.collection('kudosBy').doc('me-uid').get();
@@ -3706,12 +3595,12 @@ const cssText = __rawHtml + __cssSource;
 
   // Double-tap (2e appel sans avoir retire entre-temps) : ne doit JAMAIS re-incrementer
   // (garde par transaction : preuve deja presente -> avorte sans ecrire).
-  await giveKudosToEvent('activityFeed', feedEntryRef.id);
+  await giveKudosToEvent(feedEntryRef);
   feedEntryDoc = await feedEntryRef.get();
   __assertEq(feedEntryDoc.data().kudosCount, 1, 'un 2e appel sans retrait entre les deux ne doit jamais re-incrementer (protection anti double-comptage)');
 
   // Retrait : decremente et retire la preuve.
-  await removeKudosFromEvent('activityFeed', feedEntryRef.id);
+  await removeKudosFromEvent(feedEntryRef);
   feedEntryDoc = await feedEntryRef.get();
   __assertEq(feedEntryDoc.data().kudosCount, 0, 'retirer un kudos doit decrementer kudosCount');
   const kudosByDocAfterRemove = await feedEntryRef.collection('kudosBy').doc('me-uid').get();
@@ -3719,13 +3608,13 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!myKudosGivenEventIds.has(feedEntryRef.id), 'l etat local doit refleter le retrait');
 
   // Retirer un kudos jamais donne ne doit rien faire (pas de kudosCount negatif).
-  await removeKudosFromEvent('activityFeed', feedEntryRef.id);
+  await removeKudosFromEvent(feedEntryRef);
   feedEntryDoc = await feedEntryRef.get();
   __assertEq(feedEntryDoc.data().kudosCount, 0, 'retirer un kudos jamais donne ne doit jamais faire descendre le compteur sous 0');
 
   // Meme mecanisme reutilise sur les contributions Boss Battle (structure identique).
-  const contribRef = await fsMod.addDoc(fsMod.collection(bossBattleDocRef(), 'contributions'), { uid: 'amie-uid', displayName: 'Amie B.', amount: 20, at: Date.now(), kudosCount: 0 });
-  await giveKudosToEvent('bossBattleContribution', contribRef.id);
+  const contribRef = await bossBattleDocRef().collection('contributions').add({ uid: 'amie-uid', displayName: 'Amie B.', amount: 20, at: Date.now(), kudosCount: 0 });
+  await giveKudosToEvent(contribRef);
   const contribDoc = await contribRef.get();
   __assertEq(contribDoc.data().kudosCount, 1, 'giveKudosToEvent() doit fonctionner identiquement sur une contribution Boss Battle');
 
@@ -3785,27 +3674,27 @@ const cssText = __rawHtml + __cssSource;
   currentUser = { uid: 'amie-uid', displayName: 'Amie Berger', email: 'a@test.com', photoURL: '' };
   await giveKudosToPerson('me-uid');
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
-  let unread = await fsMod.getDocs(fsMod.query(notificationsCollRef('me-uid'), fsMod.where('read', '==', false)));
+  let unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
   __assertEq(unread.size, 1, 'donner un kudos a une personne doit ecrire exactement 1 notification chez la cible');
   __assertEq(unread.docs[0].data().type, 'kudo', 'le type doit etre "kudo"');
   __assertEq(unread.docs[0].data().fromName, 'Amie B.', 'le nom de l emetteur doit etre deja anonymise DANS la notification elle-meme');
-  const amieUnreadIsolation = await fsMod.getDocs(fsMod.query(notificationsCollRef('amie-uid'), fsMod.where('read', '==', false)));
+  const amieUnreadIsolation = await notificationsCollRef('amie-uid').where('read', '==', false).get();
   __assertEq(amieUnreadIsolation.size, 0, "les notifications sont isolees PAR UTILISATEUR : donner un kudos a 'me-uid' ne doit rien ecrire chez 'amie-uid' (l emetteur)");
 
   // Ecriture : kudos (evenementiel, fil d activite) -> notification chez le
   // PROPRIETAIRE de l evenement (pas chez le votant).
   const myFeedEntryRef = await db.collection('activityFeed').add({ uid: 'me-uid', displayName: 'Moi A.', challengeName: 'Pompes', amount: 20, unit: 'reps', at: Date.now(), kudosCount: 0 });
   currentUser = { uid: 'amie-uid', displayName: 'Amie Berger', email: 'a@test.com', photoURL: '' };
-  await giveKudosToEvent('activityFeed', myFeedEntryRef.id);
+  await giveKudosToEvent(myFeedEntryRef);
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
-  unread = await fsMod.getDocs(fsMod.query(notificationsCollRef('me-uid'), fsMod.where('read', '==', false)));
+  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
   __assertEq(unread.size, 2, 'un kudos sur mon entree du fil d activite doit aussi m envoyer une notification (le proprietaire de l evenement, pas le votant)');
 
   // Ecriture : demande d ami -> notification chez la CIBLE.
   currentUser = { uid: 'demandeur-uid', displayName: 'Demandeur Dupont', email: 'd@test.com', photoURL: '' };
   await sendFriendRequest('me-uid');
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
-  unread = await fsMod.getDocs(fsMod.query(notificationsCollRef('me-uid'), fsMod.where('read', '==', false)));
+  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
   __assertEq(unread.size, 3, 'envoyer une demande d ami doit aussi ecrire une notification chez la cible');
   __assertOk(unread.docs.some(d => d.data().type === 'friend_request' && d.data().fromName === 'Demandeur D.'), 'la notification de demande d ami doit porter le bon type et le bon nom anonymise');
 
@@ -3819,8 +3708,8 @@ const cssText = __rawHtml + __cssSource;
   // A. Rattrapage kudos : 2 notifications de kudos deja presentes AVANT l abonnement
   // (simule 2 kudos recus hors ligne) doivent toutes les deux declencher une popup des
   // le tout 1er instantane, dans l ordre de creation (file enqueuePopup).
-  await fsMod.setDoc(fsMod.doc(notificationsCollRef('me-uid')), { type: 'kudo', fromUid: 'amie-uid', fromName: 'Amie B.', read: false, createdAt: 1000 });
-  await fsMod.setDoc(fsMod.doc(notificationsCollRef('me-uid')), { type: 'kudo', fromUid: 'bob-uid', fromName: 'Bob M.', read: false, createdAt: 2000 });
+  await notificationsCollRef('me-uid').doc().set({ type: 'kudo', fromUid: 'amie-uid', fromName: 'Amie B.', read: false, createdAt: 1000 });
+  await notificationsCollRef('me-uid').doc().set({ type: 'kudo', fromUid: 'bob-uid', fromName: 'Bob M.', read: false, createdAt: 2000 });
   startNotificationsListener();
   await new Promise(r => setTimeout(r, 50));
   __assertOk(popupOpen, 'une notification de kudos deja presente AVANT l abonnement doit quand meme declencher une popup des le 1er instantane (rattrapage natif)');
@@ -3830,13 +3719,13 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(popupOpen && currentPopupHtml.includes('Bob M.'), 'la 2e popup (en file) doit ensuite s afficher, celle de Bob M.');
   document.getElementById('appPopupCloseBtn').onclick();
   await new Promise(r => setTimeout(r, 10));
-  unread = await fsMod.getDocs(fsMod.query(notificationsCollRef('me-uid'), fsMod.where('read', '==', false)));
+  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
   __assertEq(unread.size, 0, 'les 2 notifications de kudos traitees doivent etre marquees lues (plus aucune non-lue)');
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
 
   // B. Rattrapage demande d ami : "Accepter" cree l amitie directement depuis la popup.
   __resetCommunityMocks();
-  await fsMod.setDoc(fsMod.doc(notificationsCollRef('me-uid')), { type: 'friend_request', fromUid: 'demandeur-uid', fromName: 'Demandeur D.', read: false, createdAt: Date.now() });
+  await notificationsCollRef('me-uid').doc().set({ type: 'friend_request', fromUid: 'demandeur-uid', fromName: 'Demandeur D.', read: false, createdAt: Date.now() });
   startNotificationsListener();
   await new Promise(r => setTimeout(r, 50));
   __assertOk(currentConfirmModalHtml.includes("Nouvelle demande d'ami") && currentConfirmModalHtml.includes('Demandeur D.'), 'la demande d ami deja presente AVANT l abonnement doit aussi declencher sa popup des le 1er instantane, nommant le demandeur');
@@ -3851,14 +3740,14 @@ const cssText = __rawHtml + __cssSource;
   // mais la demande reste visible normalement dans l ecran Amis.
   __resetCommunityMocks();
   await db.collection('friendRequests').doc('quelquun-uid_me-uid').set({ fromUid: 'quelquun-uid', toUid: 'me-uid', at: Date.now() });
-  await fsMod.setDoc(fsMod.doc(notificationsCollRef('me-uid')), { type: 'friend_request', fromUid: 'quelquun-uid', fromName: 'Quelquun Q.', read: false, createdAt: Date.now() });
+  await notificationsCollRef('me-uid').doc().set({ type: 'friend_request', fromUid: 'quelquun-uid', fromName: 'Quelquun Q.', read: false, createdAt: Date.now() });
   startNotificationsListener();
   await new Promise(r => setTimeout(r, 50));
   currentConfirmModalEl.querySelector('#confirmModalCancelBtn').onclick();
   await new Promise(r => setTimeout(r, 20));
   const requestStillThere = await db.collection('friendRequests').doc('quelquun-uid_me-uid').get();
   __assertOk(requestStillThere.exists, '"Plus tard" ne doit pas supprimer la demande (juste remise a plus tard, pas un refus)');
-  unread = await fsMod.getDocs(fsMod.query(notificationsCollRef('me-uid'), fsMod.where('read', '==', false)));
+  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
   __assertEq(unread.size, 0, 'meme refusee pour l instant ("Plus tard"), la notification doit etre marquee lue (pas re-proposee en boucle)');
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
 

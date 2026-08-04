@@ -128,100 +128,27 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-
-// ==== FIRESTORE : SDK modulaire (persistance) — migration TERMINÉE (6/6 batches),
-// voir CLAUDE.md ====
-// Le nouveau mécanisme de cache persistant (persistentLocalCache, qui remplace l'API
-// enablePersistence() dépréciée) n'existe QUE dans le SDK modulaire (aucun équivalent
-// dans firebase-firestore-compat.js — vérifié directement sur le bundle réel avant
-// d'entamer cette migration). Le SDK modulaire n'a aucun build UMD/global : il ne peut
-// être chargé qu'en ESM. Import() DYNAMIQUE ici (jamais <script type="module">, voir
-// l'avertissement en <head> sur l'incident écran noir déjà vécu avec defer) — la
-// promesse est gardée à part (firestoreReady) et jamais attendue au top-level du
-// script, pour ne rien bloquer avant que ce soit réellement nécessaire.
-//
-// db (compat) est CONSERVÉ uniquement pour l'interop avec firebase-auth-compat.js/
-// firebase-app-compat.js (jamais migrés, voir CLAUDE.md) et pour le harnais de test —
-// plus AUCUN code applicatif ne le lit ou ne l'écrit directement, tout passe par
-// fsMod/mdb (SDK modulaire) depuis la fin du batch 6. Une panne de l'import modulaire
-// est donc désormais FATALE (plus de repli fonctionnel possible, voir le catch
-// ci-dessous) : traitée exactement comme l'incident "firebase is not defined" déjà
-// documenté en <head>, via le même filet showFatalErrorScreen().
-let db = null;
-let mdb = null;
-let fsMod = null;
-// Diagnostic exposé dans Paramètres > Dépannage : si la persistance échoue (navigation
-// privée, quota IndexedDB, certaines PWA iOS...), chaque écriture Firestore doit
-// atteindre le réseau AVANT de survivre à une fermeture de l'appli — une complétion de
-// défi suivie d'une fermeture immédiate peut alors se perdre silencieusement (aucune
-// queue locale durable). null = pas encore déterminé, true/false = résultat connu.
+const db = firebase.firestore();
+// Persistance locale IndexedDB : les lectures Firestore sont mises en cache sur
+// l'appareil, donc un changement d'onglet ou une réouverture de l'appli peut être
+// servi depuis le cache local (quasi instantané) plutôt que d'attendre le réseau à
+// chaque fois. synchronizeTabs permet d'avoir l'appli ouverte dans plusieurs onglets
+// sans que la persistance échoue. Best-effort : si indisponible (navigation privée,
+// très vieux navigateur), l'appli continue de fonctionner normalement, juste sans
+// ce cache local entre les sessions.
+// Diagnostic exposé dans Paramètres > Dépannage : si la persistance échoue (onglets
+// multiples sans leader, navigation privée, quota IndexedDB, certaines PWA iOS...),
+// chaque écriture Firestore doit atteindre le réseau AVANT de survivre à une
+// fermeture de l'appli — une complétion de défi suivie d'une fermeture immédiate
+// peut alors se perdre silencieusement (aucune queue locale durable). null = pas
+// encore déterminé, true/false = résultat connu.
 let firestorePersistenceEnabled = null;
-
-// Import dynamique isolé dans sa propre fonction pour pouvoir être remplacé par un
-// double de test (voir tests/app.test.js, même convention que dbGet/dbSet un peu plus
-// bas) — jamais de vrai import() réseau pendant les tests.
-//
-// BUG RÉEL rencontré en production (voir CLAUDE.md) : passer firebase.app() (le
-// wrapper COMPAT) à initializeFirestore() (SDK MODULAIRE) construit un `mdb` qui
-// échoue plus tard, silencieusement pour l'appelant, sur le tout premier doc()/
-// collection() réel ("Expected first argument to collection() to be a
-// CollectionReference, a DocumentReference or FirebaseFirestore") — le wrapper
-// compat n'est pas reconnu par les vérifications internes du SDK modulaire. Import
-// de firebase-app.js (MODULAIRE) EN PLUS de firebase-firestore.js : appMod.getApp()
-// récupère la MÊME app par défaut (déjà initialisée par firebase.initializeApp()
-// compat, même registre interne partagé) mais sous la forme reconnue par le reste
-// du SDK modulaire.
-function loadFirestoreModular() {
-  return Promise.all([
-    import('https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js'),
-    import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js'),
-  ]);
-}
-
-async function initFirestore() {
-  try {
-    const [appMod, modular] = await Promise.race([
-      loadFirestoreModular(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('import Firestore modulaire : délai dépassé')), 3000)),
-    ]);
-    mdb = modular.initializeFirestore(appMod.getApp(), {
-      cache: modular.persistentLocalCache({ tabManager: modular.persistentMultipleTabManager() }),
-    });
-    fsMod = modular;
-    // [DEBUG TEMPORAIRE] Diagnostic approfondi (pas une simple relecture de l'echec deja
-    // observe) : inspecte directement mdb/fsMod pour comprendre POURQUOI doc()/collection()
-    // rejette mdb, plutot que de re-deviner un correctif sans donnees.
-    try {
-      console.log('[DEBUG TEMPORAIRE] mdb =', mdb, '| typeof mdb =', typeof mdb, '| mdb.type =', mdb && mdb.type, '| mdb.app =', mdb && mdb.app, '| mdb constructor =', mdb && mdb.constructor && mdb.constructor.name);
-      console.log('[DEBUG TEMPORAIRE] appMod.getApp() =', appMod.getApp(), '| fsMod.doc =', typeof fsMod.doc, '| fsMod.collection =', typeof fsMod.collection);
-      const testColl = fsMod.collection(mdb, 'users');
-      console.log('[DEBUG TEMPORAIRE] fsMod.collection(mdb, "users") a REUSSI :', testColl);
-    } catch (diagErr) {
-      console.error('[DEBUG TEMPORAIRE] fsMod.collection(mdb, "users") a ECHOUE :', diagErr);
-    }
-    db = firebase.firestore(); // compat : interop avec auth-compat/app-compat + harnais de test, voir plus haut
-    // Contrairement à enablePersistence() (compat), initializeFirestore({cache:...}) n'expose
-    // aucune promesse de confirmation : un environnement incompatible (navigation privée sans
-    // IndexedDB, très vieux navigateur) retombe silencieusement sur un cache mémoire, sans
-    // lever d'erreur ici. Best-effort : on considère la config acquise si l'appel n'a pas jeté.
-    firestorePersistenceEnabled = true;
-  } catch (err) {
-    // Plus de repli fonctionnel possible (voir commentaire plus haut) : un échec ici
-    // laisse mdb/fsMod à null alors que TOUT le code applicatif en dépend désormais —
-    // traité comme fatal, au même titre que l'incident "firebase is not defined" déjà
-    // documenté en <head>.
-    firestorePersistenceEnabled = false;
-    showFatalErrorScreen(err);
-  }
-}
-// Différé d'un tick microtask (Promise.resolve().then(...) plutôt qu'un appel
-// synchrone direct) : tests/app.test.js exécute tout le script applicatif ET le
-// harnais de test en UN SEUL vm.runInContext (voir ce fichier) — sans ce report,
-// initFirestore() (et donc loadFirestoreModular()) s'exécuterait AVANT que le
-// harnais ait eu la moindre chance de substituer loadFirestoreModular() par son
-// double de test, et déclencherait un vrai import() réseau pendant les tests.
-const firestoreReady = Promise.resolve().then(() => initFirestore());
-
+db.enablePersistence({ synchronizeTabs: true }).then(() => {
+  firestorePersistenceEnabled = true;
+}).catch((err) => {
+  firestorePersistenceEnabled = false;
+  console.warn('Firestore persistence indisponible :', err.code);
+});
 let currentUser = null;
 
 // ==== INTERNATIONALISATION (i18n) : FR / EN / ES ====
@@ -337,8 +264,8 @@ function reportSaveError(context, err) {
  * par défaut, jamais supposer que la clé existe déjà.
  */
 async function dbGet(key) {
-  const doc = await fsMod.getDoc(fsMod.doc(mdb, 'users', currentUser.uid, 'kv', key));
-  if (!doc.exists()) throw new Error('not found: ' + key);
+  const doc = await db.collection('users').doc(currentUser.uid).collection('kv').doc(key).get();
+  if (!doc.exists) throw new Error('not found: ' + key);
   return { key, value: doc.data().value };
 }
 
@@ -347,7 +274,7 @@ async function dbSet(key, value) {
   pendingWriteCount++;
   updateOfflineBanner();
   try {
-    await fsMod.setDoc(fsMod.doc(mdb, 'users', currentUser.uid, 'kv', key), { value });
+    await db.collection('users').doc(currentUser.uid).collection('kv').doc(key).set({ value });
     return { key, value };
   } finally {
     pendingWriteCount--;
@@ -364,11 +291,8 @@ async function dbSet(key, value) {
 // gain marginal. Les anciennes clés séparées ne sont JAMAIS supprimées lors de
 // la migration (orphelines inoffensives, déjà nettoyées par deleteMyAccount()
 // qui vide toute la sous-collection kv sans liste de clés en dur).
-// Premier site migré vers le SDK Firestore modulaire (voir initFirestore() plus haut,
-// CLAUDE.md "Migration Firestore modulaire") : fsMod.doc()/getDoc()/setDoc() plutôt que
-// les méthodes chaînées compat (.collection().doc().get()/.set()).
 function appDataDocRef() {
-  return fsMod.doc(mdb, 'users', currentUser.uid, 'kv', 'appData');
+  return db.collection('users').doc(currentUser.uid).collection('kv').doc('appData');
 }
 
 /**
@@ -382,7 +306,7 @@ async function saveAppField(field, value) {
   pendingWriteCount++;
   updateOfflineBanner();
   try {
-    await fsMod.setDoc(appDataDocRef(), { [field]: value }, { merge: true });
+    await appDataDocRef().set({ [field]: value }, { merge: true });
   } catch (e) {
     reportSaveError('save ' + field + ' failed', e);
   } finally {
@@ -407,15 +331,11 @@ async function saveAppField(field, value) {
 async function loadAppData() {
   let doc;
   try {
-    doc = await fsMod.getDoc(appDataDocRef());
+    doc = await appDataDocRef().get();
   } catch (e) {
-    console.error('[DEBUG TEMPORAIRE] loadAppData() : lecture appDataDocRef() a échoué', e, 'uid=', currentUser && currentUser.uid);
     doc = null;
   }
-  console.log('[DEBUG TEMPORAIRE] loadAppData() : doc =', doc, 'exists=', doc && doc.exists && doc.exists(), 'uid=', currentUser && currentUser.uid);
-  // doc.exists est une MÉTHODE dans le SDK modulaire (contrairement à la propriété du
-  // SDK compat) — piège de migration classique, à vérifier partout ailleurs aussi.
-  if (doc && doc.exists()) {
+  if (doc && doc.exists) {
     const d = doc.data();
     userProfile = d.profile ?? null;
     username = d.username ?? null;
@@ -451,7 +371,7 @@ async function loadAppData() {
     loadXp(), loadXpWeekly(), loadLeaderboardOptOut(), loadVoiceCoachEnabled(), loadHasSeenTour(),
   ]);
   if (userProfile) {
-    await fsMod.setDoc(appDataDocRef(), {
+    await appDataDocRef().set({
       profile: userProfile,
       customChallenges,
       manualTargetOverrides,
@@ -507,15 +427,15 @@ async function deleteMyAccount() {
     const uid = currentUser.uid;
 
     // Supprime tous les documents de données de l'utilisateur (kv store)
-    const snap = await fsMod.getDocs(fsMod.collection(mdb, 'users', uid, 'kv'));
-    const batch = fsMod.writeBatch(mdb);
+    const snap = await db.collection('users').doc(uid).collection('kv').get();
+    const batch = db.batch();
     snap.forEach(doc => batch.delete(doc.ref));
     // Sans ça, la ligne de classement publique (leaderboard/{uid}) reste orpheline
     // après suppression du compte — le compte recréé obtient un NOUVEL uid Firebase
     // (même s'il s'agit du même compte Google), laissant l'ancienne entrée trainer
     // indéfiniment dans le classement (déjà vécu : 2 lignes "Hector HAAB" visibles
     // après une suppression + recréation de compte).
-    batch.delete(fsMod.doc(mdb, 'leaderboard', uid));
+    batch.delete(db.collection('leaderboard').doc(uid));
     await batch.commit();
 
     // Tente de supprimer le compte Google Auth lui-même
@@ -545,7 +465,6 @@ async function deleteMyAccount() {
 let lastAuthUid = null;
 
 auth.onAuthStateChanged(user => {
-  console.log('[DEBUG TEMPORAIRE] onAuthStateChanged : user=', user && { uid: user.uid, displayName: user.displayName }, 'lastAuthUid=', lastAuthUid, 'mdb=', !!mdb, 'fsMod=', !!fsMod);
   if (user) {
     currentUser = user;
     if (lastAuthUid === user.uid) {
@@ -1105,10 +1024,8 @@ async function loadProfile() {
   try {
     const res = await dbGet('profile');
     userProfile = JSON.parse(res.value);
-    console.log('[DEBUG TEMPORAIRE] loadProfile() : succès, userProfile=', userProfile);
     return true;
   } catch (e) {
-    console.error('[DEBUG TEMPORAIRE] loadProfile() : échec', e, 'uid=', currentUser && currentUser.uid);
     userProfile = null;
     return false;
   }
@@ -1318,11 +1235,8 @@ async function beginOnboardingTransition() {
 }
 
 // ==== PSEUDO PUBLIC : recherche/réservation ====
-// Contrairement à un objet CollectionReference compat, une CollectionReference
-// modulaire n'expose pas de .doc(id) chaînable : le ref est reconstruit ici en un
-// seul appel (même pattern que appDataDocRef()), jamais via un chaînage en 2 temps.
-function usernameDocRef(name) {
-  return fsMod.doc(mdb, 'usernames', name);
+function usernamesCollRef() {
+  return db.collection('usernames');
 }
 
 // Autorise uniquement [a-z0-9_], 3-20 caractères : évite accents/emoji/homoglyphes
@@ -1353,9 +1267,9 @@ async function checkUsernameAvailability(candidate, seq) {
   usernameAvailability = 'checking';
   render();
   try {
-    const doc = await fsMod.getDoc(usernameDocRef(candidate));
+    const doc = await usernamesCollRef().doc(candidate).get();
     if (seq !== usernameCheckSeq) return; // une frappe plus recente a deja lance une autre verif
-    usernameAvailability = doc.exists() ? 'taken' : 'available';
+    usernameAvailability = doc.exists ? 'taken' : 'available';
   } catch (e) {
     if (seq !== usernameCheckSeq) return;
     usernameAvailability = null;
@@ -1391,7 +1305,7 @@ async function finishUsernameSetup() {
   const previousUsername = username;
   const mode = usernameSetupMode;
   try {
-    await fsMod.setDoc(usernameDocRef(newUsername), { uid: currentUser.uid });
+    await usernamesCollRef().doc(newUsername).set({ uid: currentUser.uid });
   } catch (e) {
     // Quelqu'un d'autre a pu prendre ce pseudo entre la vérification et la validation
     // (fenêtre de course assumée, comme ailleurs dans ce projet) : les règles Firestore
@@ -1402,7 +1316,7 @@ async function finishUsernameSetup() {
     return;
   }
   if (previousUsername && previousUsername !== newUsername) {
-    try { await fsMod.deleteDoc(usernameDocRef(previousUsername)); }
+    try { await usernamesCollRef().doc(previousUsername).delete(); }
     catch (e) { reportSaveError('release old username failed', e); }
   }
   username = newUsername;
@@ -1972,8 +1886,8 @@ async function computeWeeklyBossBattleTarget(weekStartStr = mondayOfWeek(new Dat
   try {
     const prevWeekStart = previousWeekStartKey(weekStartStr);
     const prevChallenge = getWeeklyBossBattleChallenge(prevWeekStart);
-    const prevDoc = await fsMod.getDoc(bossBattleDocRef(prevWeekStart));
-    if (prevDoc.exists() && prevChallenge && prevChallenge.target > 0) {
+    const prevDoc = await bossBattleDocRef(prevWeekStart).get();
+    if (prevDoc.exists && prevChallenge && prevChallenge.target > 0) {
       ratio = (prevDoc.data().currentProgress || 0) / prevChallenge.target;
     }
   } catch (e) {
@@ -2014,7 +1928,7 @@ let communityDailyCounts = { completions1: 0, completions2: 0, participants: 0 }
 let communityDailyUnsub = null;
 
 function communityDailyChallengeDocRef(dateStr = todayKey) {
-  return fsMod.doc(mdb, 'community', 'dailyChallenge_' + dateStr);
+  return db.collection('community').doc('dailyChallenge_' + dateStr);
 }
 
 // Appelé une seule fois au démarrage (continueStartApp()) : s'abonne au doc du jour,
@@ -2022,8 +1936,8 @@ function communityDailyChallengeDocRef(dateStr = todayKey) {
 // faire bouger le compteur affiché, sans recharger la page — effet "ça bouge en direct").
 function startCommunityDailyListener() {
   if (communityDailyUnsub) communityDailyUnsub();
-  communityDailyUnsub = fsMod.onSnapshot(communityDailyChallengeDocRef(), (snap) => {
-    const d = snap.exists() ? snap.data() : null;
+  communityDailyUnsub = communityDailyChallengeDocRef().onSnapshot((snap) => {
+    const d = snap.exists ? snap.data() : null;
     communityDailyCounts = {
       completions1: (d && d.completions1) || 0,
       completions2: (d && d.completions2) || 0,
@@ -2060,8 +1974,8 @@ async function registerCommunityParticipantIfNeeded() {
   state.communityJoined = true;
   await saveState(); // persiste le flag dans le doc "day:" (sinon un simple rechargement de page permettrait de recompter)
   try {
-    await fsMod.setDoc(communityDailyChallengeDocRef(),
-      { participants: fsMod.increment(1) },
+    await communityDailyChallengeDocRef().set(
+      { participants: firebase.firestore.FieldValue.increment(1) },
       { merge: true }
     );
   } catch (e) {
@@ -2089,8 +2003,8 @@ async function registerCommunityCompletionIfNeeded(challengeId) {
   if (state.communityCounted.includes(challengeId)) return;
   state.communityCounted.push(challengeId);
   try {
-    await fsMod.setDoc(communityDailyChallengeDocRef(),
-      { ['completions' + slot]: fsMod.increment(1) },
+    await communityDailyChallengeDocRef().set(
+      { ['completions' + slot]: firebase.firestore.FieldValue.increment(1) },
       { merge: true }
     );
   } catch (e) {
@@ -2105,7 +2019,7 @@ async function registerCommunityCompletionIfNeeded(challengeId) {
 async function registerActivityFeedEntryIfNeeded(c, total) {
   if (!currentUser || !c) return;
   try {
-    await fsMod.addDoc(fsMod.collection(mdb, 'activityFeed'), {
+    await db.collection('activityFeed').add({
       uid: currentUser.uid,
       displayName: formatDisplayName(currentUser.displayName),
       challengeName: c.name,
@@ -2179,17 +2093,16 @@ let communityActivityFeedUnsub = null;
 // 2 formes selon ce qui est "kudos-able" :
 // - Événementiel (fil d'activité + contributions Boss Battle) : 1 kudos PERMANENT par
 //   votant et par événement (comme Strava sur une activité), retrait possible (2e tap
-//   = retire). `giveKudosToEvent(surface, entryId)`/`removeKudosFromEvent(surface,
-//   entryId)` sont génériques, réutilisées sur les 2 surfaces plutôt que dupliquées :
-//   les 2 collections ont EXACTEMENT la même forme (kudosCount sur le doc parent +
-//   sous-collection kudosBy/{voterUid}) — voir kudosEventDocRef().
+//   = retire). `giveKudosToEvent(docRef)`/`removeKudosFromEvent(docRef)` sont
+//   génériques, réutilisées sur les 2 surfaces plutôt que dupliquées : les 2 collections
+//   ont EXACTEMENT la même forme (kudosCount sur le doc parent + sous-collection
+//   kudosBy/{voterUid}).
 // - Personne (classement) : 1 kudos par JOUR et par cible (kudosGiven/{jour}_{votant} —
 //   l'ID intègre déjà la date, donc AUCUN code de reset à écrire, demain = un nouveau
 //   doc), cumul affiché à vie (kudosTotal), PAS de retrait (plus simple, décision
 //   assumée : moins besoin de symétrie qu'un like Strava sur un événement ponctuel).
 //
-// runTransaction() (SDK modulaire depuis le batch 5 du chantier de migration Firestore,
-// voir CLAUDE.md ; 1er vrai usage produit, mock ajouté au batch 1) : lit la preuve
+// db.runTransaction() (1er vrai usage produit, mock ajouté au batch 1) : lit la preuve
 // d'un kudos déjà donné, avorte SANS écrire si c'est déjà le cas, sinon écrit les 2
 // documents liés atomiquement — ferme le trou qu'un simple batch() laisserait ouvert
 // (2 écritures indépendantes que rien ne lie vraiment côté serveur).
@@ -2205,34 +2118,22 @@ let communityActivityFeedUnsub = null;
 let myKudosGivenEventIds = new Set();
 let myKudosGivenToday = new Set();
 
-// Reconstruit le ref d'un événement kudos-able à partir d'une surface + d'un id —
-// remplace l'ancien mécanisme qui injectait une expression JS source
-// (`db.collection(...)`) littéralement dans un attribut onclick, réévaluée au clic
-// (dépendait de la présence globale de `db` en syntaxe compat). Les 2 collections ont
-// EXACTEMENT la même forme (kudosCount sur le doc parent + sous-collection kudosBy).
-function kudosEventDocRef(surface, entryId) {
-  if (surface === 'activityFeed') return fsMod.doc(mdb, 'activityFeed', entryId);
-  if (surface === 'bossBattleContribution') return fsMod.doc(fsMod.collection(bossBattleDocRef(), 'contributions'), entryId);
-  throw new Error('surface kudos inconnue : ' + surface);
-}
-
-async function giveKudosToEvent(surface, entryId) {
+async function giveKudosToEvent(docRef) {
   if (!currentUser) return;
-  const docRef = kudosEventDocRef(surface, entryId);
-  const kudosByRef = fsMod.doc(fsMod.collection(docRef, 'kudosBy'), currentUser.uid);
+  const kudosByRef = docRef.collection('kudosBy').doc(currentUser.uid);
   try {
-    await fsMod.runTransaction(mdb, async (tx) => {
+    await db.runTransaction(async (tx) => {
       const existing = await tx.get(kudosByRef);
-      if (existing.exists()) return;
+      if (existing.exists) return;
       const eventDoc = await tx.get(docRef);
-      const current = eventDoc.exists() ? (eventDoc.data().kudosCount || 0) : 0;
-      const ownerUid = eventDoc.exists() ? eventDoc.data().uid : null;
+      const current = eventDoc.exists ? (eventDoc.data().kudosCount || 0) : 0;
+      const ownerUid = eventDoc.exists ? eventDoc.data().uid : null;
       tx.set(kudosByRef, { at: Date.now() });
       tx.set(docRef, { kudosCount: current + 1 }, { merge: true });
       // Notifie le propriétaire de l'événement (jamais soi-même — déjà exclu côté UI par
       // renderKudosButton(), mais on le revérifie ici côté données par prudence).
       if (ownerUid && ownerUid !== currentUser.uid) {
-        tx.set(fsMod.doc(notificationsCollRef(ownerUid)), {
+        tx.set(notificationsCollRef(ownerUid).doc(), {
           type: 'kudo',
           fromUid: currentUser.uid,
           fromName: formatDisplayName(currentUser.displayName),
@@ -2241,7 +2142,7 @@ async function giveKudosToEvent(surface, entryId) {
         });
       }
     });
-    myKudosGivenEventIds.add(entryId);
+    myKudosGivenEventIds.add(docRef.id);
     if (navigator.vibrate) navigator.vibrate(10);
     render();
   } catch (e) {
@@ -2249,20 +2150,19 @@ async function giveKudosToEvent(surface, entryId) {
   }
 }
 
-async function removeKudosFromEvent(surface, entryId) {
+async function removeKudosFromEvent(docRef) {
   if (!currentUser) return;
-  const docRef = kudosEventDocRef(surface, entryId);
-  const kudosByRef = fsMod.doc(fsMod.collection(docRef, 'kudosBy'), currentUser.uid);
+  const kudosByRef = docRef.collection('kudosBy').doc(currentUser.uid);
   try {
-    await fsMod.runTransaction(mdb, async (tx) => {
+    await db.runTransaction(async (tx) => {
       const existing = await tx.get(kudosByRef);
-      if (!existing.exists()) return;
+      if (!existing.exists) return;
       const eventDoc = await tx.get(docRef);
-      const current = eventDoc.exists() ? (eventDoc.data().kudosCount || 0) : 0;
+      const current = eventDoc.exists ? (eventDoc.data().kudosCount || 0) : 0;
       tx.delete(kudosByRef);
       tx.set(docRef, { kudosCount: Math.max(0, current - 1) }, { merge: true });
     });
-    myKudosGivenEventIds.delete(entryId);
+    myKudosGivenEventIds.delete(docRef.id);
     if (navigator.vibrate) navigator.vibrate(10);
     render();
   } catch (e) {
@@ -2273,17 +2173,17 @@ async function removeKudosFromEvent(surface, entryId) {
 async function giveKudosToPerson(targetUid) {
   if (!currentUser || targetUid === currentUser.uid) return;
   const entryId = todayKey + '_' + currentUser.uid;
-  const targetRef = fsMod.doc(mdb, 'leaderboard', targetUid);
-  const givenRef = fsMod.doc(fsMod.collection(targetRef, 'kudosGiven'), entryId);
+  const targetRef = db.collection('leaderboard').doc(targetUid);
+  const givenRef = targetRef.collection('kudosGiven').doc(entryId);
   try {
-    await fsMod.runTransaction(mdb, async (tx) => {
+    await db.runTransaction(async (tx) => {
       const existing = await tx.get(givenRef);
-      if (existing.exists()) return; // déjà donné aujourd'hui à cette personne
+      if (existing.exists) return; // déjà donné aujourd'hui à cette personne
       const targetDoc = await tx.get(targetRef);
-      const current = targetDoc.exists() ? (targetDoc.data().kudosTotal || 0) : 0;
+      const current = targetDoc.exists ? (targetDoc.data().kudosTotal || 0) : 0;
       tx.set(givenRef, { voterUid: currentUser.uid, date: todayKey, at: Date.now() });
       tx.set(targetRef, { kudosTotal: current + 1 }, { merge: true });
-      tx.set(fsMod.doc(notificationsCollRef(targetUid)), {
+      tx.set(notificationsCollRef(targetUid).doc(), {
         type: 'kudo',
         fromUid: currentUser.uid,
         fromName: formatDisplayName(currentUser.displayName),
@@ -2300,14 +2200,15 @@ async function giveKudosToPerson(targetUid) {
 }
 
 // Bouton réutilisé par le fil d'activité ET le fil de contributions Boss Battle (même
-// forme de document, voir kudosEventDocRef()) : `surface` + `entryId` (jamais une
-// expression JS à évaluer, voir kudosEventDocRef()). Jamais affiché sur son propre
-// événement.
-function renderKudosButton(surface, entryId, kudosCount, isMine) {
+// forme de document, voir plus haut) : `docRefJsExpr` est une expression JS (chaîne),
+// pas une valeur — insérée telle quelle dans l'attribut onclick, reconstruite au clic
+// plutôt que sérialisée (un DocumentReference ne peut pas transiter par un attribut
+// HTML). Jamais affiché sur son propre événement.
+function renderKudosButton(docRefJsExpr, entryId, kudosCount, isMine) {
   if (isMine) return '';
   const alreadyGiven = myKudosGivenEventIds.has(entryId);
   const action = alreadyGiven ? 'removeKudosFromEvent' : 'giveKudosToEvent';
-  return `<button class="kudos-btn${alreadyGiven ? ' given' : ''}" onclick="event.stopPropagation(); ${action}('${surface}', '${escapeJsAttr(entryId)}')">👏 ${kudosCount || 0}</button>`;
+  return `<button class="kudos-btn${alreadyGiven ? ' given' : ''}" onclick="event.stopPropagation(); ${action}(${docRefJsExpr})">👏 ${kudosCount || 0}</button>`;
 }
 
 // ==== NOTIFICATIONS : sous-collection dédiée users/{uid}/notifications, UN SEUL
@@ -2318,7 +2219,7 @@ function renderKudosButton(surface, entryId, kudosCount, isMine) {
 // à l'affichage : ça marche même si l'émetteur désactive ensuite son classement (plus
 // d'anonymat forcé rétroactif), et ça évite une lecture supplémentaire par notification.
 function notificationsCollRef(uid) {
-  return fsMod.collection(mdb, 'users', uid, 'notifications');
+  return db.collection('users').doc(uid).collection('notifications');
 }
 
 let notificationsUnsub = null;
@@ -2328,10 +2229,9 @@ let notificationsUnsub = null;
 function startNotificationsListener() {
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
   if (!currentUser) return;
-  notificationsUnsub = fsMod.onSnapshot(
-    fsMod.query(notificationsCollRef(currentUser.uid), fsMod.where('read', '==', false)),
-    (snap) => { processUnreadNotifications(snap); },
-  );
+  notificationsUnsub = notificationsCollRef(currentUser.uid)
+    .where('read', '==', false)
+    .onSnapshot((snap) => { processUnreadNotifications(snap); });
 }
 
 /**
@@ -2348,7 +2248,7 @@ async function processUnreadNotifications(snap) {
   for (const doc of docs) {
     const data = doc.data();
     try {
-      await fsMod.setDoc(fsMod.doc(notificationsCollRef(myUid), doc.id), { read: true }, { merge: true });
+      await notificationsCollRef(myUid).doc(doc.id).set({ read: true }, { merge: true });
     } catch (e) {
       reportSaveError('mark notification read failed', e);
       continue;
@@ -2389,8 +2289,8 @@ function friendshipPairId(uidX, uidY) {
 // aussi — l'opt-out classement vaut opt-out découverte, cohérent plutôt que 2 réglages
 // de vie privée séparés à gérer.
 async function fetchPublicProfile(uid) {
-  const doc = await fsMod.getDoc(fsMod.doc(mdb, 'leaderboard', uid));
-  if (!doc.exists()) return null;
+  const doc = await db.collection('leaderboard').doc(uid).get();
+  if (!doc.exists) return null;
   const d = doc.data();
   return { displayName: formatDisplayName(d.displayName), photoURL: d.photoURL || '' };
 }
@@ -2407,10 +2307,10 @@ async function refreshFriendsData() {
   if (!currentUser) return;
   try {
     const [snapA, snapB, incomingSnap, outgoingSnap] = await Promise.all([
-      fsMod.getDocs(fsMod.query(fsMod.collection(mdb, 'friendships'), fsMod.where('uidA', '==', currentUser.uid))),
-      fsMod.getDocs(fsMod.query(fsMod.collection(mdb, 'friendships'), fsMod.where('uidB', '==', currentUser.uid))),
-      fsMod.getDocs(fsMod.query(fsMod.collection(mdb, 'friendRequests'), fsMod.where('toUid', '==', currentUser.uid))),
-      fsMod.getDocs(fsMod.query(fsMod.collection(mdb, 'friendRequests'), fsMod.where('fromUid', '==', currentUser.uid))),
+      db.collection('friendships').where('uidA', '==', currentUser.uid).get(),
+      db.collection('friendships').where('uidB', '==', currentUser.uid).get(),
+      db.collection('friendRequests').where('toUid', '==', currentUser.uid).get(),
+      db.collection('friendRequests').where('fromUid', '==', currentUser.uid).get(),
     ]);
     const friendUids = [
       ...snapA.docs.map(d => d.data().uidB),
@@ -2445,18 +2345,13 @@ function startActivityFeedListener() {
   }
   // Limite Firestore : au plus 30 valeurs dans un where('in', ...) — largement
   // suffisant pour une liste d'amis personnelle, cf. discussion produit.
-  communityActivityFeedUnsub = fsMod.onSnapshot(
-    fsMod.query(
-      fsMod.collection(mdb, 'activityFeed'),
-      fsMod.where('uid', 'in', friendUids.slice(0, 30)),
-      fsMod.orderBy('at', 'desc'),
-      fsMod.limit(30),
-    ),
-    (snap) => {
+  communityActivityFeedUnsub = db.collection('activityFeed')
+    .where('uid', 'in', friendUids.slice(0, 30))
+    .orderBy('at', 'desc').limit(30)
+    .onSnapshot((snap) => {
       communityActivityFeed = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       render();
-    },
-  );
+    });
 }
 
 function openFriendsScreen() {
@@ -2479,8 +2374,8 @@ async function submitFriendSearch() {
   friendSearchResult = 'searching';
   render();
   try {
-    const claimDoc = await fsMod.getDoc(usernameDocRef(query));
-    if (!claimDoc.exists()) { friendSearchResult = 'not-found'; render(); return; }
+    const claimDoc = await usernamesCollRef().doc(query).get();
+    if (!claimDoc.exists) { friendSearchResult = 'not-found'; render(); return; }
     const targetUid = claimDoc.data().uid;
     if (targetUid === currentUser.uid) { friendSearchResult = 'self'; render(); return; }
     const profile = await fetchPublicProfile(targetUid);
@@ -2499,10 +2394,10 @@ async function submitFriendSearch() {
 
 async function sendFriendRequest(targetUid) {
   try {
-    await fsMod.setDoc(fsMod.doc(mdb, 'friendRequests', friendRequestId(currentUser.uid, targetUid)), {
+    await db.collection('friendRequests').doc(friendRequestId(currentUser.uid, targetUid)).set({
       fromUid: currentUser.uid, toUid: targetUid, at: Date.now(),
     });
-    await fsMod.addDoc(notificationsCollRef(targetUid), {
+    await notificationsCollRef(targetUid).doc().set({
       type: 'friend_request',
       fromUid: currentUser.uid,
       fromName: formatDisplayName(currentUser.displayName),
@@ -2524,9 +2419,9 @@ async function acceptFriendRequest(fromUid) {
   const pairId = friendshipPairId(fromUid, currentUser.uid);
   const [uidA, uidB] = [fromUid, currentUser.uid].sort();
   try {
-    const batch = fsMod.writeBatch(mdb);
-    batch.set(fsMod.doc(mdb, 'friendships', pairId), { uidA, uidB, since: Date.now() });
-    batch.delete(fsMod.doc(mdb, 'friendRequests', friendRequestId(fromUid, currentUser.uid)));
+    const batch = db.batch();
+    batch.set(db.collection('friendships').doc(pairId), { uidA, uidB, since: Date.now() });
+    batch.delete(db.collection('friendRequests').doc(friendRequestId(fromUid, currentUser.uid)));
     await batch.commit();
     if (navigator.vibrate) navigator.vibrate(10);
     if (friendSearchResult && typeof friendSearchResult === 'object' && friendSearchResult.uid === fromUid) {
@@ -2540,7 +2435,7 @@ async function acceptFriendRequest(fromUid) {
 
 async function declineFriendRequest(fromUid) {
   try {
-    await fsMod.deleteDoc(fsMod.doc(mdb, 'friendRequests', friendRequestId(fromUid, currentUser.uid)));
+    await db.collection('friendRequests').doc(friendRequestId(fromUid, currentUser.uid)).delete();
     await refreshFriendsData();
   } catch (e) {
     reportSaveError('decline friend request failed', e);
@@ -2557,7 +2452,7 @@ async function removeFriend(uid) {
   });
   if (!confirmed) return;
   try {
-    await fsMod.deleteDoc(fsMod.doc(mdb, 'friendships', friendshipPairId(uid, currentUser.uid)));
+    await db.collection('friendships').doc(friendshipPairId(uid, currentUser.uid)).delete();
     await refreshFriendsData();
   } catch (e) {
     reportSaveError('remove friend failed', e);
@@ -2611,7 +2506,7 @@ let communityBossBattleProgress = 0;
 let communityBossBattleUnsub = null;
 
 function bossBattleDocRef(weekStartStr = mondayOfWeek(new Date())) {
-  return fsMod.doc(mdb, 'community', 'bossBattle_' + weekStartStr);
+  return db.collection('community').doc('bossBattle_' + weekStartStr);
 }
 
 // Abonnement temps réel (comme le compteur du défi du jour) : appelé une seule fois
@@ -2623,9 +2518,9 @@ function startBossBattleListener() {
   if (communityBossBattleUnsub) communityBossBattleUnsub();
   const weekStart = mondayOfWeek(new Date());
   const target = getWeeklyBossBattleTarget(weekStart);
-  communityBossBattleUnsub = fsMod.onSnapshot(bossBattleDocRef(weekStart), (snap) => {
+  communityBossBattleUnsub = bossBattleDocRef(weekStart).onSnapshot((snap) => {
     const previous = communityBossBattleProgress;
-    const next = snap.exists() ? (snap.data().currentProgress || 0) : 0;
+    const next = snap.exists ? (snap.data().currentProgress || 0) : 0;
     communityBossBattleProgress = next;
     if (target && previous < target.targetAmount && next >= target.targetAmount) {
       handleBossBattleVictory(weekStart, target, next);
@@ -2644,15 +2539,13 @@ let communityContributionsUnsub = null;
 
 function startRecentContributionsListener() {
   if (communityContributionsUnsub) communityContributionsUnsub();
-  communityContributionsUnsub = fsMod.onSnapshot(
-    fsMod.query(fsMod.collection(bossBattleDocRef(), 'contributions'), fsMod.orderBy('at', 'desc'), fsMod.limit(20)),
-    (snap) => {
+  communityContributionsUnsub = bossBattleDocRef().collection('contributions')
+    .orderBy('at', 'desc').limit(20).onSnapshot((snap) => {
       // { id: d.id, ...d.data() } (pas juste d.data()) : l'id du document est
       // nécessaire pour cibler les kudos sur une contribution précise.
       communityRecentContributions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       render();
-    },
-  );
+    });
 }
 
 async function handleBossBattleVictory(weekStart, target, finalProgress) {
@@ -2673,10 +2566,10 @@ async function handleBossBattleVictory(weekStart, target, finalProgress) {
     // "create-only" cote client (en plus de la regle Firestore equivalente) : si 2
     // clients detectent le franchissement quasi simultanement (2 utilisateurs actifs
     // au meme instant), un seul doit ecrire l'archive definitive.
-    const archiveRef = fsMod.doc(mdb, 'bossBattleArchive', weekStart);
-    const existing = await fsMod.getDoc(archiveRef);
-    if (!existing.exists()) {
-      await fsMod.setDoc(archiveRef, {
+    const archiveRef = db.collection('bossBattleArchive').doc(weekStart);
+    const existing = await archiveRef.get();
+    if (!existing.exists) {
+      await archiveRef.set({
         targetChallengeId: target.targetChallengeId,
         targetAmount: target.targetAmount,
         finalProgress,
@@ -2697,19 +2590,18 @@ async function registerBossBattleContributionIfNeeded(challengeId, amount) {
   const target = getWeeklyBossBattleTarget(weekStart);
   if (!target || target.targetChallengeId !== challengeId) return;
   try {
-    await fsMod.setDoc(bossBattleDocRef(weekStart),
-      { currentProgress: fsMod.increment(amount) },
+    await bossBattleDocRef(weekStart).set(
+      { currentProgress: firebase.firestore.FieldValue.increment(amount) },
       { merge: true }
     );
-    await fsMod.setDoc(
-      fsMod.doc(fsMod.collection(bossBattleDocRef(weekStart), 'dailyContributors'), todayKey + '_' + currentUser.uid),
-      { uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName), date: todayKey, amount: fsMod.increment(amount) },
+    await bossBattleDocRef(weekStart).collection('dailyContributors').doc(todayKey + '_' + currentUser.uid).set(
+      { uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName), date: todayKey, amount: firebase.firestore.FieldValue.increment(amount) },
       { merge: true }
     );
     // Fil des contributions individuelles (contrairement à dailyContributors, un
     // document PAR évènement, jamais fusionné) : sert uniquement au flux temps réel
     // "Untel vient d'ajouter X" affiché sur l'écran Communauté, pour le FOMO en direct.
-    await fsMod.addDoc(fsMod.collection(bossBattleDocRef(weekStart), 'contributions'), {
+    await bossBattleDocRef(weekStart).collection('contributions').add({
       uid: currentUser.uid,
       displayName: formatDisplayName(currentUser.displayName),
       amount,
@@ -2725,17 +2617,15 @@ async function registerBossBattleContributionIfNeeded(challengeId, amount) {
 // la date du jour, pas une fenêtre glissante à la seconde près).
 async function fetchTopContributorToday() {
   const weekStart = mondayOfWeek(new Date());
-  const snap = await fsMod.getDocs(fsMod.query(
-    fsMod.collection(bossBattleDocRef(weekStart), 'dailyContributors'),
-    fsMod.where('date', '==', todayKey), fsMod.orderBy('amount', 'desc'), fsMod.limit(1),
-  ));
+  const snap = await bossBattleDocRef(weekStart).collection('dailyContributors')
+    .where('date', '==', todayKey).orderBy('amount', 'desc').limit(1).get();
   return snap.empty ? null : snap.docs[0].data();
 }
 
 // Temple de la renommée : les victoires collectives passées (Boss Battle atteint),
 // les plus récentes en premier — simple mémoire/fierté collective à long terme.
 async function fetchBossBattleArchive(n = 10) {
-  const snap = await fsMod.getDocs(fsMod.query(fsMod.collection(mdb, 'bossBattleArchive'), fsMod.orderBy('completedAt', 'desc'), fsMod.limit(n)));
+  const snap = await db.collection('bossBattleArchive').orderBy('completedAt', 'desc').limit(n).get();
   return snap.docs.map(d => ({ weekStart: d.id, ...d.data() }));
 }
 
@@ -3093,7 +2983,7 @@ async function saveLeaderboardOptOut() {
 async function syncLeaderboardEntry() {
   if (leaderboardOptOut || !currentUser) return;
   try {
-    await fsMod.setDoc(fsMod.doc(mdb, 'leaderboard', currentUser.uid), {
+    await db.collection('leaderboard').doc(currentUser.uid).set({
       displayName: formatDisplayName(currentUser.displayName),
       photoURL: currentUser.photoURL || '',
       streakCount,
@@ -3111,7 +3001,7 @@ async function toggleLeaderboardOptOut() {
   leaderboardOptOut = !leaderboardOptOut;
   await saveLeaderboardOptOut();
   if (leaderboardOptOut) {
-    try { await fsMod.deleteDoc(fsMod.doc(mdb, 'leaderboard', currentUser.uid)); }
+    try { await db.collection('leaderboard').doc(currentUser.uid).delete(); }
     catch (e) { reportSaveError('leaderboard opt-out delete failed', e); }
   } else {
     await syncLeaderboardEntry();
@@ -3129,14 +3019,14 @@ function leaderboardFieldForView(view) {
 // plus filtrée sur la semaine calendaire en cours (xpWeekStart), sinon une entrée
 // jamais rafraîchie depuis une semaine précédente resterait affichée à tort.
 function leaderboardBaseQuery(view) {
-  let q = fsMod.collection(mdb, 'leaderboard');
-  if (view === 'weekly') q = fsMod.query(q, fsMod.where('xpWeekStart', '==', mondayOfWeek(new Date())));
+  let q = db.collection('leaderboard');
+  if (view === 'weekly') q = q.where('xpWeekStart', '==', mondayOfWeek(new Date()));
   return q;
 }
 
 async function fetchLeaderboardTop(view, n = 20) {
   const field = leaderboardFieldForView(view);
-  const snap = await fsMod.getDocs(fsMod.query(leaderboardBaseQuery(view), fsMod.orderBy(field, 'desc'), fsMod.limit(n)));
+  const snap = await leaderboardBaseQuery(view).orderBy(field, 'desc').limit(n).get();
   return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
 }
 
@@ -3154,13 +3044,13 @@ async function fetchLeaderboardTop(view, n = 20) {
 // taille modeste ; à revoir si le classement grossit beaucoup.
 async function fetchMyRankAndNeighbors(view) {
   const field = leaderboardFieldForView(view);
-  const snap = await fsMod.getDocs(fsMod.query(leaderboardBaseQuery(view), fsMod.orderBy(field, 'desc')));
+  const snap = await leaderboardBaseQuery(view).orderBy(field, 'desc').get();
   const all = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   let myIdx = all.findIndex(e => e.uid === currentUser.uid);
   if (myIdx === -1) {
-    const myDoc = await fsMod.getDoc(fsMod.doc(mdb, 'leaderboard', currentUser.uid));
-    const myValue = (myDoc.exists() && myDoc.data()[field]) || 0;
-    const me = myDoc.exists()
+    const myDoc = await db.collection('leaderboard').doc(currentUser.uid).get();
+    const myValue = (myDoc.exists && myDoc.data()[field]) || 0;
+    const me = myDoc.exists
       ? { uid: currentUser.uid, ...myDoc.data() }
       : { uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName), [field]: myValue };
     myIdx = all.findIndex(e => (e[field] || 0) < myValue);
@@ -5581,7 +5471,7 @@ function renderBossBattleSection() {
     ? `<div class="boss-battle-feed">${communityRecentContributions.map(c => `
         <div class="boss-battle-feed-row">
           <span>${t('community.bossBattle.feedRow', { name: escapeHtml(formatDisplayName(c.displayName)), amount: c.amount, unit: unitLabel })}</span>
-          ${renderKudosButton('bossBattleContribution', c.id, c.kudosCount, currentUser && c.uid === currentUser.uid)}
+          ${renderKudosButton(`bossBattleDocRef().collection('contributions').doc('${escapeJsAttr(c.id)}')`, c.id, c.kudosCount, currentUser && c.uid === currentUser.uid)}
         </div>
       `).join('')}</div>`
     : '';
@@ -5659,7 +5549,7 @@ function renderActivityFeedRow(entry) {
   const amountLabel = entry.unit === 'sec' ? formatSecToReadable(entry.amount) : entry.amount + ' ' + t('exercise.unitRepsLabel');
   const rel = formatRelative(entry.at);
   const isMine = currentUser && entry.uid === currentUser.uid;
-  const kudosHtml = renderKudosButton('activityFeed', entry.id, entry.kudosCount, isMine);
+  const kudosHtml = renderKudosButton(`db.collection('activityFeed').doc('${escapeJsAttr(entry.id)}')`, entry.id, entry.kudosCount, isMine);
   // Repli gracieux : exerciseSlug n'existe que sur les documents écrits après ce champ
   // (voir registerActivityFeedEntryIfNeeded()) ET tant que CHALLENGE_LIBRARY n'a pas
   // encore de slugs réels (batch 7 du chantier i18n) — jusque-là exerciseSlug est
@@ -5985,10 +5875,6 @@ async function startApp() {
     // au cas où startApp() serait appelée une seconde fois (double événement d'auth par ex.)
     return;
   }
-  // db/mdb ne sont assignés qu'une fois initFirestore() résolu (voir plus haut) — jamais
-  // encore le cas ici en pratique (onAuthStateChanged est toujours asynchrone), mais on
-  // l'attend explicitement plutôt que de compter sur cette latence naturelle.
-  await firestoreReady;
   await loadAppData();
   applyShortcutTabFromUrl();
   if (!userProfile) {

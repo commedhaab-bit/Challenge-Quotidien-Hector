@@ -1366,172 +1366,37 @@ lancement. Voir les sections précédentes (batches 1 à 7) pour le détail tech
 chaque étape ; les 2 exceptions volontaires ci-dessus (`formatDisplayName()`,
 `showFatalErrorScreen()`) sont les seuls textes intentionnellement non traduits.
 
-## Migration Firestore SDK compat → SDK modulaire (persistance) — TERMINÉ (6/6 batches livrés)
+## Migration Firestore SDK compat → SDK modulaire : TENTÉE PUIS ANNULÉE — NE PAS RÉINTRODUIRE de cette façon
 
-**Pourquoi** : `enablePersistence()` (SDK compat) sera un jour déprécié au profit de
-`FirestoreSettings.cache`, qui n'existe QUE dans le SDK modulaire (vérifié directement
-sur le bundle réel `firebase-firestore-compat.js` 10.13.0 avant de commencer — aucun
-équivalent). Aucun gain de coût/perf réel (facturation Firestore = opérations serveur,
-indépendante du SDK client ; un rapport GitHub existant signale même la nouvelle API
-plus lente sur le cache local dans certains cas) : le seul but est d'éliminer le
-warning et d'être aligné avec l'API recommandée, avant que l'appli soit publiée.
+But recherché : faire disparaître le warning de dépréciation `enablePersistence()`
+(remplacé par `FirestoreSettings.cache`/`persistentLocalCache`, qui n'existe QUE dans
+le SDK modulaire). Tentative complète (6 batches, ~90 sites migrés) faite, puis
+**intégralement annulée en production suite à un bug réel** qui cassait la lecture
+des données pour TOUS les comptes existants (renvoyés à tort vers l'onboarding,
+avec un risque réel d'écrasement de profil).
 
-**Décisions structurantes** :
-- **`import()` dynamique, jamais `<script type="module">`** — le SDK modulaire n'a
-  aucun build UMD/global (contrairement aux `-compat.js`), donc pas chargeable en
-  `<script src>` classique. `type="module"` reproduirait exactement l'incident écran
-  noir déjà documenté plus haut (`defer` sur les SDK Firebase) ; `import()` dynamique
-  évite ce piège précis (pas de réordonnancement silencieux de scripts).
-- **Interop compat/modulaire, `auth` jamais touché** — seul Firestore migre.
-  `firebase-app-compat.js`/`firebase-auth-compat.js` restent inchangés ; `mdb`/`fsMod`
-  (modulaire, code déjà migré) et `db` (compat, code pas encore migré) coexistent
-  pendant toute la durée du chantier, pointant vers la MÊME instance sous-jacente
-  (interop officielle du SDK Firebase, `getFirestore(app compat)`).
-- **Séquence de démarrage** : `initializeFirestore(app, {cache:...})` doit être le
-  TOUT premier appel Firestore sur l'app pour que le nouveau cache prenne effet — donc
-  avant même `firebase.firestore()` (compat). `initFirestore()` est lancée
-  immédiatement après `firebase.initializeApp()` (non bloquante, `firestoreReady` est
-  une promesse gardée à part), avec un **timeout de repli** (3s) : si l'import échoue
-  ou traîne, repli total et silencieux vers `db = firebase.firestore()` +
-  `enablePersistence({synchronizeTabs:true})`, EXACTEMENT le comportement d'avant
-  cette migration. Vérifié réellement (pas juste en théorie) via un script de
-  simulation d'import en échec : `db` bien assigné, `mdb`/`fsMod` restent `null`,
-  `enablePersistence()` compat bien appelé en repli.
-- **`startApp()` attend `firestoreReady`** en tout premier — seul point d'entrée réel
-  vers Firestore (déclenché depuis `auth.onAuthStateChanged`, jamais pendant le
-  chargement du script), donc aucun risque de course avec l'`await` ajouté par cette
-  migration.
-- **`doc.exists` : propriété (compat) → méthode (modulaire)** — piège de migration
-  classique, confirmé RÉELLEMENT cassant via un revert volontaire de
-  `if (doc && doc.exists())` vers `if (doc && doc.exists)` dans `loadAppData()` : le
-  test "profil migré depuis l'ancienne clé séparée" échoue bien comme attendu (une
-  fonction est toujours truthy, donc l'ancienne écriture ferait toujours croire que le
-  document consolidé existe).
+**Cause racine confirmée (pas une supposition)** : le SDK compat
+(`firebase-*-compat.js`, chargé en `<script src>` classique) et le SDK modulaire
+(chargé via `import()` dynamique depuis gstatic) sont **deux exécutions de module
+JS totalement séparées, qui ne partagent AUCUN état interne** — même en ciblant la
+même version (10.13.0). Preuve : passer `firebase.app()` (compat) à
+`initializeFirestore()` (modulaire) ne lève pas d'erreur immédiate mais produit un
+objet cassé qui échoue plus tard sur le premier `doc()`/`collection()` réel
+("Expected first argument to collection() to be a CollectionReference...") ;
+essayer `getApp()` modulaire (en important aussi `firebase-app.js` modulaire) échoue
+de façon encore plus explicite : `"No Firebase App '[DEFAULT]' has been created"`,
+car le registre interne du module dynamiquement importé est vide — `firebase.
+initializeApp()` (compat) n'y a jamais rien enregistré.
 
-**Batch 1 (preuve)** : `appDataDocRef()` et ses 3 appelants (`saveAppField()`,
-`loadAppData()` ×2 — lecture ET écriture du document consolidé
-`users/{uid}/kv/appData`, le chemin Firestore le plus exercé de l'appli, à chaque
-démarrage).
-
-**Batch 2** : `dbGet`/`dbSet` (anciennes clés séparées kv, non exercées par le mock de
-test — voir plus bas) ; leaderboard (`fetchPublicProfile`, `syncLeaderboardEntry`,
-`toggleLeaderboardOptOut`, `leaderboardBaseQuery`/`fetchLeaderboardTop`/
-`fetchMyRankAndNeighbors`, requêtes composées via `query()`/`where()`/`orderBy()`/
-`limit()` plutôt que le chaînage compat) ; friendships (`refreshFriendsData`,
-`sendFriendRequest`, `declineFriendRequest`, `removeFriend`). **Écart volontaire par
-rapport au découpage initial du plan** : `acceptFriendRequest()` (utilise `db.batch()`,
-comme `deleteMyAccount()`) reste sur le SDK compat — le plan excluait explicitement
-tout site batch/transaction du batch 2 ; les 2 `db.batch()` restants (celui-ci +
-suppression de compte) sont donc regroupés dans le batch 6, pas 1 seul comme prévu
-initialement.
-
-**Batch 3** : usernames (`usernamesCollRef()` → `usernameDocRef(name)`, renommée car
-une `CollectionReference` modulaire n'expose PAS de `.doc(id)` chaînable — piège
-réellement rencontré, voir plus bas) ; notifications (`startNotificationsListener()`
-+ son `onSnapshot`, `processUnreadNotifications()`, et l'écriture de notification de
-`sendFriendRequest()`). `notificationsCollRef()` (compat) et
-`notificationsCollRefModular()` **coexistent délibérément** : les 2 seuls appelants
-restants (`giveKudosToEvent()`/`giveKudosToPerson()`, batch 5) sont à l'intérieur de
-`db.runTransaction()` compat, donc doivent garder des refs compat jusqu'à ce que leur
-transaction elle-même soit migrée.
-
-**Piège rencontré et corrigé (batch 3)** : contrairement à une `CollectionReference`
-compat, une `CollectionReference` modulaire n'expose AUCUNE méthode chaînable
-(`.doc()`, `.where()`...) — tout passe par des fonctions libres (`doc(ref, id)`,
-`query(ref, where(...))`...). Le mock de test ne détecte PAS cette erreur (il réutilise
-les mêmes objets chaînables que le mock compat, voir commentaire dans
-`tests/app.test.js` juste avant `__modularDoc`) : `usernamesCollRef().doc(x)` aurait
-donc semblé fonctionner en test tout en cassant en production. Corrigé en remplaçant
-le helper par `usernameDocRef(name)` qui construit directement le ref complet (même
-pattern que `appDataDocRef()`) — **à vérifier à l'oeil sur chaque site des batches 4/5/6
-restants**, ce mock ne le fera pas automatiquement.
-
-**Batch 4** : fil d'activité — `registerActivityFeedEntryIfNeeded()` (`addDoc`) et
-`startActivityFeedListener()` (son `onSnapshot`, requête composée
-`query(collection(...), where('uid','in',...), orderBy('at','desc'), limit(30))`).
-**Écart volontaire par rapport au découpage initial du plan** : le correctif
-`renderKudosButton()`/`giveKudosToEvent()`/`removeKudosFromEvent()` prévu pour ce
-batch est reporté au batch 5 — ces 2 fonctions sont **génériques, partagées** entre
-le fil d'activité ET les contributions Boss Battle (même forme de document), et
-utilisent `db.runTransaction()` (compat, migration batch 5) : les migrer maintenant
-aurait cassé soit l'un soit l'autre appelant sans migrer leur transaction en même
-temps. `renderActivityFeedRow()`/le bouton kudos du fil d'activité restent donc sur
-le mécanisme actuel (texte source `db.collection(...)` injecté dans `onclick`)
-jusqu'au batch 5, où les 2 surfaces + leur transaction seront migrées ensemble.
-
-**Batch 5** : Boss Battle en entier (`bossBattleDocRef()`, ses 2 `onSnapshot` —
-progression + fil des contributions récentes —, `registerBossBattleContributionIfNeeded()`,
-`fetchTopContributorToday()`, `fetchBossBattleArchive()`, `handleBossBattleVictory()`) ;
-les 3 `runTransaction()` (kudos événement/personne) ; le correctif
-`renderKudosButton()` prévu depuis le batch 4 ; et `communityDailyChallengeDocRef()`
-(+ son `onSnapshot`, oublié du découpage initial — 5e listener recensé dès
-l'exploration mais jamais assigné à un batch, repéré à l'audit de fin de batch 5).
-
-**Correctif `renderKudosButton()` (livré)** : `giveKudosToEvent`/`removeKudosFromEvent`
-acceptent désormais `(surface, entryId)` — `surface` = `'activityFeed'` ou
-`'bossBattleContribution'` — au lieu d'une expression JS à évaluer. `kudosEventDocRef(surface,
-entryId)` reconstruit le ref modulaire correct en interne. Supprime l'eval de source
-JS dans un attribut HTML `onclick` (dépendance cachée à `db` global en syntaxe compat).
-
-**Piège rencontré et corrigé (transactions)** : le mock de transaction (`tx.get()`)
-renvoyait l'instantané COMPAT brut (`exists` propriété) même pour le code migré vers
-`runTransaction()` modulaire — `existing.exists` (sans `()`) est toujours *truthy*
-(une fonction), donc un revert volontaire de `giveKudosToPerson()` vers cette forme a
-bien fait échouer le test "kudos personne" comme attendu, confirmant que ce chemin
-est réellement exercé. Corrigé dans `tests/app.test.js` (`__modularRunTransaction`
-enveloppe désormais `tx.get()` pour renvoyer un instantané `exists()` méthode,
-cohérent avec `getDoc()`/`onSnapshot()`).
-
-`notificationsCollRef()` (compat) est supprimée — ses 2 derniers appelants
-(`giveKudosToEvent`/`giveKudosToPerson`) étaient les seuls restants ; la variante
-modulaire (`notificationsCollRefModular`) reprend simplement le nom `notificationsCollRef`.
-
-**Batch 6 (final)** : les 2 derniers `db.batch()` — `deleteMyAccount()` (kv +
-leaderboard) et `acceptFriendRequest()` (friendships + friendRequests) — migrés vers
-`writeBatch(mdb)`. `communityDailyChallengeDocRef()` (+ son `onSnapshot`, le défi
-communautaire du jour) migré aussi : 5e listener recensé à l'exploration initiale mais
-jamais assigné à un batch (repéré à l'audit de fin de batch 5, traité ici). Audit final
-(`grep`) : **zéro** site `db.collection`/`db.batch`/`db.runTransaction`/
-`firebase.firestore.FieldValue` restant dans `index.html` — seul un commentaire
-historique mentionne encore `db.collection(...)` (l'ancien mécanisme
-`renderKudosButton`, batch 4/5).
-
-**Décision finale, en écart du plan initial : `firebase-firestore-compat.js` N'EST PAS
-retiré.** Investigation faite avant de trancher : `db` (compat) est encore lu par
-~86 lignes de `tests/app.test.js` (raccourcis de test directs style
-`db.collection('leaderboard').doc(...).set(...)`, jamais migrés vers `fsMod` — un
-choix délibéré batch par batch, voir plus haut, pour ne pas gonfler chaque batch
-d'une réécriture de tests sans rapport avec son objet). Retirer le SDK compat aurait
-donc exigé de réécrire ces ~86 lignes en plus, pour un bénéfice réel nul : le but
-originel de ce chantier (faire disparaître le warning de dépréciation) était déjà
-100% atteint dès le batch 1 (`persistentLocalCache` configuré avant tout usage de
-Firestore) — garder le SDK compat chargé mais **plus du tout appelé par le code
-applicatif** ne réintroduit aucun warning, aucun coût de fonctionnement, juste
-quelques Ko déjà mis en cache par le service worker. Conserver `db` (assigné une
-seule fois par interop dans `initFirestore()`) est donc le choix qui minimise le
-risque pour un gain nul — décision prise pour rester proportionné, pas par
-paresse : refaire 86 lignes de tests qui passent déjà n'aurait fait courir un
-risque de régression que pour cocher une case du plan initial.
-
-**Conséquence architecturale de la migration terminée** : `initFirestore()` n'a
-maintenant plus de repli fonctionnel possible si l'import du SDK modulaire échoue
-(`mdb`/`fsMod` restent `null`, et TOUT le code applicatif en dépend désormais) — le
-`catch` appelle donc `showFatalErrorScreen()` (même filet que l'incident "firebase is
-not defined" déjà documenté), au lieu de l'ancien repli silencieux vers
-`db.enablePersistence()` (qui n'aurait plus servi à rien, aucun appelant restant).
-Vérifié réellement (pas en théorie) via un script de simulation d'échec d'import :
-l'écran fatal s'affiche bien, avec le message attendu.
-
-**Harnais de test** (`tests/app.test.js`) : `loadFirestoreModular()` (nouvelle fonction
-d'index.html isolant l'`import()`) est remplacée par un double de test
-(`loadFirestoreModular = __loadFirestoreModular`, même convention que
-`dbGet = __dbGet`) — JAMAIS de vrai import réseau pendant les tests. Piège résolu :
-app + tests s'exécutent en UN SEUL `vm.runInContext` (voir en tête du fichier de
-test), donc `initFirestore()` doit être différée d'un tick microtask
-(`Promise.resolve().then(() => initFirestore())`) côté index.html, sinon le vrai
-`loadFirestoreModular()` s'exécuterait avant que le double de test ait pu être
-substitué. Le mock modulaire (`__modularDoc`/`__modularGetDoc`/`__modularSetDoc`/...)
-n'est PAS une 2e implémentation : de fins wrappers autour du MÊME mock Firestore
-compat déjà existant (mêmes `docRef`/magasin en mémoire), pour que code migré et code
-pas-encore-migré voient toujours les mêmes données pendant toute la durée du chantier.
+**Conclusion** : l'interop compat/modulaire documentée par Firebase suppose un
+bundler (webpack/vite/rollup) qui déduplique le paquet `@firebase/app` partagé —
+elle NE FONCTIONNE PAS entre un `<script>` classique et un `import()` dynamique
+chargés séparément depuis un CDN, quelle que soit la façon d'écrire le code
+applicatif autour. Pour vraiment supprimer ce warning un jour, les seules voies
+réelles seraient : (a) migrer `auth` (et donc tout le flux de connexion) vers le
+SDK modulaire aussi, pour n'avoir plus qu'un seul SDK — chantier bien plus large et
+plus risqué que le bénéfice (un warning cosmétique) ne le justifie ; ou (b)
+introduire un bundler — contredit le choix architectural délibéré de ce projet
+(zéro build, scripts classiques uniquement, voir plus haut). Le warning de
+dépréciation reste donc un inconvénient cosmétique accepté, pas un bug.
 
