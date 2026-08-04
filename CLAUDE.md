@@ -1115,13 +1115,46 @@ clés `nav`/`settings`) : ce sont des assets cache-first-avec-remplissage au mê
 que `exercise-data.js`, donc toute modification de leur contenu suit la même règle,
 pas seulement leur toute première création (batch 1).
 
-**Reste à faire (batches 3 à 7, plan approuvé)** : Aujourd'hui + fiche d'exécution
-(batch 3) ; Défis + formulaire personnalisé + Journal (batch 4) ; Communauté
-(classement/Boss Battle/Amis/fil d'activité, + correctif `exerciseSlug` ci-dessus)
-(batch 5) ; Profil + onboarding + tour guidé (batch 6) ; alertes/popups/toasts,
-`BADGE_DEFS`, dates relatives, ajout du `slug` + traduction des noms/catégories
-d'exercices dans `exercise-data.js`, audit final de chaînes françaises oubliées
-(batch 7). Tant qu'une chaîne n'est pas migrée vers `t()`, elle reste le littéral
-français en dur — comportement identique à aujourd'hui pour un utilisateur FR, aucune
-régression possible entre deux batches.
+**Batch 3 livré : Aujourd'hui (accueil) + fiche d'exécution d'exercice** — inclut
+`renderChallengeCard()`, composant PARTAGÉ entre l'onglet Aujourd'hui (`mode='today'`)
+et l'onglet Défis (`mode='library'`) : migré une seule fois ici plutôt que dupliqué au
+batch 4, le batch 4 n'aura donc qu'à VÉRIFIER cet écran, pas à le retraduire.
+**Piège de shadowing rencontré et corrigé** : `renderChallengeCard()` avait une
+variable locale nommée `t` (`const t = todayEntry.sets.reduce(...)`, la somme des
+séries) qui masquait complètement la fonction globale `t()` de traduction dans cette
+portée — tenter d'y appeler `t('card.inProgress', ...)` aurait levé une `TypeError`
+("t is not a function") au premier rendu d'une carte "en cours". Renommée en
+`sumSoFar`. **Leçon générale pour la suite du chantier** : avant d'ajouter un appel
+`t(...)` dans une fonction existante, vérifier qu'aucune variable locale ne s'appelle
+déjà `t` dans la même portée (le nom court était déjà utilisé ailleurs dans ce fichier
+avant l'i18n, pour des sommes/totaux).
+
+**Casse de l'unité "secondes" à 2 variantes distinctes, déjà présentes AVANT l'i18n,
+préservées** : `unitSecLabel` ('SEC', majuscules — barre de progression) et
+`unitSecLabelLower` ('sec'/'seg', minuscules — `armModeSentence()`) sont 2 clés
+séparées, pas une seule avec un `.toUpperCase()` à la volée : le code original avait
+déjà ces 2 casses différentes dans 2 contextes différents, donc 2 clés distinctes
+préservent exactement le rendu FR d'origine (zéro régression) sans supposer qu'une
+langue future ne changerait pas *que* la casse en traduisant.
+
+**Opportunément corrigé au passage** : `stats[c.id].lifetimeTotal.toLocaleString('fr-FR')`
+(fiche détail) devient `.toLocaleString(LOCALE_TO_INTL[currentLocale])` — cette ligne
+était de toute façon réécrite pour passer par `t('exercise.lifetimeTotal', ...)`, donc
+plutôt que de laisser un `'fr-FR'` en dur dans une chaîne fraîchement traduite (prévu
+pour le batch 7 sinon), la table `LOCALE_TO_INTL` (déjà posée au batch 1) a été
+branchée ici directement.
+
+**Reste à faire (batches 4 à 7, plan approuvé)** : Défis + formulaire personnalisé +
+Journal (batch 4, ne devrait vérifier `renderChallengeCard()` que par relecture, déjà
+migré) ; Communauté (classement/Boss Battle/Amis/fil d'activité, + correctif
+`exerciseSlug` ci-dessus) (batch 5) ; Profil + onboarding + tour guidé (batch 6) ;
+alertes/popups/toasts (dont `showStreakInfoModal()`/`showDayDetailModal()`,
+délibérément PAS migrés au batch 3 malgré leur présence sur l'écran Aujourd'hui/le
+Journal, pour garder les popups groupés dans un seul batch dédié), `BADGE_DEFS`, dates
+relatives (`formatRelative()`/`formatDateLabel()`, idem — délibérément pas touchés au
+batch 3), ajout du `slug` + traduction des noms/catégories d'exercices dans
+`exercise-data.js`, audit final de chaînes françaises oubliées (batch 7). Tant qu'une
+chaîne n'est pas migrée vers `t()`, elle reste le littéral français en dur —
+comportement identique à aujourd'hui pour un utilisateur FR, aucune régression
+possible entre deux batches.
 

@@ -3477,7 +3477,7 @@ async function saveWeights() {
 async function editWeight() {
   const c = getChallenge();
   const current = weights[c.id] ?? 8;
-  const input = prompt(`Poids de l'haltère pour "${c.name}" (kg) :`, current);
+  const input = prompt(t('exercise.editWeightPrompt', { name: c.name }), current);
   if (input === null) return;
   const val = parseFloat(input.replace(',', '.'));
   if (isNaN(val) || val <= 0) return;
@@ -3662,8 +3662,8 @@ function renderExercisePicto(c) {
 // Ne retourne rien si l'exercice n'est pas concerné.
 function armModeSentence(target, unit, armMode) {
   if (armMode !== 'perArm') return '';
-  const u = unit === 'sec' ? 'sec' : 'reps';
-  return `Chaque bras doit faire ${target} ${u}.`;
+  const u = unit === 'sec' ? t('exercise.unitSecLabelLower') : t('exercise.unitRepsLabel');
+  return t('exercise.armModeSentence', { target, unit: u });
 }
 
 // ==== WAKE LOCK (empêche l'écran de s'éteindre pendant un chrono) ====
@@ -4133,7 +4133,7 @@ async function editTarget() {
   const c = getChallenge();
   const entry = getEntry(currentChallengeId);
   const current = getTarget();
-  const input = prompt(`Objectif du jour (${c.unit === 'sec' ? 'secondes' : 'répétitions'}) :`, current);
+  const input = prompt(c.unit === 'sec' ? t('exercise.editTargetPromptSec') : t('exercise.editTargetPromptReps'), current);
   if (input === null) return;
   const val = parseInt(input, 10);
   if (isNaN(val) || val <= 0) return;
@@ -4255,7 +4255,7 @@ function render(animate) {
         <div class="date">${formatDateLabel(today)}</div>
         <button class="streak" onclick="showStreakInfoModal()">🔥 ${computeStreak()} j${hasShield ? ' 🛡️' : ''}</button>
       </div>
-      <h1 class="title">Défi du jour</h1>
+      <h1 class="title">${t('today.title')}</h1>
     `;
     // Défis BRUTS (non résolus) : renderChallengeCard() appelle déjà resolveChallenge()
     // en interne. Les pré-résoudre ici aussi provoquait une DOUBLE application des
@@ -4303,13 +4303,15 @@ function render(animate) {
     // silencieuse si aucun des deux n'existe ; aucune requête réseau du tout pour les
     // clés connues comme n'ayant aucune image (PICTOGRAM_ASSET_MISSING).
     const heroImgHtml = PICTOGRAM_ASSET_MISSING.has(heroKey) ? '' : `
-        <img class="exercise-hero-apng" src="exercices/${heroKey}.webp" alt="Démonstration : ${escapeHtml(c.name)}" decoding="async" loading="eager"
+        <img class="exercise-hero-apng" src="exercices/${heroKey}.webp" alt="${t('exercise.demoAlt', { name: escapeHtml(c.name) })}" decoding="async" loading="eager"
              onload="this.classList.add('loaded');"
              onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${heroKey}.png';}else{this.remove();}">
     `;
+    const unitDisplay = c.unit === 'sec' ? t('exercise.unitSecLabel') : t('exercise.unitRepsLabel');
+    const unitDisplayLower = c.unit === 'sec' ? t('exercise.unitSecLabelLower') : t('exercise.unitRepsLabel');
 
     html += `
-      <button class="nav-back-btn floating" onclick="history.back()" aria-label="Retour">‹</button>
+      <button class="nav-back-btn floating" onclick="history.back()" aria-label="${t('common.back')}">‹</button>
       <div class="active-card${entry.done ? ' hardcore-engaged' : ''}">
         ${heroImgHtml}
         <div class="active-name">${escapeHtml(c.name)}</div>
@@ -4318,24 +4320,24 @@ function render(animate) {
           <div class="weight-row">
             <div class="weight-pill">
               🏋️ ${weights[c.id] ?? 8} kg
-              <button onclick="editWeight()" aria-label="Modifier le poids">✏️</button>
+              <button onclick="editWeight()" aria-label="${t('exercise.editWeightAria')}">✏️</button>
             </div>
           </div>
           ${armModeSentence(target, c.unit, c.armMode) ? `<div class="arm-mode-sentence"><span class="arm-mode-sentence-icon">💪</span><span>${armModeSentence(target, c.unit, c.armMode)}</span></div>` : ''}
         ` : ''}
 
         <div class="stats-row">
-          <div class="stat-chip">🏆 Record : ${stats[c.id] ? stats[c.id].bestDay.total : 0}${unitLabel === 'sec' ? 's' : ''}</div>
-          <div class="stat-chip">Σ ${(stats[c.id] ? stats[c.id].lifetimeTotal : 0).toLocaleString('fr-FR')} à vie</div>
+          <div class="stat-chip">${t('exercise.recordPrefix', { value: stats[c.id] ? stats[c.id].bestDay.total : 0, unit: unitLabel === 'sec' ? 's' : '' })}</div>
+          <div class="stat-chip">${t('exercise.lifetimeTotal', { value: (stats[c.id] ? stats[c.id].lifetimeTotal : 0).toLocaleString(LOCALE_TO_INTL[currentLocale]) })}</div>
         </div>
 
         ${!entry.done ? `
           <div class="progress-row">
             <div class="progress-numbers">
               <span class="progress-current">${total}</span><span class="progress-target"> / ${target}</span>
-              <span class="progress-unit"> ${c.unit === 'sec' ? 'SEC' : 'reps'}</span>
+              <span class="progress-unit"> ${unitDisplay}</span>
               ${c.unit === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(target)})</span>` : ''}
-              <button class="target-edit" onclick="editTarget()" aria-label="Modifier l'objectif">✏️</button>
+              <button class="target-edit" onclick="editTarget()" aria-label="${t('exercise.editTargetAria')}">✏️</button>
             </div>
             <div class="progress-pct">${pct}%</div>
           </div>
@@ -4344,7 +4346,7 @@ function render(animate) {
             <div class="bar-fill" style="width:${pct}%"></div>
           </div>
         ` : `
-          <div class="normal-objective-recap">✓ Objectif normal : ${formatTargetLabel(target, c.unit)} — terminé</div>
+          <div class="normal-objective-recap">${t('exercise.normalObjectiveRecap', { target: formatTargetLabel(target, c.unit) })}</div>
         `}
 
         ${(() => {
@@ -4354,7 +4356,7 @@ function render(animate) {
           const hcPct = Math.min(100, Math.round((hcProgress / hcRange) * 100));
           if (!entry.done) {
             return `
-              <div class="hardcore-locked">🔒 Mode Hardcore débloqué à ${target} ${unitLabel} — objectif ${hcTarget} ${unitLabel}</div>
+              <div class="hardcore-locked">${t('exercise.hardcoreLocked', { target, hcTarget, unit: unitDisplayLower })}</div>
             `;
           }
           // Une fois l'objectif normal atteint, l'effort en cours concerne le Hardcore :
@@ -4362,11 +4364,11 @@ function render(animate) {
           // normal ci-dessus repasse au second plan (petite mention discrète).
           const hcCurrent = Math.min(total, hcTarget);
           return `
-            <div class="hardcore-tag">🔥 Mode Hardcore</div>
+            <div class="hardcore-tag">${t('exercise.hardcoreTag')}</div>
             <div class="progress-row hardcore-primary">
               <div class="progress-numbers">
                 <span class="progress-current">${hcCurrent}</span><span class="progress-target"> / ${hcTarget}</span>
-                <span class="progress-unit"> ${unitLabel === 'sec' ? 'SEC' : 'reps'}</span>
+                <span class="progress-unit"> ${unitDisplay}</span>
                 ${unitLabel === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(hcTarget)})</span>` : ''}
               </div>
               <div class="progress-pct">${hcPct}%</div>
@@ -4374,7 +4376,7 @@ function render(animate) {
             <div class="bar-track hardcore-track">
               <div class="bar-fill hardcore-fill${entry.hardcoreDone ? ' complete' : ''}" style="width:${hcPct}%"></div>
             </div>
-            ${entry.hardcoreDone ? `<div class="hardcore-banner">🔥 MODE HARDCORE complété !</div>` : ''}
+            ${entry.hardcoreDone ? `<div class="hardcore-banner">${t('exercise.hardcoreBanner')}</div>` : ''}
           `;
         })()}
 
@@ -4385,7 +4387,7 @@ function render(animate) {
           const { normalPct, hardcorePct } = computeTimerRingPct(projected, target, hcT);
           return `
             <div class="timer-box">
-              <div class="add-label">Chronométrer une série</div>
+              <div class="add-label">${t('exercise.timerLabel')}</div>
               <div class="timer-ring-wrap${entry.hardcoreDone ? ' done' : ''}" onclick="toggleTimer()">
                 ${renderDoubleTimerRingSVG(normalPct, hardcorePct, 220)}
                 <div class="timer-ring-center">
@@ -4399,23 +4401,23 @@ function render(animate) {
             </div>
           `;
         })() : `
-          <div class="add-label">Ajouter une série</div>
+          <div class="add-label">${t('exercise.addSetLabel')}</div>
           <div class="quick-add-grid">
             ${quicks.map(q => `<button class="qa-btn" onclick="addSet(${q})">+${q}</button>`).join('')}
           </div>
         `}
         <div class="custom-add-row">
-          <input type="number" id="customAddInput" placeholder="Nombre personnalisé" inputmode="numeric">
-          <button class="custom-add-btn" onclick="customAddSubmit()">Ajouter</button>
+          <input type="number" id="customAddInput" placeholder="${t('exercise.customPlaceholder')}" inputmode="numeric">
+          <button class="custom-add-btn" onclick="customAddSubmit()">${t('exercise.addBtn')}</button>
         </div>
 
         ${entry.sets.length > 0 ? `
           <div class="undo-row">
-            <button class="undo-btn" onclick="undoLast()">Annuler la dernière série (${entry.sets[entry.sets.length-1]})</button>
+            <button class="undo-btn" onclick="undoLast()">${t('exercise.undoBtn', { n: entry.sets[entry.sets.length-1] })}</button>
           </div>
         ` : ''}
 
-        ${entry.done ? `<div class="done-banner">✓ Défi complété aujourd'hui</div>` : ''}
+        ${entry.done ? `<div class="done-banner">${t('exercise.doneBanner')}</div>` : ''}
       </div>
     `;
   }
@@ -4523,13 +4525,13 @@ function renderCommunityHeroBanner() {
   return `
     <div class="community-hero-banner">
       <div class="community-hero-header">
-        <span class="community-hero-badge">🌍 Défi communautaire du jour</span>
-        <span class="community-hero-timer">⏳ Encore ${hoursRemainingToday()}h</span>
+        <span class="community-hero-badge">${t('today.hero.badge')}</span>
+        <span class="community-hero-timer">${t('today.hero.timer', { n: hoursRemainingToday() })}</span>
       </div>
-      <div class="community-hero-proof">🔥 ${participants} membre${participants === 1 ? '' : 's'} ${participants === 1 ? 'a' : 'ont'} relevé ce défi aujourd'hui</div>
+      <div class="community-hero-proof">${tn('today.hero.proof', participants)}</div>
       <div class="community-hero-list">${cards}</div>
-      <button class="community-hero-accept-all-btn" onclick="acceptAllCommunityChallenges()">Relever le défi communautaire du jour</button>
-      <button class="community-hero-choose-btn" onclick="switchTab('library')">Choisir mon propre défi</button>
+      <button class="community-hero-accept-all-btn" onclick="acceptAllCommunityChallenges()">${t('today.hero.acceptAllBtn')}</button>
+      <button class="community-hero-choose-btn" onclick="switchTab('library')">${t('today.hero.chooseBtn')}</button>
     </div>
   `;
 }
@@ -4538,9 +4540,9 @@ function renderTodayEmptyState() {
   return `
     <div class="today-empty-state">
       <div class="today-empty-icon">🗓️</div>
-      <div class="today-empty-title">Aucun défi sélectionné pour aujourd'hui</div>
-      <div class="today-empty-text">Rendez-vous dans l'onglet Défis pour choisir tes défis du jour !</div>
-      <button class="today-empty-btn" onclick="switchTab('library')">🎯 Choisir un défi</button>
+      <div class="today-empty-title">${t('today.emptyState.title')}</div>
+      <div class="today-empty-text">${t('today.emptyState.text')}</div>
+      <button class="today-empty-btn" onclick="switchTab('library')">${t('today.emptyState.btn')}</button>
     </div>
   `;
 }
@@ -4554,8 +4556,8 @@ function renderBadgesStrip() {
   const locked = BADGE_DEFS.filter(b => !badges.unlocked.includes(b.id));
   if (locked.length === 0) {
     return `
-      <div class="section-label">Trophées</div>
-      <div class="badges-empty">Tous les trophées sont débloqués — bravo, légende ! 🏆</div>
+      <div class="section-label">${t('today.trophies.allUnlockedLabel')}</div>
+      <div class="badges-empty">${t('today.trophies.allUnlockedText')}</div>
     `;
   }
   const closest = locked
@@ -4567,7 +4569,7 @@ function renderBadgesStrip() {
     .sort((a, z) => z.pct - a.pct)
     .slice(0, 3);
   return `
-    <div class="section-label">Prochains trophées à portée de main</div>
+    <div class="section-label">${t('today.trophies.nextLabel')}</div>
     <div class="next-trophies-grid">
       ${closest.map(({ b, pct }) => `
         <div class="next-trophy-card" onclick="showTrophyDetailModal('${b.id}')">
@@ -4734,12 +4736,12 @@ function renderChallengeCard(c, mode, index, animate = true) {
     const rel = formatRelative(lastCompleted[c.id]);
     rightHtml = '';
     if (todayEntry && todayEntry.hardcoreDone) {
-      rightHtml = `<div class="last-done status-hardcore">🔥 Hardcore complété</div>`;
+      rightHtml = `<div class="last-done status-hardcore">${t('card.hardcoreDone')}</div>`;
     } else if (todayEntry && todayEntry.done) {
-      rightHtml = `<div class="last-done status-done">✓ Terminé aujourd'hui</div>`;
+      rightHtml = `<div class="last-done status-done">${t('card.doneToday')}</div>`;
     } else if (todayEntry && todayEntry.sets.length > 0) {
-      const t = todayEntry.sets.reduce((a,b)=>a+b,0);
-      rightHtml = `<div class="last-done status-progress">● En cours — ${t}/${displayTarget}</div>`;
+      const sumSoFar = todayEntry.sets.reduce((a,b)=>a+b,0);
+      rightHtml = `<div class="last-done status-progress">${t('card.inProgress', { current: sumSoFar, target: displayTarget })}</div>`;
     } else if (rel) {
       rightHtml = `<div class="last-done">${rel}</div>`;
     }
@@ -4749,7 +4751,7 @@ function renderChallengeCard(c, mode, index, animate = true) {
   // Contrôle d'activation explicite (bouton visible), en plus du clic sur la ligne :
   // l'état actif/inactif doit être identifiable sans avoir à deviner que la ligne est cliquable.
   const activateBtn = mode === 'library'
-    ? `<button class="activate-toggle-btn${isActive ? ' active' : ''}" onclick="event.stopPropagation(); toggleActiveToday(${c.id})">${isActive ? '✓ Actif' : '+ Activer'}</button>`
+    ? `<button class="activate-toggle-btn${isActive ? ' active' : ''}" onclick="event.stopPropagation(); toggleActiveToday(${c.id})">${isActive ? t('card.active') : t('card.activate')}</button>`
     : '';
 
   // Entrée en cascade (léger décalage par carte), plafonné pour ne jamais laisser une
@@ -4769,7 +4771,7 @@ function renderChallengeCard(c, mode, index, animate = true) {
   const communitySlot = getCommunityDailySlot(c.id);
   const communityCount = communitySlot === 1 ? communityDailyCounts.completions1 : communitySlot === 2 ? communityDailyCounts.completions2 : 0;
   const communityRibbon = communitySlot
-    ? `<span class="community-card-ribbon" title="Défi communautaire du jour — ${communityCount} validé(s) aujourd'hui">🌍 ${communityCount}</span>`
+    ? `<span class="community-card-ribbon" title="${t('card.communityRibbonTitle', { n: communityCount })}">🌍 ${communityCount}</span>`
     : '';
 
   return `
@@ -4780,7 +4782,7 @@ function renderChallengeCard(c, mode, index, animate = true) {
         ${communityRibbon}
       </div>
       <div class="goal">
-        ${resolved.unit === 'sec' ? formatSecToReadable(displayTarget) : displayTarget + ' reps'}
+        ${resolved.unit === 'sec' ? formatSecToReadable(displayTarget) : displayTarget + ' ' + t('exercise.unitRepsLabel')}
         ${weightBelow}
         ${rightHtml}
       </div>
@@ -5768,7 +5770,7 @@ function getSuggestion() {
   if (!worstCat || worstDays < 3) return null;
 
   const days = Math.floor(worstDays);
-  return `Tu n'as pas fait <strong>${worstCat}</strong> depuis ${days} jour${days > 1 ? 's' : ''}`;
+  return tn('today.suggestion', days, { category: worstCat });
 }
 
 

@@ -2215,7 +2215,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v27'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v28'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4221,6 +4221,47 @@ const cssText = __rawHtml + __cssSource;
   username = savedUsernameBatch2;
   currentLocale = localeBeforeBatch2;
   console.log('OK: i18n batch 2 - navigation + ecran Parametres + selecteur de langue (1er ecran migre bout-en-bout)');
+
+  // --- 161. i18n batch 3/7 : Aujourd hui (accueil, carte de defi partagee) + fiche
+  // d execution d exercice (unite reps ET unite chrono/sec) -- verifie le rendu
+  // traduit via render()/renderChallengeCard() en conditions quasi reelles,
+  // contrairement au batch 2 qui ne testait que des fonctions pures. ---
+  const localeBeforeBatch3 = currentLocale;
+  // planche (unite "sec") deja declare plus haut dans ce fichier, reutilise tel quel
+  // pour exercer la branche chrono (Chronometrer une serie / Time a set).
+  activeToday = new Set([pompes.id]);
+  currentChallengeId = null;
+  await pickChallenge(pompes.id);
+  currentLocale = 'en';
+  render(false); // 2e render() immediat : neutralise le swap DIFFERE (140ms) de pickChallenge()'s render(true), meme filet que le test "bouton retour minimaliste" plus haut
+  const exerciseRepsHtmlEn = document.getElementById('app').innerHTML;
+  __assertOk(exerciseRepsHtmlEn.includes('Add a set'), 'la fiche d exercice (unite reps) doit afficher le libelle traduit "Add a set"');
+  __assertOk(exerciseRepsHtmlEn.includes('Custom number') && exerciseRepsHtmlEn.includes('>Add<'), 'le champ de saisie personnalisee doit etre traduit (placeholder + bouton)');
+  __assertOk(exerciseRepsHtmlEn.includes('Record:'), 'le record doit utiliser le prefixe traduit "Record"');
+  __assertOk(exerciseRepsHtmlEn.includes('lifetime'), 'le total a vie doit etre traduit');
+
+  activeToday = new Set([planche.id]);
+  await pickChallenge(planche.id);
+  currentLocale = 'es';
+  render(false);
+  const exerciseSecHtmlEs = document.getElementById('app').innerHTML;
+  __assertOk(exerciseSecHtmlEs.includes('Cronometrar una serie'), 'la fiche d exercice (unite sec) doit afficher le libelle traduit du chrono en espagnol');
+  __assertOk(exerciseSecHtmlEs.includes('progress-unit"> SEG</span>'), 'l unite secondes doit etre traduite (SEG) sur la fiche detail en espagnol');
+
+  // Carte de defi (renderChallengeCard, partagee Aujourd hui/Defis) : etat "en cours".
+  currentChallengeId = null;
+  const cardEntry = getEntry(pompes.id);
+  cardEntry.sets = [10];
+  cardEntry.done = false;
+  currentLocale = 'en';
+  const cardHtmlEn = renderChallengeCard(pompes, 'today', 0);
+  __assertOk(cardHtmlEn.includes('In progress'), 'la carte de defi doit afficher le statut "En cours" traduit');
+  cardEntry.sets = [];
+
+  currentLocale = localeBeforeBatch3;
+  currentChallengeId = null;
+  render(false);
+  console.log('OK: i18n batch 3 - Aujourd hui + fiche d execution d exercice (reps + chrono sec)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });
