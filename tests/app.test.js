@@ -295,6 +295,42 @@ const mockTopCollections = new Map();
 // partagé. Map(uid -> Map(subName -> Map(docId -> data))).
 const usersSubcollections = new Map();
 
+// ---- Mock du SDK Firestore MODULAIRE (voir loadFirestoreModular()/initFirestore()
+// dans index.html, migration en cours vers ce SDK) ----
+// De FINS wrappers autour du MÊME mock compat ci-dessus (mêmes docRef/query, même
+// magasin en mémoire) : PAS une 2e implémentation parallèle. Nécessaire tant que du
+// code migré (fonctions libres modulaires) et du code pas-encore-migré (chaînage
+// compat) coexistent dans index.html — les deux doivent voir les mêmes données.
+function __modularDoc(dbInstance, ...segments) {
+  let ref = dbInstance.collection(segments[0]).doc(segments[1]);
+  for (let i = 2; i < segments.length; i += 2) ref = ref.collection(segments[i]).doc(segments[i + 1]);
+  return ref;
+}
+function __modularCollection(dbInstance, ...segments) {
+  let ref = dbInstance.collection(segments[0]);
+  for (let i = 1; i < segments.length; i += 2) ref = ref.doc(segments[i]).collection(segments[i + 1]);
+  return ref;
+}
+// exists est une PROPRIÉTÉ dans le mock compat (comme le vrai SDK compat) mais doit
+// devenir une MÉTHODE côté modulaire (comme le vrai SDK modulaire) : piège de
+// migration réel, reproduit ici volontairement pour que les tests l'attrapent.
+function __modularSnap(snap) { return { exists: () => snap.exists, data: snap.data, id: snap.id }; }
+function __modularGetDoc(ref) { return Promise.resolve(ref.get()).then(__modularSnap); }
+function __modularSetDoc(ref, data, opts) { return ref.set(data, opts); }
+function __modularDeleteDoc(ref) { return ref.delete(); }
+function __modularAddDoc(collRef, data) { return collRef.add(data); }
+function __modularGetDocs(queryOrColl) { return queryOrColl.get(); }
+function __modularQuery(base, ...constraints) { return constraints.reduce((q, c) => c(q), base); }
+function __modularWhere(field, op, value) { return (q) => q.where(field, op, value); }
+function __modularOrderBy(field, dir) { return (q) => q.orderBy(field, dir); }
+function __modularLimit(n) { return (q) => q.limit(n); }
+function __modularStartAt(v) { return (q) => q.startAt(v); }
+function __modularOnSnapshot(refOrQuery, cb) {
+  return refOrQuery.onSnapshot((snap) => cb('exists' in snap && typeof snap.exists !== 'function' ? __modularSnap(snap) : snap));
+}
+function __modularWriteBatch(dbInstance) { return dbInstance.batch(); }
+function __modularRunTransaction(dbInstance, fn) { return dbInstance.runTransaction(fn); }
+
 const sandbox = {
   console,
   Math, Date, JSON, Set, Map, Array, Object, Number, String, Promise,
@@ -370,6 +406,7 @@ const sandbox = {
   location: mockLocation,
   firebase: {
     initializeApp(){},
+    app(){ return {}; }, // passé à initializeFirestore() (interop) : jamais inspecté par ce mock
     auth(){ return { onAuthStateChanged(cb){ /* pilote manuellement depuis le test */ }, signInWithPopup(){ return Promise.resolve(); }, GoogleAuthProvider: function(){} }; },
     firestore(){
       return {
@@ -466,6 +503,32 @@ const sandbox = {
 // firestore (pas de l'instance renvoyee par firebase.firestore()) : attachee ici sur la
 // fonction elle-meme, comme dans le vrai SDK compat.
 sandbox.firebase.firestore.FieldValue = { increment: __mockFieldValueIncrement };
+// Double de test pour loadFirestoreModular() (voir index.html) : remplace le vrai
+// import() reseau par une resolution immediate vers ce mock, adosse au MEME
+// sandbox.firebase.firestore() que le SDK compat (interop reproduite fidelement -
+// mdb et db partagent les memes donnees, exactement comme en production). Rebranche
+// plus bas par testDriver (meme convention que dbGet = __dbGet).
+sandbox.__loadFirestoreModular = () => Promise.resolve({
+  initializeFirestore: () => sandbox.firebase.firestore(),
+  persistentLocalCache: (opts) => opts,
+  persistentMultipleTabManager: () => ({}),
+  doc: __modularDoc,
+  getDoc: __modularGetDoc,
+  setDoc: __modularSetDoc,
+  deleteDoc: __modularDeleteDoc,
+  addDoc: __modularAddDoc,
+  getDocs: __modularGetDocs,
+  collection: __modularCollection,
+  query: __modularQuery,
+  where: __modularWhere,
+  orderBy: __modularOrderBy,
+  limit: __modularLimit,
+  startAt: __modularStartAt,
+  onSnapshot: __modularOnSnapshot,
+  writeBatch: __modularWriteBatch,
+  runTransaction: __modularRunTransaction,
+  increment: __mockFieldValueIncrement,
+});
 sandbox.globalThis = sandbox;
 sandbox.self = sandbox;
 vm.createContext(sandbox);
@@ -475,6 +538,12 @@ const testDriver = `
 // par la version en memoire injectee par le harnais de test.
 dbGet = __dbGet;
 dbSet = __dbSet;
+// Meme convention : remplace le vrai import() reseau de loadFirestoreModular() par le
+// mock ci-dessus, adosse au meme sandbox.firebase.firestore() que dbGet/dbSet/
+// appDataDocRef. Doit etre fait ICI (synchrone, avant le premier "await" de l'IIFE
+// plus bas) : initFirestore() est differe d'un tick microtask cote index.html
+// precisement pour laisser cette ligne s'executer avant le tout premier appel reel.
+loadFirestoreModular = __loadFirestoreModular;
 // appDataDocRef() (contrairement a dbGet/dbSet) lit currentUser.uid directement : il faut
 // un utilisateur factice des le debut, avant meme le premier test (plusieurs tests le
 // re-assignent plus loin avec la meme forme, sans jamais lire .uid eux-memes).
@@ -485,6 +554,13 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
 const cssText = __rawHtml + __cssSource;
 
 (async () => {
+  // Attend la resolution d'initFirestore() (differee d'un tick microtask cote
+  // index.html) AVANT tout test : garantit que db/mdb/fsMod sont assignes, exactement
+  // comme startApp() (point d'entree reel) l'attend deja lui-meme en production.
+  await firestoreReady;
+  __assertOk(typeof mdb === 'object' && mdb !== null, 'initFirestore() doit avoir resolu mdb (SDK Firestore modulaire) avant le premier test');
+  __assertOk(typeof db === 'object' && db !== null, 'initFirestore() doit avoir assigne db (SDK compat, interop) avant le premier test');
+
   // --- 1. CHALLENGE_LIBRARY sanity ---
   __assertOk(CHALLENGE_LIBRARY.length > 20, 'CHALLENGE_LIBRARY devrait contenir >20 exercices');
   console.log('OK: CHALLENGE_LIBRARY chargee (' + CHALLENGE_LIBRARY.length + ' exercices)');
@@ -2215,7 +2291,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v32'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v33'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');

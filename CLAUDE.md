@@ -1366,3 +1366,68 @@ lancement. Voir les sections précédentes (batches 1 à 7) pour le détail tech
 chaque étape ; les 2 exceptions volontaires ci-dessus (`formatDisplayName()`,
 `showFatalErrorScreen()`) sont les seuls textes intentionnellement non traduits.
 
+## Migration Firestore SDK compat → SDK modulaire (persistance) — chantier en cours (batch 1/6 livré)
+
+**Pourquoi** : `enablePersistence()` (SDK compat) sera un jour déprécié au profit de
+`FirestoreSettings.cache`, qui n'existe QUE dans le SDK modulaire (vérifié directement
+sur le bundle réel `firebase-firestore-compat.js` 10.13.0 avant de commencer — aucun
+équivalent). Aucun gain de coût/perf réel (facturation Firestore = opérations serveur,
+indépendante du SDK client ; un rapport GitHub existant signale même la nouvelle API
+plus lente sur le cache local dans certains cas) : le seul but est d'éliminer le
+warning et d'être aligné avec l'API recommandée, avant que l'appli soit publiée.
+
+**Décisions structurantes** :
+- **`import()` dynamique, jamais `<script type="module">`** — le SDK modulaire n'a
+  aucun build UMD/global (contrairement aux `-compat.js`), donc pas chargeable en
+  `<script src>` classique. `type="module"` reproduirait exactement l'incident écran
+  noir déjà documenté plus haut (`defer` sur les SDK Firebase) ; `import()` dynamique
+  évite ce piège précis (pas de réordonnancement silencieux de scripts).
+- **Interop compat/modulaire, `auth` jamais touché** — seul Firestore migre.
+  `firebase-app-compat.js`/`firebase-auth-compat.js` restent inchangés ; `mdb`/`fsMod`
+  (modulaire, code déjà migré) et `db` (compat, code pas encore migré) coexistent
+  pendant toute la durée du chantier, pointant vers la MÊME instance sous-jacente
+  (interop officielle du SDK Firebase, `getFirestore(app compat)`).
+- **Séquence de démarrage** : `initializeFirestore(app, {cache:...})` doit être le
+  TOUT premier appel Firestore sur l'app pour que le nouveau cache prenne effet — donc
+  avant même `firebase.firestore()` (compat). `initFirestore()` est lancée
+  immédiatement après `firebase.initializeApp()` (non bloquante, `firestoreReady` est
+  une promesse gardée à part), avec un **timeout de repli** (3s) : si l'import échoue
+  ou traîne, repli total et silencieux vers `db = firebase.firestore()` +
+  `enablePersistence({synchronizeTabs:true})`, EXACTEMENT le comportement d'avant
+  cette migration. Vérifié réellement (pas juste en théorie) via un script de
+  simulation d'import en échec : `db` bien assigné, `mdb`/`fsMod` restent `null`,
+  `enablePersistence()` compat bien appelé en repli.
+- **`startApp()` attend `firestoreReady`** en tout premier — seul point d'entrée réel
+  vers Firestore (déclenché depuis `auth.onAuthStateChanged`, jamais pendant le
+  chargement du script), donc aucun risque de course avec l'`await` ajouté par cette
+  migration.
+- **`doc.exists` : propriété (compat) → méthode (modulaire)** — piège de migration
+  classique, confirmé RÉELLEMENT cassant via un revert volontaire de
+  `if (doc && doc.exists())` vers `if (doc && doc.exists)` dans `loadAppData()` : le
+  test "profil migré depuis l'ancienne clé séparée" échoue bien comme attendu (une
+  fonction est toujours truthy, donc l'ancienne écriture ferait toujours croire que le
+  document consolidé existe).
+
+**Site migré en batch 1 (preuve)** : `appDataDocRef()` et ses 3 appelants
+(`saveAppField()`, `loadAppData()` ×2 — lecture ET écriture du document consolidé
+`users/{uid}/kv/appData`, le chemin Firestore le plus exercé de l'appli, à chaque
+démarrage). Reste sur le SDK compat (migration prévue batches 2 à 6, ~90 sites au
+total recensés) : `dbGet`/`dbSet` (anciennes clés séparées), leaderboard, friendships,
+notifications (+ son `onSnapshot`), usernames, fil d'activité (+ son `onSnapshot`,
+incluant un correctif prévu sur `renderKudosButton()` qui injecte aujourd'hui du texte
+source `db.collection(...)` littéral dans un attribut `onclick`), Boss Battle + kudos
+(+ 2 `onSnapshot`, 3 `runTransaction`), suppression de compte (`db.batch()`).
+
+**Harnais de test** (`tests/app.test.js`) : `loadFirestoreModular()` (nouvelle fonction
+d'index.html isolant l'`import()`) est remplacée par un double de test
+(`loadFirestoreModular = __loadFirestoreModular`, même convention que
+`dbGet = __dbGet`) — JAMAIS de vrai import réseau pendant les tests. Piège résolu :
+app + tests s'exécutent en UN SEUL `vm.runInContext` (voir en tête du fichier de
+test), donc `initFirestore()` doit être différée d'un tick microtask
+(`Promise.resolve().then(() => initFirestore())`) côté index.html, sinon le vrai
+`loadFirestoreModular()` s'exécuterait avant que le double de test ait pu être
+substitué. Le mock modulaire (`__modularDoc`/`__modularGetDoc`/`__modularSetDoc`/...)
+n'est PAS une 2e implémentation : de fins wrappers autour du MÊME mock Firestore
+compat déjà existant (mêmes `docRef`/magasin en mémoire), pour que code migré et code
+pas-encore-migré voient toujours les mêmes données pendant toute la durée du chantier.
+

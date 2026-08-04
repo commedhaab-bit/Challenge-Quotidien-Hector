@@ -128,14 +128,27 @@ const firebaseConfig = {
 
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-const db = firebase.firestore();
-// Persistance locale IndexedDB : les lectures Firestore sont mises en cache sur
-// l'appareil, donc un changement d'onglet ou une réouverture de l'appli peut être
-// servi depuis le cache local (quasi instantané) plutôt que d'attendre le réseau à
-// chaque fois. synchronizeTabs permet d'avoir l'appli ouverte dans plusieurs onglets
-// sans que la persistance échoue. Best-effort : si indisponible (navigation privée,
-// très vieux navigateur), l'appli continue de fonctionner normalement, juste sans
-// ce cache local entre les sessions.
+
+// ==== FIRESTORE : migration progressive vers le SDK modulaire (persistance) ====
+// Le nouveau mécanisme de cache persistant (persistentLocalCache, qui remplace l'API
+// enablePersistence() dépréciée) n'existe QUE dans le SDK modulaire (aucun équivalent
+// dans firebase-firestore-compat.js — vérifié directement sur le bundle réel avant
+// d'entamer cette migration). Le SDK modulaire n'a aucun build UMD/global : il ne peut
+// être chargé qu'en ESM. Import() DYNAMIQUE ici (jamais <script type="module">, voir
+// l'avertissement en <head> sur l'incident écran noir déjà vécu avec defer) — la
+// promesse est gardée à part (firestoreReady) et jamais attendue au top-level du
+// script, pour ne rien bloquer avant que ce soit réellement nécessaire.
+//
+// mdb/fsMod (SDK modulaire, pour le code déjà migré) et db (SDK compat, conservé pour
+// tout le code pas encore migré) coexistent le temps de la migration : interop
+// officielle du SDK Firebase, les deux pointent vers la MÊME instance Firestore sous-
+// jacente une fois initFirestore() résolu. Aucun des deux n'est utilisable avant ce
+// moment-là — mais aucun code de l'appli n'y touche avant startApp() (point d'entrée
+// réel vers Firestore, déclenché depuis auth.onAuthStateChanged, jamais pendant le
+// chargement du script), qui attend explicitement firestoreReady en tout premier.
+let db = null;
+let mdb = null;
+let fsMod = null;
 // Diagnostic exposé dans Paramètres > Dépannage : si la persistance échoue (onglets
 // multiples sans leader, navigation privée, quota IndexedDB, certaines PWA iOS...),
 // chaque écriture Firestore doit atteindre le réseau AVANT de survivre à une
@@ -143,12 +156,52 @@ const db = firebase.firestore();
 // peut alors se perdre silencieusement (aucune queue locale durable). null = pas
 // encore déterminé, true/false = résultat connu.
 let firestorePersistenceEnabled = null;
-db.enablePersistence({ synchronizeTabs: true }).then(() => {
-  firestorePersistenceEnabled = true;
-}).catch((err) => {
-  firestorePersistenceEnabled = false;
-  console.warn('Firestore persistence indisponible :', err.code);
-});
+
+// Import dynamique isolé dans sa propre fonction pour pouvoir être remplacé par un
+// double de test (voir tests/app.test.js, même convention que dbGet/dbSet un peu plus
+// bas) — jamais de vrai import() réseau pendant les tests.
+function loadFirestoreModular() {
+  return import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+}
+
+async function initFirestore() {
+  try {
+    const modular = await Promise.race([
+      loadFirestoreModular(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('import Firestore modulaire : délai dépassé')), 3000)),
+    ]);
+    mdb = modular.initializeFirestore(firebase.app(), {
+      cache: modular.persistentLocalCache({ tabManager: modular.persistentMultipleTabManager() }),
+    });
+    fsMod = modular;
+    db = firebase.firestore(); // compat : interopère avec la même instance déjà configurée ci-dessus
+    // Contrairement à enablePersistence() (compat), initializeFirestore({cache:...}) n'expose
+    // aucune promesse de confirmation : un environnement incompatible (navigation privée sans
+    // IndexedDB, très vieux navigateur) retombe silencieusement sur un cache mémoire, sans
+    // lever d'erreur ici. Best-effort : on considère la config acquise si l'appel n'a pas jeté.
+    firestorePersistenceEnabled = true;
+  } catch (err) {
+    // Repli total sur le SDK compat, EXACTEMENT le comportement d'avant cette migration —
+    // import bloqué/trop lent (réseau, bloqueur de script tiers) ne doit jamais empêcher
+    // l'appli de démarrer.
+    console.warn('Firestore modulaire indisponible, repli sur le SDK compat :', err && err.message);
+    db = firebase.firestore();
+    db.enablePersistence({ synchronizeTabs: true }).then(() => {
+      firestorePersistenceEnabled = true;
+    }).catch((e) => {
+      firestorePersistenceEnabled = false;
+      console.warn('Firestore persistence indisponible :', e.code);
+    });
+  }
+}
+// Différé d'un tick microtask (Promise.resolve().then(...) plutôt qu'un appel
+// synchrone direct) : tests/app.test.js exécute tout le script applicatif ET le
+// harnais de test en UN SEUL vm.runInContext (voir ce fichier) — sans ce report,
+// initFirestore() (et donc loadFirestoreModular()) s'exécuterait AVANT que le
+// harnais ait eu la moindre chance de substituer loadFirestoreModular() par son
+// double de test, et déclencherait un vrai import() réseau pendant les tests.
+const firestoreReady = Promise.resolve().then(() => initFirestore());
+
 let currentUser = null;
 
 // ==== INTERNATIONALISATION (i18n) : FR / EN / ES ====
@@ -291,8 +344,11 @@ async function dbSet(key, value) {
 // gain marginal. Les anciennes clés séparées ne sont JAMAIS supprimées lors de
 // la migration (orphelines inoffensives, déjà nettoyées par deleteMyAccount()
 // qui vide toute la sous-collection kv sans liste de clés en dur).
+// Premier site migré vers le SDK Firestore modulaire (voir initFirestore() plus haut,
+// CLAUDE.md "Migration Firestore modulaire") : fsMod.doc()/getDoc()/setDoc() plutôt que
+// les méthodes chaînées compat (.collection().doc().get()/.set()).
 function appDataDocRef() {
-  return db.collection('users').doc(currentUser.uid).collection('kv').doc('appData');
+  return fsMod.doc(mdb, 'users', currentUser.uid, 'kv', 'appData');
 }
 
 /**
@@ -306,7 +362,7 @@ async function saveAppField(field, value) {
   pendingWriteCount++;
   updateOfflineBanner();
   try {
-    await appDataDocRef().set({ [field]: value }, { merge: true });
+    await fsMod.setDoc(appDataDocRef(), { [field]: value }, { merge: true });
   } catch (e) {
     reportSaveError('save ' + field + ' failed', e);
   } finally {
@@ -331,11 +387,13 @@ async function saveAppField(field, value) {
 async function loadAppData() {
   let doc;
   try {
-    doc = await appDataDocRef().get();
+    doc = await fsMod.getDoc(appDataDocRef());
   } catch (e) {
     doc = null;
   }
-  if (doc && doc.exists) {
+  // doc.exists est une MÉTHODE dans le SDK modulaire (contrairement à la propriété du
+  // SDK compat) — piège de migration classique, à vérifier partout ailleurs aussi.
+  if (doc && doc.exists()) {
     const d = doc.data();
     userProfile = d.profile ?? null;
     username = d.username ?? null;
@@ -371,7 +429,7 @@ async function loadAppData() {
     loadXp(), loadXpWeekly(), loadLeaderboardOptOut(), loadVoiceCoachEnabled(), loadHasSeenTour(),
   ]);
   if (userProfile) {
-    await appDataDocRef().set({
+    await fsMod.setDoc(appDataDocRef(), {
       profile: userProfile,
       customChallenges,
       manualTargetOverrides,
@@ -5875,6 +5933,10 @@ async function startApp() {
     // au cas où startApp() serait appelée une seconde fois (double événement d'auth par ex.)
     return;
   }
+  // db/mdb ne sont assignés qu'une fois initFirestore() résolu (voir plus haut) — jamais
+  // encore le cas ici en pratique (onAuthStateChanged est toujours asynchrone), mais on
+  // l'attend explicitement plutôt que de compter sur cette latence naturelle.
+  await firestoreReady;
   await loadAppData();
   applyShortcutTabFromUrl();
   if (!userProfile) {
