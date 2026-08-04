@@ -2215,7 +2215,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v29'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v30'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4302,6 +4302,78 @@ const cssText = __rawHtml + __cssSource;
   historyLoading = historyLoadingBefore;
   currentLocale = localeBeforeBatch4;
   console.log('OK: i18n batch 4 - Defis (bibliotheque + formulaire) + Journal');
+
+  // --- 163. i18n batch 5/7 : Communaute (classement, Boss Battle, Temple de la
+  // renommee, fil d activite, Amis) + correctif exerciseSlug sur activityFeed. ---
+  __resetCommunityMocks();
+  const localeBeforeBatch5 = currentLocale;
+  currentUser = { uid: 'test-uid', displayName: 'Julie D.', email: 'j@test.com', photoURL: '' };
+
+  // registerActivityFeedEntryIfNeeded() doit ecrire exerciseSlug: null tant que
+  // CHALLENGE_LIBRARY n a pas encore de champ slug reel (batch 7) -- infrastructure
+  // avancee sans effet de bord tant que l ecriture n est pas branchee cote donnees.
+  await registerActivityFeedEntryIfNeeded(pompes, 30);
+  const feedWriteSnap = await db.collection('activityFeed').orderBy('at', 'desc').limit(1).get();
+  __assertEq(feedWriteSnap.docs[0].data().exerciseSlug, null, 'exerciseSlug doit etre ecrit a null tant qu aucun defi n a de slug reel (c.slug undefined -> ?? null)');
+  __resetCommunityMocks();
+
+  currentLocale = 'en';
+  const leaderboardRowStreaksEn = renderLeaderboardRow({ uid: 'x', displayName: 'Bob', streakCount: 5 }, 1, 'streaks', false);
+  __assertOk(leaderboardRowStreaksEn.includes('5d'), 'la valeur de la vue Series (jours de suite) doit etre traduite en anglais');
+  const leaderboardRowXpEn = renderLeaderboardRow({ uid: 'x', displayName: 'Bob', xpTotal: 300 }, 1, 'alltime', false);
+  __assertOk(leaderboardRowXpEn.includes('300 XP'), 'la valeur de la vue Legendes (XP) doit rester lisible en anglais');
+
+  communityBossBattleTargetCache = { weekStart: mondayOfWeek(new Date()), targetChallengeId: pompes.id, targetAmount: 1000 };
+  communityBossBattleProgress = 250;
+  communityTopContributorToday = { displayName: 'Bob', amount: 42 };
+  communityRecentContributions = [{ id: 'c1', uid: 'other-uid', displayName: 'Bob', amount: 10, kudosCount: 0 }];
+  const bossBattleHtmlEn = renderBossBattleSection();
+  __assertOk(bossBattleHtmlEn.includes("This week's community goal"), 'le badge de la jauge collective doit etre traduit en anglais');
+  __assertOk(bossBattleHtmlEn.includes("Today's top contributor"), 'le badge Contributeur du jour doit etre traduit en anglais');
+  __assertOk(bossBattleHtmlEn.includes('just added 10'), 'le fil des contributions individuelles doit etre traduit en anglais');
+  communityTopContributorToday = null;
+  communityRecentContributions = [];
+  communityBossBattleTargetCache = null;
+
+  communityBossBattleArchive = [{ weekStart: '2026-08-03', targetChallengeId: pompes.id, finalProgress: 5000 }];
+  const hallOfFameHtmlEn = renderHallOfFameSection();
+  __assertOk(hallOfFameHtmlEn.includes('Hall of Fame') && hallOfFameHtmlEn.includes('Week of'), 'le Temple de la renommee doit etre traduit en anglais');
+  communityBossBattleArchive = [];
+
+  // renderActivityFeedRow() : repli gracieux sur challengeName (document sans
+  // exerciseSlug, cas actuel/documents pre-batch 7) ET resolution via t() quand un slug
+  // ET une traduction existent (simule ici le batch 7 en ajoutant temporairement une
+  // cle exercises.pompes.name a LOCALE_EN, pour prouver que le CHEMIN existe deja).
+  myFriends = [{ uid: 'amie-uid', displayName: 'Amie B.', photoURL: '' }];
+  communityActivityFeed = [{ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Pompes', exerciseSlug: null, amount: 50, unit: 'reps', at: Date.now() }];
+  const activityFeedFallbackHtmlEn = renderActivityFeedSection();
+  __assertOk(activityFeedFallbackHtmlEn.includes('completed Pompes'), 'sans exerciseSlug, le fil d activite doit retomber sur le challengeName deja stocke (repli gracieux, aucune regression sur les documents existants)');
+  LOCALE_EN.exercises = { pompes: { name: 'Push-ups' } };
+  communityActivityFeed = [{ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Pompes', exerciseSlug: 'pompes', amount: 50, unit: 'reps', at: Date.now() }];
+  const activityFeedSlugHtmlEn = renderActivityFeedSection();
+  __assertOk(activityFeedSlugHtmlEn.includes('completed Push-ups'), 'avec exerciseSlug ET une traduction disponible, le nom traduit doit primer sur le challengeName francais stocke');
+  delete LOCALE_EN.exercises;
+  communityActivityFeed = [];
+  myFriends = [];
+
+  const communityScreenHtmlEn = renderCommunityScreen();
+  __assertOk(communityScreenHtmlEn.includes('>Community<') && communityScreenHtmlEn.includes('>Streaks<') && communityScreenHtmlEn.includes('>Weekly<') && communityScreenHtmlEn.includes('>All-time<'), 'l ecran Communaute (titre + onglets de vue) doit etre traduit en anglais');
+
+  currentLocale = 'es';
+  friendSearchResult = null;
+  const friendsScreenHtmlEs = renderFriendsScreen();
+  __assertOk(friendsScreenHtmlEs.includes('Amigos') && friendsScreenHtmlEs.includes('Buscar'), 'l ecran Amis doit etre traduit en espagnol');
+  friendSearchResult = 'not-found';
+  friendSearchQuery = 'zzz';
+  const friendsNotFoundHtmlEs = renderFriendsScreen();
+  __assertOk(friendsNotFoundHtmlEs.includes('No se encontró el usuario "@zzz"'), 'le message "pseudo introuvable" doit etre traduit et interpoler la requete en espagnol');
+  friendSearchResult = null;
+  friendSearchQuery = '';
+
+  currentUser = null;
+  currentLocale = localeBeforeBatch5;
+  __resetCommunityMocks();
+  console.log('OK: i18n batch 5 - Communaute (classement/Boss Battle/Temple/fil d activite/Amis) + exerciseSlug');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

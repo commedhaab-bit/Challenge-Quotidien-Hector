@@ -1171,15 +1171,54 @@ partout.
 **`CACHE_NAME` bumpé `v28` → `v29`** (contenu des `locale-*.js` modifié, nouvelles clés
 `library`/`challengeForm`/`history`).
 
-**Reste à faire (batches 5 à 7, plan approuvé)** : Communauté (classement/Boss
-Battle/Amis/fil d'activité, + correctif `exerciseSlug` ci-dessus) (batch 5) ; Profil +
-onboarding + tour guidé (batch 6) ; alertes/popups/toasts (dont
-`showStreakInfoModal()`/`showDayDetailModal()`, délibérément pas migrés malgré leur
-présence sur l'écran Aujourd'hui/le Journal, pour garder les popups groupés dans un
-seul batch dédié), `BADGE_DEFS`, dates relatives/`MONTH_ABBR`/lettres de jour (idem,
-délibérément pas touchés jusqu'ici), ajout du `slug` + traduction des noms/catégories
-d'exercices dans `exercise-data.js`, audit final de chaînes françaises oubliées
-(batch 7). Tant qu'une chaîne n'est pas migrée vers `t()`, elle reste le littéral
-français en dur — comportement identique à aujourd'hui pour un utilisateur FR, aucune
-régression possible entre deux batches.
+**Batch 5 livré : Communauté complète (classement, Boss Battle, Temple de la renommée,
+fil d'activité, Amis) + correctif `exerciseSlug`** — `renderLeaderboardRow()`/
+`renderBossBattleSection()`/`renderHallOfFameSection()`/`renderActivityFeedSection()`/
+`renderActivityFeedRow()`/`renderCommunityScreen()`/`renderFriendActionRow()`/
+`renderFriendsScreen()`/`shareCommunityInvite()` migrés vers `t()`/`tn()`.
+
+**Correctif `exerciseSlug` implémenté exactement comme prévu au plan, en 2 moitiés
+volontairement asymétriques** :
+- **Écriture** (`registerActivityFeedEntryIfNeeded()`) : ajoute `exerciseSlug: c.slug ?? null`
+  à chaque nouveau document `activityFeed`, EN PLUS de (jamais à la place de)
+  `challengeName`/`cat`. Puisque `CHALLENGE_LIBRARY` n'a PAS ENCORE de champ `slug`
+  réel (prévu batch 7), `c.slug` est actuellement toujours `undefined` → tous les
+  nouveaux documents écrivent `exerciseSlug: null`, strictement équivalent au
+  comportement d'avant ce correctif. Ce n'est PAS un bug ni un oubli : c'est
+  l'infrastructure posée en avance, qui s'activera automatiquement dès que le batch 7
+  peuplera `c.slug` pour de vrai — sans toucher à nouveau `registerActivityFeedEntryIfNeeded()`.
+- **Lecture** (`renderActivityFeedRow()`) : `entry.exerciseSlug ? t('exercises.' +
+  entry.exerciseSlug + '.name') : escapeHtml(entry.challengeName)` — repli gracieux
+  natif déjà fonctionnel et testé (voir le test dédié, qui ajoute temporairement une
+  clé `LOCALE_EN.exercises.pompes.name` pour prouver que le chemin de résolution
+  fonctionne, sans attendre le batch 7 pour le vérifier).
+
+**Boss Battle/Temple de la renommée : `unitLabel` (`'sec'`/`'reps'`) traduit via
+`exercise.unitSecLabelLower`/`exercise.unitRepsLabel`** (déjà posées au batch 3),
+plutôt que de dupliquer ces 2 mots dans un nouveau namespace `community` — même
+rationale que la réutilisation de `.leaderboard-tabs` au batch 2 : ne pas dupliquer un
+concept déjà traduit ailleurs. `.toLocaleString('fr-FR')` (progression Boss Battle,
+valeur Temple de la renommée) opportunément basculé sur `LOCALE_TO_INTL[currentLocale]`
+au passage, même geste qu'au batch 3.
+
+**Guillemets par langue pour `friends.notFound`**, même principe que
+`library.searchEmpty` au batch 4 (FR : `"..."`, EN/ES : `"..."` droits — ici FR et
+EN/ES utilisent en fait les mêmes guillemets droits pour ce message précis, mais la clé
+reste dans son propre namespace `friends`, pas partagée avec `library`, pour ne pas
+coupler 2 écrans indépendants).
+
+**`CACHE_NAME` bumpé `v29` → `v30`** (contenu des `locale-*.js` modifié, nouvelles clés
+`community`/`friends`).
+
+**Reste à faire (batches 6 et 7, plan approuvé)** : Profil + onboarding + tour guidé
+(batch 6) ; alertes/popups/toasts (dont `showStreakInfoModal()`/`showDayDetailModal()`/
+le toast de `shareCommunityInvite()`, délibérément pas migrés malgré leur présence sur
+des écrans déjà traduits, pour garder tous les sites de popups groupés dans un seul
+batch dédié), `BADGE_DEFS`, dates relatives/`MONTH_ABBR`/lettres de jour (idem,
+délibérément pas touchés jusqu'ici), ajout du **vrai** `slug` + traduction des
+noms/catégories d'exercices dans `exercise-data.js` (activera automatiquement le
+correctif `exerciseSlug` ci-dessus, sans retoucher le code de lecture/écriture), audit
+final de chaînes françaises oubliées (batch 7). Tant qu'une chaîne n'est pas migrée
+vers `t()`, elle reste le littéral français en dur — comportement identique à
+aujourd'hui pour un utilisateur FR, aucune régression possible entre deux batches.
 

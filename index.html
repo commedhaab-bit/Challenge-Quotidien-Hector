@@ -1987,6 +1987,14 @@ async function registerActivityFeedEntryIfNeeded(c, total) {
       displayName: formatDisplayName(currentUser.displayName),
       challengeName: c.name,
       cat: c.cat,
+      // Identifiant stable et langue-agnostique de l'exercice, EN PLUS de (jamais à la
+      // place de) challengeName/cat : voir renderActivityFeedRow(), qui préfère
+      // t('exercises.' + exerciseSlug + '.name') si présent, et retombe sinon sur le
+      // texte français déjà stocké (documents écrits avant ce champ, ou défis
+      // personnalisés qui n'ont jamais de slug). c.slug n'existe pas encore tant que le
+      // batch 7 du chantier i18n n'a pas ajouté ce champ à CHALLENGE_LIBRARY — ?? null
+      // en attendant, sans casser ni le format du document ni le repli côté lecture.
+      exerciseSlug: c.slug ?? null,
       amount: total,
       unit: c.unit,
       at: Date.now(),
@@ -5337,7 +5345,7 @@ async function importUserData(event) {
 // de l'utilisateur courant dans la barre de rang.
 function renderLeaderboardRow(entry, rank, view, highlight) {
   const value = entry[leaderboardFieldForView(view)] || 0;
-  const valueLabel = view === 'streaks' ? `🔥 ${value} j` : `⚡ ${value} XP`;
+  const valueLabel = view === 'streaks' ? t('community.streakValue', { n: value }) : t('community.xpValue', { n: value });
   // formatDisplayName() est déjà appliqué à l'écriture (syncLeaderboardEntry()) : ré-
   // appliqué ici en filet de sécurité, idempotent, pour tout document déjà écrit avant
   // ce correctif (nom complet encore stocké, se corrigera de lui-même à la prochaine
@@ -5366,7 +5374,7 @@ function renderLeaderboardRow(entry, rank, view, highlight) {
 // classement) : navigator.share si disponible (mobile), sinon copie presse-papiers +
 // toast de confirmation — jamais d'échec silencieux si aucun des deux n'est supporté.
 async function shareCommunityInvite() {
-  const text = "Rejoins-moi sur Défi du Jour pour relever le défi communautaire ⚡";
+  const text = t('community.shareInviteText');
   const url = location.href;
   if (navigator.share) {
     try {
@@ -5393,16 +5401,16 @@ function renderBossBattleSection() {
   const challenge = CHALLENGE_LIBRARY.find(c => c.id === target.targetChallengeId);
   if (!challenge) return '';
   const pct = Math.min(100, Math.round((communityBossBattleProgress / target.targetAmount) * 100));
-  const unitLabel = challenge.unit === 'sec' ? 'sec' : 'reps';
+  const unitLabel = challenge.unit === 'sec' ? t('exercise.unitSecLabelLower') : t('exercise.unitRepsLabel');
   const contributorHtml = communityTopContributorToday
-    ? `<div class="boss-battle-contributor">👑 Contributeur du jour : ${escapeHtml(formatDisplayName(communityTopContributorToday.displayName))} (${communityTopContributorToday.amount} ${unitLabel})</div>`
+    ? `<div class="boss-battle-contributor">${t('community.bossBattle.contributor', { name: escapeHtml(formatDisplayName(communityTopContributorToday.displayName)), amount: communityTopContributorToday.amount, unit: unitLabel })}</div>`
     : '';
   // Fil des contributions individuelles (temps réel, ~20 dernières) : FOMO en direct,
   // distinct du badge Contributeur du jour ci-dessus (agrégat, pas un flux d'évènements).
   const feedHtml = communityRecentContributions.length > 0
     ? `<div class="boss-battle-feed">${communityRecentContributions.map(c => `
         <div class="boss-battle-feed-row">
-          <span>${escapeHtml(formatDisplayName(c.displayName))} vient d'ajouter ${c.amount} ${unitLabel}</span>
+          <span>${t('community.bossBattle.feedRow', { name: escapeHtml(formatDisplayName(c.displayName)), amount: c.amount, unit: unitLabel })}</span>
           ${renderKudosButton(`bossBattleDocRef().collection('contributions').doc('${escapeJsAttr(c.id)}')`, c.id, c.kudosCount, currentUser && c.uid === currentUser.uid)}
         </div>
       `).join('')}</div>`
@@ -5410,9 +5418,9 @@ function renderBossBattleSection() {
   return `
     <div class="boss-battle-card">
       <div class="boss-battle-header">
-        <span class="boss-battle-badge">⚔️ Objectif communautaire de la semaine</span>
+        <span class="boss-battle-badge">${t('community.bossBattle.badge')}</span>
       </div>
-      <div class="boss-battle-goal">${escapeHtml(challenge.name)} — ${communityBossBattleProgress.toLocaleString('fr-FR')} / ${target.targetAmount.toLocaleString('fr-FR')} ${unitLabel}</div>
+      <div class="boss-battle-goal">${t('community.bossBattle.goal', { name: escapeHtml(challenge.name), progress: communityBossBattleProgress.toLocaleString(LOCALE_TO_INTL[currentLocale]), target: target.targetAmount.toLocaleString(LOCALE_TO_INTL[currentLocale]), unit: unitLabel })}</div>
       <div class="boss-battle-track"><div class="boss-battle-fill" style="width:${pct}%"></div></div>
       <div class="boss-battle-pct">${pct}%</div>
       ${contributorHtml}
@@ -5429,22 +5437,22 @@ function renderHallOfFameSection() {
   if (communityBossBattleArchive.length === 0) return '';
   const rows = communityBossBattleArchive.map(entry => {
     const challenge = CHALLENGE_LIBRARY.find(c => c.id === entry.targetChallengeId);
-    const unitLabel = challenge && challenge.unit === 'sec' ? 'sec' : 'reps';
+    const unitLabel = challenge && challenge.unit === 'sec' ? t('exercise.unitSecLabelLower') : t('exercise.unitRepsLabel');
     const [y, m, d] = entry.weekStart.split('-').map(Number);
     const weekLabel = formatDateLabel(new Date(y, m - 1, d));
     return `
       <div class="hall-of-fame-row">
         <span class="hall-of-fame-icon">🏆</span>
         <div class="hall-of-fame-info">
-          <span class="hall-of-fame-name">${escapeHtml(challenge ? challenge.name : 'Défi supprimé')}</span>
-          <span class="hall-of-fame-week">Semaine du ${weekLabel}</span>
+          <span class="hall-of-fame-name">${escapeHtml(challenge ? challenge.name : t('history.deletedChallenge'))}</span>
+          <span class="hall-of-fame-week">${t('community.hallOfFame.weekOf', { date: weekLabel })}</span>
         </div>
-        <span class="hall-of-fame-value">${entry.finalProgress.toLocaleString('fr-FR')} ${unitLabel}</span>
+        <span class="hall-of-fame-value">${entry.finalProgress.toLocaleString(LOCALE_TO_INTL[currentLocale])} ${unitLabel}</span>
       </div>
     `;
   }).join('');
   return `
-    <div class="section-label">Temple de la renommée</div>
+    <div class="section-label">${t('community.hallOfFame.sectionLabel')}</div>
     <div class="hall-of-fame-list">${rows}</div>
   `;
 }
@@ -5456,21 +5464,21 @@ function renderHallOfFameSection() {
 function renderActivityFeedSection() {
   if (myFriends.length === 0) {
     return `
-      <div class="section-label">Fil d'activité (amis)</div>
+      <div class="section-label">${t('community.activityFeed.sectionLabel')}</div>
       <div class="activity-feed-empty">
-        <p>Suis des amis pour voir leurs efforts ici, en direct.</p>
-        <button class="friend-search-submit-btn" onclick="openFriendsScreen()">👥 Trouver des amis</button>
+        <p>${t('community.activityFeed.noFriendsText')}</p>
+        <button class="friend-search-submit-btn" onclick="openFriendsScreen()">${t('community.activityFeed.findFriendsBtn')}</button>
       </div>
     `;
   }
   if (communityActivityFeed.length === 0) {
     return `
-      <div class="section-label">Fil d'activité (amis)</div>
-      <div class="history-empty">Aucune activité récente parmi tes amis.</div>
+      <div class="section-label">${t('community.activityFeed.sectionLabel')}</div>
+      <div class="history-empty">${t('community.activityFeed.noRecentActivity')}</div>
     `;
   }
   return `
-    <div class="section-label">Fil d'activité (amis)</div>
+    <div class="section-label">${t('community.activityFeed.sectionLabel')}</div>
     <div class="activity-feed-list">
       ${communityActivityFeed.map(entry => renderActivityFeedRow(entry)).join('')}
     </div>
@@ -5478,14 +5486,21 @@ function renderActivityFeedSection() {
 }
 
 function renderActivityFeedRow(entry) {
-  const amountLabel = entry.unit === 'sec' ? formatSecToReadable(entry.amount) : entry.amount + ' reps';
+  const amountLabel = entry.unit === 'sec' ? formatSecToReadable(entry.amount) : entry.amount + ' ' + t('exercise.unitRepsLabel');
   const rel = formatRelative(entry.at);
   const isMine = currentUser && entry.uid === currentUser.uid;
   const kudosHtml = renderKudosButton(`db.collection('activityFeed').doc('${escapeJsAttr(entry.id)}')`, entry.id, entry.kudosCount, isMine);
+  // Repli gracieux : exerciseSlug n'existe que sur les documents écrits après ce champ
+  // (voir registerActivityFeedEntryIfNeeded()) ET tant que CHALLENGE_LIBRARY n'a pas
+  // encore de slugs réels (batch 7 du chantier i18n) — jusque-là exerciseSlug est
+  // toujours null, donc challengeName (déjà stocké, français en dur) reste utilisé sans
+  // aucun changement de comportement. Idem pour les défis personnalisés, qui n'ont
+  // jamais de slug par nature (nom tapé par l'utilisateur, non traduisible).
+  const challengeLabel = entry.exerciseSlug ? t('exercises.' + entry.exerciseSlug + '.name') : escapeHtml(entry.challengeName);
   return `
     <div class="activity-feed-row">
       <div class="activity-feed-body">
-        <span class="activity-feed-text"><strong>${escapeHtml(entry.displayName)}</strong> a complété ${escapeHtml(entry.challengeName)} — ${amountLabel}</span>
+        <span class="activity-feed-text">${t('community.activityFeed.row', { name: escapeHtml(entry.displayName), challenge: challengeLabel, amount: amountLabel })}</span>
         ${rel ? `<span class="activity-feed-time">${escapeHtml(rel)}</span>` : ''}
       </div>
       ${kudosHtml}
@@ -5495,14 +5510,14 @@ function renderActivityFeedRow(entry) {
 
 function renderCommunityScreen() {
   const views = [
-    { id: 'streaks', label: 'Séries' },
-    { id: 'weekly', label: 'Hebdo' },
-    { id: 'alltime', label: 'Légendes' },
+    { id: 'streaks', label: t('community.views.streaks') },
+    { id: 'weekly', label: t('community.views.weekly') },
+    { id: 'alltime', label: t('community.views.alltime') },
   ];
   const topHtml = communityLeaderboardLoading
-    ? `<div class="history-empty">Chargement…</div>`
+    ? `<div class="history-empty">${t('community.loading')}</div>`
     : (communityLeaderboardTop.length === 0
-      ? `<div class="history-empty">Personne à afficher pour l'instant.</div>`
+      ? `<div class="history-empty">${t('community.noOneYet')}</div>`
       : communityLeaderboardTop.map((e, i) => renderLeaderboardRow(e, i + 1, communityLeaderboardView, e.uid === currentUser.uid)).join(''));
 
   // communityLeaderboardNeighbors est ordonné [au-dessus de moi..., moi, ...en-dessous
@@ -5528,8 +5543,8 @@ function renderCommunityScreen() {
   const inviteHtml = (!communityLeaderboardLoading && communityLeaderboardTop.length < 3)
     ? `
       <div class="community-invite-card">
-        <span class="community-invite-text">Inviter des proches pour pimenter le classement ⚡</span>
-        <button class="community-invite-btn" onclick="shareCommunityInvite()">📤 Partager</button>
+        <span class="community-invite-text">${t('community.inviteText')}</span>
+        <button class="community-invite-btn" onclick="shareCommunityInvite()">${t('community.inviteBtn')}</button>
       </div>
     `
     : '';
@@ -5537,11 +5552,11 @@ function renderCommunityScreen() {
   return `
     <div class="header">
       <div class="date">${formatDateLabel(new Date())}</div>
-      <button class="friends-btn" onclick="openFriendsScreen()">👥 Amis${incomingFriendRequests.length > 0 ? `<span class="friends-badge">${incomingFriendRequests.length}</span>` : ''}</button>
+      <button class="friends-btn" onclick="openFriendsScreen()">${t('community.friendsBtn')}${incomingFriendRequests.length > 0 ? `<span class="friends-badge">${incomingFriendRequests.length}</span>` : ''}</button>
     </div>
-    <h1 class="title">Communauté</h1>
-    <div class="subtitle">Classement, défis partagés et objectifs collectifs</div>
-    ${leaderboardOptOut ? `<div class="community-optout-notice">Tu ne participes pas au classement (activable dans Paramètres).</div>` : ''}
+    <h1 class="title">${t('community.title')}</h1>
+    <div class="subtitle">${t('community.subtitle')}</div>
+    ${leaderboardOptOut ? `<div class="community-optout-notice">${t('community.optOutNotice')}</div>` : ''}
     ${renderBossBattleSection()}
     ${renderActivityFeedSection()}
     ${renderHallOfFameSection()}
@@ -5570,48 +5585,48 @@ function renderFriendActionRow(uid, displayName, photoURL, actionHtml) {
 function renderFriendsScreen() {
   let resultHtml = '';
   if (friendSearchResult === 'searching') {
-    resultHtml = `<div class="history-empty">Recherche...</div>`;
+    resultHtml = `<div class="history-empty">${t('friends.searching')}</div>`;
   } else if (friendSearchResult === 'not-found') {
-    resultHtml = `<div class="history-empty">Aucun pseudo "@${escapeHtml(friendSearchQuery)}" trouvé.</div>`;
+    resultHtml = `<div class="history-empty">${t('friends.notFound', { query: escapeHtml(friendSearchQuery) })}</div>`;
   } else if (friendSearchResult === 'self') {
-    resultHtml = `<div class="history-empty">C'est ton propre pseudo !</div>`;
+    resultHtml = `<div class="history-empty">${t('friends.self')}</div>`;
   } else if (friendSearchResult && typeof friendSearchResult === 'object') {
     const r = friendSearchResult;
     let actionHtml;
-    if (r.relation === 'friend') actionHtml = `<span class="friend-status">✓ Déjà ami</span>`;
-    else if (r.relation === 'request-sent') actionHtml = `<span class="friend-status">Demande envoyée</span>`;
-    else if (r.relation === 'request-received') actionHtml = `<button class="friend-action-btn" onclick="acceptFriendRequest('${escapeJsAttr(r.uid)}')">Accepter sa demande</button>`;
-    else actionHtml = `<button class="friend-action-btn" onclick="sendFriendRequest('${escapeJsAttr(r.uid)}')">+ Ajouter</button>`;
+    if (r.relation === 'friend') actionHtml = `<span class="friend-status">${t('friends.alreadyFriend')}</span>`;
+    else if (r.relation === 'request-sent') actionHtml = `<span class="friend-status">${t('friends.requestSent')}</span>`;
+    else if (r.relation === 'request-received') actionHtml = `<button class="friend-action-btn" onclick="acceptFriendRequest('${escapeJsAttr(r.uid)}')">${t('friends.acceptRequestBtn')}</button>`;
+    else actionHtml = `<button class="friend-action-btn" onclick="sendFriendRequest('${escapeJsAttr(r.uid)}')">${t('friends.addBtn')}</button>`;
     resultHtml = renderFriendActionRow(r.uid, r.displayName, r.photoURL, actionHtml);
   }
 
   const incomingHtml = incomingFriendRequests.length > 0 ? `
-    <div class="section-label">Demandes reçues</div>
+    <div class="section-label">${t('friends.incomingLabel')}</div>
     <div class="leaderboard-list">
       ${incomingFriendRequests.map(r => renderFriendActionRow(r.fromUid, r.displayName, r.photoURL, `
-        <button class="friend-action-btn" onclick="acceptFriendRequest('${escapeJsAttr(r.fromUid)}')">Accepter</button>
-        <button class="friend-action-btn ghost" onclick="declineFriendRequest('${escapeJsAttr(r.fromUid)}')">Refuser</button>
+        <button class="friend-action-btn" onclick="acceptFriendRequest('${escapeJsAttr(r.fromUid)}')">${t('friends.acceptBtn')}</button>
+        <button class="friend-action-btn ghost" onclick="declineFriendRequest('${escapeJsAttr(r.fromUid)}')">${t('friends.declineBtn')}</button>
       `)).join('')}
     </div>
   ` : '';
 
   const friendsHtml = myFriends.length > 0 ? `
-    <div class="section-label">Mes amis</div>
+    <div class="section-label">${t('friends.myFriendsLabel')}</div>
     <div class="leaderboard-list">
       ${myFriends.map(f => renderFriendActionRow(f.uid, f.displayName, f.photoURL, `
-        <button class="icon-btn danger" onclick="removeFriend('${escapeJsAttr(f.uid)}')" aria-label="Retirer cet ami">🗑️</button>
+        <button class="icon-btn danger" onclick="removeFriend('${escapeJsAttr(f.uid)}')" aria-label="${t('friends.removeFriendAria')}">🗑️</button>
       `)).join('')}
     </div>
-  ` : `<div class="history-empty">Pas encore d'amis — recherche un pseudo ci-dessus pour commencer.</div>`;
+  ` : `<div class="history-empty">${t('friends.noFriends')}</div>`;
 
   return `
-    <button class="nav-back-btn" onclick="history.back()" aria-label="Retour">‹</button>
-    <h1 class="title">Amis</h1>
-    <div class="subtitle">Retrouve tes amis par pseudo pour voir leurs efforts dans ton fil d'activité.</div>
+    <button class="nav-back-btn" onclick="history.back()" aria-label="${t('friends.backAria')}">‹</button>
+    <h1 class="title">${t('friends.title')}</h1>
+    <div class="subtitle">${t('friends.subtitle')}</div>
     <input class="library-search-input" id="friendSearchInput" type="text"
-           placeholder="🔍 Pseudo exact..." aria-label="Rechercher un ami par pseudo"
+           placeholder="${t('friends.searchPlaceholder')}" aria-label="${t('friends.searchAria')}"
            value="${escapeHtml(friendSearchQuery)}" oninput="updateFriendSearchQuery(this.value)">
-    <button class="friend-search-submit-btn" onclick="submitFriendSearch()">Rechercher</button>
+    <button class="friend-search-submit-btn" onclick="submitFriendSearch()">${t('friends.searchBtn')}</button>
     ${resultHtml}
     ${incomingHtml}
     ${friendsHtml}
