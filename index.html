@@ -160,17 +160,31 @@ let firestorePersistenceEnabled = null;
 // Import dynamique isolé dans sa propre fonction pour pouvoir être remplacé par un
 // double de test (voir tests/app.test.js, même convention que dbGet/dbSet un peu plus
 // bas) — jamais de vrai import() réseau pendant les tests.
+//
+// BUG RÉEL rencontré en production (voir CLAUDE.md) : passer firebase.app() (le
+// wrapper COMPAT) à initializeFirestore() (SDK MODULAIRE) construit un `mdb` qui
+// échoue plus tard, silencieusement pour l'appelant, sur le tout premier doc()/
+// collection() réel ("Expected first argument to collection() to be a
+// CollectionReference, a DocumentReference or FirebaseFirestore") — le wrapper
+// compat n'est pas reconnu par les vérifications internes du SDK modulaire. Import
+// de firebase-app.js (MODULAIRE) EN PLUS de firebase-firestore.js : appMod.getApp()
+// récupère la MÊME app par défaut (déjà initialisée par firebase.initializeApp()
+// compat, même registre interne partagé) mais sous la forme reconnue par le reste
+// du SDK modulaire.
 function loadFirestoreModular() {
-  return import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js');
+  return Promise.all([
+    import('https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js'),
+    import('https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js'),
+  ]);
 }
 
 async function initFirestore() {
   try {
-    const modular = await Promise.race([
+    const [appMod, modular] = await Promise.race([
       loadFirestoreModular(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('import Firestore modulaire : délai dépassé')), 3000)),
     ]);
-    mdb = modular.initializeFirestore(firebase.app(), {
+    mdb = modular.initializeFirestore(appMod.getApp(), {
       cache: modular.persistentLocalCache({ tabManager: modular.persistentMultipleTabManager() }),
     });
     fsMod = modular;

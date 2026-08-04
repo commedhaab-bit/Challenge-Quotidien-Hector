@@ -535,27 +535,33 @@ sandbox.firebase.firestore.FieldValue = { increment: __mockFieldValueIncrement }
 // sandbox.firebase.firestore() que le SDK compat (interop reproduite fidelement -
 // mdb et db partagent les memes donnees, exactement comme en production). Rebranche
 // plus bas par testDriver (meme convention que dbGet = __dbGet).
-sandbox.__loadFirestoreModular = () => Promise.resolve({
-  initializeFirestore: () => sandbox.firebase.firestore(),
-  persistentLocalCache: (opts) => opts,
-  persistentMultipleTabManager: () => ({}),
-  doc: __modularDoc,
-  getDoc: __modularGetDoc,
-  setDoc: __modularSetDoc,
-  deleteDoc: __modularDeleteDoc,
-  addDoc: __modularAddDoc,
-  getDocs: __modularGetDocs,
-  collection: __modularCollection,
-  query: __modularQuery,
-  where: __modularWhere,
-  orderBy: __modularOrderBy,
-  limit: __modularLimit,
-  startAt: __modularStartAt,
-  onSnapshot: __modularOnSnapshot,
-  writeBatch: __modularWriteBatch,
-  runTransaction: __modularRunTransaction,
-  increment: __mockFieldValueIncrement,
-});
+// loadFirestoreModular() renvoie desormais [appMod, firestoreMod] (Promise.all de 2
+// imports, voir index.html/CLAUDE.md - bug reel corrige : firebase.app() compat
+// n'est pas reconnu par initializeFirestore() modulaire, d'ou appMod.getApp()).
+sandbox.__loadFirestoreModular = () => Promise.resolve([
+  { getApp: () => ({}) }, // appMod : mock minimal, jamais inspecte par initializeFirestore() ci-dessous
+  {
+    initializeFirestore: () => sandbox.firebase.firestore(),
+    persistentLocalCache: (opts) => opts,
+    persistentMultipleTabManager: () => ({}),
+    doc: __modularDoc,
+    getDoc: __modularGetDoc,
+    setDoc: __modularSetDoc,
+    deleteDoc: __modularDeleteDoc,
+    addDoc: __modularAddDoc,
+    getDocs: __modularGetDocs,
+    collection: __modularCollection,
+    query: __modularQuery,
+    where: __modularWhere,
+    orderBy: __modularOrderBy,
+    limit: __modularLimit,
+    startAt: __modularStartAt,
+    onSnapshot: __modularOnSnapshot,
+    writeBatch: __modularWriteBatch,
+    runTransaction: __modularRunTransaction,
+    increment: __mockFieldValueIncrement,
+  },
+]);
 sandbox.globalThis = sandbox;
 sandbox.self = sandbox;
 vm.createContext(sandbox);
@@ -2320,7 +2326,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v39'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v40'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
