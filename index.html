@@ -317,8 +317,8 @@ function reportSaveError(context, err) {
  * par défaut, jamais supposer que la clé existe déjà.
  */
 async function dbGet(key) {
-  const doc = await db.collection('users').doc(currentUser.uid).collection('kv').doc(key).get();
-  if (!doc.exists) throw new Error('not found: ' + key);
+  const doc = await fsMod.getDoc(fsMod.doc(mdb, 'users', currentUser.uid, 'kv', key));
+  if (!doc.exists()) throw new Error('not found: ' + key);
   return { key, value: doc.data().value };
 }
 
@@ -327,7 +327,7 @@ async function dbSet(key, value) {
   pendingWriteCount++;
   updateOfflineBanner();
   try {
-    await db.collection('users').doc(currentUser.uid).collection('kv').doc(key).set({ value });
+    await fsMod.setDoc(fsMod.doc(mdb, 'users', currentUser.uid, 'kv', key), { value });
     return { key, value };
   } finally {
     pendingWriteCount--;
@@ -2347,8 +2347,8 @@ function friendshipPairId(uidX, uidY) {
 // aussi — l'opt-out classement vaut opt-out découverte, cohérent plutôt que 2 réglages
 // de vie privée séparés à gérer.
 async function fetchPublicProfile(uid) {
-  const doc = await db.collection('leaderboard').doc(uid).get();
-  if (!doc.exists) return null;
+  const doc = await fsMod.getDoc(fsMod.doc(mdb, 'leaderboard', uid));
+  if (!doc.exists()) return null;
   const d = doc.data();
   return { displayName: formatDisplayName(d.displayName), photoURL: d.photoURL || '' };
 }
@@ -2365,10 +2365,10 @@ async function refreshFriendsData() {
   if (!currentUser) return;
   try {
     const [snapA, snapB, incomingSnap, outgoingSnap] = await Promise.all([
-      db.collection('friendships').where('uidA', '==', currentUser.uid).get(),
-      db.collection('friendships').where('uidB', '==', currentUser.uid).get(),
-      db.collection('friendRequests').where('toUid', '==', currentUser.uid).get(),
-      db.collection('friendRequests').where('fromUid', '==', currentUser.uid).get(),
+      fsMod.getDocs(fsMod.query(fsMod.collection(mdb, 'friendships'), fsMod.where('uidA', '==', currentUser.uid))),
+      fsMod.getDocs(fsMod.query(fsMod.collection(mdb, 'friendships'), fsMod.where('uidB', '==', currentUser.uid))),
+      fsMod.getDocs(fsMod.query(fsMod.collection(mdb, 'friendRequests'), fsMod.where('toUid', '==', currentUser.uid))),
+      fsMod.getDocs(fsMod.query(fsMod.collection(mdb, 'friendRequests'), fsMod.where('fromUid', '==', currentUser.uid))),
     ]);
     const friendUids = [
       ...snapA.docs.map(d => d.data().uidB),
@@ -2452,7 +2452,7 @@ async function submitFriendSearch() {
 
 async function sendFriendRequest(targetUid) {
   try {
-    await db.collection('friendRequests').doc(friendRequestId(currentUser.uid, targetUid)).set({
+    await fsMod.setDoc(fsMod.doc(mdb, 'friendRequests', friendRequestId(currentUser.uid, targetUid)), {
       fromUid: currentUser.uid, toUid: targetUid, at: Date.now(),
     });
     await notificationsCollRef(targetUid).doc().set({
@@ -2493,7 +2493,7 @@ async function acceptFriendRequest(fromUid) {
 
 async function declineFriendRequest(fromUid) {
   try {
-    await db.collection('friendRequests').doc(friendRequestId(fromUid, currentUser.uid)).delete();
+    await fsMod.deleteDoc(fsMod.doc(mdb, 'friendRequests', friendRequestId(fromUid, currentUser.uid)));
     await refreshFriendsData();
   } catch (e) {
     reportSaveError('decline friend request failed', e);
@@ -2510,7 +2510,7 @@ async function removeFriend(uid) {
   });
   if (!confirmed) return;
   try {
-    await db.collection('friendships').doc(friendshipPairId(uid, currentUser.uid)).delete();
+    await fsMod.deleteDoc(fsMod.doc(mdb, 'friendships', friendshipPairId(uid, currentUser.uid)));
     await refreshFriendsData();
   } catch (e) {
     reportSaveError('remove friend failed', e);
@@ -3041,7 +3041,7 @@ async function saveLeaderboardOptOut() {
 async function syncLeaderboardEntry() {
   if (leaderboardOptOut || !currentUser) return;
   try {
-    await db.collection('leaderboard').doc(currentUser.uid).set({
+    await fsMod.setDoc(fsMod.doc(mdb, 'leaderboard', currentUser.uid), {
       displayName: formatDisplayName(currentUser.displayName),
       photoURL: currentUser.photoURL || '',
       streakCount,
@@ -3059,7 +3059,7 @@ async function toggleLeaderboardOptOut() {
   leaderboardOptOut = !leaderboardOptOut;
   await saveLeaderboardOptOut();
   if (leaderboardOptOut) {
-    try { await db.collection('leaderboard').doc(currentUser.uid).delete(); }
+    try { await fsMod.deleteDoc(fsMod.doc(mdb, 'leaderboard', currentUser.uid)); }
     catch (e) { reportSaveError('leaderboard opt-out delete failed', e); }
   } else {
     await syncLeaderboardEntry();
@@ -3077,14 +3077,14 @@ function leaderboardFieldForView(view) {
 // plus filtrée sur la semaine calendaire en cours (xpWeekStart), sinon une entrée
 // jamais rafraîchie depuis une semaine précédente resterait affichée à tort.
 function leaderboardBaseQuery(view) {
-  let q = db.collection('leaderboard');
-  if (view === 'weekly') q = q.where('xpWeekStart', '==', mondayOfWeek(new Date()));
+  let q = fsMod.collection(mdb, 'leaderboard');
+  if (view === 'weekly') q = fsMod.query(q, fsMod.where('xpWeekStart', '==', mondayOfWeek(new Date())));
   return q;
 }
 
 async function fetchLeaderboardTop(view, n = 20) {
   const field = leaderboardFieldForView(view);
-  const snap = await leaderboardBaseQuery(view).orderBy(field, 'desc').limit(n).get();
+  const snap = await fsMod.getDocs(fsMod.query(leaderboardBaseQuery(view), fsMod.orderBy(field, 'desc'), fsMod.limit(n)));
   return snap.docs.map(d => ({ uid: d.id, ...d.data() }));
 }
 
@@ -3102,13 +3102,13 @@ async function fetchLeaderboardTop(view, n = 20) {
 // taille modeste ; à revoir si le classement grossit beaucoup.
 async function fetchMyRankAndNeighbors(view) {
   const field = leaderboardFieldForView(view);
-  const snap = await leaderboardBaseQuery(view).orderBy(field, 'desc').get();
+  const snap = await fsMod.getDocs(fsMod.query(leaderboardBaseQuery(view), fsMod.orderBy(field, 'desc')));
   const all = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
   let myIdx = all.findIndex(e => e.uid === currentUser.uid);
   if (myIdx === -1) {
-    const myDoc = await db.collection('leaderboard').doc(currentUser.uid).get();
-    const myValue = (myDoc.exists && myDoc.data()[field]) || 0;
-    const me = myDoc.exists
+    const myDoc = await fsMod.getDoc(fsMod.doc(mdb, 'leaderboard', currentUser.uid));
+    const myValue = (myDoc.exists() && myDoc.data()[field]) || 0;
+    const me = myDoc.exists()
       ? { uid: currentUser.uid, ...myDoc.data() }
       : { uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName), [field]: myValue };
     myIdx = all.findIndex(e => (e[field] || 0) < myValue);

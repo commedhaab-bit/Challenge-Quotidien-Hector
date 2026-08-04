@@ -1366,7 +1366,7 @@ lancement. Voir les sections précédentes (batches 1 à 7) pour le détail tech
 chaque étape ; les 2 exceptions volontaires ci-dessus (`formatDisplayName()`,
 `showFatalErrorScreen()`) sont les seuls textes intentionnellement non traduits.
 
-## Migration Firestore SDK compat → SDK modulaire (persistance) — chantier en cours (batch 1/6 livré)
+## Migration Firestore SDK compat → SDK modulaire (persistance) — chantier en cours (batch 2/6 livré)
 
 **Pourquoi** : `enablePersistence()` (SDK compat) sera un jour déprécié au profit de
 `FirestoreSettings.cache`, qui n'existe QUE dans le SDK modulaire (vérifié directement
@@ -1408,15 +1408,30 @@ warning et d'être aligné avec l'API recommandée, avant que l'appli soit publi
   fonction est toujours truthy, donc l'ancienne écriture ferait toujours croire que le
   document consolidé existe).
 
-**Site migré en batch 1 (preuve)** : `appDataDocRef()` et ses 3 appelants
-(`saveAppField()`, `loadAppData()` ×2 — lecture ET écriture du document consolidé
+**Batch 1 (preuve)** : `appDataDocRef()` et ses 3 appelants (`saveAppField()`,
+`loadAppData()` ×2 — lecture ET écriture du document consolidé
 `users/{uid}/kv/appData`, le chemin Firestore le plus exercé de l'appli, à chaque
-démarrage). Reste sur le SDK compat (migration prévue batches 2 à 6, ~90 sites au
-total recensés) : `dbGet`/`dbSet` (anciennes clés séparées), leaderboard, friendships,
-notifications (+ son `onSnapshot`), usernames, fil d'activité (+ son `onSnapshot`,
-incluant un correctif prévu sur `renderKudosButton()` qui injecte aujourd'hui du texte
-source `db.collection(...)` littéral dans un attribut `onclick`), Boss Battle + kudos
-(+ 2 `onSnapshot`, 3 `runTransaction`), suppression de compte (`db.batch()`).
+démarrage).
+
+**Batch 2** : `dbGet`/`dbSet` (anciennes clés séparées kv, non exercées par le mock de
+test — voir plus bas) ; leaderboard (`fetchPublicProfile`, `syncLeaderboardEntry`,
+`toggleLeaderboardOptOut`, `leaderboardBaseQuery`/`fetchLeaderboardTop`/
+`fetchMyRankAndNeighbors`, requêtes composées via `query()`/`where()`/`orderBy()`/
+`limit()` plutôt que le chaînage compat) ; friendships (`refreshFriendsData`,
+`sendFriendRequest`, `declineFriendRequest`, `removeFriend`). **Écart volontaire par
+rapport au découpage initial du plan** : `acceptFriendRequest()` (utilise `db.batch()`,
+comme `deleteMyAccount()`) reste sur le SDK compat — le plan excluait explicitement
+tout site batch/transaction du batch 2 ; les 2 `db.batch()` restants (celui-ci +
+suppression de compte) sont donc regroupés dans le batch 6, pas 1 seul comme prévu
+initialement.
+
+Reste sur le SDK compat (migration prévue batches 3 à 6, ~90 sites au total
+recensés) : notifications (+ son `onSnapshot`), usernames, fil d'activité (+ son
+`onSnapshot`, incluant un correctif prévu sur `renderKudosButton()` qui injecte
+aujourd'hui du texte source `db.collection(...)` littéral dans un attribut `onclick`),
+Boss Battle + kudos (+ 2 `onSnapshot`, 3 `runTransaction` — dont `giveKudosToPerson()`,
+qui référence `leaderboard/{uid}` mais reste compat en bloc tant que sa transaction
+n'est pas migrée), suppression de compte + acceptation d'ami (2 `db.batch()`).
 
 **Harnais de test** (`tests/app.test.js`) : `loadFirestoreModular()` (nouvelle fonction
 d'index.html isolant l'`import()`) est remplacée par un double de test
