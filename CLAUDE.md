@@ -958,38 +958,77 @@ premier utilisateur à déclencher le chemin est bloqué silencieusement (erreur
 `permission-denied` générique côté client, aucun indice sur la cause réelle sans lire
 la règle).
 
-## Notifications temps réel : popup kudos reçu + popup demande d'ami reçue
+## Notifications : sous-collection dédiée `users/{uid}/notifications`, listener unique
 
-**Kudos reçu → `enqueuePopup()`** (moteur de popups gamification existant — XP, badges,
-niveaux — réutilisé tel quel, pas de nouveau système). `watchForKudosReceived(docRef,
-fieldName, fetchLatestVoterUid)` est **générique** : surveille un **document unique**
-(jamais une requête) via `onSnapshot`, note la valeur du compteur (`kudosTotal`/
-`kudosCount`) au moment de l'abonnement comme "état de départ" (aucune popup pour ça),
-puis déclenche une popup dès que le compteur AUGMENTE par rapport à la dernière valeur
-vue. Choix déterminant : surveiller un DOCUMENT (réactif de façon fiable, y compris
-dans le harnais de test — confirmé par un test existant :
-"onSnapshot doit etre re-declenche a chaque ecriture") plutôt qu'une QUERY (le mock ne
-la re-déclenche jamais, contrairement au vrai SDK — limitation déjà documentée
-ailleurs).
-- Classement (`startKudosReceivedListener()`) : surveille `leaderboard/{monUid}`,
-  attribution via une lecture ponctuelle de `kudosGiven` (`orderBy('at','desc').limit(1)`,
-  champ `voterUid`) déclenchée uniquement quand une hausse est détectée.
-- Fil d'activité/Boss Battle (`watchOwnEventForKudosReceived(docRef)`) : **scopé aux
-  entrées créées PENDANT LA SESSION en cours** (appelé juste après la création dans
-  `registerActivityFeedEntryIfNeeded()`/`registerBossBattleContributionIfNeeded()`) —
-  pas de rattrapage rétroactif sur l'historique, qui obligerait à surveiller un nombre
-  non borné de documents passés. Attribution via `kudosBy` (l'ID du document EST déjà
-  l'uid du votant, pas de champ séparé nécessaire ici contrairement à `kudosGiven`).
+**Refonte complète** de la première version (listeners dispersés — 1 par document
+surveillé, voir historique git) : celle-ci fonctionnait mais (a) multipliait les
+listeners actifs au fil de la session (1 de plus par défi complété), et (b) n'offrait
+strictement AUCUN rattrapage — un kudos ou une demande d'ami reçus hors ligne ne
+généraient jamais de popup, ni sur le moment ni à la prochaine ouverture. Remplacée par
+un modèle "boîte de réception" :
 
-**Demande d'ami reçue → `confirmModal()` avec acceptation directe**
-(`notifyIncomingFriendRequest(fromUid)`) : "Accepter" appelle `acceptFriendRequest()`
-directement depuis la popup ; "Plus tard" ne fait RIEN (pas de refus silencieux — la
-demande reste visible normalement dans l'écran Amis). Détection des nouvelles
-demandes : comme une QUERY est nécessaire ici (plusieurs demandeurs possibles, pas un
-document unique à surveiller), `startIncomingFriendRequestsListener()` compare
-l'ensemble des IDs vus à chaque instantané à celui du précédent — équivalent maison de
-`docChanges()`/type `'added'`, qui fonctionne aussi bien avec un vrai `onSnapshot`
-temps réel qu'avec un simple appel one-shot. Le tout premier instantané établit l'état
-connu SANS notifier (les demandes déjà en attente avant l'ouverture de l'app ne sont
-pas des "nouvelles arrivées").
+```
+users/{uid}/notifications/{autoId}
+  { type: 'kudo' | 'friend_request', fromUid, fromName, read: false, createdAt }
+```
+
+**Le nom de l'émetteur (`fromName`) est stocké DIRECTEMENT dans la notification au
+moment de sa création** (`formatDisplayName(currentUser.displayName)`, déjà anonymisé
+— "Prénom N."), jamais relu via `fetchPublicProfile()` à l'affichage. Avantage direct :
+fonctionne même si l'émetteur désactive ensuite son classement (`leaderboardOptOut`,
+qui aurait rendu `fetchPublicProfile()` introuvable dans l'ancienne version) — plus
+d'anonymat forcé rétroactif, et une lecture Firestore de moins par notification.
+
+**Écriture** : la notification est créée par l'ÉMETTEUR, dans l'espace du
+DESTINATAIRE — `notificationsCollRef(targetUid).doc()` (ID auto-généré), toujours dans
+la MÊME transaction/écriture que l'action elle-même pour rester cohérent :
+- `giveKudosToEvent(docRef)` : notifie le **propriétaire de l'événement** (son champ
+  `uid`, lu dans la même transaction via `eventDoc.data().uid` — pas de lecture
+  supplémentaire), jamais le votant. Re-vérifié côté données (`ownerUid !==
+  currentUser.uid`) même si l'UI (`renderKudosButton`) empêche déjà de se
+  kudos-er soi-même.
+- `giveKudosToPerson(targetUid)` : notifie `targetUid` directement.
+- `sendFriendRequest(targetUid)` : notifie `targetUid` directement (écriture séparée,
+  pas transactionnelle avec la création de la demande — si elle échoue, la demande
+  reste quand même fonctionnelle via le badge existant sur le bouton "Amis").
+
+**Lecture : UN SEUL listener au démarrage** (`startNotificationsListener()`, appelé
+depuis `continueStartApp()`) : `notificationsCollRef(monUid).where('read','==',false)`.
+Une simple égalité est auto-indexée par Firestore — **aucun index composite à créer**
+pour cette fonctionnalité (contrairement à `activityFeed`, qui en a besoin pour son
+`where('in',...) + orderBy`).
+
+**Rattrapage natif, sans aucune logique de date/dernier-vu** (`processUnreadNotifications()`) :
+CHAQUE document reçu à CHAQUE instantané (y compris le tout premier, contrairement à
+l'ancien système) est traité — trié du plus ancien au plus récent, marqué `read: true`
+AVANT d'être affiché (jamais de ré-affichage en cas de re-déclenchement rapide du
+listener ; si le marquage échoue, on n'affiche pas non plus, pour éviter une boucle),
+puis affiché selon son `type` :
+- `'kudo'` → `enqueuePopup()` (moteur de popups gamification existant, réutilisé tel
+  quel — file d'attente naturelle si plusieurs kudos à rattraper).
+- `'friend_request'` → `confirmModal()` : "Accepter" appelle `acceptFriendRequest()`
+  directement ; "Plus tard" ne fait RIEN sur la demande sous-jacente (pas de refus
+  silencieux, elle reste visible normalement dans l'écran Amis) — mais la notification,
+  elle, passe quand même à `read: true` dans les deux cas (jamais reproposée en boucle).
+
+**Piège de mock corrigé en cours de route** : le mock Firestore de test avait un cas
+spécial câblé en dur pour `db.collection('users').doc(uid).collection(...)`, qui
+renvoyait TOUJOURS le même mock `appData` unique quel que soit le nom de la
+sous-collection demandée — hérité du fait que seul `kv/appData` existait jusqu'ici sous
+`users/{uid}`. Étendu pour dispatcher : `kv` garde son comportement historique
+(singleton partagé, sans distinction d'uid — ne JAMAIS lui ajouter d'isolation, ça
+casserait tous les tests existants qui simulent plusieurs comptes via de simples
+réassignations de `currentUser`), toute AUTRE sous-collection (`notifications`) passe
+par un mock générique complet, isolé PAR UTILISATEUR (`usersSubcollections`, une `Map`
+séparée de `mockTopCollections`, réinitialisée par `__resetCommunityMocks()`).
+
+**Règle Firestore associée** : `users/{userId}/{document=**}` (existante) couvre déjà
+la lecture/écriture du PROPRIÉTAIRE sur ses propres notifications (marquer `read`) —
+il ne manque qu'un `allow create` explicite pour permettre à un ÉMETTEUR d'écrire chez
+quelqu'un d'autre :
+```
+match /users/{userId}/notifications/{notifId} {
+  allow create: if request.auth != null && request.resource.data.fromUid == request.auth.uid;
+}
+```
 

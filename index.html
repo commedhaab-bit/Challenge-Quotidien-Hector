@@ -395,11 +395,7 @@ auth.onAuthStateChanged(user => {
     communityActivityFeed = [];
     myKudosGivenEventIds = new Set();
     myKudosGivenToday = new Set();
-    if (kudosReceivedUnsub) { kudosReceivedUnsub(); kudosReceivedUnsub = null; }
-    sessionKudosWatchUnsubs.forEach(unsub => unsub());
-    sessionKudosWatchUnsubs = [];
-    if (incomingFriendRequestsRealtimeUnsub) { incomingFriendRequestsRealtimeUnsub(); incomingFriendRequestsRealtimeUnsub = null; }
-    knownIncomingFriendRequestIds = null;
+    if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
@@ -1887,7 +1883,7 @@ async function registerCommunityCompletionIfNeeded(challengeId) {
 async function registerActivityFeedEntryIfNeeded(c, total) {
   if (!currentUser || !c) return;
   try {
-    const ref = await db.collection('activityFeed').add({
+    await db.collection('activityFeed').add({
       uid: currentUser.uid,
       displayName: formatDisplayName(currentUser.displayName),
       challengeName: c.name,
@@ -1897,7 +1893,6 @@ async function registerActivityFeedEntryIfNeeded(c, total) {
       at: Date.now(),
       kudosCount: 0,
     });
-    watchOwnEventForKudosReceived(ref);
   } catch (e) {
     reportSaveError('activity feed entry failed', e);
   }
@@ -1988,8 +1983,20 @@ async function giveKudosToEvent(docRef) {
       if (existing.exists) return;
       const eventDoc = await tx.get(docRef);
       const current = eventDoc.exists ? (eventDoc.data().kudosCount || 0) : 0;
+      const ownerUid = eventDoc.exists ? eventDoc.data().uid : null;
       tx.set(kudosByRef, { at: Date.now() });
       tx.set(docRef, { kudosCount: current + 1 }, { merge: true });
+      // Notifie le propriétaire de l'événement (jamais soi-même — déjà exclu côté UI par
+      // renderKudosButton(), mais on le revérifie ici côté données par prudence).
+      if (ownerUid && ownerUid !== currentUser.uid) {
+        tx.set(notificationsCollRef(ownerUid).doc(), {
+          type: 'kudo',
+          fromUid: currentUser.uid,
+          fromName: formatDisplayName(currentUser.displayName),
+          read: false,
+          createdAt: Date.now(),
+        });
+      }
     });
     myKudosGivenEventIds.add(docRef.id);
     if (navigator.vibrate) navigator.vibrate(10);
@@ -2032,6 +2039,13 @@ async function giveKudosToPerson(targetUid) {
       const current = targetDoc.exists ? (targetDoc.data().kudosTotal || 0) : 0;
       tx.set(givenRef, { voterUid: currentUser.uid, date: todayKey, at: Date.now() });
       tx.set(targetRef, { kudosTotal: current + 1 }, { merge: true });
+      tx.set(notificationsCollRef(targetUid).doc(), {
+        type: 'kudo',
+        fromUid: currentUser.uid,
+        fromName: formatDisplayName(currentUser.displayName),
+        read: false,
+        createdAt: Date.now(),
+      });
     });
     myKudosGivenToday.add(targetUid);
     if (navigator.vibrate) navigator.vibrate(10);
@@ -2053,98 +2067,67 @@ function renderKudosButton(docRefJsExpr, entryId, kudosCount, isMine) {
   return `<button class="kudos-btn${alreadyGiven ? ' given' : ''}" onclick="event.stopPropagation(); ${action}(${docRefJsExpr})">👏 ${kudosCount || 0}</button>`;
 }
 
-// ==== NOTIFICATIONS TEMPS RÉEL : kudos reçu (popup) + demande d'ami reçue (popup avec
-// acceptation directe) ====
-// Pour les kudos : surveille directement le DOCUMENT concerné (pas une requête) via
-// onSnapshot — un document (contrairement à une query) se re-déclenche fidèlement à
-// chaque écriture, y compris dans le harnais de test. Ne notifie jamais pour l'état
-// déjà existant à l'abonnement (seulement les kudos reçus APRÈS ce moment-là) : sinon
-// chaque démarrage d'app redéclencherait une popup pour un kudos reçu il y a 3 jours.
-function watchForKudosReceived(docRef, fieldName, fetchLatestVoterUid) {
-  let lastSeen = null;
-  return docRef.onSnapshot(async (snap) => {
-    const current = snap.exists ? (snap.data()[fieldName] || 0) : 0;
-    if (lastSeen === null) { lastSeen = current; return; } // état de départ, pas une notif
-    const increased = current > lastSeen;
-    lastSeen = current;
-    if (!increased) return;
+// ==== NOTIFICATIONS : sous-collection dédiée users/{uid}/notifications, UN SEUL
+// listener au démarrage (remplace l'ancien système à listeners dispersés — 1 par
+// document surveillé — qui ne géraient aucun rattrapage hors-ligne). ====
+// Le nom de l'émetteur (déjà anonymisé, "Prénom N.") est stocké DIRECTEMENT dans la
+// notification au moment de sa création (fromName), pas relu via fetchPublicProfile()
+// à l'affichage : ça marche même si l'émetteur désactive ensuite son classement (plus
+// d'anonymat forcé rétroactif), et ça évite une lecture supplémentaire par notification.
+function notificationsCollRef(uid) {
+  return db.collection('users').doc(uid).collection('notifications');
+}
+
+let notificationsUnsub = null;
+// where('read','==',false) seul (sans orderBy dans la requête elle-même — le tri se
+// fait côté client ci-dessous) : un simple filtre d'égalité est auto-indexé par
+// Firestore, donc AUCUN index composite à créer pour cette fonctionnalité.
+function startNotificationsListener() {
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+  if (!currentUser) return;
+  notificationsUnsub = notificationsCollRef(currentUser.uid)
+    .where('read', '==', false)
+    .onSnapshot((snap) => { processUnreadNotifications(snap); });
+}
+
+/**
+ * Traite un instantané de notifications non lues : rattrapage natif — celles reçues
+ * hors ligne apparaissent exactement comme celles reçues en direct au prochain
+ * démarrage, aucune logique de date/dernier-vu à maintenir. Marque chaque notification
+ * "lue" AVANT de l'afficher (jamais de ré-affichage en cas de re-déclenchement rapide
+ * du listener) ; si le marquage échoue, on n'affiche pas non plus (évite une boucle).
+ * Traitées de la plus ancienne à la plus récente.
+ */
+async function processUnreadNotifications(snap) {
+  const myUid = currentUser.uid;
+  const docs = [...snap.docs].sort((a, b) => (a.data().createdAt || 0) - (b.data().createdAt || 0));
+  for (const doc of docs) {
+    const data = doc.data();
     try {
-      const voterUid = await fetchLatestVoterUid();
-      const profile = voterUid ? await fetchPublicProfile(voterUid) : null;
+      await notificationsCollRef(myUid).doc(doc.id).set({ read: true }, { merge: true });
+    } catch (e) {
+      reportSaveError('mark notification read failed', e);
+      continue;
+    }
+    if (data.type === 'kudo') {
       enqueuePopup({
         icon: '👏',
         title: 'Nouveau kudos !',
-        subtitle: profile ? `${profile.displayName} vient de t'encourager.` : "Quelqu'un vient de t'encourager.",
+        subtitle: `${data.fromName} vient de t'encourager.`,
         btnLabel: 'Merci !',
       });
-    } catch (e) {
-      reportSaveError('kudos received notification failed', e);
+    } else if (data.type === 'friend_request') {
+      const accepted = await confirmModal({
+        icon: '🤝',
+        title: "Nouvelle demande d'ami",
+        subtitle: `${data.fromName} veut devenir ton ami.`,
+        confirmLabel: 'Accepter',
+        cancelLabel: 'Plus tard',
+      });
+      if (accepted) {
+        await acceptFriendRequest(data.fromUid);
+      }
     }
-  });
-}
-
-let kudosReceivedUnsub = null;
-function startKudosReceivedListener() {
-  if (kudosReceivedUnsub) { kudosReceivedUnsub(); kudosReceivedUnsub = null; }
-  if (!currentUser) return;
-  const myRef = db.collection('leaderboard').doc(currentUser.uid);
-  kudosReceivedUnsub = watchForKudosReceived(myRef, 'kudosTotal', async () => {
-    const snap = await myRef.collection('kudosGiven').orderBy('at', 'desc').limit(1).get();
-    return snap.empty ? null : snap.docs[0].data().voterUid;
-  });
-}
-
-// Fil d'activité/Boss Battle : surveillance scopée aux entrées créées PENDANT la
-// session en cours (pas de rattrapage rétroactif sur l'historique — il faudrait sinon
-// surveiller un nombre non borné de documents passés). Appelée juste après la création
-// de l'entrée (registerActivityFeedEntryIfNeeded()/registerBossBattleContributionIfNeeded()).
-let sessionKudosWatchUnsubs = [];
-function watchOwnEventForKudosReceived(docRef) {
-  sessionKudosWatchUnsubs.push(watchForKudosReceived(docRef, 'kudosCount', async () => {
-    const snap = await docRef.collection('kudosBy').orderBy('at', 'desc').limit(1).get();
-    // L'ID du doc kudosBy EST l'uid du votant (voir giveKudosToEvent()) : pas besoin
-    // d'un champ voterUid séparé ici, contrairement à kudosGiven (classement).
-    return snap.empty ? null : snap.docs[0].id;
-  }));
-}
-
-// Demande d'ami reçue : requête (pas un document unique), donc on compare l'ensemble
-// des IDs vus au dernier instantané pour détecter les nouvelles arrivées — un
-// équivalent maison de docChanges()/type 'added', qui fonctionne aussi bien avec un
-// vrai onSnapshot temps réel qu'avec un simple appel one-shot.
-let knownIncomingFriendRequestIds = null;
-let incomingFriendRequestsRealtimeUnsub = null;
-function startIncomingFriendRequestsListener() {
-  if (incomingFriendRequestsRealtimeUnsub) { incomingFriendRequestsRealtimeUnsub(); incomingFriendRequestsRealtimeUnsub = null; }
-  if (!currentUser) return;
-  knownIncomingFriendRequestIds = null;
-  incomingFriendRequestsRealtimeUnsub = db.collection('friendRequests').where('toUid', '==', currentUser.uid)
-    .onSnapshot((snap) => {
-      const currentIds = new Set(snap.docs.map(d => d.id));
-      if (knownIncomingFriendRequestIds === null) {
-        knownIncomingFriendRequestIds = currentIds; // état de départ, pas une notif
-        return;
-      }
-      const newlyArrived = snap.docs.filter(d => !knownIncomingFriendRequestIds.has(d.id));
-      knownIncomingFriendRequestIds = currentIds;
-      for (const doc of newlyArrived) {
-        notifyIncomingFriendRequest(doc.data().fromUid);
-      }
-    });
-}
-
-async function notifyIncomingFriendRequest(fromUid) {
-  const profile = await fetchPublicProfile(fromUid);
-  const name = profile ? profile.displayName : 'Quelqu\'un';
-  const accepted = await confirmModal({
-    icon: '🤝',
-    title: "Nouvelle demande d'ami",
-    subtitle: `${name} veut devenir ton ami.`,
-    confirmLabel: 'Accepter',
-    cancelLabel: 'Plus tard',
-  });
-  if (accepted) {
-    await acceptFriendRequest(fromUid);
   }
 }
 
@@ -2269,6 +2252,13 @@ async function sendFriendRequest(targetUid) {
   try {
     await db.collection('friendRequests').doc(friendRequestId(currentUser.uid, targetUid)).set({
       fromUid: currentUser.uid, toUid: targetUid, at: Date.now(),
+    });
+    await notificationsCollRef(targetUid).doc().set({
+      type: 'friend_request',
+      fromUid: currentUser.uid,
+      fromName: formatDisplayName(currentUser.displayName),
+      read: false,
+      createdAt: Date.now(),
     });
     outgoingFriendRequestUids.add(targetUid);
     if (friendSearchResult && typeof friendSearchResult === 'object' && friendSearchResult.uid === targetUid) {
@@ -2467,14 +2457,13 @@ async function registerBossBattleContributionIfNeeded(challengeId, amount) {
     // Fil des contributions individuelles (contrairement à dailyContributors, un
     // document PAR évènement, jamais fusionné) : sert uniquement au flux temps réel
     // "Untel vient d'ajouter X" affiché sur l'écran Communauté, pour le FOMO en direct.
-    const contribRef = await bossBattleDocRef(weekStart).collection('contributions').add({
+    await bossBattleDocRef(weekStart).collection('contributions').add({
       uid: currentUser.uid,
       displayName: formatDisplayName(currentUser.displayName),
       amount,
       at: Date.now(),
       kudosCount: 0,
     });
-    watchOwnEventForKudosReceived(contribRef);
   } catch (e) {
     reportSaveError('boss battle contribution failed', e);
   }
@@ -5738,8 +5727,9 @@ async function continueStartApp() {
   // Pas de await : sert uniquement au badge de notification sur le bouton "Amis" (écran
   // Communauté), pas bloquant pour le premier rendu — se termine par son propre render().
   refreshFriendsData();
-  startKudosReceivedListener();
-  startIncomingFriendRequestsListener();
+  // Rattrapage natif inclus : les notifications non lues reçues hors ligne se
+  // déclenchent exactement comme celles reçues en direct, dès ce premier instantané.
+  startNotificationsListener();
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).

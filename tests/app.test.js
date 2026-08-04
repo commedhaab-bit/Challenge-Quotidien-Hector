@@ -289,6 +289,10 @@ function makeMockCollection(store) {
   };
 }
 const mockTopCollections = new Map();
+// Sous-collections sous users/{uid}/... (autres que kv, voir plus bas) : isolées PAR
+// UTILISATEUR, contrairement à appDataStore (kv) qui reste volontairement un singleton
+// partagé. Map(uid -> Map(subName -> Map(docId -> data))).
+const usersSubcollections = new Map();
 
 const sandbox = {
   console,
@@ -367,10 +371,24 @@ const sandbox = {
         collection(name){
           if (name === 'users') {
             return {
-              doc(){
+              doc(uid){
                 return {
-                  collection(){
-                    return { doc: () => makeAppDataDocRef() };
+                  collection(subName){
+                    // kv/appData : comportement HISTORIQUE inchangé, un seul mock partagé
+                    // sans distinction d'uid (voir appDataStore plus haut) — ne JAMAIS lui
+                    // faire porter une isolation par utilisateur, ça casserait tous les
+                    // tests existants qui simulent plusieurs comptes via de simples
+                    // reassignations de currentUser.
+                    if (subName === 'kv') {
+                      return { doc: () => makeAppDataDocRef() };
+                    }
+                    // Toute autre sous-collection (ex: notifications) : mock générique
+                    // complet, isolé PAR UTILISATEUR (uid) — même mécanisme que les
+                    // sous-collections de makeMockCollection.
+                    if (!usersSubcollections.has(uid)) usersSubcollections.set(uid, new Map());
+                    const subMap = usersSubcollections.get(uid);
+                    if (!subMap.has(subName)) subMap.set(subName, new Map());
+                    return makeMockCollection(subMap.get(subName));
                   },
                 };
               },
@@ -410,7 +428,7 @@ const sandbox = {
       };
     },
   },
-  __resetCommunityMocks: () => mockTopCollections.clear(),
+  __resetCommunityMocks: () => { mockTopCollections.clear(); usersSubcollections.clear(); },
   alert(msg){ console.log('  [alert]', msg); },
   confirm(msg){ return true; },
   prompt(msg, def){ return def; },
@@ -3566,78 +3584,104 @@ const cssText = __rawHtml + __cssSource;
   currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
   console.log('OK: kudos (evenementiel reutilisable fil/Boss Battle avec retrait, personne quotidien sans retrait, atomicite via transaction, jamais sur soi-meme)');
 
-  // --- 145quinquies. Notifications temps reel : popup kudos recu (surveillance directe
-  // du document concerne, jamais pour l etat deja existant a l abonnement) + popup
-  // demande d ami recue avec acceptation directe via confirmModal(). ---
+  // --- 145quinquies. Notifications (sous-collection dediee users/{uid}/notifications,
+  // UN SEUL listener au demarrage) : ecriture cote emetteur (nom deja anonymise stocke
+  // DIRECTEMENT dans la notification, jamais relu via fetchPublicProfile() a
+  // l affichage) + rattrapage natif (une notification deja presente AVANT meme
+  // l abonnement, ex. recue hors ligne, declenche quand meme sa popup des le tout 1er
+  // instantane -- contrairement a l ancien systeme, changement de comportement voulu). ---
   __resetCommunityMocks();
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
   popupQueue = []; popupOpen = false;
 
-  // Kudos recu (classement) : pas de popup pour l etat de depart (deja existant a
-  // l abonnement), popup declenchee des qu un kudos arrive APRES, avec attribution.
-  await db.collection('leaderboard').doc('me-uid').set({ displayName: 'Moi', kudosTotal: 3 }, { merge: true });
-  await db.collection('leaderboard').doc('amie-uid').set({ displayName: 'Amie Berger', photoURL: '' }, { merge: true });
-  startKudosReceivedListener();
-  await new Promise(r => setTimeout(r, 50));
-  __assertOk(!popupOpen, 'aucune popup ne doit se declencher pour un kudosTotal deja existant au moment de l abonnement');
-
-  currentUser = { uid: 'amie-uid', displayName: 'Amie B.', email: 'a@test.com', photoURL: '' };
+  // Ecriture : kudos (personne, classement) -> notification chez la CIBLE, nom deja
+  // anonymise.
+  await db.collection('leaderboard').doc('me-uid').set({ displayName: 'Moi', kudosTotal: 0 }, { merge: true });
+  currentUser = { uid: 'amie-uid', displayName: 'Amie Berger', email: 'a@test.com', photoURL: '' };
   await giveKudosToPerson('me-uid');
-  await new Promise(r => setTimeout(r, 50));
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
-  __assertOk(popupOpen, 'une popup doit se declencher des qu un kudos arrive apres l abonnement');
-  __assertOk(currentPopupHtml.includes('Nouveau kudos') && currentPopupHtml.includes('Amie B.'), 'la popup doit attribuer le kudos a la bonne personne (Amie B., pas un message generique)');
-  document.getElementById('appPopupCloseBtn').onclick();
-  if (kudosReceivedUnsub) { kudosReceivedUnsub(); kudosReceivedUnsub = null; }
+  let unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  __assertEq(unread.size, 1, 'donner un kudos a une personne doit ecrire exactement 1 notification chez la cible');
+  __assertEq(unread.docs[0].data().type, 'kudo', 'le type doit etre "kudo"');
+  __assertEq(unread.docs[0].data().fromName, 'Amie B.', 'le nom de l emetteur doit etre deja anonymise DANS la notification elle-meme');
+  const amieUnreadIsolation = await notificationsCollRef('amie-uid').where('read', '==', false).get();
+  __assertEq(amieUnreadIsolation.size, 0, "les notifications sont isolees PAR UTILISATEUR : donner un kudos a 'me-uid' ne doit rien ecrire chez 'amie-uid' (l emetteur)");
 
-  // Meme mecanisme pour une entree du fil d activite creee cette session.
+  // Ecriture : kudos (evenementiel, fil d activite) -> notification chez le
+  // PROPRIETAIRE de l evenement (pas chez le votant).
+  const myFeedEntryRef = await db.collection('activityFeed').add({ uid: 'me-uid', displayName: 'Moi A.', challengeName: 'Pompes', amount: 20, unit: 'reps', at: Date.now(), kudosCount: 0 });
+  currentUser = { uid: 'amie-uid', displayName: 'Amie Berger', email: 'a@test.com', photoURL: '' };
+  await giveKudosToEvent(myFeedEntryRef);
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  __assertEq(unread.size, 2, 'un kudos sur mon entree du fil d activite doit aussi m envoyer une notification (le proprietaire de l evenement, pas le votant)');
+
+  // Ecriture : demande d ami -> notification chez la CIBLE.
+  currentUser = { uid: 'demandeur-uid', displayName: 'Demandeur Dupont', email: 'd@test.com', photoURL: '' };
+  await sendFriendRequest('me-uid');
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  __assertEq(unread.size, 3, 'envoyer une demande d ami doit aussi ecrire une notification chez la cible');
+  __assertOk(unread.docs.some(d => d.data().type === 'friend_request' && d.data().fromName === 'Demandeur D.'), 'la notification de demande d ami doit porter le bon type et le bon nom anonymise');
+
+  // Nettoyage : on isole le rattrapage kudos (A) et demande d ami (B) dans 2 scenarios
+  // separes, pour eviter toute ambiguite entre la file de popups (enqueuePopup, kudos)
+  // et confirmModal (demande d ami), qui sont 2 mecanismes INDEPENDANTS (pas de garde-fou
+  // d instance unique sur confirmModal, deja documente ailleurs dans ce fichier).
+  __resetCommunityMocks();
   popupQueue = []; popupOpen = false;
-  const kudosEventRef = await db.collection('activityFeed').add({ uid: 'me-uid', displayName: 'Moi A.', challengeName: 'Pompes', amount: 20, unit: 'reps', at: Date.now(), kudosCount: 0 });
-  watchOwnEventForKudosReceived(kudosEventRef);
+
+  // A. Rattrapage kudos : 2 notifications de kudos deja presentes AVANT l abonnement
+  // (simule 2 kudos recus hors ligne) doivent toutes les deux declencher une popup des
+  // le tout 1er instantane, dans l ordre de creation (file enqueuePopup).
+  await notificationsCollRef('me-uid').doc().set({ type: 'kudo', fromUid: 'amie-uid', fromName: 'Amie B.', read: false, createdAt: 1000 });
+  await notificationsCollRef('me-uid').doc().set({ type: 'kudo', fromUid: 'bob-uid', fromName: 'Bob M.', read: false, createdAt: 2000 });
+  startNotificationsListener();
   await new Promise(r => setTimeout(r, 50));
-  currentUser = { uid: 'amie-uid', displayName: 'Amie B.', email: 'a@test.com', photoURL: '' };
-  await giveKudosToEvent(kudosEventRef);
-  await new Promise(r => setTimeout(r, 50));
-  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
-  __assertOk(popupOpen, 'un kudos recu sur une entree du fil d activite creee cette session doit aussi declencher une popup');
+  __assertOk(popupOpen, 'une notification de kudos deja presente AVANT l abonnement doit quand meme declencher une popup des le 1er instantane (rattrapage natif)');
+  __assertOk(currentPopupHtml.includes('Amie B.'), 'la 1ere popup (la plus ancienne, createdAt le plus petit) doit etre celle d Amie B.');
   document.getElementById('appPopupCloseBtn').onclick();
-  sessionKudosWatchUnsubs.forEach(u => u());
-  sessionKudosWatchUnsubs = [];
+  await new Promise(r => setTimeout(r, 10));
+  __assertOk(popupOpen && currentPopupHtml.includes('Bob M.'), 'la 2e popup (en file) doit ensuite s afficher, celle de Bob M.');
+  document.getElementById('appPopupCloseBtn').onclick();
+  await new Promise(r => setTimeout(r, 10));
+  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  __assertEq(unread.size, 0, 'les 2 notifications de kudos traitees doivent etre marquees lues (plus aucune non-lue)');
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
 
-  // Demande d ami recue : popup nommant le demandeur, "Accepter" cree l amitie direct.
-  await db.collection('leaderboard').doc('demandeur-uid').set({ displayName: 'Demandeur D.', photoURL: '' }, { merge: true });
-  const notifyPromise = notifyIncomingFriendRequest('demandeur-uid');
-  await new Promise(r => setTimeout(r, 0));
-  __assertOk(currentConfirmModalHtml.includes("Nouvelle demande d'ami") && currentConfirmModalHtml.includes('Demandeur D.'), 'la popup de demande d ami doit nommer le demandeur');
+  // B. Rattrapage demande d ami : "Accepter" cree l amitie directement depuis la popup.
+  __resetCommunityMocks();
+  await notificationsCollRef('me-uid').doc().set({ type: 'friend_request', fromUid: 'demandeur-uid', fromName: 'Demandeur D.', read: false, createdAt: Date.now() });
+  startNotificationsListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(currentConfirmModalHtml.includes("Nouvelle demande d'ami") && currentConfirmModalHtml.includes('Demandeur D.'), 'la demande d ami deja presente AVANT l abonnement doit aussi declencher sa popup des le 1er instantane, nommant le demandeur');
   currentConfirmModalEl.querySelector('#confirmModalConfirmBtn').onclick();
-  await notifyPromise;
-  const friendshipAfterNotifAccept = await db.collection('friendships').doc(friendshipPairId('me-uid', 'demandeur-uid')).get();
-  __assertOk(friendshipAfterNotifAccept.exists, 'accepter directement depuis la popup doit creer l amitie (reutilise acceptFriendRequest())');
+  await new Promise(r => setTimeout(r, 20));
+  const friendshipAfterNotif = await db.collection('friendships').doc(friendshipPairId('me-uid', 'demandeur-uid')).get();
+  __assertOk(friendshipAfterNotif.exists, 'accepter directement depuis la popup de notification doit creer l amitie (reutilise acceptFriendRequest())');
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
 
-  // "Plus tard" (bouton annuler) ne doit RIEN faire : pas de refus silencieux, la
-  // demande reste visible plus tard dans l ecran Amis.
+  // C. "Plus tard" ne doit RIEN faire sur la demande sous-jacente (pas de refus
+  // silencieux) : la notification passe quand meme a lue (on ne la re-proposera pas),
+  // mais la demande reste visible normalement dans l ecran Amis.
+  __resetCommunityMocks();
   await db.collection('friendRequests').doc('quelquun-uid_me-uid').set({ fromUid: 'quelquun-uid', toUid: 'me-uid', at: Date.now() });
-  const notifyPromise2 = notifyIncomingFriendRequest('quelquun-uid');
-  await new Promise(r => setTimeout(r, 0));
+  await notificationsCollRef('me-uid').doc().set({ type: 'friend_request', fromUid: 'quelquun-uid', fromName: 'Quelquun Q.', read: false, createdAt: Date.now() });
+  startNotificationsListener();
+  await new Promise(r => setTimeout(r, 50));
   currentConfirmModalEl.querySelector('#confirmModalCancelBtn').onclick();
-  await notifyPromise2;
+  await new Promise(r => setTimeout(r, 20));
   const requestStillThere = await db.collection('friendRequests').doc('quelquun-uid_me-uid').get();
   __assertOk(requestStillThere.exists, '"Plus tard" ne doit pas supprimer la demande (juste remise a plus tard, pas un refus)');
-
-  // startIncomingFriendRequestsListener() : le tout 1er instantane etablit l etat connu
-  // (demandes deja en attente avant meme l ouverture de l app) SANS declencher de popup.
-  __resetCommunityMocks();
-  await db.collection('friendRequests').doc('ancien-uid_me-uid').set({ fromUid: 'ancien-uid', toUid: 'me-uid', at: Date.now() });
-  startIncomingFriendRequestsListener();
-  await new Promise(r => setTimeout(r, 50));
-  __assertOk(knownIncomingFriendRequestIds && knownIncomingFriendRequestIds.has('ancien-uid_me-uid'), 'le 1er instantane doit etablir la liste des demandes deja en attente, sans les traiter comme "nouvelles"');
-  if (incomingFriendRequestsRealtimeUnsub) { incomingFriendRequestsRealtimeUnsub(); incomingFriendRequestsRealtimeUnsub = null; }
+  unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  __assertEq(unread.size, 0, 'meme refusee pour l instant ("Plus tard"), la notification doit etre marquee lue (pas re-proposee en boucle)');
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
 
   __resetCommunityMocks();
   popupQueue = []; popupOpen = false;
   myKudosGivenEventIds = new Set(); myKudosGivenToday = new Set();
   currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
-  console.log('OK: notifications temps reel (popup kudos recu sur classement/fil d activite, popup demande d ami avec acceptation directe)');
+  console.log('OK: notifications (sous-collection users/uid/notifications, listener unique, rattrapage natif, nom stocke a l ecriture)');
 
   // --- 146. Classement 3 vues + rang exact avec voisins directs ---
   __resetCommunityMocks();
