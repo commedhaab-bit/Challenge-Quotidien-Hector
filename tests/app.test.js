@@ -2343,7 +2343,7 @@ const cssText = __rawHtml + __cssSource;
   // 7 depuis l ajout de removeFriend() (chantier amis) : compte x2, defi, suggestion
   // d objectif, import de donnees, forcer la mise a jour, + retirer un ami.
   const confirmModalCallCount = (__rawHtml.match(/await confirmModal\\(\\{/g) || []).length;
-  __assertEq(confirmModalCallCount, 7, 'les 7 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami) doivent utiliser confirmModal');
+  __assertEq(confirmModalCallCount, 8, 'les 8 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup) doivent utiliser confirmModal');
   console.log('OK: les 4 anciens confirm() natifs (compte x2, defi, suggestion objectif) passent par confirmModal');
 
   // --- 99. Ecran Parametres dedie : navigation (ouverture/fermeture) + regroupe le
@@ -3565,6 +3565,79 @@ const cssText = __rawHtml + __cssSource;
   myKudosGivenToday = new Set();
   currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
   console.log('OK: kudos (evenementiel reutilisable fil/Boss Battle avec retrait, personne quotidien sans retrait, atomicite via transaction, jamais sur soi-meme)');
+
+  // --- 145quinquies. Notifications temps reel : popup kudos recu (surveillance directe
+  // du document concerne, jamais pour l etat deja existant a l abonnement) + popup
+  // demande d ami recue avec acceptation directe via confirmModal(). ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  popupQueue = []; popupOpen = false;
+
+  // Kudos recu (classement) : pas de popup pour l etat de depart (deja existant a
+  // l abonnement), popup declenchee des qu un kudos arrive APRES, avec attribution.
+  await db.collection('leaderboard').doc('me-uid').set({ displayName: 'Moi', kudosTotal: 3 }, { merge: true });
+  await db.collection('leaderboard').doc('amie-uid').set({ displayName: 'Amie Berger', photoURL: '' }, { merge: true });
+  startKudosReceivedListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(!popupOpen, 'aucune popup ne doit se declencher pour un kudosTotal deja existant au moment de l abonnement');
+
+  currentUser = { uid: 'amie-uid', displayName: 'Amie B.', email: 'a@test.com', photoURL: '' };
+  await giveKudosToPerson('me-uid');
+  await new Promise(r => setTimeout(r, 50));
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  __assertOk(popupOpen, 'une popup doit se declencher des qu un kudos arrive apres l abonnement');
+  __assertOk(currentPopupHtml.includes('Nouveau kudos') && currentPopupHtml.includes('Amie B.'), 'la popup doit attribuer le kudos a la bonne personne (Amie B., pas un message generique)');
+  document.getElementById('appPopupCloseBtn').onclick();
+  if (kudosReceivedUnsub) { kudosReceivedUnsub(); kudosReceivedUnsub = null; }
+
+  // Meme mecanisme pour une entree du fil d activite creee cette session.
+  popupQueue = []; popupOpen = false;
+  const kudosEventRef = await db.collection('activityFeed').add({ uid: 'me-uid', displayName: 'Moi A.', challengeName: 'Pompes', amount: 20, unit: 'reps', at: Date.now(), kudosCount: 0 });
+  watchOwnEventForKudosReceived(kudosEventRef);
+  await new Promise(r => setTimeout(r, 50));
+  currentUser = { uid: 'amie-uid', displayName: 'Amie B.', email: 'a@test.com', photoURL: '' };
+  await giveKudosToEvent(kudosEventRef);
+  await new Promise(r => setTimeout(r, 50));
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  __assertOk(popupOpen, 'un kudos recu sur une entree du fil d activite creee cette session doit aussi declencher une popup');
+  document.getElementById('appPopupCloseBtn').onclick();
+  sessionKudosWatchUnsubs.forEach(u => u());
+  sessionKudosWatchUnsubs = [];
+
+  // Demande d ami recue : popup nommant le demandeur, "Accepter" cree l amitie direct.
+  await db.collection('leaderboard').doc('demandeur-uid').set({ displayName: 'Demandeur D.', photoURL: '' }, { merge: true });
+  const notifyPromise = notifyIncomingFriendRequest('demandeur-uid');
+  await new Promise(r => setTimeout(r, 0));
+  __assertOk(currentConfirmModalHtml.includes("Nouvelle demande d'ami") && currentConfirmModalHtml.includes('Demandeur D.'), 'la popup de demande d ami doit nommer le demandeur');
+  currentConfirmModalEl.querySelector('#confirmModalConfirmBtn').onclick();
+  await notifyPromise;
+  const friendshipAfterNotifAccept = await db.collection('friendships').doc(friendshipPairId('me-uid', 'demandeur-uid')).get();
+  __assertOk(friendshipAfterNotifAccept.exists, 'accepter directement depuis la popup doit creer l amitie (reutilise acceptFriendRequest())');
+
+  // "Plus tard" (bouton annuler) ne doit RIEN faire : pas de refus silencieux, la
+  // demande reste visible plus tard dans l ecran Amis.
+  await db.collection('friendRequests').doc('quelquun-uid_me-uid').set({ fromUid: 'quelquun-uid', toUid: 'me-uid', at: Date.now() });
+  const notifyPromise2 = notifyIncomingFriendRequest('quelquun-uid');
+  await new Promise(r => setTimeout(r, 0));
+  currentConfirmModalEl.querySelector('#confirmModalCancelBtn').onclick();
+  await notifyPromise2;
+  const requestStillThere = await db.collection('friendRequests').doc('quelquun-uid_me-uid').get();
+  __assertOk(requestStillThere.exists, '"Plus tard" ne doit pas supprimer la demande (juste remise a plus tard, pas un refus)');
+
+  // startIncomingFriendRequestsListener() : le tout 1er instantane etablit l etat connu
+  // (demandes deja en attente avant meme l ouverture de l app) SANS declencher de popup.
+  __resetCommunityMocks();
+  await db.collection('friendRequests').doc('ancien-uid_me-uid').set({ fromUid: 'ancien-uid', toUid: 'me-uid', at: Date.now() });
+  startIncomingFriendRequestsListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(knownIncomingFriendRequestIds && knownIncomingFriendRequestIds.has('ancien-uid_me-uid'), 'le 1er instantane doit etablir la liste des demandes deja en attente, sans les traiter comme "nouvelles"');
+  if (incomingFriendRequestsRealtimeUnsub) { incomingFriendRequestsRealtimeUnsub(); incomingFriendRequestsRealtimeUnsub = null; }
+
+  __resetCommunityMocks();
+  popupQueue = []; popupOpen = false;
+  myKudosGivenEventIds = new Set(); myKudosGivenToday = new Set();
+  currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
+  console.log('OK: notifications temps reel (popup kudos recu sur classement/fil d activite, popup demande d ami avec acceptation directe)');
 
   // --- 146. Classement 3 vues + rang exact avec voisins directs ---
   __resetCommunityMocks();

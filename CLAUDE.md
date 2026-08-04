@@ -940,8 +940,56 @@ bouton "pas encore donné" — **sans risque de double-comptage réel**, la tran
 revérifie toujours l'état serveur avant d'écrire. Compromis délibéré pour une feature
 sociale à faible enjeu plutôt que de multiplier les lectures Firestore.
 
-**Chantier amis/fil d'activité/kudos complet** (batches 1 à 5) : pseudo obligatoire,
-amis à demande mutuelle, fil d'activité global filtré par amis, kudos sur les 3
-surfaces. Reste le batch 6 (polish + texte final des règles Firestore à remettre à
-l'utilisateur pour la console Firebase).
+**Chantier amis/fil d'activité/kudos complet** (batches 1 à 6, y compris les règles
+Firestore finales publiées par l'utilisateur) : pseudo obligatoire, amis à demande
+mutuelle, fil d'activité global filtré par amis, kudos sur les 3 surfaces.
+
+**Bug de règle Firestore vécu en prod, corrigé** : la règle `leaderboard/{uid} allow
+update` (kudosTotal) calculait `request.resource.data.kudosTotal -
+resource.data.kudosTotal` — fonctionne pour un utilisateur ayant déjà reçu un kudos,
+mais **rejette systématiquement le tout premier kudos jamais reçu par quelqu'un**
+(`kudosTotal` n'existe pas encore sur `resource.data`, Firestore refuse d'évaluer la
+soustraction et retombe sur `permission-denied`). Le code applicatif gérait déjà ce cas
+(`kudosTotal || 0`), pas la règle. Corrigé en distinguant explicitement le cas
+`!('kudosTotal' in resource.data)` (doit valoir exactement `1`) du cas normal (doit
+augmenter exactement de `1`) — **tout futur champ borné par `allow update` sur un
+document pré-existant doit prévoir ce cas "champ jamais initialisé"**, sans quoi le
+premier utilisateur à déclencher le chemin est bloqué silencieusement (erreur
+`permission-denied` générique côté client, aucun indice sur la cause réelle sans lire
+la règle).
+
+## Notifications temps réel : popup kudos reçu + popup demande d'ami reçue
+
+**Kudos reçu → `enqueuePopup()`** (moteur de popups gamification existant — XP, badges,
+niveaux — réutilisé tel quel, pas de nouveau système). `watchForKudosReceived(docRef,
+fieldName, fetchLatestVoterUid)` est **générique** : surveille un **document unique**
+(jamais une requête) via `onSnapshot`, note la valeur du compteur (`kudosTotal`/
+`kudosCount`) au moment de l'abonnement comme "état de départ" (aucune popup pour ça),
+puis déclenche une popup dès que le compteur AUGMENTE par rapport à la dernière valeur
+vue. Choix déterminant : surveiller un DOCUMENT (réactif de façon fiable, y compris
+dans le harnais de test — confirmé par un test existant :
+"onSnapshot doit etre re-declenche a chaque ecriture") plutôt qu'une QUERY (le mock ne
+la re-déclenche jamais, contrairement au vrai SDK — limitation déjà documentée
+ailleurs).
+- Classement (`startKudosReceivedListener()`) : surveille `leaderboard/{monUid}`,
+  attribution via une lecture ponctuelle de `kudosGiven` (`orderBy('at','desc').limit(1)`,
+  champ `voterUid`) déclenchée uniquement quand une hausse est détectée.
+- Fil d'activité/Boss Battle (`watchOwnEventForKudosReceived(docRef)`) : **scopé aux
+  entrées créées PENDANT LA SESSION en cours** (appelé juste après la création dans
+  `registerActivityFeedEntryIfNeeded()`/`registerBossBattleContributionIfNeeded()`) —
+  pas de rattrapage rétroactif sur l'historique, qui obligerait à surveiller un nombre
+  non borné de documents passés. Attribution via `kudosBy` (l'ID du document EST déjà
+  l'uid du votant, pas de champ séparé nécessaire ici contrairement à `kudosGiven`).
+
+**Demande d'ami reçue → `confirmModal()` avec acceptation directe**
+(`notifyIncomingFriendRequest(fromUid)`) : "Accepter" appelle `acceptFriendRequest()`
+directement depuis la popup ; "Plus tard" ne fait RIEN (pas de refus silencieux — la
+demande reste visible normalement dans l'écran Amis). Détection des nouvelles
+demandes : comme une QUERY est nécessaire ici (plusieurs demandeurs possibles, pas un
+document unique à surveiller), `startIncomingFriendRequestsListener()` compare
+l'ensemble des IDs vus à chaque instantané à celui du précédent — équivalent maison de
+`docChanges()`/type `'added'`, qui fonctionne aussi bien avec un vrai `onSnapshot`
+temps réel qu'avec un simple appel one-shot. Le tout premier instantané établit l'état
+connu SANS notifier (les demandes déjà en attente avant l'ouverture de l'app ne sont
+pas des "nouvelles arrivées").
 

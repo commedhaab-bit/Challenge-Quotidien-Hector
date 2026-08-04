@@ -395,6 +395,11 @@ auth.onAuthStateChanged(user => {
     communityActivityFeed = [];
     myKudosGivenEventIds = new Set();
     myKudosGivenToday = new Set();
+    if (kudosReceivedUnsub) { kudosReceivedUnsub(); kudosReceivedUnsub = null; }
+    sessionKudosWatchUnsubs.forEach(unsub => unsub());
+    sessionKudosWatchUnsubs = [];
+    if (incomingFriendRequestsRealtimeUnsub) { incomingFriendRequestsRealtimeUnsub(); incomingFriendRequestsRealtimeUnsub = null; }
+    knownIncomingFriendRequestIds = null;
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
@@ -1882,7 +1887,7 @@ async function registerCommunityCompletionIfNeeded(challengeId) {
 async function registerActivityFeedEntryIfNeeded(c, total) {
   if (!currentUser || !c) return;
   try {
-    await db.collection('activityFeed').add({
+    const ref = await db.collection('activityFeed').add({
       uid: currentUser.uid,
       displayName: formatDisplayName(currentUser.displayName),
       challengeName: c.name,
@@ -1892,6 +1897,7 @@ async function registerActivityFeedEntryIfNeeded(c, total) {
       at: Date.now(),
       kudosCount: 0,
     });
+    watchOwnEventForKudosReceived(ref);
   } catch (e) {
     reportSaveError('activity feed entry failed', e);
   }
@@ -2045,6 +2051,101 @@ function renderKudosButton(docRefJsExpr, entryId, kudosCount, isMine) {
   const alreadyGiven = myKudosGivenEventIds.has(entryId);
   const action = alreadyGiven ? 'removeKudosFromEvent' : 'giveKudosToEvent';
   return `<button class="kudos-btn${alreadyGiven ? ' given' : ''}" onclick="event.stopPropagation(); ${action}(${docRefJsExpr})">👏 ${kudosCount || 0}</button>`;
+}
+
+// ==== NOTIFICATIONS TEMPS RÉEL : kudos reçu (popup) + demande d'ami reçue (popup avec
+// acceptation directe) ====
+// Pour les kudos : surveille directement le DOCUMENT concerné (pas une requête) via
+// onSnapshot — un document (contrairement à une query) se re-déclenche fidèlement à
+// chaque écriture, y compris dans le harnais de test. Ne notifie jamais pour l'état
+// déjà existant à l'abonnement (seulement les kudos reçus APRÈS ce moment-là) : sinon
+// chaque démarrage d'app redéclencherait une popup pour un kudos reçu il y a 3 jours.
+function watchForKudosReceived(docRef, fieldName, fetchLatestVoterUid) {
+  let lastSeen = null;
+  return docRef.onSnapshot(async (snap) => {
+    const current = snap.exists ? (snap.data()[fieldName] || 0) : 0;
+    if (lastSeen === null) { lastSeen = current; return; } // état de départ, pas une notif
+    const increased = current > lastSeen;
+    lastSeen = current;
+    if (!increased) return;
+    try {
+      const voterUid = await fetchLatestVoterUid();
+      const profile = voterUid ? await fetchPublicProfile(voterUid) : null;
+      enqueuePopup({
+        icon: '👏',
+        title: 'Nouveau kudos !',
+        subtitle: profile ? `${profile.displayName} vient de t'encourager.` : "Quelqu'un vient de t'encourager.",
+        btnLabel: 'Merci !',
+      });
+    } catch (e) {
+      reportSaveError('kudos received notification failed', e);
+    }
+  });
+}
+
+let kudosReceivedUnsub = null;
+function startKudosReceivedListener() {
+  if (kudosReceivedUnsub) { kudosReceivedUnsub(); kudosReceivedUnsub = null; }
+  if (!currentUser) return;
+  const myRef = db.collection('leaderboard').doc(currentUser.uid);
+  kudosReceivedUnsub = watchForKudosReceived(myRef, 'kudosTotal', async () => {
+    const snap = await myRef.collection('kudosGiven').orderBy('at', 'desc').limit(1).get();
+    return snap.empty ? null : snap.docs[0].data().voterUid;
+  });
+}
+
+// Fil d'activité/Boss Battle : surveillance scopée aux entrées créées PENDANT la
+// session en cours (pas de rattrapage rétroactif sur l'historique — il faudrait sinon
+// surveiller un nombre non borné de documents passés). Appelée juste après la création
+// de l'entrée (registerActivityFeedEntryIfNeeded()/registerBossBattleContributionIfNeeded()).
+let sessionKudosWatchUnsubs = [];
+function watchOwnEventForKudosReceived(docRef) {
+  sessionKudosWatchUnsubs.push(watchForKudosReceived(docRef, 'kudosCount', async () => {
+    const snap = await docRef.collection('kudosBy').orderBy('at', 'desc').limit(1).get();
+    // L'ID du doc kudosBy EST l'uid du votant (voir giveKudosToEvent()) : pas besoin
+    // d'un champ voterUid séparé ici, contrairement à kudosGiven (classement).
+    return snap.empty ? null : snap.docs[0].id;
+  }));
+}
+
+// Demande d'ami reçue : requête (pas un document unique), donc on compare l'ensemble
+// des IDs vus au dernier instantané pour détecter les nouvelles arrivées — un
+// équivalent maison de docChanges()/type 'added', qui fonctionne aussi bien avec un
+// vrai onSnapshot temps réel qu'avec un simple appel one-shot.
+let knownIncomingFriendRequestIds = null;
+let incomingFriendRequestsRealtimeUnsub = null;
+function startIncomingFriendRequestsListener() {
+  if (incomingFriendRequestsRealtimeUnsub) { incomingFriendRequestsRealtimeUnsub(); incomingFriendRequestsRealtimeUnsub = null; }
+  if (!currentUser) return;
+  knownIncomingFriendRequestIds = null;
+  incomingFriendRequestsRealtimeUnsub = db.collection('friendRequests').where('toUid', '==', currentUser.uid)
+    .onSnapshot((snap) => {
+      const currentIds = new Set(snap.docs.map(d => d.id));
+      if (knownIncomingFriendRequestIds === null) {
+        knownIncomingFriendRequestIds = currentIds; // état de départ, pas une notif
+        return;
+      }
+      const newlyArrived = snap.docs.filter(d => !knownIncomingFriendRequestIds.has(d.id));
+      knownIncomingFriendRequestIds = currentIds;
+      for (const doc of newlyArrived) {
+        notifyIncomingFriendRequest(doc.data().fromUid);
+      }
+    });
+}
+
+async function notifyIncomingFriendRequest(fromUid) {
+  const profile = await fetchPublicProfile(fromUid);
+  const name = profile ? profile.displayName : 'Quelqu\'un';
+  const accepted = await confirmModal({
+    icon: '🤝',
+    title: "Nouvelle demande d'ami",
+    subtitle: `${name} veut devenir ton ami.`,
+    confirmLabel: 'Accepter',
+    cancelLabel: 'Plus tard',
+  });
+  if (accepted) {
+    await acceptFriendRequest(fromUid);
+  }
 }
 
 function friendRequestId(fromUid, toUid) {
@@ -2366,12 +2467,14 @@ async function registerBossBattleContributionIfNeeded(challengeId, amount) {
     // Fil des contributions individuelles (contrairement à dailyContributors, un
     // document PAR évènement, jamais fusionné) : sert uniquement au flux temps réel
     // "Untel vient d'ajouter X" affiché sur l'écran Communauté, pour le FOMO en direct.
-    await bossBattleDocRef(weekStart).collection('contributions').add({
+    const contribRef = await bossBattleDocRef(weekStart).collection('contributions').add({
       uid: currentUser.uid,
       displayName: formatDisplayName(currentUser.displayName),
       amount,
       at: Date.now(),
+      kudosCount: 0,
     });
+    watchOwnEventForKudosReceived(contribRef);
   } catch (e) {
     reportSaveError('boss battle contribution failed', e);
   }
@@ -5635,6 +5738,8 @@ async function continueStartApp() {
   // Pas de await : sert uniquement au badge de notification sur le bouton "Amis" (écran
   // Communauté), pas bloquant pour le premier rendu — se termine par son propre render().
   refreshFriendsData();
+  startKudosReceivedListener();
+  startIncomingFriendRequestsListener();
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).
