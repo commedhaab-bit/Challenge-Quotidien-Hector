@@ -174,6 +174,10 @@ const LOCALE_EN = {
     shareInviteText: 'Join me on Défi du Jour to take on the community challenge ⚡',
     streakValue: '🔥 {{n}}d',
     xpValue: '⚡ {{n}} XP',
+    outsideTop50: 'Outside Top 50',
+    rankAbove: 'Just ahead',
+    rankBelow: 'Just behind',
+    rankGapHint: 'Just {{gap}} more to pass {{name}}!',
     views: {
       streaks: 'Streaks',
       weekly: 'Weekly',

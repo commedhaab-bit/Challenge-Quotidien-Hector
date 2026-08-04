@@ -1716,11 +1716,11 @@ function switchTab(tab) {
     });
   }
   if (tab === 'community') {
-    // Chaque ENTRÉE sur l'onglet doit voir des données fraîches (aucune perte de
-    // réactivité) : invalide le cache de scan avant de charger, pour ne réutiliser un
-    // scan déjà en cache que lors des changements de VUE pendant CETTE visite (voir
-    // fetchLeaderboardFullScan()), jamais d'une visite à l'autre.
-    invalidateLeaderboardScanCache();
+    // Pas d'invalidation systématique à l'entrée : le cache (TTL 15 min, voir
+    // fetchLeaderboardTop()/fetchMyLeaderboardNeighbors()) est volontairement réutilisé
+    // d'une visite à l'autre tant qu'il est frais — seul mon PROPRE score invalide
+    // immédiatement (voir syncLeaderboardEntry()), décision explicite pour réduire les
+    // lectures (voir CLAUDE.md).
     loadCommunityLeaderboard(communityLeaderboardView);
     fetchTopContributorToday().then((c) => { communityTopContributorToday = c; render(); });
     fetchBossBattleArchive().then((a) => { communityBossBattleArchive = a; render(); });
@@ -2182,8 +2182,10 @@ function hoursRemainingToday() {
 let communityLeaderboardView = 'streaks'; // 'streaks' | 'weekly' | 'alltime'
 let communityLeaderboardLoading = false;
 let communityLeaderboardTop = [];
-let communityLeaderboardRank = null;
-let communityLeaderboardNeighbors = [];
+// null si je suis déjà visible dans communityLeaderboardTop (aucune requête voisins
+// nécessaire), sinon { me, above, below } (above/below peuvent être null : personne
+// au-dessus/en-dessous — voir fetchMyLeaderboardNeighbors()).
+let communityLeaderboardNeighbors = null;
 let communityTopContributorToday = null;
 let communityBossBattleArchive = [];
 
@@ -2627,33 +2629,27 @@ async function removeFriend(uid) {
   }
 }
 
-// Les 2 requêtes (top N, mon rang+voisins) sont VOLONTAIREMENT indépendantes (pas un
-// seul Promise.all englobant) : avec Promise.all, l'échec de l'une (ex: la requête de
-// rang qui a sa propre config d'index/agrégation) effaçait aussi l'autre alors qu'elle
-// avait réussi — déjà vécu en production (top 20 vidé à tort par un souci isolé au
-// rang). Chaque échec reste maintenant cantonné à sa propre partie de l'écran.
-// Les 2 requêtes (top N, mon rang+voisins) sont VOLONTAIREMENT indépendantes (pas un
-// seul Promise.all englobant) : avec Promise.all, l'échec de l'une (ex: la requête de
-// rang qui a sa propre config d'index/agrégation) effaçait aussi l'autre alors qu'elle
-// avait réussi — déjà vécu en production (top 20 vidé à tort par un souci isolé au
-// rang). Chaque échec reste maintenant cantonné à sa propre partie de l'écran.
+// Le Top N et mes voisins (si je n'y suis pas) sont VOLONTAIREMENT indépendants (pas
+// un seul Promise.all englobant) : avec Promise.all, l'échec de l'un effaçait aussi
+// l'autre alors qu'il avait réussi — déjà vécu en production (top 20 vidé à tort par
+// un souci isolé à la requête de voisins). Chaque échec reste cantonné à sa propre
+// partie de l'écran. Les voisins ne sont même pas demandés si je suis déjà visible
+// dans le Top N (aucune requête supplémentaire nécessaire dans ce cas).
 async function loadCommunityLeaderboard(view) {
   communityLeaderboardLoading = true;
   render();
   try {
-    communityLeaderboardTop = await fetchLeaderboardTop(view, 20);
+    communityLeaderboardTop = await fetchLeaderboardTop(view, 50);
   } catch (e) {
     communityLeaderboardTop = [];
     console.error('leaderboard top fetch failed', e);
   }
   try {
-    const rankInfo = await fetchMyRankAndNeighbors(view);
-    communityLeaderboardRank = rankInfo.rank;
-    communityLeaderboardNeighbors = rankInfo.neighbors;
+    const meInTop = communityLeaderboardTop.some(e => e.uid === currentUser.uid);
+    communityLeaderboardNeighbors = meInTop ? null : await fetchMyLeaderboardNeighbors(view);
   } catch (e) {
-    communityLeaderboardRank = null;
-    communityLeaderboardNeighbors = [];
-    console.error('leaderboard rank fetch failed', e);
+    communityLeaderboardNeighbors = null;
+    console.error('leaderboard neighbors fetch failed', e);
   }
   communityLeaderboardLoading = false;
   render();
@@ -3178,11 +3174,12 @@ async function syncLeaderboardEntry() {
       xpTotal,
       lastActiveDate: todayKey,
     }, { merge: true });
-    // Sans ça, un scan de classement déjà en cache (voir fetchLeaderboardFullScan())
-    // afficherait NOTRE PROPRE rang/valeur obsolète après une action qui vient de le
-    // changer (ex: on vient de gagner de l'XP mais l'onglet Communauté montre encore
-    // l'ancien total pendant la fenêtre de cache).
-    invalidateLeaderboardScanCache();
+    // Sans ça, un cache classement déjà valide (TTL 15 min, voir fetchLeaderboardTop()/
+    // fetchMyLeaderboardNeighbors()) afficherait NOTRE PROPRE rang/valeur obsolète
+    // après une action qui vient de le changer (ex: on vient de gagner de l'XP mais
+    // l'onglet Communauté montre encore l'ancien total) — règle explicitement demandée :
+    // le cache TTL ne doit jamais retarder l'affichage de MON PROPRE score.
+    invalidateLeaderboardCache();
   } catch (e) {
     reportSaveError('leaderboard sync failed', e);
   }
@@ -3194,7 +3191,7 @@ async function toggleLeaderboardOptOut() {
   if (leaderboardOptOut) {
     try { await db.collection('leaderboard').doc(currentUser.uid).delete(); }
     catch (e) { reportSaveError('leaderboard opt-out delete failed', e); }
-    invalidateLeaderboardScanCache();
+    invalidateLeaderboardCache();
   } else {
     await syncLeaderboardEntry();
   }
@@ -3216,71 +3213,69 @@ function leaderboardBaseQuery(view) {
   return q;
 }
 
-// Rang exact (via count(), sans jamais lire tout le classement) + les 2 voisins juste
-// au-dessus et juste en-dessous de l'utilisateur — pas seulement le top N, pour que
-// n'importe qui (même loin du sommet) se voie situé dans le classement.
-// Calcule le rang ET les voisins directs à partir d'UNE SEULE lecture ordonnée
-// complète (pas de requête d'agrégation count()) : `.count()` s'est révélé absent du
-// SDK Firestore compat réellement chargé ici (10.13.0) malgré la documentation
-// (TypeError "count is not a function" observé en production) — remplacé par un calcul
-// de position côté client, plus simple et qui réutilise EXACTEMENT la même requête/le
-// même index composite que le Top N (une seule vue "Hebdo" à indexer, pas deux).
+// ==== CLASSEMENT SANS SCAN COMPLET (Top 50 + voisins par requêtes ciblées) ====
+// Ancienne approche (lecture complète du classement, coût O(N) par visite) abandonnée
+// au profit de 2 mécanismes à coût BORNÉ, indépendants de la taille totale du
+// classement :
+// - Top N : simple requête .limit(50), jamais plus.
+// - Ma position si je ne suis pas dans le Top 50 : PAS de rang numérique exact (ça
+//   nécessiterait soit de tout scanner, soit .count() — confirmé absent du SDK
+//   compat 10.13.0 réellement chargé ici, TypeError "count is not a function" déjà
+//   observé en production). À la place : 2 requêtes ciblées (`where(champ,'>',...)
+//   .limit(1)` et son inverse), qui renvoient le voisin immédiat au-dessus/en-dessous
+//   sans jamais lire les autres documents. Le rang numérique est remplacé par un badge
+//   "Hors Top 50" pour moi, "Juste devant"/"Juste derrière" pour les voisins (voir
+//   renderCommunityScreen()) — décision validée avec l'utilisateur, incluant la
+//   simplification suivante assumée : en cas d'ÉGALITÉ EXACTE de score avec d'autres
+//   personnes, ces requêtes strictes (>/<) peuvent sauter par-dessus des pairs à
+//   égalité plutôt que de les lister — acceptable pour un indicateur motivationnel,
+//   pas un classement audité au document près.
 //
-// Cache par vue (streaks/hebdo/all-time), valable UNIQUEMENT pour la visite en cours
-// de l'onglet Communauté (jamais entre 2 visites — voir invalidateLeaderboardScanCache()
-// appelée à CHAQUE entrée sur l'onglet dans switchTab(), donc toujours des données
-// fraîches à l'ouverture) : Top N ET rang/voisins réutilisent la MÊME lecture complète
-// (auparavant 2 requêtes Firestore séparées par vue — Top N limité + scan complet), et
-// un changement de vue PENDANT cette même visite réutilise le résultat déjà en cache au
-// lieu de re-scanner. Invalidé aussi juste après syncLeaderboardEntry() (voir plus bas)
-// pour ne jamais afficher son PROPRE classement obsolète après une action. Aucune perte
-// de fraîcheur pour les données d'AUTRUI : cet écran n'a jamais été temps réel (lecture
-// ponctuelle à chaque entrée/changement de vue, jamais un onSnapshot) — ce cache ne
-// change que le nombre de requêtes, jamais le moment où un rafraîchissement a lieu.
-// Limite assumée qui subsiste : le coût de CE premier scan par vue grandit avec la
-// taille totale du classement, pas seulement le nombre affiché — acceptable pour une
-// communauté de taille modeste ; à revoir avec un agrégat côté serveur si ça grossit
-// beaucoup.
-let leaderboardScanCache = {}; // { [view]: [...] }
+// Cache par vue (streaks/hebdo/all-time), TTL 15 minutes (voir discussion utilisateur :
+// accepté explicitement que les données des AUTRES membres puissent avoir jusqu'à 15
+// min de retard, en échange de moins de lectures) — MAIS invalidé IMMÉDIATEMENT dès
+// que MES propres données changent (voir l'appel dans syncLeaderboardEntry()), pour
+// que je voie toujours mon propre score à jour tout de suite après une séance.
+const LEADERBOARD_CACHE_TTL_MS = 15 * 60 * 1000;
+let leaderboardTopCache = {}; // { [view]: { at, data } }
+let leaderboardNeighborsCache = {}; // { [view]: { at, data: { me, above, below } } }
 
-function invalidateLeaderboardScanCache() {
-  leaderboardScanCache = {};
+function invalidateLeaderboardCache() {
+  leaderboardTopCache = {};
+  leaderboardNeighborsCache = {};
 }
 
-async function fetchLeaderboardFullScan(view) {
-  if (leaderboardScanCache[view]) return leaderboardScanCache[view];
+async function fetchLeaderboardTop(view, n = 50) {
+  const cached = leaderboardTopCache[view];
+  if (cached && (Date.now() - cached.at) < LEADERBOARD_CACHE_TTL_MS) return cached.data;
   const field = leaderboardFieldForView(view);
-  const snap = await leaderboardBaseQuery(view).orderBy(field, 'desc').get();
-  const all = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
-  leaderboardScanCache[view] = all;
-  return all;
+  const snap = await leaderboardBaseQuery(view).orderBy(field, 'desc').limit(n).get();
+  const data = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+  leaderboardTopCache[view] = { at: Date.now(), data };
+  return data;
 }
 
-async function fetchLeaderboardTop(view, n = 20) {
-  const all = await fetchLeaderboardFullScan(view);
-  return all.slice(0, n);
-}
-
-async function fetchMyRankAndNeighbors(view) {
+// Voisin immédiat au-dessus ET en-dessous de ma valeur, en 2 requêtes indépendantes
+// (Promise.all) au lieu d'un scan — voir le commentaire de section plus haut pour le
+// détail et les limites assumées (pas de rang numérique, égalités non listées).
+async function fetchMyLeaderboardNeighbors(view) {
+  const cached = leaderboardNeighborsCache[view];
+  if (cached && (Date.now() - cached.at) < LEADERBOARD_CACHE_TTL_MS) return cached.data;
   const field = leaderboardFieldForView(view);
-  // Copie défensive : le tableau vient potentiellement du cache partagé ci-dessus
-  // (réutilisé par fetchLeaderboardTop() et par une prochaine visite dans le TTL) —
-  // ne jamais le muter en place (le splice() plus bas sinon corromprait le cache).
-  const all = [...(await fetchLeaderboardFullScan(view))];
-  let myIdx = all.findIndex(e => e.uid === currentUser.uid);
-  if (myIdx === -1) {
-    const myDoc = await db.collection('leaderboard').doc(currentUser.uid).get();
-    const myValue = (myDoc.exists && myDoc.data()[field]) || 0;
-    const me = myDoc.exists
-      ? { uid: currentUser.uid, ...myDoc.data() }
-      : { uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName), [field]: myValue };
-    myIdx = all.findIndex(e => (e[field] || 0) < myValue);
-    if (myIdx === -1) myIdx = all.length;
-    all.splice(myIdx, 0, me);
-  }
-  const rank = myIdx + 1;
-  const neighbors = all.slice(Math.max(0, myIdx - 2), Math.min(all.length, myIdx + 3));
-  return { rank, neighbors };
+  const myDoc = await db.collection('leaderboard').doc(currentUser.uid).get();
+  const myValue = (myDoc.exists && myDoc.data()[field]) || 0;
+  const me = myDoc.exists
+    ? { uid: currentUser.uid, ...myDoc.data() }
+    : { uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName), [field]: myValue };
+  const [aboveSnap, belowSnap] = await Promise.all([
+    leaderboardBaseQuery(view).where(field, '>', myValue).orderBy(field, 'asc').limit(1).get(),
+    leaderboardBaseQuery(view).where(field, '<', myValue).orderBy(field, 'desc').limit(1).get(),
+  ]);
+  const above = aboveSnap.empty ? null : { uid: aboveSnap.docs[0].id, ...aboveSnap.docs[0].data() };
+  const below = belowSnap.empty ? null : { uid: belowSnap.docs[0].id, ...belowSnap.docs[0].data() };
+  const data = { me, above, below };
+  leaderboardNeighborsCache[view] = { at: Date.now(), data };
+  return data;
 }
 
 // Ne déclenche aucune popup elle-même : renvoie juste les niveaux avant/après pour
@@ -5663,9 +5658,13 @@ async function importUserData(event) {
   render(true);
 }
 
-// Une ligne de classement (top N ou barre de rang ancrée) : avatar/initiale, nom,
+// Une ligne de classement (top N ou bloc "Hors Top 50") : avatar/initiale, nom,
 // valeur formatée selon la vue (jours de série vs XP). `highlight` marque la ligne
-// de l'utilisateur courant dans la barre de rang.
+// de l'utilisateur courant. `rank` est soit un NOMBRE (position réelle dans le Top N,
+// gratuite — simple index du tableau déjà chargé), soit une CHAÎNE déjà traduite (ex:
+// "Hors Top 50"/"Juste devant" — voir renderCommunityScreen()) pour le bloc hors Top
+// N, où le rang exact n'est volontairement plus calculé (voir
+// fetchMyLeaderboardNeighbors()).
 function renderLeaderboardRow(entry, rank, view, highlight) {
   const value = entry[leaderboardFieldForView(view)] || 0;
   const valueLabel = view === 'streaks' ? t('community.streakValue', { n: value }) : t('community.xpValue', { n: value });
@@ -5682,9 +5681,10 @@ function renderLeaderboardRow(entry, rank, view, highlight) {
   // giveKudosToPerson()), plus simple, pas besoin de la symétrie d'un like sur un
   // événement ponctuel.
   const kudosHtml = highlight ? '' : `<button class="kudos-btn${myKudosGivenToday.has(entry.uid) ? ' given' : ''}" onclick="event.stopPropagation(); giveKudosToPerson('${escapeJsAttr(entry.uid)}')">👏 ${entry.kudosTotal || 0}</button>`;
+  const rankLabel = typeof rank === 'number' ? `#${rank}` : escapeHtml(rank);
   return `
     <div class="leaderboard-row${highlight ? ' me' : ''}">
-      <span class="leaderboard-rank">#${rank}</span>
+      <span class="leaderboard-rank${typeof rank !== 'number' ? ' leaderboard-rank-badge' : ''}">${rankLabel}</span>
       ${avatar}
       <span class="leaderboard-name">${escapeHtml(name)}</span>
       <span class="leaderboard-value">${valueLabel}</span>
@@ -5843,19 +5843,37 @@ function renderCommunityScreen() {
       ? `<div class="history-empty">${t('community.noOneYet')}</div>`
       : communityLeaderboardTop.map((e, i) => renderLeaderboardRow(e, i + 1, communityLeaderboardView, e.uid === currentUser.uid)).join(''));
 
-  // communityLeaderboardNeighbors est ordonné [au-dessus de moi..., moi, ...en-dessous
-  // de moi] (voir fetchMyRankAndNeighbors) : le rang de chaque voisin se déduit donc de
-  // sa position relative à la mienne dans ce tableau, sans nouvelle requête.
-  // La barre ne s'affiche QUE si mon rang n'est pas déjà visible dans la liste
-  // affichée à l'écran (sinon on voit 2 fois la même ligne "#1 moi" superposées : la
-  // liste principale montre déjà tout le monde quand la communauté est petite).
+  // communityLeaderboardNeighbors = { me, above, below } (voir
+  // fetchMyLeaderboardNeighbors(), 2 requêtes ciblées — plus de scan complet, donc plus
+  // de rang numérique exact hors Top N : badge "Hors Top 50"/"Juste devant"/"Juste
+  // derrière" à la place). La barre ne s'affiche QUE si je ne suis pas déjà visible
+  // dans la liste affichée à l'écran (sinon on verrait 2 fois la même ligne "moi"
+  // superposées : la liste principale montre déjà tout le monde quand la communauté
+  // est petite).
   const meAlreadyVisible = communityLeaderboardTop.some(e => e.uid === currentUser.uid);
   let rankBarHtml = '';
-  if (!communityLeaderboardLoading && communityLeaderboardRank && !meAlreadyVisible) {
-    const meIdx = communityLeaderboardNeighbors.findIndex(e => e.uid === currentUser.uid);
+  if (!communityLeaderboardLoading && !meAlreadyVisible && communityLeaderboardNeighbors) {
+    const { me, above, below } = communityLeaderboardNeighbors;
+    const rows = [];
+    if (above) rows.push(renderLeaderboardRow(above, t('community.rankAbove'), communityLeaderboardView, false));
+    rows.push(renderLeaderboardRow(me, t('community.outsideTop50'), communityLeaderboardView, true));
+    if (below) rows.push(renderLeaderboardRow(below, t('community.rankBelow'), communityLeaderboardView, false));
+    // Écart de points avec la personne juste au-dessus (garde le côté stimulant même
+    // sans rang exact) : rien à afficher si personne n'est au-dessus (déjà en tête du
+    // classement au-delà du Top N, cas rarissime mais géré sans planter).
+    let gapHtml = '';
+    if (above) {
+      const field = leaderboardFieldForView(communityLeaderboardView);
+      const gap = (above[field] || 0) - (me[field] || 0);
+      if (gap > 0) {
+        const gapLabel = communityLeaderboardView === 'streaks' ? t('community.streakValue', { n: gap }) : t('community.xpValue', { n: gap });
+        gapHtml = `<div class="rank-gap-hint">${t('community.rankGapHint', { gap: gapLabel, name: escapeHtml(formatDisplayName(above.displayName)) })}</div>`;
+      }
+    }
     rankBarHtml = `
       <div class="rank-bar">
-        ${communityLeaderboardNeighbors.map((e, i) => renderLeaderboardRow(e, communityLeaderboardRank - (meIdx - i), communityLeaderboardView, e.uid === currentUser.uid).replace('leaderboard-row', 'leaderboard-row rank-bar-row')).join('')}
+        ${rows.map(row => row.replace('leaderboard-row', 'leaderboard-row rank-bar-row')).join('')}
+        ${gapHtml}
       </div>
     `;
   }

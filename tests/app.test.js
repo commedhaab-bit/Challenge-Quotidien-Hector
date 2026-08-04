@@ -457,11 +457,12 @@ const sandbox = {
   __resetCommunityMocks: () => {
     mockTopCollections.clear();
     usersSubcollections.clear();
-    // leaderboardScanCache (index.html) est un cache APPLICATIF qui survit entre
-    // scenarios de test (un seul script vm partagé pour toute la suite, voir en tête
-    // de ce fichier) — sans ce nettoyage, un scan mis en cache par un scenario
-    // precedent pourrait fausser un scenario suivant qui repart d'un mock vide.
-    if (typeof sandbox.invalidateLeaderboardScanCache === 'function') sandbox.invalidateLeaderboardScanCache();
+    // leaderboardTopCache/leaderboardNeighborsCache (index.html) sont des caches
+    // APPLICATIFS qui survivent entre scenarios de test (un seul script vm partagé
+    // pour toute la suite, voir en tête de ce fichier) — sans ce nettoyage, un cache
+    // rempli par un scenario precedent pourrait fausser un scenario suivant qui
+    // repart d'un mock vide.
+    if (typeof sandbox.invalidateLeaderboardCache === 'function') sandbox.invalidateLeaderboardCache();
   },
   alert(msg){ console.log('  [alert]', msg); },
   confirm(msg){ return true; },
@@ -2274,7 +2275,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v44'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v45'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3833,23 +3834,19 @@ const cssText = __rawHtml + __cssSource;
   currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
   console.log('OK: notifications (sous-collection users/uid/notifications, listener unique, rattrapage natif, nom stocke a l ecriture)');
 
-  // --- 146. Classement 3 vues + rang exact avec voisins directs ---
+  // --- 146. Classement : Top 50 par simple .limit() (plus de scan complet) ---
   __resetCommunityMocks();
   await db.collection('leaderboard').doc('uidA').set({ displayName: 'Alice', streakCount: 10, xpTotal: 500, xpWeekly: 50, xpWeekStart: wkNow }, { merge: true });
   await db.collection('leaderboard').doc('uidB').set({ displayName: 'Bob', streakCount: 8, xpTotal: 300, xpWeekly: 90, xpWeekStart: wkNow }, { merge: true });
   await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Moi', streakCount: 5, xpTotal: 150, xpWeekly: 20, xpWeekStart: wkNow }, { merge: true });
   await db.collection('leaderboard').doc('uidD').set({ displayName: 'Dan', streakCount: 3, xpTotal: 50, xpWeekly: 5, xpWeekStart: wkNow }, { merge: true });
 
-  const topStreaks = await fetchLeaderboardTop('streaks', 20);
+  const topStreaks = await fetchLeaderboardTop('streaks', 50);
   __assertEq(topStreaks.map(e => e.displayName), ['Alice', 'Bob', 'Moi', 'Dan'], 'la vue Series doit trier par streakCount decroissant');
-  const topAlltime = await fetchLeaderboardTop('alltime', 20);
+  const topAlltime = await fetchLeaderboardTop('alltime', 50);
   __assertEq(topAlltime.map(e => e.displayName), ['Alice', 'Bob', 'Moi', 'Dan'], 'la vue Legendes doit trier par xpTotal decroissant');
-  const topWeekly = await fetchLeaderboardTop('weekly', 20);
+  const topWeekly = await fetchLeaderboardTop('weekly', 50);
   __assertEq(topWeekly.map(e => e.displayName), ['Bob', 'Alice', 'Moi', 'Dan'], 'la vue Hebdomadaire doit trier par xpWeekly decroissant');
-
-  const myRankInfo = await fetchMyRankAndNeighbors('alltime');
-  __assertEq(myRankInfo.rank, 3, 'mon rang exact (via count()) doit tenir compte de tous les scores superieurs au mien');
-  __assertEq(myRankInfo.neighbors.map(e => e.displayName), ['Alice', 'Bob', 'Moi', 'Dan'], 'les voisins directs doivent inclure les 2 au-dessus et en-dessous (ici tout le classement, 4 personnes)');
 
   activeTab = 'today';
   activeTab = 'community';
@@ -3857,33 +3854,40 @@ const cssText = __rawHtml + __cssSource;
   await loadCommunityLeaderboard('alltime');
   const communityHtml = renderCommunityScreen();
   __assertOk(communityHtml.includes('leaderboard-tabs') && communityHtml.includes('leaderboard-row'), 'l ecran Communaute doit afficher les onglets et les lignes de classement');
-  // Ici, seulement 4 personnes au total : "Moi" est deja visible dans le top affiche a
-  // l ecran (limite 20) -> la barre de rang ancree ne doit PAS se dupliquer par-dessus
-  // (2x la meme ligne "Moi" a l ecran serait deroutant).
-  __assertOk(!communityHtml.includes('rank-bar'), 'la barre de rang ancree ne doit PAS s afficher quand mon rang est deja visible dans la liste principale (evite le doublon de ma ligne)');
-  console.log('OK: classement 3 vues + rang exact avec voisins directs (barre ancree)');
+  // Ici, seulement 4 personnes au total : "Moi" est deja dans le Top 50 -> aucune
+  // requete de voisins ne doit avoir ete declenchee, pas de barre "Hors Top 50".
+  __assertEq(communityLeaderboardNeighbors, null, 'aucune requete de voisins ne doit etre declenchee quand je suis deja dans le Top 50 affiche');
+  __assertOk(!communityHtml.includes('rank-bar'), 'la barre "Hors Top 50" ne doit PAS s afficher quand je suis deja visible dans la liste principale (evite le doublon de ma ligne)');
+  console.log('OK: classement Top 50 (limit direct, sans scan complet) trie correctement selon les 3 vues');
 
-  // --- 146bis. Masquage intelligent : la barre de rang REAPPARAIT si mon rang n est
-  // PAS dans le top visible (au-dela de la limite de 20 lignes affichees) ---
-  for (let i = 0; i < 25; i++) {
+  // --- 146bis. Hors Top 50 : bloc "voisins" via 2 requetes CIBLEES (where(champ,'>',
+  // ...).limit(1) et l inverse), jamais un scan complet - badge "Hors Top 50" a la
+  // place d un rang numerique exact (impossible sans scan ni .count(), voir CLAUDE.md),
+  // et ecart de points affiche avec la personne juste au-dessus ---
+  for (let i = 0; i < 50; i++) {
     await db.collection('leaderboard').doc('extra' + i).set(
       { displayName: 'Extra' + i, streakCount: 1, xpTotal: 1000 - i, xpWeekly: 1, xpWeekStart: wkNow },
       { merge: true }
     );
   }
-  // Optimisation quota Firestore : fetchLeaderboardFullScan() met en cache le scan par
-  // vue pour la visite en cours (voir index.html). Ces 25 ecritures simulent d'AUTRES
-  // utilisateurs qui rejoignent PENDANT la visite deja en cours (146) - dans l'appli
-  // reelle, ce nouveau chargement viendrait d'une VRAIE ré-entree sur l'onglet
-  // (switchTab() invalide le cache a chaque entree, jamais un simple changement de vue
-  // ni une donnee tierce qui change en arriere-plan). On simule cette ré-entree ici.
-  invalidateLeaderboardScanCache();
+  // Ces 50 ecritures simulent d'AUTRES utilisateurs qui rejoignent PENDANT la visite
+  // deja en cours (146) - dans l'appli reelle, un nouveau chargement viendrait d'une
+  // VRAIE ré-entree sur l'onglet. On simule cette ré-entree ici (invalidation du cache
+  // TTL, voir 146quater plus bas pour le detail du TTL lui-meme).
+  invalidateLeaderboardCache();
   await loadCommunityLeaderboard('alltime');
-  __assertOk(!communityLeaderboardTop.some(e => e.uid === 'test-uid'), 'avec 29 personnes, mon rang (tres bas) ne doit plus faire partie du top 20 affiche');
+  __assertOk(!communityLeaderboardTop.some(e => e.uid === 'test-uid'), 'avec 54 personnes, mon xpTotal (150) ne doit plus faire partie du Top 50 affiche');
+  __assertOk(communityLeaderboardNeighbors, 'une requete de voisins ciblee doit avoir ete declenchee des que je ne suis plus dans le Top 50');
+  __assertEq(communityLeaderboardNeighbors.me.uid, 'test-uid', 'le bloc voisins doit contenir mes propres donnees');
+  __assertOk(communityLeaderboardNeighbors.above && communityLeaderboardNeighbors.above.displayName === 'Bob', 'la personne juste au-dessus (xpTotal=300, le plus proche superieur a 150) doit etre trouvee par requete ciblee, sans scan');
+  __assertOk(communityLeaderboardNeighbors.below && communityLeaderboardNeighbors.below.displayName === 'Dan', 'la personne juste en-dessous (xpTotal=50, le plus proche inferieur a 150) doit etre trouvee par requete ciblee, sans scan');
   const communityHtmlBig = renderCommunityScreen();
-  __assertOk(communityHtmlBig.includes('rank-bar') && communityHtmlBig.includes('>Moi<'), 'la barre de rang ancree doit reapparaitre (avec ma ligne) des que mon rang sort du top visible a l ecran');
+  __assertOk(communityHtmlBig.includes('rank-bar') && communityHtmlBig.includes('>Moi<'), 'la barre "Hors Top 50" doit apparaitre (avec ma ligne) des que je sors du Top 50 affiche');
+  __assertOk(communityHtmlBig.includes('Hors Top 50'), 'le badge "Hors Top 50" doit remplacer le rang numerique exact (non calculable sans scan complet)');
+  __assertOk(communityHtmlBig.includes('Juste devant') && communityHtmlBig.includes('Juste derrière'), 'les voisins doivent porter des labels relatifs ("Juste devant"/"Juste derriere"), pas un rang numerique qu on ne connait pas');
+  __assertOk(communityHtmlBig.includes('Bob') && communityHtmlBig.includes('150'), 'l ecart de points avec la personne juste au-dessus (Bob, 300-150=150) doit etre affiche pour garder le cote stimulant');
   activeTab = 'today';
-  console.log('OK: la barre de rang ancree ne s affiche que si mon rang n est pas deja visible dans la liste principale');
+  console.log('OK: bloc "Hors Top 50" (voisins par requetes ciblees, badge au lieu du rang, ecart de points) sans jamais scanner tout le classement');
 
   // --- 146ter. Empty state du classement : incite a inviter des proches tant que la
   // communaute visible est trop petite (<3) pour etre motivante ---
@@ -3903,34 +3907,38 @@ const cssText = __rawHtml + __cssSource;
   // est deja assez fournie pour etre motivante).
   await db.collection('leaderboard').doc('uidX').set({ displayName: 'X', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
   await db.collection('leaderboard').doc('uidY').set({ displayName: 'Y', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
-  invalidateLeaderboardScanCache(); // simule une vraie ré-entree sur l onglet (voir 146bis)
+  invalidateLeaderboardCache(); // simule une vraie ré-entree sur l onglet (voir 146bis)
   await loadCommunityLeaderboard('streaks');
   __assertOk(communityLeaderboardTop.length >= 3, 'ce 2e scenario doit avoir 3 personnes ou plus');
   const filledCommunityHtml = renderCommunityScreen();
   __assertOk(!filledCommunityHtml.includes('community-invite-card'), 'la carte d invitation ne doit plus s afficher des que le classement compte 3 personnes ou plus');
   activeTab = 'today';
 
-  // --- 146quater. Optimisation quota Firestore : un changement de VUE pendant la
-  // MEME visite de l onglet reutilise le scan deja en cache (pas de nouvelle lecture
-  // Firestore), mais une vraie ré-entree sur l onglet (invalidateLeaderboardScanCache(),
-  // voir switchTab()) redonne bien des donnees fraiches ---
+  // --- 146quater. Cache TTL 15 min sur le classement (voir discussion utilisateur) :
+  // une nouvelle visite/changement de vue REUTILISE les donnees tant que le cache est
+  // frais (meme si d autres membres ont change entre-temps - compromis explicitement
+  // accepte), MAIS s invalide IMMEDIATEMENT des que MON PROPRE score change
+  // (syncLeaderboardEntry()), pour ne jamais retarder l affichage de mes propres
+  // donnees a moi ---
   __resetCommunityMocks();
   currentUser = { uid: 'test-uid', displayName: 'Moi', email: 'a@test.com', photoURL: '' };
   await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Moi', streakCount: 5, xpTotal: 5, xpWeekly: 5, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
   await loadCommunityLeaderboard('streaks');
   __assertEq(communityLeaderboardTop.length, 1, 'etat initial : une seule personne dans le classement');
-  // Mutation DIRECTE du mock (simule un autre utilisateur qui rejoint), SANS passer
-  // par invalidateLeaderboardScanCache() : dans l appli reelle, ceci correspond a un
-  // changement de vue (switchCommunityLeaderboardView()), qui ne doit PAS re-scanner.
+  // Un AUTRE utilisateur rejoint (mutation directe du mock, comme un vrai changement
+  // cote serveur) : tant que le cache TTL (15 min) est frais, une nouvelle visite/
+  // changement de vue ne doit PAS relire Firestore.
   await db.collection('leaderboard').doc('nouveau-uid').set({ displayName: 'Nouveau', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
   await loadCommunityLeaderboard('streaks');
-  __assertEq(communityLeaderboardTop.length, 1, 'un changement de vue pendant la MEME visite doit reutiliser le scan deja en cache (le nouvel arrivant n apparait pas tant qu on ne re-entre pas sur l onglet)');
-  // Une vraie ré-entree sur l onglet (via switchTab(), qui invalide le cache) doit en
-  // revanche voir la donnee a jour.
-  invalidateLeaderboardScanCache();
-  await loadCommunityLeaderboard('streaks');
-  __assertEq(communityLeaderboardTop.length, 2, 'une vraie ré-entree sur l onglet Communaute doit toujours voir des donnees fraiches (aucune perte de reactivite)');
-  console.log('OK: le scan du classement est reutilise entre changements de vue (meme visite) mais toujours frais a chaque ré-entree sur l onglet');
+  __assertEq(communityLeaderboardTop.length, 1, 'tant que le cache TTL (15 min) est frais, une nouvelle visite ne doit PAS relire Firestore (le nouvel arrivant n apparait pas encore, compromis explicitement accepte)');
+  // En revanche, DES QUE MON PROPRE score change, le cache doit s invalider tout de
+  // suite, quelle que soit la vue consultee ensuite (invalidateLeaderboardCache() vide
+  // le cache de TOUTES les vues, pas seulement celle en cours).
+  xpTotal = 999;
+  await syncLeaderboardEntry();
+  await loadCommunityLeaderboard('alltime');
+  __assertOk(communityLeaderboardTop.some(e => e.uid === 'test-uid' && e.xpTotal === 999), 'apres syncLeaderboardEntry() (mon propre score qui change), je dois voir ma valeur a jour immediatement, sans attendre le TTL de 15 min');
+  console.log('OK: cache TTL 15 min sur le classement, invalide immediatement des que mon propre score change');
   console.log('OK: empty state du classement (carte d invitation a partager si moins de 3 membres)');
 
   // --- 146quater-bis. Optimisation quota Firestore : le Journal met en cache les jours
@@ -4218,21 +4226,21 @@ const cssText = __rawHtml + __cssSource;
   __resetCommunityMocks();
   console.log('OK: la synchronisation du classement se fait aussi au demarrage (pas seulement sur un nouveau gain XP/serie)');
 
-  // --- 154. loadCommunityLeaderboard() : l echec de la requete de rang/voisins ne
-  // doit JAMAIS vider le top N alors qu il a reussi (deja vecu en production : un
+  // --- 154. loadCommunityLeaderboard() : l echec de la requete de voisins ne doit
+  // JAMAIS vider le top N alors qu il a reussi (deja vecu en production : un
   // Promise.all englobant les 2 requetes effacait le top 20 a tort a cause d un
-  // souci isole au rang) -- chaque requete garde son propre etat d echec ---
+  // souci isole aux voisins) -- chaque requete garde son propre etat d echec ---
   __resetCommunityMocks();
   currentUser = { uid: 'test-uid', displayName: 'Alice', email: 'a@test.com', photoURL: '' };
   await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Alice', streakCount: 3 }, { merge: true });
   const realCurrentUser154 = currentUser;
-  currentUser = null; // fait echouer fetchMyRankAndNeighbors() (reference currentUser.uid), sans toucher fetchLeaderboardTop()
+  currentUser = null; // fait echouer le calcul meInTop/fetchMyLeaderboardNeighbors() (reference currentUser.uid), sans toucher fetchLeaderboardTop()
   await loadCommunityLeaderboard('streaks');
   currentUser = realCurrentUser154;
-  __assertEq(communityLeaderboardTop.length, 1, 'le top N doit rester peuple meme si la requete de rang/voisins echoue independamment');
-  __assertEq(communityLeaderboardRank, null, 'le rang doit rester null (pas de valeur fantome) quand sa propre requete a echoue');
+  __assertEq(communityLeaderboardTop.length, 1, 'le top N doit rester peuple meme si la requete de voisins echoue independamment');
+  __assertEq(communityLeaderboardNeighbors, null, 'les voisins doivent rester null (pas de valeur fantome) quand leur propre requete a echoue');
   __resetCommunityMocks();
-  console.log('OK: le top N du classement et le rang/voisins ont des etats d echec independants');
+  console.log('OK: le top N du classement et les voisins ont des etats d echec independants');
 
   // --- 155. Cliquer sur l onglet deja actif doit reinitialiser sa pile de navigation
   // (fiche defi ouverte, formulaire, Parametres) et revenir a la racine -- avant ce

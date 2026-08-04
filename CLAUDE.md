@@ -1479,3 +1479,57 @@ complètement, hors scope d'un changement "invisible côté client".
    Le listener de progression Boss Battle (détection de victoire) et les
    notifications restent volontairement toujours actifs, aucune perte de popup/alerte.
 
+## Classement sans scan complet (Top 50 + voisins ciblés) — suite de l'optimisation quota, 1 changement visible assumé
+
+**Contexte** : la mesure #3 ci-dessus réduisait déjà le nombre de scans complets du
+classement, mais le scan lui-même (coût O(N), croissant avec la taille TOTALE du
+classement) restait la limite structurelle identifiée dans l'audit. Discuté avec
+l'utilisateur, qui a validé un changement UX ciblé pour l'éliminer complètement côté
+client (sans Cloud Function, pour rester sur le plan Spark) :
+
+- **Top 50 direct** (`fetchLeaderboardTop(view, 50)`) : simple `.limit(50)`, plus
+  jamais de lecture complète — coût désormais BORNÉ, indépendant de la taille du
+  classement.
+- **Voisins par requêtes ciblées** (`fetchMyLeaderboardNeighbors()`) : si je ne suis
+  pas dans le Top 50, 2 requêtes indépendantes (`where(champ,'>',maValeur)
+  .orderBy(champ,'asc').limit(1)` et l'inverse en `'<'`/`'desc'`) trouvent le voisin
+  immédiat au-dessus/en-dessous — coût FIXE (2 lectures), jamais O(N).
+- **Changement visible assumé** : plus de rang numérique exact hors Top 50 (ex:
+  "#1234") — impossible à calculer sans scanner tout le classement OU sans `.count()`,
+  qui est **confirmé absent du SDK compat 10.13.0 réellement chargé ici** (déjà
+  documenté ailleurs dans ce fichier : `TypeError: count is not a function` observé en
+  production). Remplacé par un badge **"Hors Top 50"** sur ma ligne, et des labels
+  relatifs **"Juste devant"/"Juste derrière"** sur mes 2 voisins (au lieu d'un rang
+  qu'on ne connaît plus) — décision explicitement validée par l'utilisateur. Écart de
+  points avec la personne juste au-dessus affiché en plus (`rank-gap-hint`), pour
+  garder le côté stimulant sans rang exact.
+- **Limite assumée sur les égalités** : les requêtes `>`/`<` strictes peuvent sauter
+  par-dessus des personnes à égalité EXACTE de score — acceptable pour un indicateur
+  motivationnel, pas un classement audité au document près.
+- **Cache TTL 15 minutes** (`leaderboardTopCache`/`leaderboardNeighborsCache`,
+  `invalidateLeaderboardCache()`) : remplace l'ancienne politique "toujours frais à
+  chaque entrée sur l'onglet" par un compromis explicitement demandé par
+  l'utilisateur — les données des AUTRES membres peuvent avoir jusqu'à 15 min de
+  retard entre 2 visites, en échange de moins de lectures. **Invalidation immédiate**
+  dès que MES propres données changent (`syncLeaderboardEntry()` appelle
+  `invalidateLeaderboardCache()`), pour ne jamais retarder l'affichage de mon propre
+  score après une séance.
+- **Résilience préservée** : le calcul "suis-je dans le Top N" + la requête voisins
+  restent dans le MÊME `try/catch`, indépendant de celui du Top N (déjà un incident
+  de prod par le passé : un `Promise.all` englobant les 2 effaçait le Top N à tort en
+  cas d'échec isolé de l'autre requête — voir le test dédié `#154`).
+
+**⚠️ Action manuelle requise (une fois, en dehors du code)** : la requête "voisin
+au-dessus" pour la vue **Hebdomadaire** (`where('xpWeekStart','==',...)
+.where('xpWeekly','>',...).orderBy('xpWeekly','asc')`) nécessite un **nouvel index
+composite Firestore** (`xpWeekStart` Ascendant + `xpWeekly` Ascendant) qui n'existe
+probablement pas encore — l'ancien scan complet utilisait le tri inverse (`xpWeekly`
+Descendant), déjà indexé, mais PAS ce sens-ci. Sans cet index, la requête échoue
+proprement (gérée par le `try/catch` ci-dessus : le bloc "Hors Top 50" reste
+simplement invisible pour la vue Hebdomadaire, aucun crash) jusqu'à ce que l'index
+soit créé — via le lien que Firebase affiche dans la console au premier échec, ou en
+l'ajoutant proactivement dans Firestore > Index > Composites. Les vues Séries/
+Légendes n'ont besoin d'aucun nouvel index (un seul champ, sans filtre d'égalité —
+couvertes par l'index automatique à champ unique que Firestore crée pour chaque
+champ, dans les deux sens de tri).
+
