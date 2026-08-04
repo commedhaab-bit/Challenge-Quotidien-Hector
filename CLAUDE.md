@@ -1426,7 +1426,10 @@ complètement, hors scope d'un changement "invisible côté client".
    SEUL `.set({...},{merge:true})`, au lieu d'un appel par champ. Jusqu'à 7→1 sur une
    complétion d'exercice.
 2. **Debounce des écritures haute fréquence** (`scheduleWorkoutWriteFlush()`/
-   `flushWorkoutWrites()`, 800ms) : `addSet()`/`undoLast()` ne déclenchent plus
+   `flushWorkoutWrites()`, `WORKOUT_WRITE_DEBOUNCE_MS` = 1500ms — relevé depuis 800ms
+   à la demande explicite de l'utilisateur pour plus de marge, sans risque
+   supplémentaire réel puisque c'est le flush forcé ci-dessous, pas la durée du
+   timer, qui garantit l'absence de perte) : `addSet()`/`undoLast()` ne déclenchent plus
    l'écriture réseau immédiatement à chaque tap — la mise à jour LOCALE reste
    instantanée, seul l'aller-retour Firestore est différé et fusionné si plusieurs
    taps se suivent. **Flush forcé, jamais de perte** : `visibilitychange` (vers

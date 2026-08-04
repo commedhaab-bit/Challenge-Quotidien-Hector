@@ -360,7 +360,7 @@ async function flushAppDataBatchNow() {
 // avant même qu'un beforeunload — non garanti sur mobile — ait une chance de se
 // déclencher ; pagehide en secours). Le pire cas est un flush plus TÔT que prévu,
 // jamais plus tard : zéro risque de perte.
-const WORKOUT_WRITE_DEBOUNCE_MS = 800;
+const WORKOUT_WRITE_DEBOUNCE_MS = 1500;
 let workoutWriteDebounceTimer = null;
 let workoutFlushPending = false;
 

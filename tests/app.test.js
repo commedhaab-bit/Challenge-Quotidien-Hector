@@ -2274,7 +2274,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v43'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v44'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4024,7 +4024,7 @@ const cssText = __rawHtml + __cssSource;
   addSet(1); // sans await : simule un tap - le debounce programme le flush, n ecrit pas encore
   addSet(1);
   addSet(1);
-  await new Promise(r => setTimeout(r, 0)); // laisse les 3 appels se derouler (mais PAS le delai du debounce, 800ms)
+  await new Promise(r => setTimeout(r, 0)); // laisse les 3 appels se derouler (mais PAS le delai du debounce, voir WORKOUT_WRITE_DEBOUNCE_MS)
   __assertEq(__appDataSetCallCount, 0, 'juste apres 3 taps rapproches, aucune ecriture Firestore ne doit encore avoir eu lieu (debounce en cours)');
   __assertEq(__dbSetDayCallCount, 0, 'idem pour le document day:{date}');
   __assertEq(stats[pompes.id].lifetimeTotal, 3, 'la donnee LOCALE doit deja refleter les 3 taps, jamais retardee par le debounce');
