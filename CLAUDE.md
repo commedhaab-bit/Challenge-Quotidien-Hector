@@ -825,3 +825,40 @@ milieu du fichier DOIT snapshotter (clone JSON) puis restaurer l'intégralité d
 globals + `__appDataStore.data`/`.exists` — voir le test "pseudo public obligatoire"
 pour le patron exact à copier.
 
+## Amis (demande mutuelle) — batch 3/6 du chantier amis/fil d'activité/kudos
+
+`friendships/{uidA}_{uidB}` (uidA/uidB **triés lexicographiquement**, `friendshipPairId()`)
+= UN SEUL document par paire, jamais besoin d'écrire dans le document personnel de
+l'autre utilisateur — c'est la décision de conception la plus importante de ce batch :
+une alternative "ajouter chacun à un tableau `friendUids` sur le profil de l'autre"
+aurait exigé d'accorder à n'importe quel utilisateur authentifié le droit d'écrire
+dans le document personnel d'un autre (surface de règles Firestore beaucoup plus
+risquée). `friendRequests/{fromUid}_{toUid}` (`friendRequestId()`) : ID déterministe —
+permet un `exists()` direct dans les règles (sans query), et empêche naturellement le
+double-envoi (`create` sur un ID déjà existant échoue).
+
+**`acceptFriendRequest(fromUid)`** : `db.batch()` (1ᵉʳ vrai usage produit, après son
+ajout au mock au batch 1) — crée `friendships/{paire}` ET supprime
+`friendRequests/{from}_{to}` en un seul `commit()` atomique. **`declineFriendRequest()`**
+supprime juste la demande (aucune trace). **`removeFriend()`** passe par `confirmModal()`
+(7ᵉ site du projet à l'utiliser, cf. test de comptage exact des sites `await
+confirmModal({` — à incrémenter à chaque nouveau site, sinon ce test échoue par
+construction) puis supprime le document `friendships` partagé.
+
+**Recherche = exact uniquement, jamais de préfixe/autocomplete** (`submitFriendSearch()`,
+déclenché par un bouton, pas par la frappe — contrairement au check de disponibilité du
+pseudo qui, lui, est bien live/debounced) : `usernames/{pseudo}.get()` → uid → 
+`fetchPublicProfile(uid)`. Cette dernière réutilise `leaderboard/{uid}` comme source
+d'affichage (avatar + `formatDisplayName()`) — **effet de bord volontaire** : un
+utilisateur qui a désactivé le classement (`leaderboardOptOut`, qui supprime son
+document `leaderboard`) devient de facto introuvable/non affichable dans la recherche
+d'amis aussi. L'opt-out classement vaut opt-out découverte, plutôt que 2 réglages de
+vie privée séparés à maintenir en cohérence.
+
+**Badge de notification** (`.friends-btn`/`.friends-badge`, en-tête
+`renderCommunityScreen()`) : `incomingFriendRequests` est chargé au DÉMARRAGE
+(`continueStartApp()` appelle `refreshFriendsData()` sans l'attendre — juste pour ce
+badge, ne doit jamais bloquer le premier rendu), pas seulement à l'ouverture de l'écran
+Amis, sinon l'utilisateur ne remarquerait jamais une demande reçue sans ouvrir l'écran
+en question.
+

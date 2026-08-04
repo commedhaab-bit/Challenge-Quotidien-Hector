@@ -2123,7 +2123,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v22'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v23'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2340,10 +2340,10 @@ const cssText = __rawHtml + __cssSource;
   // par simple recherche de texte — la preuve la plus fiable est le comptage positif
   // exact des 4 remplacements, deja verifie fonctionnellement pour deleteChallenge au
   // test 11 plus haut). ---
-  // 5 depuis l ajout de l import de donnees (batch Parametres) : compte x2, defi,
-  // suggestion d objectif, + confirmation avant import destructif.
+  // 7 depuis l ajout de removeFriend() (chantier amis) : compte x2, defi, suggestion
+  // d objectif, import de donnees, forcer la mise a jour, + retirer un ami.
   const confirmModalCallCount = (__rawHtml.match(/await confirmModal\\(\\{/g) || []).length;
-  __assertEq(confirmModalCallCount, 6, 'les 6 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour) doivent utiliser confirmModal');
+  __assertEq(confirmModalCallCount, 7, 'les 7 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami) doivent utiliser confirmModal');
   console.log('OK: les 4 anciens confirm() natifs (compte x2, defi, suggestion objectif) passent par confirmModal');
 
   // --- 99. Ecran Parametres dedie : navigation (ouverture/fermeture) + regroupe le
@@ -3304,6 +3304,115 @@ const cssText = __rawHtml + __cssSource;
   const recreatedDoc = await db.collection('leaderboard').doc('test-uid').get();
   __assertOk(recreatedDoc.exists, 'reactiver la participation doit resynchroniser immediatement le document');
   console.log('OK: toggle vie privee du classement (suppression reelle du document, resynchronisation a la reactivation)');
+
+  // --- 145bis. Amis (demande mutuelle) : recherche exacte par pseudo, envoi/acceptation/
+  // refus/retrait, badge de notification, jamais besoin d ecrire dans le document
+  // personnel d autrui (friendships/{paire triee} + friendRequests/{from}_{to}). ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  myFriends = []; incomingFriendRequests = []; outgoingFriendRequestUids = new Set();
+  friendSearchQuery = ''; friendSearchResult = null;
+
+  // ID deterministes.
+  __assertEq(friendRequestId('a', 'b'), 'a_b', 'friendRequestId doit etre from_to, dans cet ordre');
+  __assertEq(friendshipPairId('zoe', 'alice'), 'alice_zoe', 'friendshipPairId doit trier les 2 uids');
+  __assertEq(friendshipPairId('alice', 'zoe'), 'alice_zoe', 'friendshipPairId doit etre le meme quel que soit l ordre d appel');
+
+  // Recherche : pseudo introuvable.
+  friendSearchQuery = 'inconnu123';
+  await submitFriendSearch();
+  __assertEq(friendSearchResult, 'not-found', 'un pseudo non reserve doit etre signale introuvable');
+
+  // Recherche : son propre pseudo.
+  await usernamesCollRef().doc('moipseudo').set({ uid: 'me-uid' });
+  friendSearchQuery = 'moipseudo';
+  await submitFriendSearch();
+  __assertEq(friendSearchResult, 'self', 'rechercher son propre pseudo doit etre signale explicitement');
+
+  // Recherche : pseudo reserve mais personne introuvable (opt-out classement = opt-out
+  // decouverte, effet de bord voulu -- voir fetchPublicProfile()).
+  await usernamesCollRef().doc('fantome').set({ uid: 'ghost-uid' });
+  friendSearchQuery = 'fantome';
+  await submitFriendSearch();
+  __assertEq(friendSearchResult, 'not-found', 'un pseudo reserve par quelqu un qui a desactive le classement doit rester introuvable');
+
+  // Recherche : trouve, aucune relation encore -> bouton "+ Ajouter".
+  await usernamesCollRef().doc('alicepseudo').set({ uid: 'alice-uid' });
+  await db.collection('leaderboard').doc('alice-uid').set({ displayName: 'Alice Dupont', photoURL: '' }, { merge: true });
+  friendSearchQuery = 'alicepseudo';
+  await submitFriendSearch();
+  __assertOk(typeof friendSearchResult === 'object' && friendSearchResult.uid === 'alice-uid' && friendSearchResult.relation === 'none', 'un pseudo trouve sans relation existante doit permettre d envoyer une demande');
+  __assertEq(friendSearchResult.displayName, 'Alice D.', 'le nom affiche doit etre anonymise (formatDisplayName), jamais le nom complet');
+  const searchResultHtml = renderFriendsScreen();
+  __assertOk(searchResultHtml.includes("sendFriendRequest('alice-uid')"), 'le bouton doit permettre d envoyer une demande a ce uid precis');
+
+  // Envoi de la demande.
+  await sendFriendRequest('alice-uid');
+  const sentReqDoc = await db.collection('friendRequests').doc('me-uid_alice-uid').get();
+  __assertOk(sentReqDoc.exists && sentReqDoc.data().fromUid === 'me-uid' && sentReqDoc.data().toUid === 'alice-uid', 'la demande doit etre creee avec un ID deterministe from_to');
+  __assertEq(friendSearchResult.relation, 'request-sent', 'l etat local doit refleter immediatement la demande envoyee (sans re-recherche)');
+
+  // Cote destinataire (Alice) : la demande doit apparaitre en "recue".
+  currentUser = { uid: 'alice-uid', displayName: 'Alice Dupont', email: 'a@test.com', photoURL: '' };
+  await refreshFriendsData();
+  __assertEq(incomingFriendRequests.length, 1, 'Alice doit voir 1 demande recue');
+  __assertEq(incomingFriendRequests[0].fromUid, 'me-uid', 'la demande recue doit venir de moi-uid');
+  const communityHeaderHtml = renderCommunityScreen();
+  __assertOk(communityHeaderHtml.includes('friends-badge') && communityHeaderHtml.includes('>1<'), 'le bouton Amis doit afficher un badge avec le nombre de demandes en attente');
+
+  // Acceptation : cree friendships/{paire triee}, supprime la demande, jamais d ecriture
+  // dans le document personnel de l autre (aucune collection users/{uid}/... touchee ici).
+  await acceptFriendRequest('me-uid');
+  const friendshipDoc = await db.collection('friendships').doc(friendshipPairId('me-uid', 'alice-uid')).get();
+  __assertOk(friendshipDoc.exists, 'accepter doit creer le document friendships partage');
+  __assertEq([friendshipDoc.data().uidA, friendshipDoc.data().uidB].sort(), ['alice-uid', 'me-uid'], 'le document friendships doit contenir les 2 uids');
+  const reqAfterAccept = await db.collection('friendRequests').doc('me-uid_alice-uid').get();
+  __assertOk(!reqAfterAccept.exists, 'la demande doit etre supprimee une fois acceptee (pas juste marquee)');
+  __assertEq(incomingFriendRequests.length, 0, 'la demande acceptee ne doit plus apparaitre en attente');
+  __assertOk(myFriends.some(f => f.uid === 'me-uid'), 'Alice doit maintenant voir "moi" dans sa liste d amis');
+
+  // Cote "moi" : doit aussi voir Alice comme amie (meme document partage, requete
+  // symetrique uidA/uidB).
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  await refreshFriendsData();
+  __assertOk(myFriends.some(f => f.uid === 'alice-uid'), 'moi doit aussi voir Alice comme amie, sans qu aucun document dans mon espace personnel n ait ete modifie par Alice');
+
+  // Refus (avec un 2e utilisateur, Bob) : supprime juste la demande, ne cree JAMAIS de friendships.
+  await usernamesCollRef().doc('bobpseudo').set({ uid: 'bob-uid' });
+  await db.collection('leaderboard').doc('bob-uid').set({ displayName: 'Bob Martin', photoURL: '' }, { merge: true });
+  await sendFriendRequest('bob-uid');
+  currentUser = { uid: 'bob-uid', displayName: 'Bob Martin', email: 'b@test.com', photoURL: '' };
+  await refreshFriendsData();
+  __assertEq(incomingFriendRequests.length, 1, 'Bob doit voir la demande de "moi"');
+  await declineFriendRequest('me-uid');
+  const reqAfterDecline = await db.collection('friendRequests').doc('me-uid_bob-uid').get();
+  __assertOk(!reqAfterDecline.exists, 'refuser doit supprimer la demande');
+  const friendshipAfterDecline = await db.collection('friendships').doc(friendshipPairId('me-uid', 'bob-uid')).get();
+  __assertOk(!friendshipAfterDecline.exists, 'refuser ne doit JAMAIS creer de document friendships');
+
+  // Retrait d un ami : passe par confirmModal (comme les autres actions destructives du
+  // projet), supprime le document friendships partage.
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  await refreshFriendsData();
+  __assertOk(myFriends.some(f => f.uid === 'alice-uid'), 'pre-requis : Alice doit encore etre amie avant le test de retrait');
+  const removeFriendPromise = removeFriend('alice-uid');
+  currentConfirmModalEl.querySelector('#confirmModalConfirmBtn').onclick();
+  await removeFriendPromise;
+  const friendshipAfterRemove = await db.collection('friendships').doc(friendshipPairId('me-uid', 'alice-uid')).get();
+  __assertOk(!friendshipAfterRemove.exists, 'retirer un ami doit supprimer le document friendships partage');
+  __assertOk(!myFriends.some(f => f.uid === 'alice-uid'), 'Alice ne doit plus apparaitre dans ma liste d amis apres retrait');
+
+  // Ecran Amis : ecran pousse, dismissible via goBackOneLevel() (pas de verrou ici,
+  // contrairement au pseudo obligatoire).
+  friendsScreenOpen = true;
+  goBackOneLevel();
+  __assertEq(friendsScreenOpen, false, 'l ecran Amis doit etre dismissible via le bouton retour');
+
+  __resetCommunityMocks();
+  myFriends = []; incomingFriendRequests = []; outgoingFriendRequestUids = new Set();
+  friendSearchQuery = ''; friendSearchResult = null;
+  currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
+  console.log('OK: systeme d amis (recherche exacte par pseudo, demande/acceptation/refus/retrait, badge de notification, jamais d ecriture dans le document personnel d autrui)');
 
   // --- 146. Classement 3 vues + rang exact avec voisins directs ---
   __resetCommunityMocks();

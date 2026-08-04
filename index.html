@@ -385,6 +385,12 @@ auth.onAuthStateChanged(user => {
     usernameSetupMode = null;
     usernameDraft = '';
     usernameAvailability = null;
+    friendsScreenOpen = false;
+    friendSearchQuery = '';
+    friendSearchResult = null;
+    myFriends = [];
+    incomingFriendRequests = [];
+    outgoingFriendRequestUids = new Set();
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
@@ -1374,6 +1380,11 @@ function goBackOneLevel() {
     render(true);
     return;
   }
+  if (friendsScreenOpen) {
+    friendsScreenOpen = false;
+    render(true);
+    return;
+  }
   if (settingsScreenOpen) {
     settingsScreenOpen = false;
     render(true);
@@ -1882,6 +1893,173 @@ let communityLeaderboardRank = null;
 let communityLeaderboardNeighbors = [];
 let communityTopContributorToday = null;
 let communityBossBattleArchive = [];
+
+// ==== AMIS (demande mutuelle) ====
+// `friendships/{uidA}_{uidB}` (uidA/uidB triés) : UN SEUL document par paire, jamais
+// besoin d'écrire dans le document personnel de l'autre (le point le plus sensible en
+// règles de sécurité) — accepter une demande crée ce document partagé + supprime la
+// demande, plutôt que d'ajouter chacun à un tableau `friendUids` sur le profil de
+// l'autre. `friendRequests/{fromUid}_{toUid}` : ID déterministe, permet un `exists()`
+// direct dans les règles Firestore (sans query) et empêche naturellement le double-envoi.
+let friendsScreenOpen = false;
+let friendSearchQuery = '';
+let friendSearchResult = null; // null | 'searching' | 'not-found' | 'self' | { uid, displayName, photoURL, relation }
+let myFriends = []; // [{ uid, displayName, photoURL }]
+let incomingFriendRequests = []; // [{ fromUid, displayName, photoURL, at }]
+let outgoingFriendRequestUids = new Set();
+
+function friendRequestId(fromUid, toUid) {
+  return fromUid + '_' + toUid;
+}
+function friendshipPairId(uidX, uidY) {
+  return [uidX, uidY].sort().join('_');
+}
+
+// Source d'affichage publique (avatar/nom déjà anonymisé) pour un uid quelconque :
+// réutilise `leaderboard/{uid}` plutôt qu'une nouvelle collection dédiée. Effet de bord
+// volontaire : un utilisateur qui a désactivé le classement (leaderboardOptOut, qui
+// supprime son document leaderboard) devient de facto introuvable/non affichable ici
+// aussi — l'opt-out classement vaut opt-out découverte, cohérent plutôt que 2 réglages
+// de vie privée séparés à gérer.
+async function fetchPublicProfile(uid) {
+  const doc = await db.collection('leaderboard').doc(uid).get();
+  if (!doc.exists) return null;
+  const d = doc.data();
+  return { displayName: formatDisplayName(d.displayName), photoURL: d.photoURL || '' };
+}
+
+/**
+ * Recharge tout ce qu'affiche l'écran Amis : mes amis (2 requêtes friendships,
+ * fusionnées côté client — même principe que les paires de lectures indépendantes déjà
+ * en place ailleurs dans ce projet), demandes reçues, uids des demandes déjà envoyées
+ * (pour l'état du bouton de recherche). Appelée au démarrage (pour le badge de
+ * notification sur le bouton "Amis") et après chaque action (envoyer/accepter/refuser/
+ * retirer).
+ */
+async function refreshFriendsData() {
+  if (!currentUser) return;
+  try {
+    const [snapA, snapB, incomingSnap, outgoingSnap] = await Promise.all([
+      db.collection('friendships').where('uidA', '==', currentUser.uid).get(),
+      db.collection('friendships').where('uidB', '==', currentUser.uid).get(),
+      db.collection('friendRequests').where('toUid', '==', currentUser.uid).get(),
+      db.collection('friendRequests').where('fromUid', '==', currentUser.uid).get(),
+    ]);
+    const friendUids = [
+      ...snapA.docs.map(d => d.data().uidB),
+      ...snapB.docs.map(d => d.data().uidA),
+    ];
+    const incomingDocs = incomingSnap.docs.map(d => d.data());
+    outgoingFriendRequestUids = new Set(outgoingSnap.docs.map(d => d.data().toUid));
+    const [friendProfiles, incomingProfiles] = await Promise.all([
+      Promise.all(friendUids.map(uid => fetchPublicProfile(uid))),
+      Promise.all(incomingDocs.map(d => fetchPublicProfile(d.fromUid))),
+    ]);
+    myFriends = friendUids.map((uid, i) => ({ uid, ...(friendProfiles[i] || { displayName: 'Athlète', photoURL: '' }) }));
+    incomingFriendRequests = incomingDocs.map((d, i) => ({ fromUid: d.fromUid, at: d.at, ...(incomingProfiles[i] || { displayName: 'Athlète', photoURL: '' }) }));
+    render();
+  } catch (e) {
+    reportSaveError('refresh friends data failed', e);
+  }
+}
+
+function openFriendsScreen() {
+  friendsScreenOpen = true;
+  friendSearchQuery = '';
+  friendSearchResult = null;
+  pushNavState();
+  render(true);
+}
+
+function updateFriendSearchQuery(value) {
+  friendSearchQuery = sanitizeUsernameInput(value);
+  friendSearchResult = null;
+  render();
+}
+
+async function submitFriendSearch() {
+  const query = friendSearchQuery;
+  if (query.length < 3) return;
+  friendSearchResult = 'searching';
+  render();
+  try {
+    const claimDoc = await usernamesCollRef().doc(query).get();
+    if (!claimDoc.exists) { friendSearchResult = 'not-found'; render(); return; }
+    const targetUid = claimDoc.data().uid;
+    if (targetUid === currentUser.uid) { friendSearchResult = 'self'; render(); return; }
+    const profile = await fetchPublicProfile(targetUid);
+    if (!profile) { friendSearchResult = 'not-found'; render(); return; }
+    let relation = 'none';
+    if (myFriends.some(f => f.uid === targetUid)) relation = 'friend';
+    else if (outgoingFriendRequestUids.has(targetUid)) relation = 'request-sent';
+    else if (incomingFriendRequests.some(r => r.fromUid === targetUid)) relation = 'request-received';
+    friendSearchResult = { uid: targetUid, displayName: profile.displayName, photoURL: profile.photoURL, relation };
+  } catch (e) {
+    reportSaveError('friend search failed', e);
+    friendSearchResult = null;
+  }
+  render();
+}
+
+async function sendFriendRequest(targetUid) {
+  try {
+    await db.collection('friendRequests').doc(friendRequestId(currentUser.uid, targetUid)).set({
+      fromUid: currentUser.uid, toUid: targetUid, at: Date.now(),
+    });
+    outgoingFriendRequestUids.add(targetUid);
+    if (friendSearchResult && typeof friendSearchResult === 'object' && friendSearchResult.uid === targetUid) {
+      friendSearchResult.relation = 'request-sent';
+    }
+    if (navigator.vibrate) navigator.vibrate(10);
+    render();
+  } catch (e) {
+    reportSaveError('send friend request failed', e);
+  }
+}
+
+async function acceptFriendRequest(fromUid) {
+  const pairId = friendshipPairId(fromUid, currentUser.uid);
+  const [uidA, uidB] = [fromUid, currentUser.uid].sort();
+  try {
+    const batch = db.batch();
+    batch.set(db.collection('friendships').doc(pairId), { uidA, uidB, since: Date.now() });
+    batch.delete(db.collection('friendRequests').doc(friendRequestId(fromUid, currentUser.uid)));
+    await batch.commit();
+    if (navigator.vibrate) navigator.vibrate(10);
+    if (friendSearchResult && typeof friendSearchResult === 'object' && friendSearchResult.uid === fromUid) {
+      friendSearchResult.relation = 'friend';
+    }
+    await refreshFriendsData();
+  } catch (e) {
+    reportSaveError('accept friend request failed', e);
+  }
+}
+
+async function declineFriendRequest(fromUid) {
+  try {
+    await db.collection('friendRequests').doc(friendRequestId(fromUid, currentUser.uid)).delete();
+    await refreshFriendsData();
+  } catch (e) {
+    reportSaveError('decline friend request failed', e);
+  }
+}
+
+async function removeFriend(uid) {
+  const confirmed = await confirmModal({
+    icon: '👋',
+    title: 'Retirer cet ami ?',
+    subtitle: "Il ne sera plus visible dans ton fil d'activité et ne verra plus le tien.",
+    confirmLabel: 'Retirer',
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    await db.collection('friendships').doc(friendshipPairId(uid, currentUser.uid)).delete();
+    await refreshFriendsData();
+  } catch (e) {
+    reportSaveError('remove friend failed', e);
+  }
+}
 
 // Les 2 requêtes (top N, mon rang+voisins) sont VOLONTAIREMENT indépendantes (pas un
 // seul Promise.all englobant) : avec Promise.all, l'échec de l'une (ex: la requête de
@@ -3663,6 +3841,22 @@ function render(animate) {
     return;
   }
 
+  if (friendsScreenOpen) {
+    // Même filet de restauration du focus/curseur (voir usernameSetupMode ci-dessus) :
+    // updateFriendSearchQuery() appelle render() à chaque frappe.
+    const friendEl = document.activeElement;
+    const friendWasFocused = !!(friendEl && friendEl.id === 'friendSearchInput');
+    const friendCaret = friendWasFocused ? friendEl.selectionStart : null;
+    applyContent(app, renderFriendsScreen(), animate, () => {
+      if (!friendWasFocused) return;
+      const input = document.getElementById('friendSearchInput');
+      if (!input) return;
+      input.focus();
+      if (friendCaret !== null && input.setSelectionRange) input.setSelectionRange(friendCaret, friendCaret);
+    });
+    return;
+  }
+
   if (activeTab === 'history') {
     applyContent(app, renderHistoryScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
     return;
@@ -4921,6 +5115,7 @@ function renderCommunityScreen() {
   return `
     <div class="header">
       <div class="date">${formatDateLabel(new Date())}</div>
+      <button class="friends-btn" onclick="openFriendsScreen()">👥 Amis${incomingFriendRequests.length > 0 ? `<span class="friends-badge">${incomingFriendRequests.length}</span>` : ''}</button>
     </div>
     <h1 class="title">Communauté</h1>
     <div class="subtitle">Classement, défis partagés et objectifs collectifs</div>
@@ -4933,6 +5128,70 @@ function renderCommunityScreen() {
     <div class="leaderboard-list">${topHtml}</div>
     ${inviteHtml}
     ${rankBarHtml}
+  `;
+}
+
+function renderFriendActionRow(uid, displayName, photoURL, actionHtml) {
+  const avatar = photoURL
+    ? `<img src="${escapeHtml(photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
+    : `<div class="leaderboard-avatar-fallback">${escapeHtml(displayName.charAt(0).toUpperCase())}</div>`;
+  return `
+    <div class="leaderboard-row">
+      ${avatar}
+      <span class="leaderboard-name">${escapeHtml(displayName)}</span>
+      ${actionHtml}
+    </div>
+  `;
+}
+
+function renderFriendsScreen() {
+  let resultHtml = '';
+  if (friendSearchResult === 'searching') {
+    resultHtml = `<div class="history-empty">Recherche...</div>`;
+  } else if (friendSearchResult === 'not-found') {
+    resultHtml = `<div class="history-empty">Aucun pseudo "@${escapeHtml(friendSearchQuery)}" trouvé.</div>`;
+  } else if (friendSearchResult === 'self') {
+    resultHtml = `<div class="history-empty">C'est ton propre pseudo !</div>`;
+  } else if (friendSearchResult && typeof friendSearchResult === 'object') {
+    const r = friendSearchResult;
+    let actionHtml;
+    if (r.relation === 'friend') actionHtml = `<span class="friend-status">✓ Déjà ami</span>`;
+    else if (r.relation === 'request-sent') actionHtml = `<span class="friend-status">Demande envoyée</span>`;
+    else if (r.relation === 'request-received') actionHtml = `<button class="friend-action-btn" onclick="acceptFriendRequest('${escapeJsAttr(r.uid)}')">Accepter sa demande</button>`;
+    else actionHtml = `<button class="friend-action-btn" onclick="sendFriendRequest('${escapeJsAttr(r.uid)}')">+ Ajouter</button>`;
+    resultHtml = renderFriendActionRow(r.uid, r.displayName, r.photoURL, actionHtml);
+  }
+
+  const incomingHtml = incomingFriendRequests.length > 0 ? `
+    <div class="section-label">Demandes reçues</div>
+    <div class="leaderboard-list">
+      ${incomingFriendRequests.map(r => renderFriendActionRow(r.fromUid, r.displayName, r.photoURL, `
+        <button class="friend-action-btn" onclick="acceptFriendRequest('${escapeJsAttr(r.fromUid)}')">Accepter</button>
+        <button class="friend-action-btn ghost" onclick="declineFriendRequest('${escapeJsAttr(r.fromUid)}')">Refuser</button>
+      `)).join('')}
+    </div>
+  ` : '';
+
+  const friendsHtml = myFriends.length > 0 ? `
+    <div class="section-label">Mes amis</div>
+    <div class="leaderboard-list">
+      ${myFriends.map(f => renderFriendActionRow(f.uid, f.displayName, f.photoURL, `
+        <button class="icon-btn danger" onclick="removeFriend('${escapeJsAttr(f.uid)}')" aria-label="Retirer cet ami">🗑️</button>
+      `)).join('')}
+    </div>
+  ` : `<div class="history-empty">Pas encore d'amis — recherche un pseudo ci-dessus pour commencer.</div>`;
+
+  return `
+    <button class="nav-back-btn" onclick="history.back()" aria-label="Retour">‹</button>
+    <h1 class="title">Amis</h1>
+    <div class="subtitle">Retrouve tes amis par pseudo pour voir leurs efforts dans ton fil d'activité.</div>
+    <input class="library-search-input" id="friendSearchInput" type="text"
+           placeholder="🔍 Pseudo exact..." aria-label="Rechercher un ami par pseudo"
+           value="${escapeHtml(friendSearchQuery)}" oninput="updateFriendSearchQuery(this.value)">
+    <button class="friend-search-submit-btn" onclick="submitFriendSearch()">Rechercher</button>
+    ${resultHtml}
+    ${incomingHtml}
+    ${friendsHtml}
   `;
 }
 
@@ -5153,6 +5412,9 @@ async function continueStartApp() {
   await refreshWeeklyBossBattleTargetCache(); // AVANT startBossBattleListener() : la detection de victoire lit getWeeklyBossBattleTarget() de facon synchrone
   startBossBattleListener();
   startRecentContributionsListener();
+  // Pas de await : sert uniquement au badge de notification sur le bouton "Amis" (écran
+  // Communauté), pas bloquant pour le premier rendu — se termine par son propre render().
+  refreshFriendsData();
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).
