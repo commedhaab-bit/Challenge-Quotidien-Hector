@@ -2275,7 +2275,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v45'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v46'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4922,6 +4922,87 @@ const cssText = __rawHtml + __cssSource;
 
   currentLocale = localeBeforeBatch7e;
   console.log('OK: i18n batch 7e - audit final (bandeau hors ligne, verrou PWA, langue coach vocal)');
+
+  // --- 170. Fiche profil d'un ami (clic sur une ligne dans l'onglet Amis) : XP/niveau/
+  // titre/serie + activite recente, via une requete CIBLEE (pas le fil fusionne de tous
+  // les amis), avec repli explicite si l ami a desactive le classement. ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+
+  // fetchPublicProfile() expose desormais aussi xpTotal/streakCount (deja presents sur le
+  // doc leaderboard/{uid}, juste pas encore extraits avant ce chantier).
+  publicProfileCache = {};
+  await db.collection('leaderboard').doc('amie-uid').set({ displayName: 'Bea Martin', photoURL: '', xpTotal: 450, streakCount: 4 }, { merge: true });
+  const profilAvecXp = await fetchPublicProfile('amie-uid');
+  __assertEq(profilAvecXp.xpTotal, 450, 'fetchPublicProfile doit desormais exposer xpTotal, necessaire a la fiche profil d un ami');
+  __assertEq(profilAvecXp.streakCount, 4, 'fetchPublicProfile doit desormais exposer streakCount');
+
+  // renderFriendActionRow() : seul clickable=true (liste "Mes amis") ouvre la fiche
+  // profil au clic sur la ligne - recherche et demandes recues restent non cliquables.
+  const rowNonCliquable = renderFriendActionRow('u1', 'Nom', '', '<span></span>');
+  __assertOk(!rowNonCliquable.includes('openFriendProfile('), 'sans clickable=true (recherche/demandes), la ligne ne doit PAS ouvrir de fiche profil');
+  const rowCliquable = renderFriendActionRow('u1', 'Nom', '', '<span></span>', true);
+  __assertOk(rowCliquable.includes("openFriendProfile('u1'"), 'clickable=true (liste Mes amis) doit ouvrir la fiche profil au clic sur la ligne');
+  __assertOk(rowCliquable.includes('leaderboard-row clickable'), 'la ligne cliquable doit porter la classe CSS clickable (curseur pointeur)');
+
+  // renderFriendsScreen() : le bouton "retirer" (🗑️) doit stopper la propagation, sinon
+  // il declencherait AUSSI l ouverture de la fiche profil de l ami qu on retire.
+  myFriends = [{ uid: 'amie-uid', displayName: 'Bea M.', photoURL: '' }];
+  incomingFriendRequests = []; outgoingFriendRequestUids = new Set();
+  friendSearchQuery = ''; friendSearchResult = null;
+  const friendsScreenHtml = renderFriendsScreen();
+  __assertOk(friendsScreenHtml.includes("event.stopPropagation(); removeFriend('amie-uid')"), 'le bouton retirer doit stopper la propagation avant de retirer l ami');
+
+  // renderFriendProfileSheet() : etats chargement / contenu complet / repli opt-out.
+  const sheetChargement = renderFriendProfileSheet({ displayName: 'Bea M.', photoURL: '', loading: true });
+  __assertOk(sheetChargement.includes(t('friends.profileLoading')), 'etat de chargement doit etre affiche pendant le fetch');
+
+  const activitesAmie = [
+    { id: 'a1', uid: 'amie-uid', displayName: 'Bea M.', challengeName: 'Pompes', amount: 20, unit: 'reps', at: Date.now(), kudosCount: 0 },
+  ];
+  const sheetComplete = renderFriendProfileSheet({ displayName: 'Bea M.', photoURL: '', loading: false, profile: { xpTotal: 320, streakCount: 4 }, activities: activitesAmie, activitiesFailed: false });
+  __assertOk(sheetComplete.includes('Niveau'), 'la fiche doit afficher le niveau de l ami (xpProgress/athleteTitle, purs sur un xpTotal quelconque)');
+  __assertOk(sheetComplete.includes('4 j'), 'la fiche doit afficher la serie de l ami');
+  __assertOk(sheetComplete.includes('Pompes'), 'la fiche doit lister l activite recente de l ami (renderActivityFeedRow reutilise tel quel)');
+
+  const sheetActivitesVides = renderFriendProfileSheet({ displayName: 'Bea M.', photoURL: '', loading: false, profile: { xpTotal: 320, streakCount: 0 }, activities: [], activitiesFailed: false });
+  __assertOk(sheetActivitesVides.includes(t('friends.noRecentActivity')), 'sans activite recente, un etat vide explicite doit s afficher (pas une liste blanche)');
+
+  const sheetIndisponible = renderFriendProfileSheet({ displayName: 'Ami Prive', photoURL: '', loading: false, profile: null });
+  __assertOk(sheetIndisponible.includes(t('friends.profileUnavailable')), 'si le profil public est absent (ami ayant desactive le classement), afficher un repli explicite');
+  console.log('OK: renderFriendProfileSheet() gere chargement / contenu complet (XP, titre, serie, activite) / repli opt-out');
+
+  // openFriendProfile() : orchestration reelle - fetch profil PUIS fetch activite CIBLEE
+  // (pas le fil fusionne de tous les amis, filtre bien par uid), avec court-circuit total
+  // si le profil est indisponible (jamais d appel a fetchFriendRecentActivities dans ce cas).
+  __resetCommunityMocks();
+  publicProfileCache = {};
+  await db.collection('leaderboard').doc('amie-uid').set({ displayName: 'Bea Martin', photoURL: '', xpTotal: 450, streakCount: 4 }, { merge: true });
+  await db.collection('activityFeed').add({ uid: 'amie-uid', displayName: 'Bea M.', challengeName: 'Squats', amount: 30, unit: 'reps', at: 1000, kudosCount: 0 });
+  await db.collection('activityFeed').add({ uid: 'autre-uid', displayName: 'Autre', challengeName: 'Pompes', amount: 10, unit: 'reps', at: 2000, kudosCount: 0 });
+
+  let friendActivitiesFetchCallCount = 0;
+  const originalFetchFriendRecentActivities = fetchFriendRecentActivities;
+  fetchFriendRecentActivities = async (...args) => { friendActivitiesFetchCallCount++; return originalFetchFriendRecentActivities(...args); };
+
+  await openFriendProfile('amie-uid', 'Bea Martin', '');
+  __assertEq(friendProfileOpenUid, 'amie-uid', 'openFriendProfile doit marquer la fiche comme ouverte pour ce uid');
+  __assertEq(friendActivitiesFetchCallCount, 1, 'openFriendProfile doit declencher exactement 1 requete activite ciblee');
+  const activitesAmieSeule = await originalFetchFriendRecentActivities('amie-uid');
+  __assertEq(activitesAmieSeule.length, 1, 'la requete ciblee (where uid==, pas where uid in) ne doit renvoyer QUE l activite de CET ami, pas celle des autres utilisateurs');
+  __assertEq(activitesAmieSeule[0].challengeName, 'Squats', 'seule l activite de l ami demande doit remonter');
+
+  closeFriendProfile();
+  __assertEq(friendProfileOpenUid, null, 'closeFriendProfile doit refermer la fiche (plus aucun uid ouvert)');
+
+  publicProfileCache = {};
+  friendActivitiesFetchCallCount = 0;
+  await openFriendProfile('inconnu-uid', 'Fantome', '');
+  __assertEq(friendActivitiesFetchCallCount, 0, 'si le profil public est indisponible (opt-out classement), ne JAMAIS interroger le fil d activite (court-circuit)');
+  closeFriendProfile();
+
+  fetchFriendRecentActivities = originalFetchFriendRecentActivities;
+  console.log('OK: openFriendProfile() ne lit que les donnees de CET ami via une requete ciblee, et court-circuite proprement si le profil est indisponible');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

@@ -810,6 +810,29 @@
     color: var(--accent);
     flex-shrink: 0;
   }
+  .leaderboard-row.clickable {
+    cursor: pointer;
+  }
+  .friend-profile-streak {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--chalk-dim);
+    margin: 4px 0 14px;
+  }
+  .friend-profile-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .friend-profile-header .leaderboard-avatar,
+  .friend-profile-header .leaderboard-avatar-fallback {
+    width: 64px;
+    height: 64px;
+    font-size: 22px;
+    margin-bottom: 10px;
+  }
   /* Barre de rang ancrée en bas (au-dessus de la tab-bar, z-index 500) : rang exact
      de l'utilisateur + ses voisins directs, toujours visible pendant le défilement
      du classement. */

@@ -225,6 +225,10 @@ const LOCALE_FR = {
     removeFriendAria: 'Retirer cet ami',
     noFriends: "Pas encore d'amis — recherche un pseudo ci-dessus pour commencer.",
     unknownProfile: 'Athlète',
+    profileLoading: 'Chargement du profil…',
+    profileUnavailable: 'Profil indisponible',
+    recentActivityLabel: 'Activité récente',
+    noRecentActivity: 'Aucune activité récente',
   },
   tour: {
     welcome: { title: 'Bienvenue dans Défi du Jour !', text: "Faisons un rapide tour du propriétaire pour découvrir comment fonctionne l'application." },

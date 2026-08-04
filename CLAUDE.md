@@ -1533,3 +1533,43 @@ Légendes n'ont besoin d'aucun nouvel index (un seul champ, sans filtre d'égali
 couvertes par l'index automatique à champ unique que Firestore crée pour chaque
 champ, dans les deux sens de tri).
 
+## Fiche profil d'un ami (clic sur une ligne dans l'onglet Amis) — nouvelle fonctionnalite visible
+
+**Demande** : dans l'onglet "Amis", un clic sur un ami de la liste "Mes amis" ouvre
+desormais une fiche (overlay plein ecran, meme pattern que "Parcours de niveau" —
+`openLevelRoadmap()`) affichant son niveau/titre d'athlete, sa serie en cours et ses
+activites recentes.
+
+- **Aucune nouvelle ecriture Firestore.** Les donnees XP/serie etaient deja presentes
+  sur le document public `leaderboard/{uid}` (ecrit par `syncLeaderboardEntry()`) mais
+  `fetchPublicProfile(uid)` ne les extrayait pas encore — il expose desormais aussi
+  `xpTotal`/`streakCount`, reutilisant tel quel le cache deja en place (memoire +
+  `localStorage`, TTL 6h).
+- **Nouvelle requete ciblee pour l'activite recente** (`fetchFriendRecentActivities(uid)`,
+  `where('uid','==',uid).orderBy('at','desc').limit(10)`), declenchee uniquement a
+  l'ouverture de la fiche — differente du fil `activityFeed` deja existant qui fusionne
+  l'activite de TOUS les amis (`where('uid','in',...)`) en un seul flux temps reel.
+- **Repli si l'ami a desactive le classement** (`leaderboardOptOut`, doc
+  `leaderboard/{uid}` absent) : la fiche affiche "Profil indisponible" et **n'interroge
+  meme pas** l'activite recente — traite l'opt-out du classement comme un signal de
+  confidentialite general, plutot que de continuer a exposer d'autres donnees de cette
+  personne.
+- **Declenchement limite a la liste "Mes amis"** : `renderFriendActionRow(...,
+  clickable)` n'ajoute l'`onclick` d'ouverture de fiche que si `clickable=true` — les
+  lignes de resultat de recherche et de demande recue restent volontairement non
+  cliquables (seuls des amis confirmes ont une fiche consultable). Le bouton "retirer"
+  (🗑️) stoppe la propagation pour ne pas ouvrir la fiche en meme temps qu'on retire
+  l'ami.
+- **Resilience preservee** : fetch du profil et fetch de l'activite recente restent
+  dans des `try/catch` independants (meme principe que Top 50/voisins du classement) —
+  un echec de la requete d'activite n'empeche jamais l'affichage du niveau/titre.
+
+**⚠️ Action manuelle requise (une fois, en dehors du code)** : la requete d'activite
+recente d'un ami (`where('uid','==',uid).orderBy('at','desc')`) combine egalite + tri
+sur un autre champ, comme la requete "voisin" du classement ci-dessus — elle necessite
+probablement un **nouvel index composite Firestore** (`activityFeed`, `uid` Ascendant +
+`at` Descendant, scope Collection). Sans cet index, la requete echoue proprement (geree
+par le `try/catch` : la fiche affiche juste "Aucune activite recente", aucun crash)
+jusqu'a ce que l'index soit cree, via le lien Firebase dans la console au premier echec
+ou proactivement dans Firestore > Index > Composites.
+

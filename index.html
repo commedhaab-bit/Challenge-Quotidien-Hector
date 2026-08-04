@@ -2453,10 +2453,27 @@ loadPublicProfileCacheFromStorage();
 async function fetchPublicProfile(uid) {
   if (Object.prototype.hasOwnProperty.call(publicProfileCache, uid)) return publicProfileCache[uid];
   const doc = await db.collection('leaderboard').doc(uid).get();
-  const result = doc.exists ? { displayName: formatDisplayName(doc.data().displayName), photoURL: doc.data().photoURL || '' } : null;
+  const result = doc.exists ? {
+    displayName: formatDisplayName(doc.data().displayName),
+    photoURL: doc.data().photoURL || '',
+    xpTotal: doc.data().xpTotal || 0,
+    streakCount: doc.data().streakCount || 0,
+  } : null;
   publicProfileCache[uid] = result;
   savePublicProfileCacheToStorage();
   return result;
+}
+
+// Requête ciblée (pas de listener) pour l'activité récente d'UN ami spécifique, utilisée
+// par la fiche profil (openFriendProfile()) — différent de startActivityFeedListener()
+// qui fusionne l'activité de TOUS les amis en un seul flux temps réel.
+async function fetchFriendRecentActivities(uid, n = 10) {
+  const snap = await db.collection('activityFeed')
+    .where('uid', '==', uid)
+    .orderBy('at', 'desc')
+    .limit(n)
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 /**
@@ -5364,18 +5381,27 @@ function renderHistoryScreen() {
   `;
 }
 
-function renderAthleteCard() {
-  const { level, xpIntoLevel, xpNeeded } = xpProgress(xpTotal);
+// Bloc niveau/titre/barre XP, factorisé pour être réutilisable avec l'XP de N'IMPORTE
+// QUEL utilisateur (renderAthleteCard() pour soi-même, renderFriendProfileSheet() pour
+// un ami) — pure fonction d'un total d'XP, aucune dépendance à l'utilisateur courant.
+function renderAthleteLevelBlock(xpTotalValue) {
+  const { level, xpIntoLevel, xpNeeded } = xpProgress(xpTotalValue);
   const title = athleteTitle(level);
   const pct = xpNeeded > 0 ? Math.min(100, Math.round((xpIntoLevel / xpNeeded) * 100)) : 100;
   return `
+    <div class="athlete-level-row">
+      <div class="athlete-level">${t('profileTab.levelLabel', { n: level })}</div>
+    </div>
+    <div class="athlete-title">${title}</div>
+    <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
+    <div class="athlete-xp-label">${t('profileTab.xpProgress', { current: xpIntoLevel, needed: xpNeeded })}</div>
+  `;
+}
+
+function renderAthleteCard() {
+  return `
     <div class="athlete-card" onclick="openLevelRoadmap()">
-      <div class="athlete-level-row">
-        <div class="athlete-level">${t('profileTab.levelLabel', { n: level })}</div>
-      </div>
-      <div class="athlete-title">${title}</div>
-      <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
-      <div class="athlete-xp-label">${t('profileTab.xpProgress', { current: xpIntoLevel, needed: xpNeeded })}</div>
+      ${renderAthleteLevelBlock(xpTotal)}
     </div>
   `;
 }
@@ -5435,6 +5461,82 @@ function closeLevelRoadmap() {
   const el = document.getElementById('levelRoadmapOverlay');
   if (el) el.remove();
   levelRoadmapOpen = false;
+}
+
+// ==== FICHE PROFIL D'UN AMI (clic sur une ligne dans l'onglet Amis) ====
+// Même pattern que le Level Roadmap ci-dessus : overlay DOM autonome, hors du cycle
+// render() principal, son propre bouton ✕. Contrairement au Level Roadmap (données
+// déjà en mémoire), les données d'un ami sont chargées de façon async APRÈS l'ouverture :
+// on affiche d'abord un état "chargement", puis on repeint le même noeud DOM une fois
+// les données arrivées (garde sur friendProfileOpenUid pour ignorer une réponse tardive
+// si la fiche a été fermée ou changée entre-temps).
+let friendProfileOpenUid = null;
+
+function renderFriendProfileSheet({ displayName, photoURL, loading, profile, activities, activitiesFailed }) {
+  const avatar = photoURL
+    ? `<img src="${escapeHtml(photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
+    : `<div class="leaderboard-avatar-fallback">${escapeHtml(displayName.charAt(0).toUpperCase())}</div>`;
+  let bodyHtml;
+  if (loading) {
+    bodyHtml = `<div class="history-empty">${t('friends.profileLoading')}</div>`;
+  } else if (!profile) {
+    bodyHtml = `<div class="history-empty">${t('friends.profileUnavailable')}</div>`;
+  } else {
+    const activitiesHtml = activitiesFailed
+      ? `<div class="history-empty">${t('friends.noRecentActivity')}</div>`
+      : (activities.length > 0
+        ? `<div class="activity-feed-list">${activities.map(entry => renderActivityFeedRow(entry)).join('')}</div>`
+        : `<div class="history-empty">${t('friends.noRecentActivity')}</div>`);
+    bodyHtml = `
+      <div class="athlete-card">${renderAthleteLevelBlock(profile.xpTotal)}</div>
+      <div class="friend-profile-streak">${t('community.streakValue', { n: profile.streakCount })}</div>
+      <div class="section-label">${t('friends.recentActivityLabel')}</div>
+      ${activitiesHtml}
+    `;
+  }
+  return `
+    <div class="level-roadmap-sheet">
+      <button class="level-roadmap-close" onclick="closeFriendProfile()">✕</button>
+      <div class="level-roadmap-header friend-profile-header">
+        ${avatar}
+        <div class="level-roadmap-title">${escapeHtml(displayName)}</div>
+      </div>
+      ${bodyHtml}
+    </div>
+  `;
+}
+
+async function openFriendProfile(uid, displayName, photoURL) {
+  closeFriendProfile();
+  friendProfileOpenUid = uid;
+  const el = document.createElement('div');
+  el.id = 'friendProfileOverlay';
+  el.className = 'level-roadmap-overlay';
+  el.innerHTML = renderFriendProfileSheet({ displayName, photoURL, loading: true });
+  document.body.appendChild(el);
+
+  let profile = null, activities = [], activitiesFailed = false;
+  try {
+    profile = await fetchPublicProfile(uid);
+  } catch (e) {
+    console.error('friend profile fetch failed', e);
+  }
+  if (profile) {
+    try {
+      activities = await fetchFriendRecentActivities(uid);
+    } catch (e) {
+      activitiesFailed = true;
+      console.error('friend activities fetch failed', e);
+    }
+  }
+  if (friendProfileOpenUid !== uid) return;
+  el.innerHTML = renderFriendProfileSheet({ displayName, photoURL, loading: false, profile, activities, activitiesFailed });
+}
+
+function closeFriendProfile() {
+  const el = document.getElementById('friendProfileOverlay');
+  if (el) el.remove();
+  friendProfileOpenUid = null;
 }
 
 function renderSettingsSection() {
@@ -5910,12 +6012,17 @@ function renderCommunityScreen() {
   `;
 }
 
-function renderFriendActionRow(uid, displayName, photoURL, actionHtml) {
+function renderFriendActionRow(uid, displayName, photoURL, actionHtml, clickable = false) {
   const avatar = photoURL
     ? `<img src="${escapeHtml(photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
     : `<div class="leaderboard-avatar-fallback">${escapeHtml(displayName.charAt(0).toUpperCase())}</div>`;
+  // clickable n'est vrai que pour la liste "Mes amis" (pas recherche/demandes) : ouvre la
+  // fiche profil (openFriendProfile()). Les boutons d'action de actionHtml doivent alors
+  // stopper la propagation pour ne pas déclencher l'ouverture en même temps (voir
+  // renderFriendsScreen()).
+  const clickAttr = clickable ? ` onclick="openFriendProfile('${escapeJsAttr(uid)}', '${escapeJsAttr(displayName)}', '${escapeJsAttr(photoURL)}')"` : '';
   return `
-    <div class="leaderboard-row">
+    <div class="leaderboard-row${clickable ? ' clickable' : ''}"${clickAttr}>
       ${avatar}
       <span class="leaderboard-name">${escapeHtml(displayName)}</span>
       ${actionHtml}
@@ -5955,8 +6062,8 @@ function renderFriendsScreen() {
     <div class="section-label">${t('friends.myFriendsLabel')}</div>
     <div class="leaderboard-list">
       ${myFriends.map(f => renderFriendActionRow(f.uid, f.displayName, f.photoURL, `
-        <button class="icon-btn danger" onclick="removeFriend('${escapeJsAttr(f.uid)}')" aria-label="${t('friends.removeFriendAria')}">🗑️</button>
-      `)).join('')}
+        <button class="icon-btn danger" onclick="event.stopPropagation(); removeFriend('${escapeJsAttr(f.uid)}')" aria-label="${t('friends.removeFriendAria')}">🗑️</button>
+      `, true)).join('')}
     </div>
   ` : `<div class="history-empty">${t('friends.noFriends')}</div>`;
 
