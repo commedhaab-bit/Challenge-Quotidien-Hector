@@ -2215,7 +2215,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v26'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v27'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4184,6 +4184,43 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(customAddBtnCssBlock.includes('rgba(255, 255, 255, 0.08)'), 'le bouton "Ajouter" doit devenir une action secondaire discrete (ghost)');
   __assertOk(!customAddBtnCssBlock.includes('var(--accent)'), 'le bouton "Ajouter" ne doit plus utiliser le vert plein var(--accent) (reserve au CTA principal +5/+10)');
   console.log('OK: hierarchie visuelle ecran execution (+5/+10 CTA principal vert neon, "Ajouter" relegue en action secondaire ghost)');
+
+  // --- 160. i18n batch 2/7 : navigation (tab-bar) + ecran Parametres + selecteur de
+  // langue -- 1er ecran migre bout-en-bout pour valider le mecanisme en conditions
+  // reelles (voir CLAUDE.md, "Internationalisation (i18n) FR/EN/ES"). renderTabBar()/
+  // renderSettingsScreen() sont des fonctions pures (pas de dependance a state/
+  // activeToday), testables directement sans passer par render(). ---
+  const localeBeforeBatch2 = currentLocale;
+  currentLocale = 'fr';
+  const tabBarFr = renderTabBar();
+  __assertOk(tabBarFr.includes(">Aujourd'hui<") && tabBarFr.includes('>Défis<') && tabBarFr.includes('>Journal<') && tabBarFr.includes('>Commu<') && tabBarFr.includes('>Profil<'), 'la barre d onglets doit afficher les libelles francais par defaut');
+
+  currentLocale = 'en';
+  const tabBarEn = renderTabBar();
+  __assertOk(tabBarEn.includes('>Today<') && tabBarEn.includes('>Challenges<') && tabBarEn.includes('>Log<') && tabBarEn.includes('>Community<') && tabBarEn.includes('>Profile<'), 'la barre d onglets doit basculer entierement en anglais via t()');
+
+  currentLocale = 'es';
+  const tabBarEs = renderTabBar();
+  __assertOk(tabBarEs.includes('>Hoy<') && tabBarEs.includes('>Retos<') && tabBarEs.includes('>Diario<') && tabBarEs.includes('>Comunidad<') && tabBarEs.includes('>Perfil<'), 'la barre d onglets doit basculer entierement en espagnol via t()');
+
+  // Ecran Parametres : contenu traduit + selecteur de langue (3 boutons natifs, celui
+  // de la langue active seul marque '.active').
+  currentLocale = 'en';
+  const savedUsernameBatch2 = username;
+  username = 'testuser';
+  const settingsHtmlEn = renderSettingsScreen();
+  __assertOk(settingsHtmlEn.includes('Settings'), 'le titre de l ecran Parametres doit etre traduit');
+  __assertOk(settingsHtmlEn.includes('Voice coach'), 'la ligne coach vocal doit etre traduite');
+  __assertOk(settingsHtmlEn.includes('Community leaderboard'), 'la ligne classement doit etre traduite');
+  __assertOk(settingsHtmlEn.includes('@testuser'), 'le pseudo reste interpole tel quel dans la traduction ({{username}})');
+  __assertOk(settingsHtmlEn.includes('Sign out'), 'les actions de compte doivent etre traduites');
+  __assertOk(settingsHtmlEn.includes('lang-switch-tabs'), 'le selecteur de langue doit etre present dans Parametres');
+  __assertOk(settingsHtmlEn.includes('>Français<') && settingsHtmlEn.includes('>English<') && settingsHtmlEn.includes('>Español<'), 'les noms de langue dans le selecteur restent toujours dans leur PROPRE langue, jamais traduits (convention standard des selecteurs de langue)');
+  __assertOk(settingsHtmlEn.includes('class="leaderboard-tab-btn active" onclick="setPreferredLanguage(\\'en\\')"'), 'seul le bouton de la langue ACTIVE doit porter la classe active');
+  __assertOk(!settingsHtmlEn.includes('class="leaderboard-tab-btn active" onclick="setPreferredLanguage(\\'fr\\')"') && !settingsHtmlEn.includes('class="leaderboard-tab-btn active" onclick="setPreferredLanguage(\\'es\\')"'), 'les boutons des langues INACTIVES ne doivent jamais porter la classe active');
+  username = savedUsernameBatch2;
+  currentLocale = localeBeforeBatch2;
+  console.log('OK: i18n batch 2 - navigation + ecran Parametres + selecteur de langue (1er ecran migre bout-en-bout)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

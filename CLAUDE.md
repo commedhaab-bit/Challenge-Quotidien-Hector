@@ -1093,13 +1093,35 @@ aucune migration de données nécessaire.
 **`CACHE_NAME` bumpé `v25` → `v26`** (nouveaux fichiers statiques `locale-*.js`, même
 règle que pour `exercise-data.js`/`exercise-pictograms.js`/`styles.css`).
 
-**Reste à faire (batches 2 à 7, plan approuvé)** : navigation + Paramètres + sélecteur
-de langue (batch 2) ; Aujourd'hui + fiche d'exécution (batch 3) ; Défis + formulaire
-personnalisé + Journal (batch 4) ; Communauté (classement/Boss Battle/Amis/fil
-d'activité, + correctif `exerciseSlug` ci-dessus) (batch 5) ; Profil + onboarding +
-tour guidé (batch 6) ; alertes/popups/toasts, `BADGE_DEFS`, dates relatives, ajout du
-`slug` + traduction des noms/catégories d'exercices dans `exercise-data.js`, audit
-final de chaînes françaises oubliées (batch 7). Tant qu'une chaîne n'est pas migrée
-vers `t()`, elle reste le littéral français en dur — comportement identique à
-aujourd'hui pour un utilisateur FR, aucune régression possible entre deux batches.
+**Batch 2 livré : navigation (`renderTabBar()`) + écran Paramètres + sélecteur de
+langue** — 1ᵉʳ écran migré bout-en-bout, valide le mécanisme en conditions réelles.
+`renderSettingsSection()`/`renderDataManagementSection()`/
+`renderTroubleshootingSection()`/`renderAccountActionsSection()`/`renderSettingsScreen()`
+et le modal de `forceAppUpdate()` passent tous par `t()`. **Sélecteur de langue
+réutilise TELLES QUELLES les classes `.leaderboard-tabs`/`.leaderboard-tab-btn`**
+(déjà utilisées pour les 3 vues du classement, `renderCommunityScreen()`) plutôt que
+d'en créer des quasi-identiques — même rationale que la réutilisation de
+`.picker-item` par le Hero Banner communautaire : visuellement identique (3 boutons
+segmentés, un seul actif), zéro CSS nouveau, donc zéro bump `CACHE_NAME` motivé par
+`styles.css` pour ce batch. **`LOCALE_NATIVE_NAME`** (à côté de `LOCALE_TO_INTL`) :
+les noms de langue dans le sélecteur ("Français"/"English"/"Español") sont TOUJOURS
+affichés dans leur PROPRE langue, jamais traduits — convention standard de tout
+sélecteur de langue (iOS/Android/navigateurs), pour qu'un utilisateur ne lisant pas la
+langue actuellement active puisse quand même repérer la sienne.
+
+**`CACHE_NAME` bumpé `v26` → `v27`** — pas pour `styles.css` (inchangé ce batch) mais
+parce que le CONTENU de `locale-fr.js`/`locale-en.js`/`locale-es.js` a changé (nouvelles
+clés `nav`/`settings`) : ce sont des assets cache-first-avec-remplissage au même titre
+que `exercise-data.js`, donc toute modification de leur contenu suit la même règle,
+pas seulement leur toute première création (batch 1).
+
+**Reste à faire (batches 3 à 7, plan approuvé)** : Aujourd'hui + fiche d'exécution
+(batch 3) ; Défis + formulaire personnalisé + Journal (batch 4) ; Communauté
+(classement/Boss Battle/Amis/fil d'activité, + correctif `exerciseSlug` ci-dessus)
+(batch 5) ; Profil + onboarding + tour guidé (batch 6) ; alertes/popups/toasts,
+`BADGE_DEFS`, dates relatives, ajout du `slug` + traduction des noms/catégories
+d'exercices dans `exercise-data.js`, audit final de chaînes françaises oubliées
+(batch 7). Tant qu'une chaîne n'est pas migrée vers `t()`, elle reste le littéral
+français en dur — comportement identique à aujourd'hui pour un utilisateur FR, aucune
+régression possible entre deux batches.
 

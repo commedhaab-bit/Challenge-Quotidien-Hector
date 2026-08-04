@@ -157,6 +157,10 @@ let currentUser = null;
 const SUPPORTED_LOCALES = ['fr', 'en', 'es'];
 const LOCALES = { fr: LOCALE_FR, en: LOCALE_EN, es: LOCALE_ES };
 const LOCALE_TO_INTL = { fr: 'fr-FR', en: 'en-US', es: 'es-ES' };
+// Toujours affiché dans SA PROPRE langue (jamais traduit) : un locuteur anglophone doit
+// pouvoir repérer "Français" même si l'app est actuellement en anglais, convention
+// standard des sélecteurs de langue (cf. tout menu de langue d'iOS/Android/navigateurs).
+const LOCALE_NATIVE_NAME = { fr: 'Français', en: 'English', es: 'Español' };
 const PREFERRED_LANGUAGE_KEY = 'preferredLanguage'; // 2e exception documentée à "pas de
   // localStorage dans cette app" (la 1ère est PWA_INSTALL_GATE_BYPASS_KEY) : une
   // préférence propre À CET APPAREIL/CE NAVIGATEUR, pas une donnée de compte — n'a pas
@@ -5107,25 +5111,35 @@ function closeLevelRoadmap() {
 
 function renderSettingsSection() {
   return `
-    <div class="section-label">Paramètres</div>
+    <div class="section-label">${t('settings.screenTitle')}</div>
     <div class="settings-card">
       <div class="settings-row">
-        <div class="settings-row-label">🏷️ Pseudo : @${escapeHtml(username || '')}
-          <div class="settings-row-desc">Ton identifiant public — utilisé par tes amis pour te retrouver.</div>
+        <div class="settings-row-label">🏷️ ${t('settings.username.label', { username: escapeHtml(username || '') })}
+          <div class="settings-row-desc">${t('settings.username.desc')}</div>
         </div>
-        <button class="icon-btn" onclick="openUsernameRename()" aria-label="Modifier le pseudo">✏️</button>
+        <button class="icon-btn" onclick="openUsernameRename()" aria-label="${t('settings.username.editAria')}">✏️</button>
       </div>
       <div class="settings-row">
-        <div class="settings-row-label">🔊 Coach vocal
-          <div class="settings-row-desc">Annonce le compte à rebours de préparation et la fin du défi à voix haute.</div>
+        <div class="settings-row-label">🔊 ${t('settings.voiceCoach.label')}
+          <div class="settings-row-desc">${t('settings.voiceCoach.desc')}</div>
         </div>
         <button class="switch${voiceCoachEnabled ? ' on' : ''}" onclick="toggleVoiceCoach()"><span class="switch-knob"></span></button>
       </div>
       <div class="settings-row">
-        <div class="settings-row-label">🌍 Classement communautaire
-          <div class="settings-row-desc">Affiche ton nom, ta série et ton XP dans le classement partagé avec les autres utilisateurs.</div>
+        <div class="settings-row-label">🌍 ${t('settings.leaderboardOptOut.label')}
+          <div class="settings-row-desc">${t('settings.leaderboardOptOut.desc')}</div>
         </div>
         <button class="switch${leaderboardOptOut ? '' : ' on'}" onclick="toggleLeaderboardOptOut()"><span class="switch-knob"></span></button>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-label">🌐 ${t('settings.language.label')}
+          <div class="settings-row-desc">${t('settings.language.desc')}</div>
+        </div>
+      </div>
+      <div class="leaderboard-tabs lang-switch-tabs">
+        ${SUPPORTED_LOCALES.map(code => `
+          <button class="leaderboard-tab-btn${currentLocale === code ? ' active' : ''}" onclick="setPreferredLanguage('${code}')">${LOCALE_NATIVE_NAME[code]}</button>
+        `).join('')}
       </div>
     </div>
   `;
@@ -5154,20 +5168,20 @@ function renderAccountSection() {
 // accidentel sur l'écran Profil principal, qui montre surtout des infos/progression).
 function renderAccountActionsSection() {
   return `
-    <div class="section-label">Compte</div>
+    <div class="section-label">${t('settings.account.sectionLabel')}</div>
     <div class="account-card">
-      <button class="signout-btn" onclick="signOutUser()">🚪 Se déconnecter</button>
-      <button class="delete-account-btn" onclick="deleteMyAccount()">🗑️ Supprimer mon compte et mes données</button>
+      <button class="signout-btn" onclick="signOutUser()">${t('settings.account.signOutBtn')}</button>
+      <button class="delete-account-btn" onclick="deleteMyAccount()">${t('settings.account.deleteAccountBtn')}</button>
     </div>
   `;
 }
 
 function renderDataManagementSection() {
   return `
-    <div class="section-label">Mes données</div>
+    <div class="section-label">${t('settings.dataManagement.sectionLabel')}</div>
     <div class="settings-card data-management-card">
-      <button class="signout-btn" onclick="exportUserData()">📤 Exporter mes données</button>
-      <label class="signout-btn" for="importDataInput">📥 Importer des données</label>
+      <button class="signout-btn" onclick="exportUserData()">${t('settings.dataManagement.exportBtn')}</button>
+      <label class="signout-btn" for="importDataInput">${t('settings.dataManagement.importBtn')}</label>
       <input type="file" id="importDataInput" accept=".json,application/json" style="display:none;" onchange="importUserData(event)">
     </div>
   `;
@@ -5183,9 +5197,9 @@ function renderDataManagementSection() {
 async function forceAppUpdate() {
   const accepted = await confirmModal({
     icon: '🔄',
-    title: 'Forcer la mise à jour ?',
-    subtitle: "Désenregistre le service worker et vide le cache de l'appli, puis recharge. À utiliser si l'appli semble bloquée sur une ancienne version malgré un rechargement classique.",
-    confirmLabel: 'Forcer la mise à jour',
+    title: t('settings.troubleshooting.forceUpdateModal.title'),
+    subtitle: t('settings.troubleshooting.forceUpdateModal.subtitle'),
+    confirmLabel: t('settings.troubleshooting.forceUpdateModal.confirmLabel'),
   });
   if (!accepted) return;
   try {
@@ -5205,23 +5219,23 @@ async function forceAppUpdate() {
 
 function renderTroubleshootingSection() {
   const persistenceLabel = firestorePersistenceEnabled === true
-    ? '✅ Active'
+    ? t('settings.troubleshooting.persistenceActive')
     : firestorePersistenceEnabled === false
-      ? '⚠️ Indisponible sur cet appareil (les sauvegardes récentes peuvent se perdre si l\'appli se ferme juste après)'
-      : '… vérification en cours';
+      ? t('settings.troubleshooting.persistenceUnavailable')
+      : t('settings.troubleshooting.persistenceChecking');
   return `
-    <div class="section-label">Dépannage</div>
+    <div class="section-label">${t('settings.troubleshooting.sectionLabel')}</div>
     <div class="settings-card data-management-card">
-      <div class="troubleshoot-diag">Persistance locale hors ligne : ${persistenceLabel}</div>
-      <button class="signout-btn" onclick="forceAppUpdate()">🔄 Forcer la mise à jour de l'appli</button>
+      <div class="troubleshoot-diag">${t('settings.troubleshooting.persistenceLabel', { status: persistenceLabel })}</div>
+      <button class="signout-btn" onclick="forceAppUpdate()">${t('settings.troubleshooting.forceUpdateBtn')}</button>
     </div>
   `;
 }
 
 function renderSettingsScreen() {
   return `
-    <button class="nav-back-btn" onclick="history.back()" aria-label="Retour">‹</button>
-    <h1 class="title">Paramètres</h1>
+    <button class="nav-back-btn" onclick="history.back()" aria-label="${t('common.back')}">‹</button>
+    <h1 class="title">${t('settings.screenTitle')}</h1>
     ${renderSettingsSection()}
     ${renderDataManagementSection()}
     ${renderTroubleshootingSection()}
@@ -5624,11 +5638,11 @@ function renderAccountTabScreen() {
 // écrans plein écran : onboarding, connexion, mode focus).
 function renderTabBar() {
   const tabs = [
-    { id: 'today',   icon: '🏋️‍♂️', label: "Aujourd'hui" },
-    { id: 'library',  icon: '🎯', label: 'Défis' },
-    { id: 'history',  icon: '📓', label: 'Journal' },
-    { id: 'community', icon: '🌍', label: 'Commu' },
-    { id: 'account',  icon: '👤', label: 'Profil' },
+    { id: 'today',   icon: '🏋️‍♂️', label: t('nav.today') },
+    { id: 'library',  icon: '🎯', label: t('nav.library') },
+    { id: 'history',  icon: '📓', label: t('nav.history') },
+    { id: 'community', icon: '🌍', label: t('nav.community') },
+    { id: 'account',  icon: '👤', label: t('nav.account') },
   ];
   return `
     <nav class="tab-bar" role="tablist">
