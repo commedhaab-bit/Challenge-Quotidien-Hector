@@ -1293,8 +1293,11 @@ async function beginOnboardingTransition() {
 }
 
 // ==== PSEUDO PUBLIC : recherche/réservation ====
-function usernamesCollRef() {
-  return db.collection('usernames');
+// Contrairement à un objet CollectionReference compat, une CollectionReference
+// modulaire n'expose pas de .doc(id) chaînable : le ref est reconstruit ici en un
+// seul appel (même pattern que appDataDocRef()), jamais via un chaînage en 2 temps.
+function usernameDocRef(name) {
+  return fsMod.doc(mdb, 'usernames', name);
 }
 
 // Autorise uniquement [a-z0-9_], 3-20 caractères : évite accents/emoji/homoglyphes
@@ -1325,9 +1328,9 @@ async function checkUsernameAvailability(candidate, seq) {
   usernameAvailability = 'checking';
   render();
   try {
-    const doc = await usernamesCollRef().doc(candidate).get();
+    const doc = await fsMod.getDoc(usernameDocRef(candidate));
     if (seq !== usernameCheckSeq) return; // une frappe plus recente a deja lance une autre verif
-    usernameAvailability = doc.exists ? 'taken' : 'available';
+    usernameAvailability = doc.exists() ? 'taken' : 'available';
   } catch (e) {
     if (seq !== usernameCheckSeq) return;
     usernameAvailability = null;
@@ -1363,7 +1366,7 @@ async function finishUsernameSetup() {
   const previousUsername = username;
   const mode = usernameSetupMode;
   try {
-    await usernamesCollRef().doc(newUsername).set({ uid: currentUser.uid });
+    await fsMod.setDoc(usernameDocRef(newUsername), { uid: currentUser.uid });
   } catch (e) {
     // Quelqu'un d'autre a pu prendre ce pseudo entre la vérification et la validation
     // (fenêtre de course assumée, comme ailleurs dans ce projet) : les règles Firestore
@@ -1374,7 +1377,7 @@ async function finishUsernameSetup() {
     return;
   }
   if (previousUsername && previousUsername !== newUsername) {
-    try { await usernamesCollRef().doc(previousUsername).delete(); }
+    try { await fsMod.deleteDoc(usernameDocRef(previousUsername)); }
     catch (e) { reportSaveError('release old username failed', e); }
   }
   username = newUsername;
@@ -2276,8 +2279,14 @@ function renderKudosButton(docRefJsExpr, entryId, kudosCount, isMine) {
 // notification au moment de sa création (fromName), pas relu via fetchPublicProfile()
 // à l'affichage : ça marche même si l'émetteur désactive ensuite son classement (plus
 // d'anonymat forcé rétroactif), et ça évite une lecture supplémentaire par notification.
+// notificationsCollRef() (compat) reste utilisée par giveKudosToEvent()/
+// giveKudosToPerson() (db.runTransaction(), migration prévue batch 5) ; les autres
+// sites (ci-dessous + sendFriendRequest()) sont déjà migrés vers la variante modulaire.
 function notificationsCollRef(uid) {
   return db.collection('users').doc(uid).collection('notifications');
+}
+function notificationsCollRefModular(uid) {
+  return fsMod.collection(mdb, 'users', uid, 'notifications');
 }
 
 let notificationsUnsub = null;
@@ -2287,9 +2296,10 @@ let notificationsUnsub = null;
 function startNotificationsListener() {
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
   if (!currentUser) return;
-  notificationsUnsub = notificationsCollRef(currentUser.uid)
-    .where('read', '==', false)
-    .onSnapshot((snap) => { processUnreadNotifications(snap); });
+  notificationsUnsub = fsMod.onSnapshot(
+    fsMod.query(notificationsCollRefModular(currentUser.uid), fsMod.where('read', '==', false)),
+    (snap) => { processUnreadNotifications(snap); },
+  );
 }
 
 /**
@@ -2306,7 +2316,7 @@ async function processUnreadNotifications(snap) {
   for (const doc of docs) {
     const data = doc.data();
     try {
-      await notificationsCollRef(myUid).doc(doc.id).set({ read: true }, { merge: true });
+      await fsMod.setDoc(fsMod.doc(notificationsCollRefModular(myUid), doc.id), { read: true }, { merge: true });
     } catch (e) {
       reportSaveError('mark notification read failed', e);
       continue;
@@ -2432,8 +2442,8 @@ async function submitFriendSearch() {
   friendSearchResult = 'searching';
   render();
   try {
-    const claimDoc = await usernamesCollRef().doc(query).get();
-    if (!claimDoc.exists) { friendSearchResult = 'not-found'; render(); return; }
+    const claimDoc = await fsMod.getDoc(usernameDocRef(query));
+    if (!claimDoc.exists()) { friendSearchResult = 'not-found'; render(); return; }
     const targetUid = claimDoc.data().uid;
     if (targetUid === currentUser.uid) { friendSearchResult = 'self'; render(); return; }
     const profile = await fetchPublicProfile(targetUid);
@@ -2455,7 +2465,7 @@ async function sendFriendRequest(targetUid) {
     await fsMod.setDoc(fsMod.doc(mdb, 'friendRequests', friendRequestId(currentUser.uid, targetUid)), {
       fromUid: currentUser.uid, toUid: targetUid, at: Date.now(),
     });
-    await notificationsCollRef(targetUid).doc().set({
+    await fsMod.addDoc(notificationsCollRefModular(targetUid), {
       type: 'friend_request',
       fromUid: currentUser.uid,
       fromName: formatDisplayName(currentUser.displayName),

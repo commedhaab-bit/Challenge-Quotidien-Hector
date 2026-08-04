@@ -301,9 +301,26 @@ const usersSubcollections = new Map();
 // magasin en mémoire) : PAS une 2e implémentation parallèle. Nécessaire tant que du
 // code migré (fonctions libres modulaires) et du code pas-encore-migré (chaînage
 // compat) coexistent dans index.html — les deux doivent voir les mêmes données.
-function __modularDoc(dbInstance, ...segments) {
-  let ref = dbInstance.collection(segments[0]).doc(segments[1]);
-  for (let i = 2; i < segments.length; i += 2) ref = ref.collection(segments[i]).doc(segments[i + 1]);
+// LIMITE CONNUE DE FIDÉLITÉ : __modularCollection()/__modularDoc() renvoient les MÊMES
+// objets que le mock compat (avec .doc()/.where()/.get()/.set() chaînables), alors que
+// le vrai SDK modulaire n'expose AUCUNE méthode chaînable sur un CollectionReference/
+// DocumentReference (tout passe par les fonctions libres : doc(ref,id), getDoc(ref)...).
+// Ce mock ne DÉTECTERA donc PAS un chaînage compat réintroduit par erreur sur du code
+// migré (ex: `usernamesCollRef().doc(x)` plutôt que `fsMod.doc(mdb,'usernames',x)`,
+// piège réellement rencontré pendant le batch 3) — à vérifier à l'oeil à chaque site
+// migré, ce mock ne le fera pas à ta place.
+// 2 formes reelles de doc() dans le SDK modulaire : doc(firestore, path, ...segments)
+// OU doc(collectionRef, id?) — distinguees ici par duck-typing (une CollectionReference
+// a .doc, pas .collection ; l'instance Firestore racine a .collection, pas .doc).
+function __modularDoc(dbOrCollRef, ...segments) {
+  let ref;
+  if (typeof dbOrCollRef.doc === 'function') {
+    ref = dbOrCollRef.doc(segments[0]);
+    for (let i = 1; i < segments.length; i += 2) ref = ref.collection(segments[i]).doc(segments[i + 1]);
+  } else {
+    ref = dbOrCollRef.collection(segments[0]).doc(segments[1]);
+    for (let i = 2; i < segments.length; i += 2) ref = ref.collection(segments[i]).doc(segments[i + 1]);
+  }
   return ref;
 }
 function __modularCollection(dbInstance, ...segments) {
@@ -1001,7 +1018,7 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(gateHtmlExisting.includes('Choisis ton pseudo') && !gateHtmlExisting.includes('nav-back-btn'), 'le verrou "gate" doit lui aussi etre infranchissable');
 
   // Verification de disponibilite en direct (debounce reel de 400ms).
-  await usernamesCollRef().doc('alice').set({ uid: 'uid-alice' });
+  await fsMod.setDoc(usernameDocRef('alice'), { uid: 'uid-alice' });
   updateUsernameDraft('alice');
   await new Promise(r => setTimeout(r, 500));
   __assertEq(usernameAvailability, 'taken', 'un pseudo deja reserve doit etre signale "taken" apres verification');
@@ -1020,8 +1037,8 @@ const cssText = __rawHtml + __cssSource;
   await finishUsernameSetup();
   __assertEq(username, 'gateduser', 'le pseudo doit etre persiste apres validation');
   __assertEq(usernameSetupMode, null, 'le verrou doit se refermer une fois le pseudo valide');
-  const gateClaimDoc = await usernamesCollRef().doc('gateduser').get();
-  __assertOk(gateClaimDoc.exists && gateClaimDoc.data().uid === currentUser.uid, 'le pseudo doit etre reserve dans usernames/{pseudo}');
+  const gateClaimDoc = await fsMod.getDoc(usernameDocRef('gateduser'));
+  __assertOk(gateClaimDoc.exists() && gateClaimDoc.data().uid === currentUser.uid, 'le pseudo doit etre reserve dans usernames/{pseudo}');
   const afterGateHtml = document.getElementById('app').innerHTML;
   __assertOk(!afterGateHtml.includes('Choisis ton pseudo'), 'contexte "gate" : proceedAfterProfile() doit avoir repris la main (retour a l app normale)');
 
@@ -1046,10 +1063,10 @@ const cssText = __rawHtml + __cssSource;
   usernameAvailability = 'available';
   await finishUsernameSetup();
   __assertEq(username, 'renameduser', 'le renommage doit remplacer le pseudo courant');
-  const oldClaimAfterRename = await usernamesCollRef().doc('onboardeduser').get();
-  __assertOk(!oldClaimAfterRename.exists, 'l ancien pseudo doit etre libere (supprime de usernames/) apres un renommage');
-  const newClaimAfterRename = await usernamesCollRef().doc('renameduser').get();
-  __assertOk(newClaimAfterRename.exists, 'le nouveau pseudo doit etre reserve apres un renommage');
+  const oldClaimAfterRename = await fsMod.getDoc(usernameDocRef('onboardeduser'));
+  __assertOk(!oldClaimAfterRename.exists(), 'l ancien pseudo doit etre libere (supprime de usernames/) apres un renommage');
+  const newClaimAfterRename = await fsMod.getDoc(usernameDocRef('renameduser'));
+  __assertOk(newClaimAfterRename.exists(), 'le nouveau pseudo doit etre reserve apres un renommage');
 
   // goBackOneLevel() : seul le mode 'rename' est dismissible.
   usernameSetupMode = 'onboarding';
@@ -2291,7 +2308,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v34'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v35'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3492,20 +3509,20 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(friendSearchResult, 'not-found', 'un pseudo non reserve doit etre signale introuvable');
 
   // Recherche : son propre pseudo.
-  await usernamesCollRef().doc('moipseudo').set({ uid: 'me-uid' });
+  await fsMod.setDoc(usernameDocRef('moipseudo'), { uid: 'me-uid' });
   friendSearchQuery = 'moipseudo';
   await submitFriendSearch();
   __assertEq(friendSearchResult, 'self', 'rechercher son propre pseudo doit etre signale explicitement');
 
   // Recherche : pseudo reserve mais personne introuvable (opt-out classement = opt-out
   // decouverte, effet de bord voulu -- voir fetchPublicProfile()).
-  await usernamesCollRef().doc('fantome').set({ uid: 'ghost-uid' });
+  await fsMod.setDoc(usernameDocRef('fantome'), { uid: 'ghost-uid' });
   friendSearchQuery = 'fantome';
   await submitFriendSearch();
   __assertEq(friendSearchResult, 'not-found', 'un pseudo reserve par quelqu un qui a desactive le classement doit rester introuvable');
 
   // Recherche : trouve, aucune relation encore -> bouton "+ Ajouter".
-  await usernamesCollRef().doc('alicepseudo').set({ uid: 'alice-uid' });
+  await fsMod.setDoc(usernameDocRef('alicepseudo'), { uid: 'alice-uid' });
   await db.collection('leaderboard').doc('alice-uid').set({ displayName: 'Alice Dupont', photoURL: '' }, { merge: true });
   friendSearchQuery = 'alicepseudo';
   await submitFriendSearch();
@@ -3546,7 +3563,7 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(myFriends.some(f => f.uid === 'alice-uid'), 'moi doit aussi voir Alice comme amie, sans qu aucun document dans mon espace personnel n ait ete modifie par Alice');
 
   // Refus (avec un 2e utilisateur, Bob) : supprime juste la demande, ne cree JAMAIS de friendships.
-  await usernamesCollRef().doc('bobpseudo').set({ uid: 'bob-uid' });
+  await fsMod.setDoc(usernameDocRef('bobpseudo'), { uid: 'bob-uid' });
   await db.collection('leaderboard').doc('bob-uid').set({ displayName: 'Bob Martin', photoURL: '' }, { merge: true });
   await sendFriendRequest('bob-uid');
   currentUser = { uid: 'bob-uid', displayName: 'Bob Martin', email: 'b@test.com', photoURL: '' };

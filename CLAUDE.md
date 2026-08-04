@@ -1366,7 +1366,7 @@ lancement. Voir les sections précédentes (batches 1 à 7) pour le détail tech
 chaque étape ; les 2 exceptions volontaires ci-dessus (`formatDisplayName()`,
 `showFatalErrorScreen()`) sont les seuls textes intentionnellement non traduits.
 
-## Migration Firestore SDK compat → SDK modulaire (persistance) — chantier en cours (batch 2/6 livré)
+## Migration Firestore SDK compat → SDK modulaire (persistance) — chantier en cours (batch 3/6 livré)
 
 **Pourquoi** : `enablePersistence()` (SDK compat) sera un jour déprécié au profit de
 `FirestoreSettings.cache`, qui n'existe QUE dans le SDK modulaire (vérifié directement
@@ -1425,13 +1425,34 @@ tout site batch/transaction du batch 2 ; les 2 `db.batch()` restants (celui-ci +
 suppression de compte) sont donc regroupés dans le batch 6, pas 1 seul comme prévu
 initialement.
 
-Reste sur le SDK compat (migration prévue batches 3 à 6, ~90 sites au total
-recensés) : notifications (+ son `onSnapshot`), usernames, fil d'activité (+ son
-`onSnapshot`, incluant un correctif prévu sur `renderKudosButton()` qui injecte
-aujourd'hui du texte source `db.collection(...)` littéral dans un attribut `onclick`),
-Boss Battle + kudos (+ 2 `onSnapshot`, 3 `runTransaction` — dont `giveKudosToPerson()`,
-qui référence `leaderboard/{uid}` mais reste compat en bloc tant que sa transaction
-n'est pas migrée), suppression de compte + acceptation d'ami (2 `db.batch()`).
+**Batch 3** : usernames (`usernamesCollRef()` → `usernameDocRef(name)`, renommée car
+une `CollectionReference` modulaire n'expose PAS de `.doc(id)` chaînable — piège
+réellement rencontré, voir plus bas) ; notifications (`startNotificationsListener()`
++ son `onSnapshot`, `processUnreadNotifications()`, et l'écriture de notification de
+`sendFriendRequest()`). `notificationsCollRef()` (compat) et
+`notificationsCollRefModular()` **coexistent délibérément** : les 2 seuls appelants
+restants (`giveKudosToEvent()`/`giveKudosToPerson()`, batch 5) sont à l'intérieur de
+`db.runTransaction()` compat, donc doivent garder des refs compat jusqu'à ce que leur
+transaction elle-même soit migrée.
+
+**Piège rencontré et corrigé (batch 3)** : contrairement à une `CollectionReference`
+compat, une `CollectionReference` modulaire n'expose AUCUNE méthode chaînable
+(`.doc()`, `.where()`...) — tout passe par des fonctions libres (`doc(ref, id)`,
+`query(ref, where(...))`...). Le mock de test ne détecte PAS cette erreur (il réutilise
+les mêmes objets chaînables que le mock compat, voir commentaire dans
+`tests/app.test.js` juste avant `__modularDoc`) : `usernamesCollRef().doc(x)` aurait
+donc semblé fonctionner en test tout en cassant en production. Corrigé en remplaçant
+le helper par `usernameDocRef(name)` qui construit directement le ref complet (même
+pattern que `appDataDocRef()`) — **à vérifier à l'oeil sur chaque site des batches 4/5/6
+restants**, ce mock ne le fera pas automatiquement.
+
+Reste sur le SDK compat (migration prévue batches 4 à 6, ~90 sites au total
+recensés) : fil d'activité (+ son `onSnapshot`, incluant un correctif prévu sur
+`renderKudosButton()` qui injecte aujourd'hui du texte source `db.collection(...)`
+littéral dans un attribut `onclick`), Boss Battle + kudos (+ 2 `onSnapshot`,
+3 `runTransaction` — dont `giveKudosToPerson()`, qui référence `leaderboard/{uid}`
+mais reste compat en bloc tant que sa transaction n'est pas migrée), suppression de
+compte + acceptation d'ami (2 `db.batch()`).
 
 **Harnais de test** (`tests/app.test.js`) : `loadFirestoreModular()` (nouvelle fonction
 d'index.html isolant l'`import()`) est remplacée par un double de test
