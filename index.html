@@ -391,6 +391,8 @@ auth.onAuthStateChanged(user => {
     myFriends = [];
     incomingFriendRequests = [];
     outgoingFriendRequestUids = new Set();
+    if (communityActivityFeedUnsub) { communityActivityFeedUnsub(); communityActivityFeedUnsub = null; }
+    communityActivityFeed = [];
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
@@ -1871,6 +1873,28 @@ async function registerCommunityCompletionIfNeeded(challengeId) {
   }
 }
 
+// Fil d'activité global (amis) : UN document PAR défi complété (pas par série,
+// contrairement à registerBossBattleContributionIfNeeded() ci-dessous qui compte
+// chaque série pour la jauge collective) — sinon le fil serait bien trop bruyant.
+// kudosCount initialisé à 0 (voir batch kudos à venir).
+async function registerActivityFeedEntryIfNeeded(c, total) {
+  if (!currentUser || !c) return;
+  try {
+    await db.collection('activityFeed').add({
+      uid: currentUser.uid,
+      displayName: formatDisplayName(currentUser.displayName),
+      challengeName: c.name,
+      cat: c.cat,
+      amount: total,
+      unit: c.unit,
+      at: Date.now(),
+      kudosCount: 0,
+    });
+  } catch (e) {
+    reportSaveError('activity feed entry failed', e);
+  }
+}
+
 // Appelé une seule fois au démarrage (après loadAppData()) : le Hero Banner + timer
 // d'expiration ont besoin d'une valeur "maintenant" pour l'estimation d'heures
 // restantes avant minuit — pas besoin d'un setInterval dédié, un re-render suffisant
@@ -1907,6 +1931,16 @@ let friendSearchResult = null; // null | 'searching' | 'not-found' | 'self' | { 
 let myFriends = []; // [{ uid, displayName, photoURL }]
 let incomingFriendRequests = []; // [{ fromUid, displayName, photoURL, at }]
 let outgoingFriendRequestUids = new Set();
+
+// ==== FIL D'ACTIVITÉ GLOBAL (amis) ====
+// `activityFeed/{autoId}` : UN document PAR défi complété (pas par série, contrairement
+// à registerBossBattleContributionIfNeeded() qui compte chaque série pour la jauge
+// collective) — voir le hook dans addSet(). Filtré côté lecture par la liste d'amis
+// (where('uid','in', mesAmisUids)), jamais un fil public global : Firestore refuse un
+// 'in' avec un tableau vide, donc aucune requête n'est lancée tant qu'on n'a aucun ami
+// (état vide géré explicitement, voir renderActivityFeedSection()).
+let communityActivityFeed = [];
+let communityActivityFeedUnsub = null;
 
 function friendRequestId(fromUid, toUid) {
   return fromUid + '_' + toUid;
@@ -1957,10 +1991,34 @@ async function refreshFriendsData() {
     ]);
     myFriends = friendUids.map((uid, i) => ({ uid, ...(friendProfiles[i] || { displayName: 'Athlète', photoURL: '' }) }));
     incomingFriendRequests = incomingDocs.map((d, i) => ({ fromUid: d.fromUid, at: d.at, ...(incomingProfiles[i] || { displayName: 'Athlète', photoURL: '' }) }));
+    // Redémarre le fil d'activité à chaque changement de la liste d'amis (nouvel ami
+    // ajouté/retiré change forcément le filtre where('uid','in', ...) de la requête).
+    startActivityFeedListener();
     render();
   } catch (e) {
     reportSaveError('refresh friends data failed', e);
   }
+}
+
+// Filtré par la liste d'amis courante (myFriends, déjà résolue par refreshFriendsData()) :
+// Firestore refuse un where(...,'in',[]) avec un tableau vide, donc on n'interroge même
+// pas Firestore tant qu'aucun ami n'est ajouté — état vide explicite côté rendu.
+function startActivityFeedListener() {
+  if (communityActivityFeedUnsub) { communityActivityFeedUnsub(); communityActivityFeedUnsub = null; }
+  const friendUids = myFriends.map(f => f.uid);
+  if (friendUids.length === 0) {
+    communityActivityFeed = [];
+    return;
+  }
+  // Limite Firestore : au plus 30 valeurs dans un where('in', ...) — largement
+  // suffisant pour une liste d'amis personnelle, cf. discussion produit.
+  communityActivityFeedUnsub = db.collection('activityFeed')
+    .where('uid', 'in', friendUids.slice(0, 30))
+    .orderBy('at', 'desc').limit(30)
+    .onSnapshot((snap) => {
+      communityActivityFeed = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      render();
+    });
 }
 
 function openFriendsScreen() {
@@ -3663,6 +3721,7 @@ async function addSet(amount) {
     lastCompleted[currentChallengeId] = Date.now();
     await saveLastCompleted();
     await registerCommunityCompletionIfNeeded(currentChallengeId);
+    await registerActivityFeedEntryIfNeeded(getChallenge(), total);
 
     const isFirstCompletionOfDay = !dailyActivity[todayKey];
     dailyActivity[todayKey] = (dailyActivity[todayKey] || 0) + 1;
@@ -5071,6 +5130,45 @@ function renderHallOfFameSection() {
   `;
 }
 
+// Fil d'activité (amis) : vitrine FOMO principale de l'écran Communauté, juste après le
+// Boss Battle. 2 états vides distincts : "aucun ami" (CTA vers l'écran Amis) vs "amis
+// mais rien de récent" (message neutre) — pas le même message, la cause n'est pas la
+// même.
+function renderActivityFeedSection() {
+  if (myFriends.length === 0) {
+    return `
+      <div class="section-label">Fil d'activité (amis)</div>
+      <div class="activity-feed-empty">
+        <p>Suis des amis pour voir leurs efforts ici, en direct.</p>
+        <button class="friend-search-submit-btn" onclick="openFriendsScreen()">👥 Trouver des amis</button>
+      </div>
+    `;
+  }
+  if (communityActivityFeed.length === 0) {
+    return `
+      <div class="section-label">Fil d'activité (amis)</div>
+      <div class="history-empty">Aucune activité récente parmi tes amis.</div>
+    `;
+  }
+  return `
+    <div class="section-label">Fil d'activité (amis)</div>
+    <div class="activity-feed-list">
+      ${communityActivityFeed.map(entry => renderActivityFeedRow(entry)).join('')}
+    </div>
+  `;
+}
+
+function renderActivityFeedRow(entry) {
+  const amountLabel = entry.unit === 'sec' ? formatSecToReadable(entry.amount) : entry.amount + ' reps';
+  const rel = formatRelative(entry.at);
+  return `
+    <div class="activity-feed-row">
+      <span class="activity-feed-text"><strong>${escapeHtml(entry.displayName)}</strong> a complété ${escapeHtml(entry.challengeName)} — ${amountLabel}</span>
+      ${rel ? `<span class="activity-feed-time">${escapeHtml(rel)}</span>` : ''}
+    </div>
+  `;
+}
+
 function renderCommunityScreen() {
   const views = [
     { id: 'streaks', label: 'Séries' },
@@ -5121,6 +5219,7 @@ function renderCommunityScreen() {
     <div class="subtitle">Classement, défis partagés et objectifs collectifs</div>
     ${leaderboardOptOut ? `<div class="community-optout-notice">Tu ne participes pas au classement (activable dans Paramètres).</div>` : ''}
     ${renderBossBattleSection()}
+    ${renderActivityFeedSection()}
     ${renderHallOfFameSection()}
     <div class="leaderboard-tabs">
       ${views.map(v => `<button class="leaderboard-tab-btn${communityLeaderboardView === v.id ? ' active' : ''}" onclick="switchCommunityLeaderboardView('${v.id}')">${v.label}</button>`).join('')}

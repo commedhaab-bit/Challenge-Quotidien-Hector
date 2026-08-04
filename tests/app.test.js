@@ -2123,7 +2123,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v23'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v24'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3413,6 +3413,75 @@ const cssText = __rawHtml + __cssSource;
   friendSearchQuery = ''; friendSearchResult = null;
   currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
   console.log('OK: systeme d amis (recherche exacte par pseudo, demande/acceptation/refus/retrait, badge de notification, jamais d ecriture dans le document personnel d autrui)');
+
+  // --- 145ter. Fil d activite global (amis) : un document PAR defi complete (pas par
+  // serie, contrairement au Boss Battle), filtre en lecture par la liste d amis
+  // (where('uid','in', ...)), jamais un fil public. ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  myFriends = []; incomingFriendRequests = []; outgoingFriendRequestUids = new Set();
+  communityActivityFeed = [];
+
+  // Etat vide (aucun ami) : pas de requete Firestore lancee (where('in',[]) est
+  // invalide cote vrai SDK), CTA vers l ecran Amis affiche.
+  startActivityFeedListener();
+  __assertEq(communityActivityFeed.length, 0, 'sans ami, le fil doit rester vide (aucune requete where(in,[]) invalide)');
+  const noFriendsHtml = renderActivityFeedSection();
+  __assertOk(noFriendsHtml.includes('Suis des amis') && noFriendsHtml.includes('openFriendsScreen()'), 'sans ami, un CTA doit inviter a en trouver');
+
+  // Ecriture : completer un defi doit creer EXACTEMENT un document activityFeed, avec
+  // le nom deja anonymise (jamais le nom complet dans une collection partagee).
+  state = emptyDayState();
+  activeToday = new Set([pompes.id]);
+  await pickChallenge(pompes.id);
+  stats[pompes.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  const targetForFeed = getTarget();
+  await addSet(targetForFeed);
+  let feedSnap = await db.collection('activityFeed').orderBy('at').get();
+  __assertEq(feedSnap.size, 1, 'completer un defi doit creer exactement 1 document activityFeed');
+  __assertEq(feedSnap.docs[0].data().displayName, 'Moi A.', 'le nom doit etre anonymise des l ecriture (jamais le nom complet)');
+  __assertEq(feedSnap.docs[0].data().amount, targetForFeed, 'le montant enregistre doit correspondre au total au moment de la completion');
+  __assertEq(feedSnap.docs[0].data().kudosCount, 0, 'kudosCount doit demarrer a 0');
+  currentChallengeId = null;
+
+  // Une serie qui NE complete PAS le defi ne doit rien ecrire dans le fil (contrairement
+  // au Boss Battle, qui compte chaque serie).
+  state = emptyDayState();
+  await pickChallenge(pompes.id);
+  stats[pompes.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  await addSet(1); // tres en dessous de l objectif
+  feedSnap = await db.collection('activityFeed').orderBy('at').get();
+  __assertEq(feedSnap.size, 1, 'une serie qui ne complete pas le defi ne doit RIEN ajouter au fil (contrairement au Boss Battle)');
+  currentChallengeId = null;
+
+  // Lecture filtree par amis : l activite d une "amie" n apparait dans mon fil qu une
+  // fois qu on est effectivement amis.
+  await db.collection('activityFeed').add({ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Squats', cat: 'Bas du corps', amount: 50, unit: 'reps', at: Date.now(), kudosCount: 0 });
+  startActivityFeedListener();
+  __assertEq(communityActivityFeed.length, 0, 'sans etre ami avec amie-uid, son activite ne doit pas apparaitre dans mon fil');
+  myFriends = [{ uid: 'amie-uid', displayName: 'Amie B.', photoURL: '' }];
+  startActivityFeedListener();
+  await new Promise(r => setTimeout(r, 0)); // laisse l onSnapshot initial (microtask) se resoudre
+  __assertEq(communityActivityFeed.length, 1, 'une fois amis, son activite doit apparaitre dans mon fil');
+  __assertEq(communityActivityFeed[0].challengeName, 'Squats', 'le fil doit refleter le bon defi complete par mon amie');
+
+  // Etat "amis mais rien de recent" distinct de "aucun ami" (message different, pas le
+  // meme CTA).
+  communityActivityFeed = [];
+  const emptyButFriendsHtml = renderActivityFeedSection();
+  __assertOk(emptyButFriendsHtml.includes('Aucune activité récente') && !emptyButFriendsHtml.includes('openFriendsScreen()'), 'avec des amis mais aucune activite recente, le message doit etre neutre (pas le CTA "trouver des amis")');
+
+  // Rendu d une ligne du fil.
+  communityActivityFeed = [{ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Squats', amount: 50, unit: 'reps', at: Date.now() }];
+  const feedHtml = renderActivityFeedSection();
+  __assertOk(feedHtml.includes('Amie B.') && feedHtml.includes('Squats') && feedHtml.includes('50 reps'), 'une ligne du fil doit afficher le nom, le defi et le montant');
+
+  if (communityActivityFeedUnsub) { communityActivityFeedUnsub(); communityActivityFeedUnsub = null; }
+  communityActivityFeed = [];
+  myFriends = [];
+  __resetCommunityMocks();
+  currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
+  console.log('OK: fil d activite global filtre par amis (1 document par defi complete, jamais par serie, filtre where(uid,in,...))');
 
   // --- 146. Classement 3 vues + rang exact avec voisins directs ---
   __resetCommunityMocks();

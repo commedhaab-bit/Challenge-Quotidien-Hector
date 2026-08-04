@@ -862,3 +862,35 @@ badge, ne doit jamais bloquer le premier rendu), pas seulement à l'ouverture de
 Amis, sinon l'utilisateur ne remarquerait jamais une demande reçue sans ouvrir l'écran
 en question.
 
+## Fil d'activité global (amis) — batch 4/6 du chantier amis/fil d'activité/kudos
+
+`activityFeed/{autoId}` : UN document PAR défi **complété** (`addSet()`, dans le bloc
+`if (willComplete)`, juste après `registerCommunityCompletionIfNeeded()`) — **jamais par
+série**, contrairement à `registerBossBattleContributionIfNeeded()` (Boss Battle) qui
+compte chaque série pour la jauge collective. Un fil qui vibrerait à chaque répétition
+loggée serait bien trop bruyant ; seule la ligne d'arrivée compte ici. `kudosCount: 0`
+est déjà initialisé à l'écriture (batch kudos à venir).
+
+**Lecture filtrée par amis, jamais un fil public** (`startActivityFeedListener()`) :
+`activityFeed.where('uid', 'in', mesAmisUids.slice(0, 30)).orderBy('at', 'desc').limit(30)`.
+Le `.slice(0, 30)` reflète la limite dure de Firestore sur la taille d'un tableau
+`'in'` — largement suffisant pour une liste d'amis personnelle. **Garde
+obligatoire** : Firestore rejette un `where(champ, 'in', [])` avec un tableau vide (pas
+juste "aucun résultat", une vraie erreur) — `startActivityFeedListener()` court-circuite
+donc AVANT toute requête si `myFriends` est vide (`communityActivityFeed = []` direct,
+état vide dédié côté rendu). Ce garde-fou n'est pas vérifiable par le harnais de test
+(le mock accepte un tableau vide sans broncher, contrairement au vrai SDK) — à garder en
+tête si ce code est un jour retouché sans repasser par la prod.
+
+**Redémarrage du listener à chaque changement d'amis** : `refreshFriendsData()` appelle
+`startActivityFeedListener()` en toute fin (après avoir mis à jour `myFriends`) — un
+nouvel ami accepté élargit immédiatement le filtre `'in'`, un ami retiré le réduit.
+`startActivityFeedListener()` désabonne systématiquement l'ancien listener en premier
+(`communityActivityFeedUnsub`), même pattern que les autres listeners communautaires.
+
+**2 états vides distincts, pas le même message** (`renderActivityFeedSection()`) :
+"aucun ami" (CTA `openFriendsScreen()` — la cause est un manque d'amis) vs "amis mais
+aucune activité récente" (message neutre — la cause est juste l'inactivité récente du
+groupe). Confondre les deux serait trompeur : le 2ᵉ cas n'a pas besoin qu'on pousse
+l'utilisateur vers l'écran Amis, il en a déjà.
+

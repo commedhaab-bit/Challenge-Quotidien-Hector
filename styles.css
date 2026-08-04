@@ -914,6 +914,49 @@
   }
   .boss-battle-feed-row:first-child { border-top: none; }
 
+  /* Fil d'activite global (amis) : vitrine FOMO principale de l'ecran Communaute */
+  .activity-feed-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 18px;
+  }
+  .activity-feed-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .activity-feed-text {
+    font-size: 13px;
+    color: var(--chalk);
+    flex: 1;
+    min-width: 0;
+  }
+  .activity-feed-text strong { color: var(--accent); }
+  .activity-feed-time {
+    font-size: 11px;
+    color: var(--chalk-dim);
+    flex-shrink: 0;
+  }
+  .activity-feed-empty {
+    text-align: center;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px dashed rgba(255, 255, 255, 0.15);
+    border-radius: 14px;
+    padding: 20px 16px;
+    margin-bottom: 18px;
+  }
+  .activity-feed-empty p {
+    color: var(--chalk-dim);
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+
   /* Temple de la renommee : victoires collectives passees du Boss Battle */
   .hall-of-fame-list {
     display: flex;
