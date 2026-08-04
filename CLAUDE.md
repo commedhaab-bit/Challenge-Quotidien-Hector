@@ -1032,3 +1032,74 @@ match /users/{userId}/notifications/{notifId} {
 }
 ```
 
+## Internationalisation (i18n) FR/EN/ES — chantier en cours (batch 1/7 livré)
+
+Chantier en 7 batches (voir plan `generic-riding-gizmo.md`) pour rendre l'app
+multilingue sans aucune dépendance Firebase pour les traductions, sans régression du
+FR actuel, et extensible (ajouter une langue = un nouveau fichier, jamais de code de
+composant à toucher). **Batch 1 (fondations) livré : moteur de traduction + détection/
+persistance + branchement fichiers/service worker/tests — aucun écran encore migré,
+zéro changement visible pour l'instant.**
+
+**Décision technique : fichiers JS classiques (`locale-fr.js`/`locale-en.js`/
+`locale-es.js`), PAS de JSON chargé par `fetch()`** — écart assumé par rapport à la
+suggestion initiale de fichiers JSON. Raison concrète : `exercise-data.js`/
+`exercise-pictograms.js` sont déjà chargés en `<script src>` CLASSIQUE (jamais
+`type="module"`/`defer`) précisément parce qu'un chargement asynchrone a déjà causé un
+écran noir total en production une fois (voir plus haut, "SDK Firebase + fichiers
+classiques") — un `fetch()` de JSON de traduction reproduirait exactement ce risque
+sur le chemin de démarrage. Chaque `locale-XX.js` définit un simple global
+`const LOCALE_XX = {...}` (même pattern que `CHALLENGE_LIBRARY`), chargé juste après
+`exercise-data.js` dans le `<head>` — disponible de façon SYNCHRONE avant le script
+principal. Reste "0 lecture Firebase, 100% frontend" : mis en cache par le service
+worker exactement comme `exercise-data.js` (cache-first avec remplissage au 1er accès,
+pas pré-caché dans `ASSETS`).
+
+**Moteur `t(key, params)`/`tn(key, count, params)`** (`index.html`, juste après
+`let currentUser = null;`) : résolution par chemin pointé (`getNestedValue`, ex.
+`'common.cancel'`), interpolation `{{placeholder}}` (`interpolate`), repli en cascade
+`langue active → français → clé brute` — **aucune clé manquante dans une langue ne
+casse jamais un écran**, elle retombe sur le français puis, en dernier recours, sur
+son propre nom. `tn()` résout la même chose mais attend une valeur `{ one, other }` en
+bout de chemin, sélectionne la forme selon `count`. Couvert par un test dédié
+(`tests/app.test.js`, bloc "1bis", juste après le test CHALLENGE_LIBRARY) qui vérifie
+explicitement le repli FR (en supprimant temporairement une clé de `LOCALE_EN` en
+mémoire pendant le test, restaurée juste après) et le repli sur la clé brute — **piège
+à surveiller** : tant que les 3 dictionnaires ont des clés strictement identiques (cas
+du batch 1), aucun test qui lit une clé au hasard ne peut détecter une régression du
+repli EN/ES→FR ; le test manipule donc volontairement `LOCALE_EN` pour créer
+artificiellement l'asymétrie et exercer réellement ce chemin.
+
+**Détection/persistance** (`detectPreferredLanguage()`/`setPreferredLanguage()`) :
+ordre de repli `localStorage('preferredLanguage') → navigator.language (2 lettres) →
+'en'`. `PREFERRED_LANGUAGE_KEY` est la **2ᵉ exception documentée** à "pas de
+localStorage dans cette app" (la 1ʳᵉ est `PWA_INSTALL_GATE_BYPASS_KEY`) — même
+rationale : une préférence propre à CET APPAREIL/CE NAVIGATEUR, pas une donnée de
+compte, n'a pas sa place dans Firestore. `document.documentElement.lang` est posé au
+tout premier chargement (pas seulement au changement manuel via
+`setPreferredLanguage()`, qui persiste + relance `render()`).
+
+**Identité stable des exercices (à traiter aux batches 5 et 7, pas encore fait)** :
+`activityFeed/{id}.challengeName` stocke aujourd'hui le nom d'exercice EN FRANÇAIS en
+dur, comme si c'était un identifiant stable — dès qu'un nom devient traduit, ce serait
+incohérent pour un lecteur dans une autre langue. Plan retenu : `CHALLENGE_LIBRARY`
+gagne un champ `slug` stable (ex. `'pushups'`, indépendant du `name` affiché ET du
+`id` numérique déjà utilisé comme clé Firestore/`activeToday`) ; `activityFeed` écrira
+`exerciseSlug` EN PLUS de (jamais à la place de) `challengeName`/`cat` ; l'affichage
+préfère `exerciseSlug` s'il existe, retombe sur le `challengeName` littéral déjà
+stocké sinon — repli gracieux natif pour tout document écrit AVANT ce correctif,
+aucune migration de données nécessaire.
+
+**`CACHE_NAME` bumpé `v25` → `v26`** (nouveaux fichiers statiques `locale-*.js`, même
+règle que pour `exercise-data.js`/`exercise-pictograms.js`/`styles.css`).
+
+**Reste à faire (batches 2 à 7, plan approuvé)** : navigation + Paramètres + sélecteur
+de langue (batch 2) ; Aujourd'hui + fiche d'exécution (batch 3) ; Défis + formulaire
+personnalisé + Journal (batch 4) ; Communauté (classement/Boss Battle/Amis/fil
+d'activité, + correctif `exerciseSlug` ci-dessus) (batch 5) ; Profil + onboarding +
+tour guidé (batch 6) ; alertes/popups/toasts, `BADGE_DEFS`, dates relatives, ajout du
+`slug` + traduction des noms/catégories d'exercices dans `exercise-data.js`, audit
+final de chaînes françaises oubliées (batch 7). Tant qu'une chaîne n'est pas migrée
+vers `t()`, elle reste le littéral français en dur — comportement identique à
+aujourd'hui pour un utilisateur FR, aucune régression possible entre deux batches.
+

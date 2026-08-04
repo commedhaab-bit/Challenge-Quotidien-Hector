@@ -34,7 +34,7 @@ const htmlDir = path.dirname(htmlPath);
 let cssSource = '';
 try { cssSource = fs.readFileSync(path.join(htmlDir, 'styles.css'), 'utf8'); } catch (e) { /* optionnel */ }
 let externalClassicScripts = '';
-for (const name of ['exercise-pictograms.js', 'exercise-data.js']) {
+for (const name of ['exercise-pictograms.js', 'exercise-data.js', 'locale-fr.js', 'locale-en.js', 'locale-es.js']) {
   const p = path.join(htmlDir, name);
   if (fs.existsSync(p)) externalClassicScripts += fs.readFileSync(p, 'utf8') + '\n';
 }
@@ -109,8 +109,9 @@ function makeEl(id) {
 }
 
 const store = new Map(); // simule Firestore (ancien modele cle/valeur) : key -> JSON string
-// Simule localStorage (seul usage de ce mecanisme dans l'app : dismiss de la banniere
-// d'installation PWA, une preference propre a CET appareil, cf. commentaire index.html).
+// Simule localStorage (2 usages dans l'app, tous deux des preferences propres a CET
+// appareil, jamais des donnees de compte : dismiss de la banniere d'installation PWA,
+// et la langue preferee (i18n) -- cf. commentaires index.html).
 const mockLocalStorageStore = new Map();
 const mockLocalStorage = {
   getItem(key) { return mockLocalStorageStore.has(key) ? mockLocalStorageStore.get(key) : null; },
@@ -310,6 +311,7 @@ const sandbox = {
     createElement(tag){ return makeEl(); },
     addEventListener(){}, removeEventListener(){},
     body: makeEl(),
+    documentElement: makeEl('html'), // pour document.documentElement.lang (i18n, setPreferredLanguage())
     visibilityState: 'visible',
     get activeElement(){ return activeElement; },
   },
@@ -346,6 +348,10 @@ const sandbox = {
     platform: 'Linux armv8l',
     maxTouchPoints: 0,
     standalone: undefined,
+    // Neutre par defaut (francais, coherent avec le reste de l'appli jusqu'ici) : les
+    // tests qui simulent un autre appareil/langue reassignent directement, meme
+    // convention que navigator.onLine/userAgent ci-dessus.
+    language: 'fr-FR',
   },
   caches: mockCachesApi,
   history: {
@@ -482,6 +488,74 @@ const cssText = __rawHtml + __cssSource;
   // --- 1. CHALLENGE_LIBRARY sanity ---
   __assertOk(CHALLENGE_LIBRARY.length > 20, 'CHALLENGE_LIBRARY devrait contenir >20 exercices');
   console.log('OK: CHALLENGE_LIBRARY chargee (' + CHALLENGE_LIBRARY.length + ' exercices)');
+
+  // --- 1bis. i18n : helpers bas niveau (getNestedValue/interpolate), moteur t()/tn(),
+  // detection/persistance de la langue. Fondations du chantier i18n (batch 1/7) :
+  // aucun ecran encore migre a ce stade, uniquement le moteur lui-meme. ---
+  __assertEq(getNestedValue({ a: { b: { c: 42 } } }, 'a.b.c'), 42, 'getNestedValue doit suivre un chemin pointe');
+  __assertEq(getNestedValue({ a: { b: { c: 42 } } }, 'a.x.c'), undefined, 'getNestedValue doit renvoyer undefined si un segment intermediaire manque (jamais d exception)');
+  __assertEq(interpolate('Bonjour {{name}} !', { name: 'Alice' }), 'Bonjour Alice !', 'interpolate doit remplacer {{cle}} par la valeur correspondante');
+  __assertEq(interpolate('Bonjour {{name}} !', {}), 'Bonjour  !', 'un parametre absent doit etre remplace par une chaine vide, jamais planter');
+
+  // t() : resolution dans les 3 langues supportees.
+  const localeBefore = currentLocale;
+  __assertEq(t('common.cancel'), 'Annuler', 't() doit resoudre une cle existante dans la langue active par defaut (francais, cf. navigator.language mocke)');
+  currentLocale = 'en';
+  __assertEq(t('common.cancel'), 'Cancel', 't() doit basculer de langue via currentLocale');
+  currentLocale = 'es';
+  __assertEq(t('common.cancel'), 'Cancelar', 't() doit fonctionner pour les 3 langues supportees');
+
+  // Repli francais si la cle manque dans la langue active (jamais un ecran casse pour
+  // une cle pas encore traduite partout).
+  const savedEnConfirm = LOCALE_EN.common.confirm;
+  delete LOCALE_EN.common.confirm;
+  currentLocale = 'en';
+  __assertEq(t('common.confirm'), 'Confirmer', 'une cle manquante dans la langue active doit retomber sur le francais');
+  LOCALE_EN.common.confirm = savedEnConfirm;
+
+  // Repli sur la cle brute si elle n existe dans AUCUNE langue (jamais undefined/vide).
+  __assertEq(t('nonexistent.key.path'), 'nonexistent.key.path', 'une cle introuvable partout doit retomber sur elle-meme, jamais un ecran vide');
+
+  // t() : interpolation de parametres.
+  LOCALE_FR.common.testGreeting = 'Bonjour {{name}} !';
+  __assertEq(t('common.testGreeting', { name: 'Bob' }), 'Bonjour Bob !', 't() doit interpoler les parametres fournis');
+  delete LOCALE_FR.common.testGreeting;
+
+  // tn() : pluriel singulier/other selon count.
+  LOCALE_FR.common.testDays = { one: '{{n}} jour', other: '{{n}} jours' };
+  currentLocale = 'fr';
+  __assertEq(tn('common.testDays', 1), '1 jour', 'tn() doit choisir la forme singuliere pour count=1');
+  __assertEq(tn('common.testDays', 3), '3 jours', 'tn() doit choisir la forme "other" sinon');
+  delete LOCALE_FR.common.testDays;
+  currentLocale = localeBefore;
+
+  // detectPreferredLanguage() : ordre de repli exact -- localStorage > navigateur > anglais.
+  __mockLocalStorageStore.clear();
+  __mockLocalStorageStore.set('preferredLanguage', 'es');
+  __assertEq(detectPreferredLanguage(), 'es', 'la preference deja enregistree doit primer sur tout le reste');
+  __mockLocalStorageStore.clear();
+  const navLangBefore = navigator.language;
+  navigator.language = 'en-US';
+  __assertEq(detectPreferredLanguage(), 'en', 'sans preference enregistree, la langue du navigateur doit etre utilisee');
+  navigator.language = 'de-DE';
+  __assertEq(detectPreferredLanguage(), 'en', 'une langue navigateur NON supportee (allemand) doit retomber sur l anglais');
+  navigator.language = navLangBefore;
+
+  // setPreferredLanguage() : met a jour currentLocale, persiste, met a jour <html lang>,
+  // relance un rendu complet (necessite un etat minimal pour que render() ne plante pas).
+  state = emptyDayState();
+  activeToday = new Set();
+  activeTab = 'today';
+  currentChallengeId = null;
+  setPreferredLanguage('en');
+  __assertEq(currentLocale, 'en', 'setPreferredLanguage doit mettre a jour currentLocale');
+  __assertEq(__mockLocalStorageStore.get('preferredLanguage'), 'en', 'doit persister la preference sur cet appareil');
+  __assertEq(document.documentElement.lang, 'en', "doit mettre a jour l'attribut lang du document (accessibilite)");
+  setPreferredLanguage('xx'); // langue non supportee
+  __assertEq(currentLocale, 'en', 'une langue non supportee ne doit rien changer a la langue active');
+  setPreferredLanguage('fr'); // restaure avant la suite des tests
+  __mockLocalStorageStore.clear();
+  console.log('OK: i18n - moteur t()/tn(), detection/persistance de la langue (fondations, aucun ecran encore migre)');
 
   // --- 2. rebuildChallenges / customChallenges ---
   customChallenges = [{ id: 9001, cat: 'Haut du corps', name: 'Test Custom', target: 50, unit: 'reps', hardcoreTarget: 100, isCustom: true }];
@@ -2141,7 +2215,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v25'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v26'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');

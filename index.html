@@ -44,6 +44,14 @@
 <script src="exercise-pictograms.js"></script>
 <script src="exercise-data.js"></script>
 
+<!-- Dictionnaires de traduction (FR/EN/ES), même contrainte "script classique" que
+     ci-dessus (voir CLAUDE.md/le moteur t()/tn() dans le script principal). Ajouter
+     une langue = un nouveau fichier locale-XX.js + une balise ici, jamais de code de
+     composant à toucher. -->
+<script src="locale-fr.js"></script>
+<script src="locale-en.js"></script>
+<script src="locale-es.js"></script>
+
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -138,6 +146,93 @@ db.enablePersistence({ synchronizeTabs: true }).then(() => {
   console.warn('Firestore persistence indisponible :', err.code);
 });
 let currentUser = null;
+
+// ==== INTERNATIONALISATION (i18n) : FR / EN / ES ====
+// LOCALE_FR/LOCALE_EN/LOCALE_ES vivent dans locale-fr.js/locale-en.js/locale-es.js,
+// chargés en <script src> CLASSIQUE juste après exercise-data.js (voir <head>) — même
+// pattern EXACT que CHALLENGE_LIBRARY : un simple global disponible de façon SYNCHRONE
+// avant ce script principal, pas de fetch()/await au démarrage (risque déjà vécu une
+// fois avec defer/type=module sur les SDK Firebase, voir le commentaire dans <head> —
+// ne jamais réintroduire de chargement asynchrone sur le chemin de démarrage).
+const SUPPORTED_LOCALES = ['fr', 'en', 'es'];
+const LOCALES = { fr: LOCALE_FR, en: LOCALE_EN, es: LOCALE_ES };
+const LOCALE_TO_INTL = { fr: 'fr-FR', en: 'en-US', es: 'es-ES' };
+const PREFERRED_LANGUAGE_KEY = 'preferredLanguage'; // 2e exception documentée à "pas de
+  // localStorage dans cette app" (la 1ère est PWA_INSTALL_GATE_BYPASS_KEY) : une
+  // préférence propre À CET APPAREIL/CE NAVIGATEUR, pas une donnée de compte — n'a pas
+  // sa place dans Firestore, même raisonnement exact que l'exception existante.
+
+/**
+ * Détection dans l'ordre exact demandé : préférence déjà enregistrée sur cet appareil
+ * > langue du navigateur > repli anglais. `navigator.language` peut être long
+ * ("fr-FR", "en-US") : on ne garde que les 2 premiers caractères.
+ */
+function detectPreferredLanguage() {
+  try {
+    const stored = localStorage.getItem(PREFERRED_LANGUAGE_KEY);
+    if (SUPPORTED_LOCALES.includes(stored)) return stored;
+  } catch (e) { /* navigation privée/quota : tant pis, on retombe sur la détection navigateur */ }
+  const navLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+  return SUPPORTED_LOCALES.includes(navLang) ? navLang : 'en';
+}
+
+let currentLocale = detectPreferredLanguage();
+document.documentElement.lang = currentLocale; // pas seulement au changement manuel (setPreferredLanguage) : aussi au tout premier chargement
+
+/**
+ * Résout `path` ("today.emptyTitle") dans `obj` en suivant chaque segment séparé par
+ * un point. Renvoie `undefined` si un segment intermédiaire n'existe pas (jamais
+ * d'exception sur une clé manquante — laisse l'appelant décider du repli).
+ */
+function getNestedValue(obj, path) {
+  return path.split('.').reduce((acc, seg) => (acc == null ? undefined : acc[seg]), obj);
+}
+
+// Remplace chaque `{{nom}}` par `params.nom` (chaîne vide si absent) — volontairement
+// une simple recherche/remplacement, pas de mini-langage : les besoins de ce projet
+// (interpolation de noms/nombres déjà formatés) ne justifient rien de plus complexe.
+function interpolate(str, params) {
+  if (!params) return str;
+  return str.replace(/\{\{(\w+)\}\}/g, (_, name) => (name in params ? params[name] : ''));
+}
+
+/**
+ * Traduction d'une clé simple. Ordre de repli si la clé manque dans la langue active :
+ * français (toujours complet, langue de référence) PUIS la clé brute elle-même (jamais
+ * un écran vide/cassé, même pour une clé tout juste ajoutée et pas encore traduite
+ * partout).
+ */
+function t(key, params) {
+  const value = getNestedValue(LOCALES[currentLocale], key)
+    ?? getNestedValue(LOCALES.fr, key)
+    ?? key;
+  return typeof value === 'string' ? interpolate(value, params) : value;
+}
+
+// Variante pluriel : la valeur au bout de la clé est { one, other } plutôt qu'une
+// simple chaîne — sélectionne la bonne forme selon `count` avant d'interpoler.
+// Remplace les ternaires `${n} jour${n>1?'s':''}` dupliqués sans helper partagé
+// trouvés dans ce fichier avant l'i18n — une seule règle centrale, singulier/pluriel
+// suffit pour FR/EN/ES (pas besoin d'une bibliothèque de règles CLDR ici).
+function tn(key, count, params) {
+  const entry = getNestedValue(LOCALES[currentLocale], key) ?? getNestedValue(LOCALES.fr, key);
+  if (!entry || typeof entry !== 'object') return key;
+  const form = count === 1 ? entry.one : entry.other;
+  return interpolate(form ?? key, { ...params, n: count });
+}
+
+/**
+ * Change la langue active : persiste sur CET appareil, met à jour l'attribut `lang`
+ * du document (accessibilité/moteurs de recherche), puis relance un rendu complet —
+ * tous les écrans déjà migrés vers t()/tn() reflètent la nouvelle langue instantanément.
+ */
+function setPreferredLanguage(code) {
+  if (!SUPPORTED_LOCALES.includes(code)) return;
+  currentLocale = code;
+  try { localStorage.setItem(PREFERRED_LANGUAGE_KEY, code); } catch (e) { /* navigation privee : tant pis, retombera sur la detection navigateur au prochain chargement */ }
+  document.documentElement.lang = code;
+  render();
+}
 
 /**
  * Signale un échec d'écriture Firestore — mais SEULEMENT si on est en ligne : hors
