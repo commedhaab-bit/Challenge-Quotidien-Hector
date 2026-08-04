@@ -2123,7 +2123,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v24'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v25'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3482,6 +3482,89 @@ const cssText = __rawHtml + __cssSource;
   __resetCommunityMocks();
   currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
   console.log('OK: fil d activite global filtre par amis (1 document par defi complete, jamais par serie, filtre where(uid,in,...))');
+
+  // --- 145quater. Kudos : evenementiel (fil d activite + contributions Boss Battle,
+  // reutilise giveKudosToEvent/removeKudosFromEvent, permanent + retrait possible) et
+  // personne (classement, giveKudosToPerson, quotidien, pas de retrait). Atomicite via
+  // db.runTransaction() : jamais de double-comptage meme en cas de double-tap. ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  myKudosGivenEventIds = new Set();
+  myKudosGivenToday = new Set();
+
+  // Evenementiel : donner un kudos incremente kudosCount ET pose la preuve kudosBy.
+  const feedEntryRef = await db.collection('activityFeed').add({ uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Squats', amount: 50, unit: 'reps', at: Date.now(), kudosCount: 0 });
+  await giveKudosToEvent(feedEntryRef);
+  let feedEntryDoc = await feedEntryRef.get();
+  __assertEq(feedEntryDoc.data().kudosCount, 1, 'donner un kudos doit incrementer kudosCount de 1');
+  const kudosByDoc = await feedEntryRef.collection('kudosBy').doc('me-uid').get();
+  __assertOk(kudosByDoc.exists, 'la preuve kudosBy/{votant} doit etre posee');
+  __assertOk(myKudosGivenEventIds.has(feedEntryRef.id), 'l etat local doit refleter le kudos donne');
+
+  // Double-tap (2e appel sans avoir retire entre-temps) : ne doit JAMAIS re-incrementer
+  // (garde par transaction : preuve deja presente -> avorte sans ecrire).
+  await giveKudosToEvent(feedEntryRef);
+  feedEntryDoc = await feedEntryRef.get();
+  __assertEq(feedEntryDoc.data().kudosCount, 1, 'un 2e appel sans retrait entre les deux ne doit jamais re-incrementer (protection anti double-comptage)');
+
+  // Retrait : decremente et retire la preuve.
+  await removeKudosFromEvent(feedEntryRef);
+  feedEntryDoc = await feedEntryRef.get();
+  __assertEq(feedEntryDoc.data().kudosCount, 0, 'retirer un kudos doit decrementer kudosCount');
+  const kudosByDocAfterRemove = await feedEntryRef.collection('kudosBy').doc('me-uid').get();
+  __assertOk(!kudosByDocAfterRemove.exists, 'la preuve kudosBy doit etre supprimee au retrait');
+  __assertOk(!myKudosGivenEventIds.has(feedEntryRef.id), 'l etat local doit refleter le retrait');
+
+  // Retirer un kudos jamais donne ne doit rien faire (pas de kudosCount negatif).
+  await removeKudosFromEvent(feedEntryRef);
+  feedEntryDoc = await feedEntryRef.get();
+  __assertEq(feedEntryDoc.data().kudosCount, 0, 'retirer un kudos jamais donne ne doit jamais faire descendre le compteur sous 0');
+
+  // Meme mecanisme reutilise sur les contributions Boss Battle (structure identique).
+  const contribRef = await bossBattleDocRef().collection('contributions').add({ uid: 'amie-uid', displayName: 'Amie B.', amount: 20, at: Date.now(), kudosCount: 0 });
+  await giveKudosToEvent(contribRef);
+  const contribDoc = await contribRef.get();
+  __assertEq(contribDoc.data().kudosCount, 1, 'giveKudosToEvent() doit fonctionner identiquement sur une contribution Boss Battle');
+
+  // Rendu : jamais affiche sur son propre evenement.
+  const ownRowHtml = renderActivityFeedRow({ id: 'x', uid: 'me-uid', displayName: 'Moi Athlete', challengeName: 'Pompes', amount: 10, unit: 'reps', at: Date.now(), kudosCount: 3 });
+  __assertOk(!ownRowHtml.includes('kudos-btn'), 'le bouton kudos ne doit jamais apparaitre sur son propre evenement');
+  const otherRowHtml = renderActivityFeedRow({ id: feedEntryRef.id, uid: 'amie-uid', displayName: 'Amie B.', challengeName: 'Squats', amount: 50, unit: 'reps', at: Date.now(), kudosCount: 0 });
+  __assertOk(otherRowHtml.includes('kudos-btn') && otherRowHtml.includes('👏 0'), 'le bouton kudos doit apparaitre sur l evenement de quelqu un d autre, avec le bon compteur');
+
+  // Personne (classement) : incremente kudosTotal a vie, quotidien (ID = jour_votant),
+  // pas de retrait, jamais sur soi-meme.
+  __resetCommunityMocks();
+  await db.collection('leaderboard').doc('cible-uid').set({ displayName: 'Cible C.', kudosTotal: 4 }, { merge: true });
+  await giveKudosToPerson('cible-uid');
+  let targetDoc = await db.collection('leaderboard').doc('cible-uid').get();
+  __assertEq(targetDoc.data().kudosTotal, 5, 'donner un kudos a une personne doit incrementer kudosTotal (cumul a vie)');
+  __assertOk(myKudosGivenToday.has('cible-uid'), 'l etat local doit refleter le kudos donne aujourd hui');
+  const givenDoc = await db.collection('leaderboard').doc('cible-uid').collection('kudosGiven').doc(todayKey + '_me-uid').get();
+  __assertOk(givenDoc.exists, 'la preuve doit etre datee du jour (ID = jour_votant), pour permettre un nouveau kudos demain sans code de reset');
+
+  // Meme jour, 2e tentative : ne doit pas re-incrementer.
+  await giveKudosToPerson('cible-uid');
+  targetDoc = await db.collection('leaderboard').doc('cible-uid').get();
+  __assertEq(targetDoc.data().kudosTotal, 5, 'un 2e kudos le meme jour a la meme personne ne doit pas re-incrementer');
+
+  // Jamais sur soi-meme.
+  await db.collection('leaderboard').doc('me-uid').set({ displayName: 'Moi', kudosTotal: 0 }, { merge: true });
+  await giveKudosToPerson('me-uid');
+  const selfDoc = await db.collection('leaderboard').doc('me-uid').get();
+  __assertEq(selfDoc.data().kudosTotal, 0, 'impossible de se donner un kudos a soi-meme');
+
+  // Rendu classement : jamais sur sa propre ligne (highlight=true), affiche ailleurs.
+  const ownLeaderboardRowHtml = renderLeaderboardRow({ uid: 'me-uid', displayName: 'Moi', streakCount: 5, kudosTotal: 0 }, 1, 'streaks', true);
+  __assertOk(!ownLeaderboardRowHtml.includes('kudos-btn'), 'le bouton kudos ne doit jamais apparaitre sur sa propre ligne du classement');
+  const otherLeaderboardRowHtml = renderLeaderboardRow({ uid: 'cible-uid', displayName: 'Cible C.', streakCount: 3, kudosTotal: 5 }, 2, 'streaks', false);
+  __assertOk(otherLeaderboardRowHtml.includes('kudos-btn') && otherLeaderboardRowHtml.includes('👏 5'), 'le bouton kudos doit apparaitre sur la ligne de quelqu un d autre, avec son cumul a vie');
+
+  __resetCommunityMocks();
+  myKudosGivenEventIds = new Set();
+  myKudosGivenToday = new Set();
+  currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
+  console.log('OK: kudos (evenementiel reutilisable fil/Boss Battle avec retrait, personne quotidien sans retrait, atomicite via transaction, jamais sur soi-meme)');
 
   // --- 146. Classement 3 vues + rang exact avec voisins directs ---
   __resetCommunityMocks();

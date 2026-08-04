@@ -393,6 +393,8 @@ auth.onAuthStateChanged(user => {
     outgoingFriendRequestUids = new Set();
     if (communityActivityFeedUnsub) { communityActivityFeedUnsub(); communityActivityFeedUnsub = null; }
     communityActivityFeed = [];
+    myKudosGivenEventIds = new Set();
+    myKudosGivenToday = new Set();
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
@@ -1942,6 +1944,109 @@ let outgoingFriendRequestUids = new Set();
 let communityActivityFeed = [];
 let communityActivityFeedUnsub = null;
 
+// ==== KUDOS 👏 ====
+// 2 formes selon ce qui est "kudos-able" :
+// - Événementiel (fil d'activité + contributions Boss Battle) : 1 kudos PERMANENT par
+//   votant et par événement (comme Strava sur une activité), retrait possible (2e tap
+//   = retire). `giveKudosToEvent(docRef)`/`removeKudosFromEvent(docRef)` sont
+//   génériques, réutilisées sur les 2 surfaces plutôt que dupliquées : les 2 collections
+//   ont EXACTEMENT la même forme (kudosCount sur le doc parent + sous-collection
+//   kudosBy/{voterUid}).
+// - Personne (classement) : 1 kudos par JOUR et par cible (kudosGiven/{jour}_{votant} —
+//   l'ID intègre déjà la date, donc AUCUN code de reset à écrire, demain = un nouveau
+//   doc), cumul affiché à vie (kudosTotal), PAS de retrait (plus simple, décision
+//   assumée : moins besoin de symétrie qu'un like Strava sur un événement ponctuel).
+//
+// db.runTransaction() (1er vrai usage produit, mock ajouté au batch 1) : lit la preuve
+// d'un kudos déjà donné, avorte SANS écrire si c'est déjà le cas, sinon écrit les 2
+// documents liés atomiquement — ferme le trou qu'un simple batch() laisserait ouvert
+// (2 écritures indépendantes que rien ne lie vraiment côté serveur).
+//
+// Suivi "ai-je déjà kudos ceci" volontairement SIMPLIFIÉ : mémorisé en mémoire
+// uniquement au fil de MES propres actions cette session (myKudosGivenEventIds/
+// myKudosGivenToday), jamais re-vérifié depuis Firestore à l'affichage. Un rechargement
+// de page peut donc réafficher un bouton "pas encore donné" pour un kudos déjà donné
+// une session précédente — SANS RISQUE de double-comptage réel : la transaction
+// vérifie toujours l'état serveur avant d'écrire quoi que ce soit. Compromis assumé
+// (feature sociale à faible enjeu) plutôt que de multiplier les lectures Firestore
+// pour re-vérifier chaque ligne visible à chaque affichage.
+let myKudosGivenEventIds = new Set();
+let myKudosGivenToday = new Set();
+
+async function giveKudosToEvent(docRef) {
+  if (!currentUser) return;
+  const kudosByRef = docRef.collection('kudosBy').doc(currentUser.uid);
+  try {
+    await db.runTransaction(async (tx) => {
+      const existing = await tx.get(kudosByRef);
+      if (existing.exists) return;
+      const eventDoc = await tx.get(docRef);
+      const current = eventDoc.exists ? (eventDoc.data().kudosCount || 0) : 0;
+      tx.set(kudosByRef, { at: Date.now() });
+      tx.set(docRef, { kudosCount: current + 1 }, { merge: true });
+    });
+    myKudosGivenEventIds.add(docRef.id);
+    if (navigator.vibrate) navigator.vibrate(10);
+    render();
+  } catch (e) {
+    reportSaveError('give kudos failed', e);
+  }
+}
+
+async function removeKudosFromEvent(docRef) {
+  if (!currentUser) return;
+  const kudosByRef = docRef.collection('kudosBy').doc(currentUser.uid);
+  try {
+    await db.runTransaction(async (tx) => {
+      const existing = await tx.get(kudosByRef);
+      if (!existing.exists) return;
+      const eventDoc = await tx.get(docRef);
+      const current = eventDoc.exists ? (eventDoc.data().kudosCount || 0) : 0;
+      tx.delete(kudosByRef);
+      tx.set(docRef, { kudosCount: Math.max(0, current - 1) }, { merge: true });
+    });
+    myKudosGivenEventIds.delete(docRef.id);
+    if (navigator.vibrate) navigator.vibrate(10);
+    render();
+  } catch (e) {
+    reportSaveError('remove kudos failed', e);
+  }
+}
+
+async function giveKudosToPerson(targetUid) {
+  if (!currentUser || targetUid === currentUser.uid) return;
+  const entryId = todayKey + '_' + currentUser.uid;
+  const targetRef = db.collection('leaderboard').doc(targetUid);
+  const givenRef = targetRef.collection('kudosGiven').doc(entryId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const existing = await tx.get(givenRef);
+      if (existing.exists) return; // déjà donné aujourd'hui à cette personne
+      const targetDoc = await tx.get(targetRef);
+      const current = targetDoc.exists ? (targetDoc.data().kudosTotal || 0) : 0;
+      tx.set(givenRef, { voterUid: currentUser.uid, date: todayKey, at: Date.now() });
+      tx.set(targetRef, { kudosTotal: current + 1 }, { merge: true });
+    });
+    myKudosGivenToday.add(targetUid);
+    if (navigator.vibrate) navigator.vibrate(10);
+    render();
+  } catch (e) {
+    reportSaveError('give kudos to person failed', e);
+  }
+}
+
+// Bouton réutilisé par le fil d'activité ET le fil de contributions Boss Battle (même
+// forme de document, voir plus haut) : `docRefJsExpr` est une expression JS (chaîne),
+// pas une valeur — insérée telle quelle dans l'attribut onclick, reconstruite au clic
+// plutôt que sérialisée (un DocumentReference ne peut pas transiter par un attribut
+// HTML). Jamais affiché sur son propre événement.
+function renderKudosButton(docRefJsExpr, entryId, kudosCount, isMine) {
+  if (isMine) return '';
+  const alreadyGiven = myKudosGivenEventIds.has(entryId);
+  const action = alreadyGiven ? 'removeKudosFromEvent' : 'giveKudosToEvent';
+  return `<button class="kudos-btn${alreadyGiven ? ' given' : ''}" onclick="event.stopPropagation(); ${action}(${docRefJsExpr})">👏 ${kudosCount || 0}</button>`;
+}
+
 function friendRequestId(fromUid, toUid) {
   return fromUid + '_' + toUid;
 }
@@ -2201,7 +2306,9 @@ function startRecentContributionsListener() {
   if (communityContributionsUnsub) communityContributionsUnsub();
   communityContributionsUnsub = bossBattleDocRef().collection('contributions')
     .orderBy('at', 'desc').limit(20).onSnapshot((snap) => {
-      communityRecentContributions = snap.docs.map(d => d.data());
+      // { id: d.id, ...d.data() } (pas juste d.data()) : l'id du document est
+      // nécessaire pour cibler les kudos sur une contribution précise.
+      communityRecentContributions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       render();
     });
 }
@@ -5036,12 +5143,18 @@ function renderLeaderboardRow(entry, rank, view, highlight) {
   const avatar = entry.photoURL
     ? `<img src="${escapeHtml(entry.photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
     : `<div class="leaderboard-avatar-fallback">${escapeHtml(name.charAt(0).toUpperCase())}</div>`;
+  // Jamais sur sa propre ligne. Contrairement aux kudos événementiels (fil d'activité/
+  // Boss Battle), pas de retrait ici : 1 kudos par JOUR et par personne (voir
+  // giveKudosToPerson()), plus simple, pas besoin de la symétrie d'un like sur un
+  // événement ponctuel.
+  const kudosHtml = highlight ? '' : `<button class="kudos-btn${myKudosGivenToday.has(entry.uid) ? ' given' : ''}" onclick="event.stopPropagation(); giveKudosToPerson('${escapeJsAttr(entry.uid)}')">👏 ${entry.kudosTotal || 0}</button>`;
   return `
     <div class="leaderboard-row${highlight ? ' me' : ''}">
       <span class="leaderboard-rank">#${rank}</span>
       ${avatar}
       <span class="leaderboard-name">${escapeHtml(name)}</span>
       <span class="leaderboard-value">${valueLabel}</span>
+      ${kudosHtml}
     </div>
   `;
 }
@@ -5085,7 +5198,10 @@ function renderBossBattleSection() {
   // distinct du badge Contributeur du jour ci-dessus (agrégat, pas un flux d'évènements).
   const feedHtml = communityRecentContributions.length > 0
     ? `<div class="boss-battle-feed">${communityRecentContributions.map(c => `
-        <div class="boss-battle-feed-row">${escapeHtml(formatDisplayName(c.displayName))} vient d'ajouter ${c.amount} ${unitLabel}</div>
+        <div class="boss-battle-feed-row">
+          <span>${escapeHtml(formatDisplayName(c.displayName))} vient d'ajouter ${c.amount} ${unitLabel}</span>
+          ${renderKudosButton(`bossBattleDocRef().collection('contributions').doc('${escapeJsAttr(c.id)}')`, c.id, c.kudosCount, currentUser && c.uid === currentUser.uid)}
+        </div>
       `).join('')}</div>`
     : '';
   return `
@@ -5161,10 +5277,15 @@ function renderActivityFeedSection() {
 function renderActivityFeedRow(entry) {
   const amountLabel = entry.unit === 'sec' ? formatSecToReadable(entry.amount) : entry.amount + ' reps';
   const rel = formatRelative(entry.at);
+  const isMine = currentUser && entry.uid === currentUser.uid;
+  const kudosHtml = renderKudosButton(`db.collection('activityFeed').doc('${escapeJsAttr(entry.id)}')`, entry.id, entry.kudosCount, isMine);
   return `
     <div class="activity-feed-row">
-      <span class="activity-feed-text"><strong>${escapeHtml(entry.displayName)}</strong> a complété ${escapeHtml(entry.challengeName)} — ${amountLabel}</span>
-      ${rel ? `<span class="activity-feed-time">${escapeHtml(rel)}</span>` : ''}
+      <div class="activity-feed-body">
+        <span class="activity-feed-text"><strong>${escapeHtml(entry.displayName)}</strong> a complété ${escapeHtml(entry.challengeName)} — ${amountLabel}</span>
+        ${rel ? `<span class="activity-feed-time">${escapeHtml(rel)}</span>` : ''}
+      </div>
+      ${kudosHtml}
     </div>
   `;
 }

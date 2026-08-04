@@ -894,3 +894,54 @@ aucune activité récente" (message neutre — la cause est juste l'inactivité 
 groupe). Confondre les deux serait trompeur : le 2ᵉ cas n'a pas besoin qu'on pousse
 l'utilisateur vers l'écran Amis, il en a déjà.
 
+## Kudos 👏 — batch 5/6 du chantier amis/fil d'activité/kudos (chantier complet)
+
+2 mécanismes distincts selon ce qui est "kudos-able" :
+
+- **Événementiel** (fil d'activité + contributions Boss Battle) : 1 kudos PERMANENT par
+  votant et par événement, retrait possible (2ᵉ tap = retire, symétrie avec Strava sur
+  une activité). `giveKudosToEvent(docRef)`/`removeKudosFromEvent(docRef)` sont
+  **génériques, paramétrées par la référence du document** — réutilisées telles quelles
+  sur `activityFeed/{id}` ET `community/bossBattle_{semaine}/contributions/{id}` (même
+  forme exacte : `kudosCount` sur le doc parent + sous-collection `kudosBy/{voterUid}`),
+  plutôt que dupliquées. `communityRecentContributions` (fil Boss Battle) a dû être
+  corrigé pour inclure `id: d.id` (jusqu'ici `snap.docs.map(d => d.data())` jetait
+  l'ID du document, indispensable pour cibler un kudos précis).
+- **Personne** (classement) : 1 kudos par JOUR et par cible
+  (`kudosGiven/{jour}_{votant}` — l'ID intègre déjà la date, donc AUCUN code de reset à
+  écrire, demain = un nouveau doc), cumul affiché à vie (`kudosTotal`), **pas de
+  retrait** (décision assumée : plus simple, moins de valeur qu'un like sur un
+  événement ponctuel). `giveKudosToPerson(targetUid)`, jamais sur soi-même.
+
+**`db.runTransaction()` (1ᵉʳ vrai usage produit, mock ajouté au batch 1)** pour les 3
+actions : lit la preuve d'un kudos déjà donné, **avorte sans écrire** si c'est déjà le
+cas (ou si rien à retirer), sinon écrit les 2 documents liés atomiquement et vérifié
+côté serveur — ferme le trou qu'un `batch()` simple laisserait ouvert (2 écritures
+indépendantes que rien ne lie vraiment). Vérifié par régression : sans ce garde
+(`if (existing.exists) return;`), un 2ᵉ appel sans retrait entre les deux
+re-incrémente à tort.
+
+**`renderKudosButton(docRefJsExpr, entryId, kudosCount, isMine)`** : composant partagé
+par le fil d'activité et le fil Boss Battle (le classement, cas à part — personne, pas
+événement — a son propre bouton inline dans `renderLeaderboardRow()`). `docRefJsExpr`
+est une **chaîne de code JS**, pas une valeur : un `DocumentReference` ne peut pas
+transiter par un attribut HTML, donc l'expression qui le reconstruit
+(`db.collection('activityFeed').doc('...')` ou
+`bossBattleDocRef().collection('contributions').doc('...')`) est injectée telle quelle
+dans `onclick`, réévaluée au clic. Jamais affiché sur son propre événement/sa propre
+ligne (`isMine`/`highlight`).
+
+**Suivi "ai-je déjà kudos ceci" volontairement SIMPLIFIÉ** : `myKudosGivenEventIds`/
+`myKudosGivenToday` sont des `Set` en mémoire, peuplés UNIQUEMENT par mes propres
+actions de la session courante — jamais re-vérifiés depuis Firestore à l'affichage
+(pas de lecture supplémentaire par ligne visible). Conséquence acceptée : après un
+rechargement de page, un kudos déjà donné une session précédente peut réafficher un
+bouton "pas encore donné" — **sans risque de double-comptage réel**, la transaction
+revérifie toujours l'état serveur avant d'écrire. Compromis délibéré pour une feature
+sociale à faible enjeu plutôt que de multiplier les lectures Firestore.
+
+**Chantier amis/fil d'activité/kudos complet** (batches 1 à 5) : pseudo obligatoire,
+amis à demande mutuelle, fil d'activité global filtré par amis, kudos sur les 3
+surfaces. Reste le batch 6 (polish + texte final des règles Firestore à remettre à
+l'utilisateur pour la console Firebase).
+
