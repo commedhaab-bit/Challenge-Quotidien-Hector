@@ -2215,7 +2215,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v30'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v31'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4374,6 +4374,95 @@ const cssText = __rawHtml + __cssSource;
   currentLocale = localeBeforeBatch5;
   __resetCommunityMocks();
   console.log('OK: i18n batch 5 - Communaute (classement/Boss Battle/Temple/fil d activite/Amis) + exerciseSlug');
+
+  // --- 164. i18n batch 6/7 : Profil, onboarding (profil + transition + tour guide),
+  // pseudo (setup/renommage). Fonctions de rendu pures appelees directement. ---
+  const localeBeforeBatch6 = currentLocale;
+  const profileStepBefore = profileStep;
+  const profileDraftBefore = { ...profileDraft };
+  const guidedTourStepBefore = guidedTourStep;
+  const usernameSetupModeBefore = usernameSetupMode;
+  const usernameDraftBefore = usernameDraft;
+  const usernameAvailabilityBefore = usernameAvailability;
+  const onboardingTransitionPhaseBefore = onboardingTransitionPhase;
+
+  currentLocale = 'en';
+  guidedTourStep = 0;
+  const tourWelcomeHtmlEn = renderGuidedTourOverlay();
+  __assertOk(tourWelcomeHtmlEn.includes('Welcome to Défi du Jour!') && tourWelcomeHtmlEn.includes('Next ›'), 'la 1ere carte du tour guide doit etre traduite en anglais');
+  guidedTourStep = GUIDED_TOUR_STEPS.length - 1;
+  const tourLastHtmlEn = renderGuidedTourOverlay();
+  __assertOk(tourLastHtmlEn.includes('Finish'), 'la derniere carte du tour guide doit afficher le bouton de fin traduit');
+  guidedTourStep = null;
+
+  onboardingTransitionPhase = 'loading';
+  const transitionLoadingHtmlEn = renderOnboardingTransitionScreen();
+  __assertOk(transitionLoadingHtmlEn.includes('Calculating your targets...'), 'l ecran de transition (chargement) doit etre traduit en anglais');
+  onboardingTransitionPhase = 'done';
+  const transitionDoneHtmlEn = renderOnboardingTransitionScreen();
+  __assertOk(transitionDoneHtmlEn.includes('Targets calculated!') && transitionDoneHtmlEn.includes('Discover my challenges'), 'l ecran de transition (termine) doit etre traduit en anglais');
+  onboardingTransitionPhase = null;
+
+  profileStep = 0;
+  const profileWelcomeHtmlEn = renderProfileOnboardingScreen();
+  __assertOk(profileWelcomeHtmlEn.includes('Welcome to') && profileWelcomeHtmlEn.includes('Get started'), 'l etape de bienvenue de l onboarding profil doit etre traduite en anglais');
+  profileStep = 1;
+  const profileAgeHtmlEn = renderProfileOnboardingScreen();
+  __assertOk(profileAgeHtmlEn.includes('How old are you?') && profileAgeHtmlEn.includes('yo'), 'l etape age doit etre traduite en anglais (question + suffixe unite)');
+  profileStep = 4;
+  profileDraft.level = null;
+  const profileLevelHtmlEn = renderProfileOnboardingScreen();
+  __assertOk(profileLevelHtmlEn.includes('Your current level?') && profileLevelHtmlEn.includes('Beginner') && profileLevelHtmlEn.includes('Advanced'), 'l etape niveau doit etre traduite en anglais');
+  profileStep = profileStepBefore;
+  Object.assign(profileDraft, profileDraftBefore);
+
+  currentLocale = 'es';
+  usernameSetupMode = 'onboarding';
+  usernameDraft = 'te';
+  usernameAvailability = null;
+  const usernameShortHtmlEs = renderUsernameSetupScreen();
+  __assertOk(usernameShortHtmlEs.includes('Elige tu usuario') && usernameShortHtmlEs.includes('Falta 1 carácter'), 'l ecran de choix de pseudo (trop court) doit etre traduit en espagnol, y compris le decompte singulier');
+  usernameDraft = 'testuser';
+  usernameAvailability = 'taken';
+  const usernameTakenHtmlEs = renderUsernameSetupScreen();
+  __assertOk(usernameTakenHtmlEs.includes('Ya está en uso'), 'le statut "deja pris" doit etre traduit en espagnol');
+  usernameSetupMode = 'rename';
+  usernameAvailability = 'available';
+  const usernameRenameHtmlEs = renderUsernameSetupScreen();
+  __assertOk(usernameRenameHtmlEs.includes('Editar mi usuario') && usernameRenameHtmlEs.includes('>Guardar<'), 'le mode renommage doit afficher son propre titre + bouton Enregistrer traduits');
+  usernameSetupMode = usernameSetupModeBefore;
+  usernameDraft = usernameDraftBefore;
+  usernameAvailability = usernameAvailabilityBefore;
+
+  const savedXpTotal = xpTotal;
+  xpTotal = 50;
+  const athleteCardHtmlEs = renderAthleteCard();
+  __assertOk(athleteCardHtmlEs.includes('Nivel') && athleteCardHtmlEs.includes('XP'), 'la carte athlete (niveau/XP) doit etre traduite en espagnol');
+  const trophiesGridHtmlEs = renderTrophiesGrid();
+  __assertOk(trophiesGridHtmlEs.includes('Trofeos ('), 'le libelle des trophees doit etre traduit en espagnol');
+  // renderLevelRoadmapSheet() : le parametre de .map() a ete renomme tier (pas t, qui
+  // masquerait la fonction globale de traduction) -- verifie que l appel a t() a
+  // l interieur de ce callback fonctionne reellement, pas seulement que ca ne plante pas.
+  const roadmapHtmlEs = renderLevelRoadmapSheet();
+  __assertOk(roadmapHtmlEs.includes('Nivel') && roadmapHtmlEs.includes('Recorrido de títulos de atleta'), 'la fiche parcours de niveau doit etre traduite en espagnol (titre + libelle de section)');
+  __assertOk(/Nivel \\d+\\+/.test(roadmapHtmlEs) && /Niveles \\d+–\\d+/.test(roadmapHtmlEs), 'les intitules de palier (Nivel X+ / Niveles X-Y) doivent etre traduits, pas juste le contenu autour');
+  xpTotal = savedXpTotal;
+
+  const savedCurrentUserBatch6 = currentUser;
+  currentUser = null;
+  const accountSectionHtmlEs = renderAccountSection();
+  __assertOk(accountSectionHtmlEs.includes('Cuenta'), 'le repli de nom de compte (aucun utilisateur) doit etre traduit en espagnol');
+  currentUser = savedCurrentUserBatch6;
+
+  activeTab = 'account';
+  settingsScreenOpen = false;
+  const accountTabHtmlEs = renderAccountTabScreen();
+  __assertOk(accountTabHtmlEs.includes('>Perfil<') && accountTabHtmlEs.includes('Ajustes'), 'l onglet Profil (titre + bouton Parametres) doit etre traduit en espagnol');
+  activeTab = 'today';
+
+  currentLocale = localeBeforeBatch6;
+  guidedTourStep = guidedTourStepBefore;
+  console.log('OK: i18n batch 6 - Profil + onboarding (profil/transition/tour guide) + pseudo');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

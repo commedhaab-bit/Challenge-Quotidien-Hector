@@ -876,12 +876,16 @@ let hasSeenTour = false;
 // Étape 0 = carte de bienvenue neutre (fond assombri/flouté, cf. isIntro dans
 // renderGuidedTourOverlay) ; étapes suivantes = présentation des onglets, sur un
 // overlay léger/transparent pour laisser l'interface bien visible en arrière-plan.
+// title/text vivent dans locale-*.js (t('tour.' + key + '.title'/'text')), resolus au
+// RENDU (renderGuidedTourOverlay()) plutot que fige ici a l'evaluation de ce tableau —
+// necessaire pour reagir a un changement de langue en cours de session. emoji reste ici
+// (decoratif, langue-agnostique).
 const GUIDED_TOUR_STEPS = [
-  { tab: 'today', emoji: '👋', title: 'Bienvenue dans Défi du Jour !', text: "Faisons un rapide tour du propriétaire pour découvrir comment fonctionne l'application." },
-  { tab: 'today', emoji: "🏋️‍♂️", title: "Aujourd'hui", text: "Retrouve ici les défis que tu as activés pour la journée, et suis ta progression en direct." },
-  { tab: 'library', emoji: '🎯', title: 'Défis', text: "Commence par cet onglet : active un ou plusieurs défis pour aujourd'hui en appuyant sur leur carte." },
-  { tab: 'history', emoji: '📓', title: 'Journal', text: "Une fois activé dans Défis, retrouve ton défi dans l'onglet Aujourd'hui pour le commencer. Ici : calendrier, activité récente et historique détaillé." },
-  { tab: 'account', emoji: '👤', title: 'Profil', text: "Tes infos, ton profil sportif et tous les trophées que tu débloques au fil du temps." },
+  { tab: 'today', key: 'welcome', emoji: '👋' },
+  { tab: 'today', key: 'today', emoji: "🏋️‍♂️" },
+  { tab: 'library', key: 'library', emoji: '🎯' },
+  { tab: 'history', key: 'history', emoji: '📓' },
+  { tab: 'account', key: 'account', emoji: '👤' },
 ];
 
 async function loadHasSeenTour() {
@@ -936,13 +940,13 @@ function renderGuidedTourOverlay() {
   return `
     <div class="tour-overlay${isIntro ? ' intro' : ''}">
       <div class="tour-bubble">
-        <div class="tour-bubble-title">${step.emoji} ${step.title}</div>
-        <div class="tour-bubble-text">${step.text}</div>
+        <div class="tour-bubble-title">${step.emoji} ${t('tour.' + step.key + '.title')}</div>
+        <div class="tour-bubble-text">${t('tour.' + step.key + '.text')}</div>
         <div class="tour-bubble-footer">
           <div class="tour-dots">
             ${GUIDED_TOUR_STEPS.map((_, i) => `<span class="tour-dot${i === guidedTourStep ? ' active' : ''}"></span>`).join('')}
           </div>
-          <button class="tour-next-btn" onclick="guidedTourNext()">${isLast ? 'Terminer' : 'Suivant ›'}</button>
+          <button class="tour-next-btn" onclick="guidedTourNext()">${isLast ? t('tour.finishBtn') : t('tour.nextBtn')}</button>
         </div>
       </div>
     </div>
@@ -970,7 +974,7 @@ function renderOnboardingTransitionScreen() {
       <div class="profile-onboarding onboarding-screen">
         <div class="onboarding-content">
           <div class="tour-spinner"></div>
-          <div class="pf-welcome-desc" style="margin-top:22px;">Calcul de tes objectifs...</div>
+          <div class="pf-welcome-desc" style="margin-top:22px;">${t('onboarding.transition.loadingText')}</div>
         </div>
       </div>
     `;
@@ -987,24 +991,24 @@ function renderOnboardingTransitionScreen() {
     <div class="profile-onboarding onboarding-screen">
       <div class="onboarding-content">
         <div class="pf-welcome-badge">✅</div>
-        <h1 class="pf-welcome-title">Objectifs calculés !</h1>
-        <p class="pf-welcome-desc pf-welcome-desc-short">Ton programme personnalisé est prêt.</p>
+        <h1 class="pf-welcome-title">${t('onboarding.transition.doneTitle')}</h1>
+        <p class="pf-welcome-desc pf-welcome-desc-short">${t('onboarding.transition.doneSubtitle')}</p>
         <div class="preview-container">
-          <div class="preview-header-tag">💡 Exemple d'objectif généré</div>
+          <div class="preview-header-tag">${t('onboarding.transition.exampleTag')}</div>
           <div class="preview-card">
             <div class="preview-title">
               <span>🎯</span>
               <div class="exercise-info">
                 <span class="exercise-name">Pompes</span>
-                <span class="exercise-sub">Calibré selon ton profil</span>
+                <span class="exercise-sub">${t('onboarding.transition.exerciseSub')}</span>
               </div>
             </div>
             <div class="preview-badge">${previewTarget} REPS</div>
           </div>
         </div>
-        <p class="pf-onboarding-footnote">Retrouve cet objectif et tous tes autres défis du jour dans ton espace.</p>
+        <p class="pf-onboarding-footnote">${t('onboarding.transition.footnote')}</p>
       </div>
-      <button class="onboarding-cta" onclick="finishOnboardingTransition()">Découvrir mes défis</button>
+      <button class="onboarding-cta" onclick="finishOnboardingTransition()">${t('onboarding.transition.ctaBtn')}</button>
     </div>
   `;
 }
@@ -1333,23 +1337,21 @@ async function finishUsernameSetup() {
 
 function renderUsernameSetupScreen() {
   const isRename = usernameSetupMode === 'rename';
-  const title = isRename ? 'Modifier mon pseudo' : 'Choisis ton pseudo ⚡';
-  const subtitle = isRename
-    ? "Ton nouveau pseudo remplace l'ancien immédiatement — il redevient disponible pour quelqu'un d'autre."
-    : "Cet identifiant public permet à tes amis de te retrouver, sans jamais exposer ton vrai nom. Tu pourras le changer plus tard dans Paramètres.";
+  const title = isRename ? t('username.renameTitle') : t('username.chooseTitle');
+  const subtitle = isRename ? t('username.renameSubtitle') : t('username.chooseSubtitle');
   const backBtn = isRename
-    ? `<button class="nav-back-btn floating" onclick="history.back()" aria-label="Retour">‹</button>`
+    ? `<button class="nav-back-btn floating" onclick="history.back()" aria-label="${t('common.back')}">‹</button>`
     : '';
   let statusHtml = '';
   if (usernameDraft.length > 0 && usernameDraft.length < 3) {
     const remaining = 3 - usernameDraft.length;
-    statusHtml = `<div class="username-availability">Encore ${remaining} caractère${remaining > 1 ? 's' : ''}...</div>`;
+    statusHtml = `<div class="username-availability">${tn('username.remainingChars', remaining)}</div>`;
   } else if (usernameAvailability === 'checking') {
-    statusHtml = `<div class="username-availability">Vérification...</div>`;
+    statusHtml = `<div class="username-availability">${t('username.checking')}</div>`;
   } else if (usernameAvailability === 'available') {
-    statusHtml = `<div class="username-availability available">✅ Disponible</div>`;
+    statusHtml = `<div class="username-availability available">${t('username.available')}</div>`;
   } else if (usernameAvailability === 'taken') {
-    statusHtml = `<div class="username-availability taken">❌ Déjà pris, essaie autre chose</div>`;
+    statusHtml = `<div class="username-availability taken">${t('username.taken')}</div>`;
   }
   return `
     ${backBtn}
@@ -1362,13 +1364,13 @@ function renderUsernameSetupScreen() {
           <div class="username-input-row">
             <span class="username-at">@</span>
             <input type="text" id="usernameSetupInput" value="${escapeHtml(usernameDraft)}"
-                   oninput="updateUsernameDraft(this.value)" placeholder="pseudo" autocomplete="off"
+                   oninput="updateUsernameDraft(this.value)" placeholder="${t('username.placeholder')}" autocomplete="off"
                    autocapitalize="off" spellcheck="false" maxlength="20">
           </div>
           ${statusHtml}
         </div>
       </div>
-      <button class="onboarding-cta" onclick="finishUsernameSetup()">${isRename ? 'Enregistrer' : 'Continuer'}</button>
+      <button class="onboarding-cta" onclick="finishUsernameSetup()">${isRename ? t('username.saveBtn') : t('username.continueBtn')}</button>
     </div>
   `;
 }
@@ -4616,83 +4618,83 @@ function renderProfileOnboardingScreen() {
   if (isWelcome) {
     stepHtml = `
       <div class="pf-welcome-badge">⚡</div>
-      <h1 class="pf-welcome-title">Bienvenue dans<br><span class="pf-brand">Défi du Jour</span></h1>
+      <h1 class="pf-welcome-title">${t('onboarding.welcome.titleHtml')}</h1>
       <div class="features-list">
         <div class="feature-item">
           <div class="feature-icon">🎯</div>
-          <div class="feature-text">Choisis tes défis quotidiens</div>
+          <div class="feature-text">${t('onboarding.welcome.feature1')}</div>
         </div>
         <div class="feature-item">
           <div class="feature-icon">⚡</div>
-          <div class="feature-text">Surpasse-toi chaque jour</div>
+          <div class="feature-text">${t('onboarding.welcome.feature2')}</div>
         </div>
         <div class="feature-item">
           <div class="feature-icon">📈</div>
-          <div class="feature-text">Suis tes progrès en temps réel</div>
+          <div class="feature-text">${t('onboarding.welcome.feature3')}</div>
         </div>
       </div>
     `;
-    ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">Commencer</button>`;
+    ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">${t('onboarding.welcome.startBtn')}</button>`;
   } else if (profileStep === 1) {
     stepHtml = `
-      <div class="coach-badge"><span>🧠</span> Coach Virtuel IA</div>
+      <div class="coach-badge"><span>🧠</span> ${t('onboarding.age.coachBadge')}</div>
       <div class="pf-emoji">🎂</div>
-      <h1 class="pf-question">Quel âge as-tu ?</h1>
-      ${renderWheelPicker('pfAge', 12, 100, 1, 'ans')}
+      <h1 class="pf-question">${t('onboarding.age.question')}</h1>
+      ${renderWheelPicker('pfAge', 12, 100, 1, t('onboarding.age.unitSuffix'))}
     `;
-    ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">Suivant</button>`;
+    ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">${t('onboarding.age.nextBtn')}</button>`;
   } else if (profileStep === 2) {
     stepHtml = `
       <div class="pf-emoji">🚻</div>
-      <h1 class="pf-question">Tu es...</h1>
+      <h1 class="pf-question">${t('onboarding.sex.question')}</h1>
       <div class="pf-choice-grid">
         <div class="pf-choice${profileDraft.sex === 'homme' ? ' selected' : ''}" onclick="selectProfileSex('homme')">
           <div class="pf-choice-emoji">🙋‍♂️</div>
-          <div class="pf-choice-label">Un homme</div>
+          <div class="pf-choice-label">${t('onboarding.sex.male')}</div>
         </div>
         <div class="pf-choice${profileDraft.sex === 'femme' ? ' selected' : ''}" onclick="selectProfileSex('femme')">
           <div class="pf-choice-emoji">🙋‍♀️</div>
-          <div class="pf-choice-label">Une femme</div>
+          <div class="pf-choice-label">${t('onboarding.sex.female')}</div>
         </div>
         <div class="pf-choice${profileDraft.sex === 'autre' ? ' selected' : ''}" onclick="selectProfileSex('autre')">
           <div class="pf-choice-emoji">🙋</div>
-          <div class="pf-choice-label">Autre / je préfère ne pas dire</div>
+          <div class="pf-choice-label">${t('onboarding.sex.other')}</div>
         </div>
       </div>
     `;
   } else if (profileStep === 3) {
     stepHtml = `
       <div class="pf-emoji">📏</div>
-      <h1 class="pf-question">Taille et poids</h1>
-      <div class="pf-subtitle">Ça nous permet de calibrer tes objectifs pour que ce soit un vrai défi, ni trop facile ni impossible.</div>
+      <h1 class="pf-question">${t('onboarding.bodyMetrics.question')}</h1>
+      <div class="pf-subtitle">${t('onboarding.bodyMetrics.subtitle')}</div>
       <div class="pf-two-inputs">
         <div class="pf-input-group">
-          <label>Taille (cm)</label>
+          <label>${t('onboarding.bodyMetrics.heightLabel')}</label>
           ${renderWheelPicker('pfHeight', 100, 250, 1, 'cm')}
         </div>
         <div class="pf-input-group">
-          <label>Poids (kg)</label>
+          <label>${t('onboarding.bodyMetrics.weightLabel')}</label>
           ${renderWheelPicker('pfWeight', 30, 300, 1, 'kg')}
         </div>
       </div>
     `;
-    ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">Suivant</button>`;
+    ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">${t('onboarding.bodyMetrics.nextBtn')}</button>`;
   } else if (profileStep === 4) {
     stepHtml = `
       <div class="pf-emoji">💪</div>
-      <h1 class="pf-question">Ton niveau actuel ?</h1>
+      <h1 class="pf-question">${t('onboarding.level.question')}</h1>
       <div class="pf-level-list">
         <div class="pf-level-card${profileDraft.level === 'debutant' ? ' selected' : ''}" onclick="selectProfileLevel('debutant')">
-          <div class="pf-level-title">Débutant</div>
-          <div class="pf-level-desc">Remise en forme, je reprends le sport</div>
+          <div class="pf-level-title">${t('onboarding.level.beginnerTitle')}</div>
+          <div class="pf-level-desc">${t('onboarding.level.beginnerDesc')}</div>
         </div>
         <div class="pf-level-card${profileDraft.level === 'intermediaire' ? ' selected' : ''}" onclick="selectProfileLevel('intermediaire')">
-          <div class="pf-level-title">Intermédiaire</div>
-          <div class="pf-level-desc">Environ 2 séances de sport par semaine</div>
+          <div class="pf-level-title">${t('onboarding.level.intermediateTitle')}</div>
+          <div class="pf-level-desc">${t('onboarding.level.intermediateDesc')}</div>
         </div>
         <div class="pf-level-card${profileDraft.level === 'avance' ? ' selected' : ''}" onclick="selectProfileLevel('avance')">
-          <div class="pf-level-title">Avancé</div>
-          <div class="pf-level-desc">3 séances de sport par semaine ou plus</div>
+          <div class="pf-level-title">${t('onboarding.level.advancedTitle')}</div>
+          <div class="pf-level-desc">${t('onboarding.level.advancedDesc')}</div>
         </div>
       </div>
     `;
@@ -4971,7 +4973,7 @@ function renderHeatmap() {
 
 function renderTrophiesGrid() {
   return `
-    <div class="section-label">Trophées (${badges.unlocked.length}/${BADGE_DEFS.length})</div>
+    <div class="section-label">${t('profileTab.trophiesLabel', { unlocked: badges.unlocked.length, total: BADGE_DEFS.length })}</div>
     <div class="trophy-grid">
       ${BADGE_DEFS.map(b => {
         const unlocked = badges.unlocked.includes(b.id);
@@ -5056,11 +5058,11 @@ function renderAthleteCard() {
   return `
     <div class="athlete-card" onclick="openLevelRoadmap()">
       <div class="athlete-level-row">
-        <div class="athlete-level">Niveau ${level}</div>
+        <div class="athlete-level">${t('profileTab.levelLabel', { n: level })}</div>
       </div>
       <div class="athlete-title">${title}</div>
       <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
-      <div class="athlete-xp-label">${xpIntoLevel} / ${xpNeeded} XP · appuie pour voir ta progression</div>
+      <div class="athlete-xp-label">${t('profileTab.xpProgress', { current: xpIntoLevel, needed: xpNeeded })}</div>
     </div>
   `;
 }
@@ -5072,17 +5074,20 @@ function renderLevelRoadmapSheet() {
   const { level, xpIntoLevel, xpNeeded } = xpProgress(xpTotal);
   const pct = xpNeeded > 0 ? Math.min(100, Math.round((xpIntoLevel / xpNeeded) * 100)) : 100;
   let prevMax = 0;
-  const rows = ATHLETE_TITLE_TIERS.map(t => {
+  // Parametre renomme `tier` (pas `t`) : `t` masquerait la fonction globale de
+  // traduction dans cette portee, meme piege deja rencontre dans renderChallengeCard()
+  // (voir CLAUDE.md, batch 3 du chantier i18n).
+  const rows = ATHLETE_TITLE_TIERS.map(tier => {
     const minLevel = prevMax + 1;
-    const rangeLabel = t.maxLevel === Infinity ? `Niveau ${minLevel}+` : `Niveaux ${minLevel}–${t.maxLevel}`;
+    const rangeLabel = tier.maxLevel === Infinity ? t('profileTab.roadmap.rangeMax', { min: minLevel }) : t('profileTab.roadmap.rangeBetween', { min: minLevel, max: tier.maxLevel });
     const unlocked = level >= minLevel;
-    const current = level >= minLevel && level <= t.maxLevel;
-    prevMax = t.maxLevel;
+    const current = level >= minLevel && level <= tier.maxLevel;
+    prevMax = tier.maxLevel;
     return `
       <div class="roadmap-row${unlocked ? ' unlocked' : ''}${current ? ' current' : ''}">
         <div class="roadmap-row-icon">${current ? '▶' : unlocked ? '✓' : lockIconSVG(14)}</div>
         <div class="roadmap-row-text">
-          <div class="roadmap-row-title">${t.title}</div>
+          <div class="roadmap-row-title">${tier.title}</div>
           <div class="roadmap-row-range">${rangeLabel}</div>
         </div>
       </div>
@@ -5092,12 +5097,12 @@ function renderLevelRoadmapSheet() {
     <div class="level-roadmap-sheet">
       <button class="level-roadmap-close" onclick="closeLevelRoadmap()">✕</button>
       <div class="level-roadmap-header">
-        <div class="level-roadmap-level">Niveau ${level}</div>
+        <div class="level-roadmap-level">${t('profileTab.levelLabel', { n: level })}</div>
         <div class="level-roadmap-title">${athleteTitle(level)}</div>
         <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
-        <div class="level-roadmap-xp-label">${xpIntoLevel} / ${xpNeeded} XP jusqu'au niveau ${level + 1}</div>
+        <div class="level-roadmap-xp-label">${t('profileTab.roadmap.xpToNext', { current: xpIntoLevel, needed: xpNeeded, n: level + 1 })}</div>
       </div>
-      <div class="section-label">Parcours des titres d'athlète</div>
+      <div class="section-label">${t('profileTab.roadmap.titlesLabel')}</div>
       <div class="roadmap-list">${rows}</div>
     </div>
   `;
@@ -5156,11 +5161,11 @@ function renderSettingsSection() {
 }
 
 function renderAccountSection() {
-  const name = currentUser?.displayName || 'Compte';
+  const name = currentUser?.displayName || t('settings.account.sectionLabel');
   const email = currentUser?.email || '';
   const photo = currentUser?.photoURL || '';
   return `
-    <div class="section-label">Compte</div>
+    <div class="section-label">${t('settings.account.sectionLabel')}</div>
     <div class="account-card">
       <div class="account-info">
         ${photo ? `<img src="${escapeHtml(photo)}" class="account-avatar" referrerpolicy="no-referrer">` : `<div class="account-avatar-fallback">${escapeHtml(name.charAt(0).toUpperCase())}</div>`}
@@ -5640,14 +5645,14 @@ function renderAccountTabScreen() {
   return `
     <div class="header">
       <div class="date">${formatDateLabel(new Date())}</div>
-      <button class="streak" onclick="showStreakInfoModal()">🔥 ${computeStreak()} j${hasShield ? ' 🛡️' : ''}</button>
+      <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
     </div>
-    <h1 class="title">Profil</h1>
-    <div class="subtitle">Tes infos et la gestion de ton compte</div>
+    <h1 class="title">${t('profileTab.title')}</h1>
+    <div class="subtitle">${t('profileTab.subtitle')}</div>
     ${renderAthleteCard()}
     ${renderTrophiesGrid()}
     ${renderAccountSection()}
-    <button class="signout-btn" onclick="openSettingsScreen()">⚙️ Paramètres</button>
+    <button class="signout-btn" onclick="openSettingsScreen()">${t('profileTab.settingsBtn')}</button>
   `;
 }
 

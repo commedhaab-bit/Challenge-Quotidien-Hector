@@ -1210,15 +1210,50 @@ coupler 2 écrans indépendants).
 **`CACHE_NAME` bumpé `v29` → `v30`** (contenu des `locale-*.js` modifié, nouvelles clés
 `community`/`friends`).
 
-**Reste à faire (batches 6 et 7, plan approuvé)** : Profil + onboarding + tour guidé
-(batch 6) ; alertes/popups/toasts (dont `showStreakInfoModal()`/`showDayDetailModal()`/
-le toast de `shareCommunityInvite()`, délibérément pas migrés malgré leur présence sur
-des écrans déjà traduits, pour garder tous les sites de popups groupés dans un seul
-batch dédié), `BADGE_DEFS`, dates relatives/`MONTH_ABBR`/lettres de jour (idem,
+**Batch 6 livré : Profil + onboarding complet (profil coach virtuel, transition,
+tour guidé) + pseudo (setup/renommage)** — `renderGuidedTourOverlay()`/
+`renderOnboardingTransitionScreen()`/`renderUsernameSetupScreen()`/
+`renderProfileOnboardingScreen()`/`renderAthleteCard()`/`renderLevelRoadmapSheet()`/
+`renderTrophiesGrid()`/`renderAccountSection()`/`renderAccountTabScreen()` migrés vers
+`t()`/`tn()`.
+
+**`GUIDED_TOUR_STEPS` : restructuré de `{tab, emoji, title, text}` figés en dur vers
+`{tab, key, emoji}`**, `title`/`text` résolus au RENDU via `t('tour.' + step.key +
+'.title'/'.text')` dans `renderGuidedTourOverlay()` — nécessaire car ce tableau est un
+`const` évalué UNE SEULE FOIS au chargement du script : y garder du texte français en
+dur aurait figé le tour guidé dans la langue de démarrage, ignorant tout changement de
+langue ultérieur en cours de session. `emoji` reste dans le tableau JS (décoratif,
+langue-agnostique, pas besoin de passer par `t()`).
+
+**2ᵉ occurrence du piège de shadowing de variable locale `t`** (1ʳᵉ fois au batch 3,
+`renderChallengeCard()`) : `renderLevelRoadmapSheet()` avait `ATHLETE_TITLE_TIERS.map(t
+=> ...)`, masquant la fonction globale `t()` À L'INTÉRIEUR de ce callback — un appel à
+`t('profileTab.roadmap...')` y aurait levé une `TypeError`. Renommé en `tier`. **Ce
+piège est maintenant confirmé récurrent** : avant d'ajouter un appel `t(...)` dans
+n'importe quelle fonction existante de ce fichier, vérifier qu'aucun paramètre/variable
+local ne s'appelle déjà `t` dans la portée englobante (recherche
+courte/passe-partout, utilisée à plusieurs endroits dans ce fichier avant l'i18n).
+
+**Volontairement PAS traduits dans ce batch, laissés en dur** : le nom d'exercice
+"Pompes" et l'unité "REPS" dans la mini-carte de preview de
+`renderOnboardingTransitionScreen()` (exemple concret figé, dépend du même
+correctif noms/unités d'exercices que le reste de l'app — batch 7) ; `tier.title`
+dans `renderLevelRoadmapSheet()` et `b.label` dans `renderTrophiesGrid()` (données de
+`ATHLETE_TITLE_TIERS`/`BADGE_DEFS`, mêmes tables de données à texte français en dur que
+`BADGE_DEFS` déjà explicitement réservé au batch 7).
+
+**`CACHE_NAME` bumpé `v30` → `v31`** (contenu des `locale-*.js` modifié, nouvelles clés
+`tour`/`username`/`onboarding`/`profileTab`).
+
+**Reste à faire (batch 7, plan approuvé)** : alertes/popups/toasts (dont
+`showStreakInfoModal()`/`showDayDetailModal()`/le toast de `shareCommunityInvite()`,
+délibérément pas migrés malgré leur présence sur des écrans déjà traduits, pour garder
+tous les sites de popups groupés dans un seul batch dédié), `BADGE_DEFS`,
+`ATHLETE_TITLE_TIERS`, dates relatives/`MONTH_ABBR`/lettres de jour (idem,
 délibérément pas touchés jusqu'ici), ajout du **vrai** `slug` + traduction des
 noms/catégories d'exercices dans `exercise-data.js` (activera automatiquement le
-correctif `exerciseSlug` ci-dessus, sans retoucher le code de lecture/écriture), audit
-final de chaînes françaises oubliées (batch 7). Tant qu'une chaîne n'est pas migrée
-vers `t()`, elle reste le littéral français en dur — comportement identique à
-aujourd'hui pour un utilisateur FR, aucune régression possible entre deux batches.
+correctif `exerciseSlug` du batch 5, sans retoucher le code de lecture/écriture), audit
+final de chaînes françaises oubliées. Tant qu'une chaîne n'est pas migrée vers `t()`,
+elle reste le littéral français en dur — comportement identique à aujourd'hui pour un
+utilisateur FR, aucune régression possible entre deux batches.
 
