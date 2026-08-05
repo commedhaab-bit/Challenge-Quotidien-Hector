@@ -306,6 +306,8 @@ const LOCALE_ES = {
       ledger: 'Cuentas',
       hallOfFame: 'Palmarés',
     },
+    balancesTitle: 'Resumen de saldos',
+    allSettled: '¡Todo el mundo está en paz por ahora!',
     ledgerHistoryTitle: 'La Cuenta Global',
     hallOfFameTitle: 'Salón de la Fama',
     hallOfFameEmpty: 'Todavía no hay títulos — termina un primer reto colectivo para ver aparecer el palmarés.',
@@ -552,6 +554,9 @@ const LOCALE_ES = {
       groupChallengeSettledSubtitle: 'El reto "{{challenge}}" ha terminado — descubre la clasificación y quién le debe qué a quién.',
       groupChallengeSettledSubtitleWinner: '🎉 ¡{{winner}} gana el reto "{{challenge}}"! Descubre la clasificación y quién le debe qué a quién.',
       groupChallengeSettledBtn: 'Ver',
+      groupChallengeWonTitle: '¡Objetivo alcanzado!',
+      groupChallengeWonSubtitle: 'El grupo lo ha logrado junto — ¡enhorabuena al equipo!',
+      groupChallengeWonSubtitleWinner: '¡Enhorabuena al equipo, liderado por {{winner}}!',
     },
     removeFriend: {
       title: '¿Eliminar a este amigo?',

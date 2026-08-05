@@ -2413,7 +2413,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v62'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v63'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4009,6 +4009,25 @@ const cssText = __rawHtml + __cssSource;
   await new Promise(r => setTimeout(r, 10));
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
   console.log('OK: popup de reglement de defi de groupe enrichie du nom du gagnant (winnerName)');
+
+  // E-bis (passe UX premium, idee #6 - celebration plein ecran) : quand
+  // targetReached est vrai (embarque par settleChallengeIfNeeded() cote Cloud
+  // Function), la popup doit basculer en variante epique (confettis, meme
+  // traitement qu'un trophee/changement de titre) plutot que le bilan neutre
+  // habituel - une victoire collective merite plus qu'un simple "Bilan disponible".
+  __resetCommunityMocks();
+  popupQueue = []; popupOpen = false;
+  await notificationsCollRef('me-uid').doc().set({
+    type: 'group_challenge_settled', fromUid: 'system', groupId: 'g1', challengeId: 'c2',
+    challengeName: '500 squats', winnerName: 'Bob M.', targetReached: true, read: false, createdAt: Date.now(),
+  });
+  startNotificationsListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(popupOpen && currentPopupHtml.includes('app-popup-card epic') && currentPopupHtml.includes(t('popups.notifications.groupChallengeWonTitle')) && currentPopupHtml.includes('500 squats'), 'un objectif de groupe atteint doit declencher la celebration epique (confettis), pas le bilan neutre');
+  document.getElementById('appPopupCloseBtn').onclick();
+  await new Promise(r => setTimeout(r, 10));
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+  console.log('OK: victoire collective de groupe (targetReached) declenche la celebration plein ecran epique, distincte du bilan neutre par expiration');
 
   __resetCommunityMocks();
   popupQueue = []; popupOpen = false;
@@ -5678,6 +5697,16 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(ledgerHistoryHtml.includes('Fait la vaisselle') && ledgerHistoryHtml.includes('Offre une biere'), 'l Ardoise doit afficher les gages de TOUS les defis passes, pas juste le dernier');
   console.log('OK: Ardoise Globale (historique complet des gages, tous defis confondus, 1 seul champ trie - aucun index composite)');
 
+  // Resume des soldes (passe UX premium, idee #3 - inspire de Splitwise) : liste en
+  // tete de l Ardoise Globale, exclut les gages DEJA HONORES (ici "Offre une biere",
+  // honore plus haut dans ce scenario), ne montre que ce qui reste EN ATTENTE (ici
+  // "Fait la vaisselle").
+  __assertOk(ledgerHistoryHtml.includes(t('groups.balancesTitle')), 'l Ardoise Globale doit afficher un resume des soldes en tete');
+  const balancesSummaryHtml = renderGroupBalancesSummary(groupDetailLedgerHistory);
+  __assertOk(balancesSummaryHtml.includes('Fait la vaisselle'), 'le resume des soldes doit lister le gage encore en attente');
+  __assertOk(!balancesSummaryHtml.includes('Offre une biere'), 'le resume des soldes ne doit PAS lister un gage deja honore (deja regle, plus une dette reelle)');
+  console.log('OK: resume des soldes en tete de l Ardoise Globale (gages honores exclus, seul ce qui reste en attente est affiche)');
+
   // Regroupement/somme des gages structures identiques ("beer", Phase suivante) :
   // 2 gages "biere" distincts (2 defis differents) entre les 2 MEMES personnes
   // doivent s afficher comme une seule ligne "2 bieres" (pluralise via tn()), pas 2
@@ -5707,6 +5736,34 @@ const cssText = __rawHtml + __cssSource;
   const honoredBeer2 = await db.collection('groups').doc(createdGroupId).collection('ledger').doc('defi-biere-2_me-uid_bob-uid').get();
   __assertOk(honoredBeer1.data().honoredAt && honoredBeer2.data().honoredAt, 'honorer une ligne agregee doit honorer TOUTES les entrees du groupe en un seul batch');
   console.log('OK: les gages structures "beer" identiques (meme paire, meme statut) sont regroupes/sommes dans l Ardoise ("2 bieres" au lieu de 2 lignes), honores en un seul geste');
+
+  // computeGroupNetBalances() (pur) : nette les gages EN ATTENTE d'UNE MEME paire
+  // ET d'UN MEME type de gage exact dans les 2 sens - jamais 2 types differents
+  // entre eux (pas fongible, contrairement a de l argent chez Splitwise), et
+  // ignore totalement les gages deja honores.
+  const netFixture = [
+    { fromUid: 'a', toUid: 'b', stakeType: 'beer', stakeDescription: '', honoredAt: null },
+    { fromUid: 'a', toUid: 'b', stakeType: 'beer', stakeDescription: '', honoredAt: null },
+    { fromUid: 'a', toUid: 'b', stakeType: 'beer', stakeDescription: '', honoredAt: null },
+    { fromUid: 'b', toUid: 'a', stakeType: 'beer', stakeDescription: '', honoredAt: null },
+    { fromUid: 'a', toUid: 'b', stakeType: 'custom', stakeDescription: 'Vaisselle', honoredAt: null },
+    { fromUid: 'a', toUid: 'b', stakeType: 'custom', stakeDescription: 'Autre chose', honoredAt: Date.now() },
+  ];
+  const netBalances = computeGroupNetBalances(netFixture);
+  __assertEq(netBalances.length, 2, 'les gages de types/descriptions differents ne doivent jamais se compenser entre eux, et les gages deja honores doivent etre ignores');
+  const beerNet = netBalances.find((b) => b.stakeType === 'beer');
+  __assertOk(beerNet && beerNet.fromUid === 'a' && beerNet.toUid === 'b' && beerNet.count === 2, '3 bieres dues par a a b, moins 1 due par b a a, doit netter a "a doit 2 bieres a b"');
+  const customNet = netBalances.find((b) => b.stakeType === 'custom');
+  __assertOk(customNet && customNet.fromUid === 'a' && customNet.toUid === 'b' && customNet.count === 1 && customNet.stakeDescription === 'Vaisselle', 'le gage personnalise non honore doit apparaitre tel quel (le gage honore "Autre chose" doit etre exclu)');
+  __assertEq(computeGroupNetBalances([{ fromUid: 'a', toUid: 'b', stakeType: 'beer', stakeDescription: '', honoredAt: null }, { fromUid: 'b', toUid: 'a', stakeType: 'beer', stakeDescription: '', honoredAt: null }]).length, 0, 'un gage identique dans les 2 sens doit netter a zero (personne ne doit plus rien) et disparaitre du resume');
+  __assertEq(computeGroupNetBalances([]).length, 0, 'aucune entree -> aucun solde');
+  console.log('OK: computeGroupNetBalances() (nettage par paire+type de gage EXACT, gages honores exclus, jamais de compensation entre types differents)');
+
+  // Etat "tout le monde est quitte" (passe UX premium) : composant premium
+  // (icone + texte), pas un simple texte generique.
+  const settledBalancesHtml = renderGroupBalancesSummary([]);
+  __assertOk(settledBalancesHtml.includes('groups-empty-state') && settledBalancesHtml.includes(t('groups.allSettled')), 'aucun solde en attente doit afficher un etat "tout le monde est quitte" premium, pas une liste vide');
+  console.log('OK: etat "tout le monde est quitte" du resume des soldes (composant premium reutilise)');
 
   // Historique horodate des contributions (alimente detectClutchWin() cote Cloud
   // Function) : desormais ecrit UNIQUEMENT server-side, dans la meme transaction que

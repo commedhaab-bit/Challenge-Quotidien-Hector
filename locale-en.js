@@ -305,6 +305,8 @@ const LOCALE_EN = {
       ledger: 'Ledger',
       hallOfFame: 'Hall of Fame',
     },
+    balancesTitle: 'Balance summary',
+    allSettled: 'Everyone is settled up for now!',
     ledgerHistoryTitle: 'The Global Ledger',
     hallOfFameTitle: 'Hall of Fame',
     hallOfFameEmpty: 'No titles yet — finish a first collective challenge to see the hall of fame appear.',
@@ -551,6 +553,9 @@ const LOCALE_EN = {
       groupChallengeSettledSubtitle: 'The "{{challenge}}" challenge is over — check the ranking and who owes what to whom.',
       groupChallengeSettledSubtitleWinner: '🎉 {{winner}} wins the "{{challenge}}" challenge! Check the ranking and who owes what to whom.',
       groupChallengeSettledBtn: 'View',
+      groupChallengeWonTitle: 'Target reached!',
+      groupChallengeWonSubtitle: 'The group pulled it off together — great job, team!',
+      groupChallengeWonSubtitleWinner: 'Great job, team — carried by {{winner}}!',
     },
     removeFriend: {
       title: 'Remove this friend?',

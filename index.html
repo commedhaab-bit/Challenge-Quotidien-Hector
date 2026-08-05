@@ -2474,15 +2474,38 @@ async function processUnreadNotifications(snap) {
     } else if (data.type === 'group_challenge_settled') {
       // winnerName (1er contributeur) : embarque par settleChallengeIfNeeded() cote
       // Cloud Function - absent uniquement sur d'anciennes notifications deja
-      // ecrites avant ce champ, d'ou le repli sur le message generique.
-      enqueuePopup({
-        icon: '🏁',
-        title: t('popups.notifications.groupChallengeSettledTitle'),
-        subtitle: data.winnerName
-          ? t('popups.notifications.groupChallengeSettledSubtitleWinner', { challenge: data.challengeName, winner: data.winnerName })
-          : t('popups.notifications.groupChallengeSettledSubtitle', { challenge: data.challengeName }),
-        btnLabel: t('popups.notifications.groupChallengeSettledBtn'),
-      });
+      // ecrites avant ce champ, d'ou le repli sur le message generique. Echappees
+      // ici (nom de defi/de personne = texte libre utilisateur, jamais fiable a
+      // interpoler tel quel dans un innerHTML - voir enqueuePopup()/interpolate()).
+      const challengeName = escapeHtml(data.challengeName || '');
+      const winnerName = data.winnerName ? escapeHtml(data.winnerName) : '';
+      // targetReached : embarque depuis ce changement - absent sur d'anciennes
+      // notifications (repli sur le bilan neutre habituel, pas de fausse
+      // celebration). Distingue une VRAIE victoire collective (objectif atteint,
+      // celebration plein ecran a l'image d'un trophee/level up epique) d'un simple
+      // reglement par expiration d'echeance sans objectif atteint (bilan neutre).
+      if (data.targetReached) {
+        enqueuePopup({
+          variant: 'trophy',
+          epic: true,
+          icon: '🏆',
+          title: t('popups.notifications.groupChallengeWonTitle'),
+          big: challengeName,
+          subtitle: winnerName
+            ? t('popups.notifications.groupChallengeWonSubtitleWinner', { winner: winnerName })
+            : t('popups.notifications.groupChallengeWonSubtitle'),
+          btnLabel: t('popups.notifications.groupChallengeSettledBtn'),
+        });
+      } else {
+        enqueuePopup({
+          icon: '🏁',
+          title: t('popups.notifications.groupChallengeSettledTitle'),
+          subtitle: winnerName
+            ? t('popups.notifications.groupChallengeSettledSubtitleWinner', { challenge: challengeName, winner: winnerName })
+            : t('popups.notifications.groupChallengeSettledSubtitle', { challenge: challengeName }),
+          btnLabel: t('popups.notifications.groupChallengeSettledBtn'),
+        });
+      }
     }
   }
 }
@@ -6797,6 +6820,26 @@ function groupLedgerEntriesForDisplay(entries) {
   return order.map((key) => groups.get(key));
 }
 
+// Rendu partage d'une ligne de gage groupe (from doit un gage a to, + libelle
+// du gage) - utilise par la liste detaillee (avec bouton "honorer") ET par le
+// resume des soldes nets ci-dessous (sans action, purement informatif).
+function renderLedgerRow(nameById, g, actionHtml) {
+  const fromName = escapeHtml(nameById[g.fromUid] || '?');
+  const toName = escapeHtml(nameById[g.toUid] || '?');
+  // Gage structure (beer) : label toujours pluralise correctement (tn()). Gage
+  // libre (custom) : texte saisi tel quel, suffixe "x{{n}}" uniquement si regroupe.
+  const stakeLabel = g.stakeType === 'beer'
+    ? tn('groups.stakeTypes.beerLabel', g.count)
+    : (g.count > 1 ? t('groups.stakeCustomCount', { desc: g.stakeDescription, n: g.count }) : g.stakeDescription);
+  return `
+    <div class="leaderboard-row">
+      <span class="leaderboard-name">${t('groups.ledgerLine', { from: fromName, to: toName })}</span>
+      ${actionHtml || ''}
+    </div>
+    ${stakeLabel ? `<div class="rank-bar-hint">${escapeHtml(stakeLabel)}</div>` : ''}
+  `;
+}
+
 // Reutilisee par le bilan d'UN defi (groupDetailLedger) ET l'Ardoise Globale
 // (groupDetailLedgerHistory, tous les defis) - meme rendu, source de donnees differente.
 function renderLedgerEntriesList(entries) {
@@ -6804,25 +6847,54 @@ function renderLedgerEntriesList(entries) {
   const nameById = {};
   groupDetailMembers.forEach((m) => { nameById[m.uid] = m.displayName; });
   return groupLedgerEntriesForDisplay(entries).map((g) => {
-    const fromName = escapeHtml(nameById[g.fromUid] || '?');
-    const toName = escapeHtml(nameById[g.toUid] || '?');
     const entryIdsJs = g.entryIds.map((id) => `'${escapeJsAttr(id)}'`).join(',');
     const honorBtn = g.honored
       ? `<span class="friend-status">${t('groups.honored')}</span>`
       : `<button class="friend-action-btn" onclick="honorLedgerEntries('${escapeJsAttr(groupDetailGroup.groupId)}', [${entryIdsJs}])">${t('groups.honorBtn')}</button>`;
-    // Gage structure (beer) : label toujours pluralise correctement (tn()). Gage
-    // libre (custom) : texte saisi tel quel, suffixe "x{{n}}" uniquement si regroupe.
-    const stakeLabel = g.stakeType === 'beer'
-      ? tn('groups.stakeTypes.beerLabel', g.count)
-      : (g.count > 1 ? t('groups.stakeCustomCount', { desc: g.stakeDescription, n: g.count }) : g.stakeDescription);
-    return `
-      <div class="leaderboard-row">
-        <span class="leaderboard-name">${t('groups.ledgerLine', { from: fromName, to: toName })}</span>
-        ${honorBtn}
-      </div>
-      ${stakeLabel ? `<div class="rank-bar-hint">${escapeHtml(stakeLabel)}</div>` : ''}
-    `;
+    return renderLedgerRow(nameById, g, honorBtn);
   }).join('');
+}
+
+// Solde net par personne (retour utilisateur, inspire du resume "qui doit quoi"
+// de Splitwise) : au lieu de forcer a parcourir toute la liste chronologique pour
+// comprendre la situation, nette les gages EN ATTENTE (honores exclus - deja
+// regles) entre les 2 sens d'UNE MEME paire ET d'UN MEME type de gage exact.
+// Un gage "biere" ne s'annule JAMAIS avec un gage "vaisselle" de l'autre sens
+// (pas fongible, contrairement a de l'argent chez Splitwise) - seule une
+// correspondance EXACTE de type/description est nettee.
+function computeGroupNetBalances(entries) {
+  const buckets = new Map();
+  for (const entry of entries) {
+    if (entry.honoredAt) continue;
+    const stakeType = entry.stakeType || 'custom';
+    const stakeDescription = stakeType === 'custom' ? (entry.stakeDescription || '') : '';
+    const [uidLo, uidHi] = [entry.fromUid, entry.toUid].sort();
+    const key = [uidLo, uidHi, stakeType, stakeDescription].join('|');
+    if (!buckets.has(key)) buckets.set(key, { uidLo, uidHi, stakeType, stakeDescription, loOwesHi: 0, hiOwesLo: 0 });
+    const b = buckets.get(key);
+    if (entry.fromUid === uidLo) b.loOwesHi++; else b.hiOwesLo++;
+  }
+  const balances = [];
+  for (const b of buckets.values()) {
+    const net = b.loOwesHi - b.hiOwesLo;
+    if (net === 0) continue; // quittes sur ce type de gage precis
+    balances.push({
+      fromUid: net > 0 ? b.uidLo : b.uidHi,
+      toUid: net > 0 ? b.uidHi : b.uidLo,
+      stakeType: b.stakeType,
+      stakeDescription: b.stakeDescription,
+      count: Math.abs(net),
+    });
+  }
+  return balances;
+}
+
+function renderGroupBalancesSummary(entries) {
+  const balances = computeGroupNetBalances(entries);
+  if (balances.length === 0) return renderGroupsEmptyState('🎉', t('groups.allSettled'));
+  const nameById = {};
+  groupDetailMembers.forEach((m) => { nameById[m.uid] = m.displayName; });
+  return balances.map((g) => renderLedgerRow(nameById, g, '')).join('');
 }
 
 function renderGroupChallengeBilan() {
@@ -6841,6 +6913,8 @@ function renderGroupChallengeBilan() {
 // confondus (contrairement au bilan ci-dessus, scope a UN seul defi).
 function renderGroupLedgerHistorySection() {
   return `
+    <div class="section-label">${t('groups.balancesTitle')}</div>
+    <div class="leaderboard-list">${renderGroupBalancesSummary(groupDetailLedgerHistory)}</div>
     <div class="section-label">${t('groups.ledgerHistoryTitle')}</div>
     <div class="leaderboard-list">${renderLedgerEntriesList(groupDetailLedgerHistory)}</div>
   `;

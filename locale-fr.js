@@ -308,6 +308,8 @@ const LOCALE_FR = {
       ledger: 'Ardoise',
       hallOfFame: 'Palmarès',
     },
+    balancesTitle: 'Résumé des soldes',
+    allSettled: 'Tout le monde est quitte pour l\'instant !',
     ledgerHistoryTitle: "L'Ardoise Globale",
     hallOfFameTitle: 'Hall of Fame',
     hallOfFameEmpty: 'Pas encore de titre — termine un premier défi collectif pour voir apparaître le palmarès.',
@@ -554,6 +556,9 @@ const LOCALE_FR = {
       groupChallengeSettledSubtitle: 'Le défi "{{challenge}}" est terminé — découvre le classement et qui doit quoi à qui.',
       groupChallengeSettledSubtitleWinner: '🎉 {{winner}} remporte le défi "{{challenge}}" ! Découvre le classement et qui doit quoi à qui.',
       groupChallengeSettledBtn: 'Voir',
+      groupChallengeWonTitle: 'Objectif atteint !',
+      groupChallengeWonSubtitle: 'Le groupe a relevé le défi ensemble — bravo à toute l\'équipe !',
+      groupChallengeWonSubtitleWinner: 'Bravo à toute l\'équipe, portée par {{winner}} !',
     },
     removeFriend: {
       title: 'Retirer cet ami ?',

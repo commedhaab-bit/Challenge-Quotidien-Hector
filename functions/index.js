@@ -234,6 +234,11 @@ async function settleChallengeIfNeeded(db, challengeRef) {
     .sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
   const totalProgress = ranked.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
   if (!shouldSettleChallenge(totalProgress, challenge.targetTotal, challenge.endDate, now)) return;
+  // Distingue une VRAIE victoire collective (objectif chiffre atteint) d'un simple
+  // reglement par expiration d'echeance sans objectif atteint - embarque dans la
+  // notification pour que le client sache quand declencher la celebration plein
+  // ecran (confettis + variant epique) plutot que le bilan neutre habituel.
+  const targetReached = (challenge.targetTotal || 0) > 0 && totalProgress >= challenge.targetTotal;
 
   // Jokers (Phase 4) : le classement REGLEMENT (immunite retiree, handicap Boulet
   // applique) peut differer du classement BRUT `ranked` ci-dessus - voir
@@ -307,6 +312,7 @@ async function settleChallengeIfNeeded(db, challengeRef) {
         challengeId: challengeRef.id,
         challengeName: challenge.name || '',
         winnerName,
+        targetReached,
         read: false,
         createdAt: now,
       });

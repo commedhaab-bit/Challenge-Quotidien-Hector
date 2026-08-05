@@ -2219,3 +2219,55 @@ n'a du etre modifie, seules de nouvelles assertions structurelles ont ete
 ajoutees. CACHE_NAME -> v62. Meme limite de verification que les chantiers
 precedents : valide par tests+lint, **pas visuellement dans un vrai navigateur**.
 
+## Resume des soldes (Ardoise) + celebration epique de victoire de groupe
+
+**Demande explicite de l'utilisateur**, 2 idees choisies parmi une liste de
+recommandations inspirees de grandes applications :
+
+1. **Resume des soldes façon Splitwise** (`computeGroupNetBalances()`, pure) :
+   au lieu de forcer a parcourir toute l'Ardoise Globale chronologique pour
+   comprendre "qui doit quoi", un nouveau bloc "Resume des soldes" en tete
+   nette les gages EN ATTENTE (les gages deja `honoredAt` sont totalement
+   exclus - deja regles) entre les 2 sens d'UNE MEME paire de membres ET d'UN
+   MEME type de gage EXACT (meme `stakeType` + meme `stakeDescription` si
+   'custom'). **Choix assume, different de Splitwise** : un gage "biere" ne se
+   compense JAMAIS avec un gage "vaisselle" de l'autre sens - contrairement a
+   de l'argent, un gage n'est pas fongible, donc netter des types differents en
+   un seul nombre serait trompeur. La liste detaillee/chronologique existante
+   (avec le bouton "Gage honore !") reste inchangee en dessous : **le resume
+   est purement informatif, honorer un gage se fait toujours sur la liste
+   detaillee** - decision volontaire pour eviter un flou sur QUELLES entrees
+   precises seraient marquees honorees si le bouton agissait sur un solde deja
+   nette (ex: nettent 3 gages de a vers b et 1 de b vers a en "a doit 2 a b" -
+   honorer ce "2" ne correspond a aucun sous-ensemble evident des 4 entrees
+   brutes sous-jacentes). Etat "tout le monde est quitte" via
+   `renderGroupsEmptyState()` (composant deja existant) si aucun solde ne
+   subsiste.
+2. **Celebration plein ecran a la victoire d'un defi de groupe** : le systeme de
+   popups "plein ecran style Duolingo" (`enqueuePopup()`/`.app-popup-overlay`,
+   deja existant, deja utilise pour les trophees/changements de niveau/de
+   titre) est etendu au reglement d'un defi de groupe. `settleChallengeIfNeeded()`
+   (Cloud Function) calcule desormais `targetReached` (objectif chiffre
+   reellement atteint, pas juste une echeance expiree) et l'embarque dans la
+   notification `group_challenge_settled`. Cote client, `targetReached: true`
+   declenche une popup `variant:'trophy', epic:true` (memes confettis/effets
+   dores qu'un trophee debloque) au lieu du bilan neutre habituel - une
+   victoire collective merite mieux qu'un simple "Bilan disponible". Un
+   reglement par simple expiration d'echeance (sans objectif atteint) garde le
+   bilan neutre existant. **Les 2 autres "paliers" mentionnes dans la demande
+   initiale (niveau, serie de 30 jours) etaient deja epiques** :
+   `enqueueTrophyPopups()` couvre deja tout badge fraichement debloque
+   (y compris `streak_30`) avec confettis, et `enqueueLevelPopups()` bascule
+   deja en variante epique des qu'un changement de TITRE d'athlete survient
+   (pas chaque niveau individuel, volontairement - reserver l'epique aux
+   moments reellement rares evite la lassitude/l'inflation de l'effet).
+   **Correctif de securite associe** (remarque en modifiant ce code) : le nom
+   du defi et le nom du gagnant (texte libre utilisateur) etaient interpoles
+   SANS echappement dans `t()`/`interpolate()` avant d'etre injectes en
+   `innerHTML` (popup de reglement) - corrige par `escapeHtml()` sur les 2
+   variantes (gagnante et neutre) de cette popup precise.
+
+CACHE_NAME -> v63. Aucun changement de regles Firestore. Meme limite de
+verification que les chantiers precedents : valide par tests+lint (client ET
+Cloud Functions), **pas visuellement dans un vrai navigateur**.
+
