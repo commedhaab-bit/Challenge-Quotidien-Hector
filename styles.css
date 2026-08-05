@@ -3299,4 +3299,56 @@
     .group-card { animation: none; }
   }
 
+  /* 7. Icones "rejoindre/creer" (racine onglet Groupes) + carte "hero" du defi du
+     moment (retour utilisateur : liste des membres/invitations reléguée derrière
+     le bouton "⋯" du détail groupe (voir .level-roadmap-overlay, réutilisé tel
+     quel) — le défi actif doit au contraire dominer visuellement l'écran). */
+  .groups-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+  .group-challenge-hero {
+    background: linear-gradient(155deg, var(--bg-card), var(--bg-raised));
+    border: 1px solid var(--accent-dim);
+    border-radius: 20px;
+    padding: 22px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 0 24px rgba(57, 233, 122, 0.08);
+  }
+  .group-challenge-hero-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .group-challenge-hero-badge {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .group-challenge-hero-time { font-size: 12px; font-weight: 700; color: var(--chalk-dim); }
+  .group-challenge-hero-name { font-size: 17px; font-weight: 800; margin-bottom: 14px; }
+  .group-challenge-hero-pct {
+    font-size: 40px;
+    font-weight: 900;
+    line-height: 1;
+    margin-bottom: 12px;
+    text-shadow: 0 0 18px var(--accent-glow);
+  }
+  .group-challenge-hero-track {
+    height: 14px;
+    background: var(--track-bg);
+    border-radius: 9999px;
+    border: 1px solid var(--line);
+    margin-bottom: 8px;
+    overflow: hidden;
+  }
+  .group-challenge-hero-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    border-radius: 9999px;
+    box-shadow: 0 0 10px var(--accent-glow), 0 0 4px var(--accent);
+  }
+  .group-challenge-hero-progress { font-size: 12.5px; color: var(--chalk-dim); font-variant-numeric: tabular-nums; }
+
   ::-webkit-scrollbar { display: none; }

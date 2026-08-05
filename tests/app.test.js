@@ -2413,7 +2413,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v60'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v61'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -5300,8 +5300,23 @@ const cssText = __rawHtml + __cssSource;
   const groupsListHtml = renderGroupsScreen();
   __assertOk(groupsListHtml.includes('group-card') && groupsListHtml.includes('Les Costauds'), 'la liste "mes groupes" doit utiliser des cartes (.group-card), pas de simples lignes de leaderboard');
   __assertOk(!groupsListHtml.includes(t('groups.activeChallengeBadge')), 'le badge "Defi en cours" ne doit pas apparaitre tant qu aucun defi n est actif dans ce groupe');
-  openGroupId = openGroupIdBeforeCardCheck;
   console.log('OK: liste "mes groupes" en cartes premium (.group-card), badge "Defi en cours" conditionnel');
+
+  // Rejoindre/creer en icones haut-droite (loupe/plus), pas 2 gros blocs toujours
+  // visibles (retour utilisateur : actions rares une fois les premiers groupes
+  // crees) - un seul des 2 formulaires ouvert a la fois.
+  __assertOk(!groupsListHtml.includes('id="groupJoinCodeInput"') && !groupsListHtml.includes('id="groupCreateNameInput"'), 'les formulaires rejoindre/creer ne doivent pas etre affiches par defaut, seules les icones le sont');
+  toggleJoiningGroupOpen();
+  const groupsListWithJoinOpen = renderGroupsScreen();
+  __assertOk(groupsListWithJoinOpen.includes('id="groupJoinCodeInput"'), 'l icone loupe doit reveler le formulaire "rejoindre avec un code"');
+  toggleCreatingGroupOpen();
+  const groupsListWithCreateOpen = renderGroupsScreen();
+  __assertOk(groupsListWithCreateOpen.includes('id="groupCreateNameInput"') && !groupsListWithCreateOpen.includes('id="groupJoinCodeInput"'), 'ouvrir "creer" doit refermer "rejoindre" (un seul formulaire a la fois)');
+  toggleCreatingGroupOpen();
+  __assertOk(!renderGroupsScreen().includes('id="groupCreateNameInput"'), 'recliquer sur l icone plus doit refermer son propre formulaire');
+  console.log('OK: rejoindre/creer en icones haut-droite (loupe/plus), un seul formulaire ouvert a la fois (passe UX premium)');
+
+  openGroupId = openGroupIdBeforeCardCheck;
 
   // Creation d'un defi collectif : le createur recoit son propre doc participant
   // (initialise a 0) - chaque membre n'ecrit QUE son propre doc (voir les regles
@@ -5404,6 +5419,25 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(groupDetailHtml.includes('Pompes de la semaine'), 'le nom du defi doit etre affiche');
   __assertOk(groupDetailHtml.includes('#1') && groupDetailHtml.includes('#2'), 'le classement doit afficher un rang numerique exact pour chaque participant');
   console.log('OK: loadGroupDetail() (roster + defi actif classe par totalAmount decroissant, rang exact gratuit)');
+
+  // Passe UX premium (retour utilisateur) : le defi ACTIF doit desormais dominer
+  // l ecran (carte "hero", a l image de la Boss Battle en Communaute) - progression
+  // en gros, temps restant affiche. La liste des membres/invitations, elle,
+  // devient accessoire : releguee derriere le bouton "⋯" (comme l ecran d info
+  // d un groupe WhatsApp) plutot que toujours visible en tete d ecran.
+  __assertOk(groupDetailHtml.includes('group-challenge-hero'), 'le defi actif doit etre affiche dans une carte "hero" proeminente, pas une simple barre de progression');
+  __assertOk(groupDetailHtml.includes('8%'), 'le pourcentage de progression (40/500) doit etre affiche en gros dans la carte hero');
+  __assertOk(groupDetailHtml.includes(tn('groups.timeRemaining.daysLeft', 7)), 'le temps restant avant l echeance (7 jours) doit etre affiche dans la carte hero');
+  __assertOk(!groupDetailHtml.includes(t('groups.inviteFriendsLabel')) && !groupDetailHtml.includes(tn('groups.membersLabel', groupDetailMembers.length)), 'la liste des membres/invitations ne doit plus etre affichee directement dans l ecran principal (releguee au bouton info)');
+  __assertOk(groupDetailHtml.includes('onclick="openGroupInfoOverlay()"'), 'un bouton "⋯" doit permettre d ouvrir les infos du groupe (membres, invitations)');
+  const groupInfoSheetHtml = renderGroupInfoSheet();
+  __assertOk(groupInfoSheetHtml.includes('Bob M.') && groupInfoSheetHtml.includes('Moi A.'), 'le panneau info doit lister tous les membres du groupe');
+  __assertOk(groupInfoSheetHtml.includes('Bea M.') && groupInfoSheetHtml.includes(t('groups.inviteBtn')), 'le panneau info doit proposer d inviter les amis pas encore membres du groupe');
+  openGroupInfoOverlay();
+  __assertOk(groupInfoOverlayOpen, 'openGroupInfoOverlay() doit marquer le panneau comme ouvert');
+  closeGroupInfoOverlay();
+  __assertOk(!groupInfoOverlayOpen, 'fermer le panneau info doit le marquer comme referme');
+  console.log('OK: carte "hero" du defi actif (progression + temps restant en avant) + panneau info groupe accessoire derriere le bouton "⋯" (passe UX premium)');
 
   // Regression du bug reel signale en prod : un defi a 125/100 (objectif depasse)
   // restait affiche "actif" indefiniment sans aucune Ardoise/Palmares, car seule

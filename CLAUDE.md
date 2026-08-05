@@ -2147,3 +2147,48 @@ mais **pas visuellement dans un vrai navigateur** - ce depot n'a ni serveur de
 developpement ni outillage de capture d'ecran/navigateur automatise. A confirmer
 visuellement par l'utilisateur avant de considerer le rendu final valide.
 
+## Restructuration de l'onglet Groupes (hierarchie visuelle)
+
+**Demande explicite de l'utilisateur** (suite au retour ci-dessus) : rejoindre/
+creer un groupe ne devrait pas avoir la meme place que les cartes groupe (action
+rare), et dans le detail d'un groupe, le roster (liste des membres) est accessoire
+et prenait toute la place en tete d'ecran alors que le defi du moment devrait
+dominer visuellement, a l'image de la Boss Battle en Communaute ou du "defi du
+boss" - comparaison explicite de l'utilisateur avec l'ecran d'info d'un groupe
+WhatsApp (accessible via un bouton, jamais affiche par defaut).
+
+1. **Racine de l'onglet Groupes** : les 2 blocs "rejoindre avec un code"/"creer un
+   groupe" (toujours visibles, meme poids que la liste des groupes) sont remplaces
+   par 2 icones haut-droite (loupe 🔍 / plus ➕, `.add-custom-fab` deja utilisee
+   pour l'ajout de defi personnalise dans la Bibliotheque) qui revelent chacune
+   leur formulaire au clic - `joiningGroupOpen`/`creatingGroupOpen`, mutuellement
+   exclusifs (`toggleJoiningGroupOpen()`/`toggleCreatingGroupOpen()` ferment l'autre
+   en s'ouvrant). Cle i18n `groups.createBtn` (bouton pleine largeur) supprimee,
+   devenue inutile.
+2. **Detail d'un groupe : carte "hero" du defi actif** (`.group-challenge-hero`) -
+   remplace la simple barre `.athlete-xp-track`/`.athlete-xp-label` par une carte
+   proeminente (degrade, glow vert) avec pourcentage en gros (40px), barre de
+   progression plus epaisse, ET **le temps restant avant l'echeance**
+   (`formatGroupChallengeTimeRemaining()`, pure : "X jours restants" ou "Dernier
+   jour !" sous 24h) - absent de l'ancien affichage. La barre garde la classe
+   `athlete-xp-fill` (animation `scaleX` du point precedent) en plus de sa propre
+   classe de couleur/taille.
+3. **Detail d'un groupe : roster/invitations releques dans un panneau "info"**
+   (`renderGroupInfoSheet()`) ouvert via un bouton "⋯" (`openGroupInfoOverlay()`/
+   `closeGroupInfoOverlay()`), exactement le meme mecanisme DOM que la fiche ami
+   (`openFriendProfile()`/`.level-roadmap-overlay` reutilisee telle quelle, aucune
+   nouvelle classe CSS necessaire) : un `<div>` cree via `document.createElement`
+   et ajoute a `document.body`, en dehors du `#app` remplace par `render()`. Le
+   code du groupe (`groups.codeLabel`), auparavant dans l'en-tete principal, vit
+   desormais uniquement dans ce panneau (evite la duplication). `groupInfoOverlayOpen`
+   (booleen) suit le meme role que `friendProfileOpenUid` : un simple garde-fou
+   d'etat, PAS necessaire au fonctionnement reel (les donnees membres/amis sont
+   deja en memoire, aucun fetch asynchrone), mais indispensable pour rester
+   testable avec le mock DOM des tests (`document.getElementById()` y cree
+   toujours un element a la demande et ne reflete jamais un vrai `appendChild()` -
+   voir `tests/app.test.js`, meme limite deja documentee pour la fiche ami).
+
+Aucun changement de donnees/architecture Firestore - uniquement du rendu/etat
+client. CACHE_NAME -> v61. Meme limite de verification que le chantier
+precedent : valide par tests+lint, **pas visuellement dans un vrai navigateur**.
+

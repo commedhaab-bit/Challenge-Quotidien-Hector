@@ -2247,9 +2247,11 @@ let myGroups = []; // [{ groupId, name, emoji, joinedAt }]
 // bon(s) defi(s) de groupe sans avoir a rouvrir l'onglet Groupes.
 let myActiveGroupChallenges = []; // [{ groupId, challengeId, exerciseSlug, targetTotal }]
 let creatingGroupOpen = false; // formulaire "creer un groupe" (racine de l'onglet Groupes)
+let joiningGroupOpen = false; // formulaire "rejoindre avec un code" (racine de l'onglet Groupes)
 let groupCreateNameInput = '';
 let groupJoinCodeInput = '';
 let groupJoinError = null; // null | 'not-found' | 'full'
+let groupInfoOverlayOpen = false; // panneau info groupe (membres/invitations) - voir openGroupInfoOverlay()/closeGroupInfoOverlay()
 
 let openGroupId = null; // detail d'un groupe (ecran pousse depuis l'onglet Groupes)
 let groupDetailLoading = false;
@@ -2566,6 +2568,7 @@ async function joinGroupByCode(code) {
     if (!groupDoc.exists) { groupJoinError = 'not-found'; render(); return; }
     if ((groupDoc.data().memberCount || 0) >= GROUP_MEMBER_CAP) { groupJoinError = 'full'; render(); return; }
     groupJoinCodeInput = '';
+    joiningGroupOpen = false;
     await performJoinGroup(groupId, groupDoc.data());
   } catch (e) {
     reportSaveError('join group by code failed', e);
@@ -2633,6 +2636,7 @@ function openGroupDetail(groupId) {
   loadGroupDetail(groupId);
 }
 function closeGroupDetail() {
+  closeGroupInfoOverlay();
   openGroupId = null;
   groupDetailGroup = null;
   groupDetailMembers = [];
@@ -6559,7 +6563,11 @@ function renderFriendsScreen() {
 
 function updateGroupCreateNameInput(value) { groupCreateNameInput = value; render(); }
 function updateGroupJoinCodeInput(value) { groupJoinCodeInput = value; groupJoinError = null; render(); }
-function toggleCreatingGroupOpen() { creatingGroupOpen = !creatingGroupOpen; render(); }
+// Un seul des deux formulaires ouvert a la fois (rejoindre / creer), en icones
+// haut-droite plutot qu'en blocs pleine largeur toujours visibles - retour UX :
+// action peu frequente, ne merite pas la meme place qu'un CTA principal.
+function toggleCreatingGroupOpen() { creatingGroupOpen = !creatingGroupOpen; if (creatingGroupOpen) joiningGroupOpen = false; render(); }
+function toggleJoiningGroupOpen() { joiningGroupOpen = !joiningGroupOpen; if (joiningGroupOpen) creatingGroupOpen = false; render(); }
 
 // Etat vide "premium" reutilisable (icone + texte + CTA optionnel) - remplace le
 // simple texte .history-empty pour les etats vides de l'onglet Groupes (retour UX :
@@ -6620,27 +6628,42 @@ function renderGroupsScreen() {
   const joinErrorHtml = groupJoinError === 'not-found' ? `<div class="history-empty">${t('groups.joinNotFound')}</div>`
     : groupJoinError === 'full' ? `<div class="history-empty">${t('groups.joinFull')}</div>` : '';
 
-  const createFormHtml = creatingGroupOpen ? `
-    <div class="section-label">${t('groups.createTitle')}</div>
-    <input id="groupCreateNameInput" class="library-search-input" type="text" placeholder="${t('groups.createNamePlaceholder')}"
-           value="${escapeHtml(groupCreateNameInput)}" oninput="updateGroupCreateNameInput(this.value)">
-    <button class="friend-search-submit-btn" onclick="createGroup(groupCreateNameInput, '💪')">${t('groups.createSubmitBtn')}</button>
-  ` : `<button class="friend-action-btn" onclick="toggleCreatingGroupOpen()">${t('groups.createBtn')}</button>`;
-
-  return `
-    <div class="header">
-      <div class="date">${formatDateLabel(new Date())}</div>
-    </div>
-    <h1 class="title">${t('nav.groups')}</h1>
-    <div class="subtitle">${t('groups.subtitle')}</div>
-    <div class="section-label">${t('groups.myGroupsLabel')}</div>
-    ${groupsHtml}
+  // Rejoindre/creer : deux icones haut-droite (loupe/plus) plutot que deux gros
+  // blocs toujours affiches - retour UX, ces actions sont rares une fois les
+  // premiers groupes crees. Un seul formulaire ouvert a la fois (voir toggle*()).
+  const joinFormHtml = joiningGroupOpen ? `
     <div class="section-label">${t('groups.joinTitle')}</div>
     <input id="groupJoinCodeInput" class="library-search-input" type="text" placeholder="${t('groups.joinCodePlaceholder')}"
            value="${escapeHtml(groupJoinCodeInput)}" oninput="updateGroupJoinCodeInput(this.value)">
     <button class="friend-search-submit-btn" onclick="joinGroupByCode(groupJoinCodeInput)">${t('groups.joinBtn')}</button>
     ${joinErrorHtml}
+  ` : '';
+
+  const createFormHtml = creatingGroupOpen ? `
+    <div class="section-label">${t('groups.createTitle')}</div>
+    <input id="groupCreateNameInput" class="library-search-input" type="text" placeholder="${t('groups.createNamePlaceholder')}"
+           value="${escapeHtml(groupCreateNameInput)}" oninput="updateGroupCreateNameInput(this.value)">
+    <button class="friend-search-submit-btn" onclick="createGroup(groupCreateNameInput, '💪')">${t('groups.createSubmitBtn')}</button>
+  ` : '';
+
+  return `
+    <div class="header">
+      <div class="date">${formatDateLabel(new Date())}</div>
+    </div>
+    <div class="library-header-row">
+      <div>
+        <h1 class="title">${t('nav.groups')}</h1>
+        <div class="subtitle">${t('groups.subtitle')}</div>
+      </div>
+      <div class="groups-header-actions">
+        <button class="add-custom-fab" onclick="toggleJoiningGroupOpen()" title="${t('groups.joinAria')}" aria-label="${t('groups.joinAria')}">🔍</button>
+        <button class="add-custom-fab" onclick="toggleCreatingGroupOpen()" title="${t('groups.createAria')}" aria-label="${t('groups.createAria')}">+</button>
+      </div>
+    </div>
+    ${joinFormHtml}
     ${createFormHtml}
+    <div class="section-label">${t('groups.myGroupsLabel')}</div>
+    ${groupsHtml}
   `;
 }
 
@@ -6851,27 +6874,6 @@ function renderGroupDetailScreen() {
   }
   if (creatingGroupChallenge) return renderCreateGroupChallengeForm();
 
-  const membersHtml = groupDetailMembers.map((m) => {
-    const name = escapeHtml(m.displayName || '?');
-    const avatar = m.photoURL
-      ? `<img src="${escapeHtml(m.photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
-      : `<div class="leaderboard-avatar-fallback">${name.charAt(0).toUpperCase()}</div>`;
-    return `<div class="leaderboard-row">${avatar}<span class="leaderboard-name">${name}</span></div>`;
-  }).join('');
-
-  // Amis pas encore membres de ce groupe : invitation via le canal de notifications
-  // existant (voir inviteFriendToGroup()), meme geste que "Inviter des proches" ailleurs.
-  const memberUids = new Set(groupDetailMembers.map((m) => m.uid));
-  const invitableFriends = myFriends.filter((f) => !memberUids.has(f.uid));
-  const inviteHtml = invitableFriends.length > 0 ? `
-    <div class="section-label">${t('groups.inviteFriendsLabel')}</div>
-    <div class="leaderboard-list">
-      ${invitableFriends.map((f) => renderFriendActionRow(f.uid, f.displayName, f.photoURL,
-        `<button class="friend-action-btn" onclick="inviteFriendToGroup('${escapeJsAttr(groupDetailGroup.groupId)}', '${escapeJsAttr(groupDetailGroup.name)}', '${escapeJsAttr(f.uid)}')">${t('groups.inviteBtn')}</button>`
-      )).join('')}
-    </div>
-  ` : '';
-
   let challengeHtml;
   if (groupDetailView === 'ledger') {
     challengeHtml = renderGroupLedgerHistorySection();
@@ -6897,11 +6899,21 @@ function renderGroupDetailScreen() {
     const cancelBtnHtml = groupDetailChallenge.createdBy === currentUser.uid
       ? `<button class="friend-action-btn" onclick="cancelGroupChallengeConfirm('${escapeJsAttr(groupDetailGroup.groupId)}', '${escapeJsAttr(groupDetailChallenge.challengeId)}')">${t('groups.cancelChallengeBtn')}</button>`
       : '';
+    // Carte "hero" (retour UX : le defi du moment doit dominer l'ecran d'un groupe,
+    // a l'image de la Boss Battle dans l'onglet Communaute) - progression + temps
+    // restant mis en avant, classement/jokers releguent en dessous.
     challengeHtml = `
-      <div class="section-label">${escapeHtml(groupDetailChallenge.name)}${exerciseName ? ' — ' + escapeHtml(exerciseName) : ''}</div>
-      <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
-      <div class="athlete-xp-label">${t('groups.challengeProgress', { current: total, target })}</div>
-      ${targetReachedHtml}
+      <div class="group-challenge-hero">
+        <div class="group-challenge-hero-top">
+          <span class="group-challenge-hero-badge">${t('groups.viewTabs.challenge')}</span>
+          <span class="group-challenge-hero-time">${formatGroupChallengeTimeRemaining(groupDetailChallenge.endDate)}</span>
+        </div>
+        <div class="group-challenge-hero-name">${escapeHtml(groupDetailChallenge.name)}${exerciseName ? ' — ' + escapeHtml(exerciseName) : ''}</div>
+        <div class="group-challenge-hero-pct">${pct}%</div>
+        <div class="group-challenge-hero-track"><div class="group-challenge-hero-fill athlete-xp-fill" style="width:${pct}%"></div></div>
+        <div class="group-challenge-hero-progress">${t('groups.challengeProgress', { current: total, target })}</div>
+        ${targetReachedHtml}
+      </div>
       <div class="leaderboard-list">
         ${groupDetailChallenge.participants.map((p, i) => renderGroupParticipantRow(p, i + 1, p.uid === currentUser.uid)).join('')}
       </div>
@@ -6925,11 +6937,10 @@ function renderGroupDetailScreen() {
 
   return `
     <button class="nav-back-btn" onclick="history.back()" aria-label="${t('groups.backAria')}">‹</button>
-    <h1 class="title">${escapeHtml(groupDetailGroup.emoji || '')} ${escapeHtml(groupDetailGroup.name)}</h1>
-    <div class="subtitle">${t('groups.codeLabel', { code: groupDetailGroup.code })}</div>
-    <div class="section-label">${tn('groups.membersLabel', groupDetailMembers.length)}</div>
-    <div class="leaderboard-list">${membersHtml}</div>
-    ${inviteHtml}
+    <div class="library-header-row">
+      <h1 class="title">${escapeHtml(groupDetailGroup.emoji || '')} ${escapeHtml(groupDetailGroup.name)}</h1>
+      <button class="icon-btn" onclick="openGroupInfoOverlay()" aria-label="${t('groups.infoAria')}">⋯</button>
+    </div>
     ${viewTabsHtml}
     <div class="groups-subtab-content">${challengeHtml}</div>
   `;
@@ -6939,6 +6950,67 @@ function switchGroupDetailView(view) {
   if (view === groupDetailView) return;
   groupDetailView = view;
   render();
+}
+
+// Libelle "temps restant" pour le defi ACTIF (hero card) - pur, testable sans Firestore.
+function formatGroupChallengeTimeRemaining(endDate) {
+  const days = Math.ceil((endDate - Date.now()) / 86400000);
+  return days <= 1 ? t('groups.timeRemaining.lastDay') : tn('groups.timeRemaining.daysLeft', days);
+}
+
+// Panneau "info groupe" (membres + invitations) : accessoire, releve derriere le
+// bouton "⋯" (retour UX, cf. l'ecran d'info d'un groupe WhatsApp) plutot que
+// toujours visible en tete d'ecran - le defi du moment (hero card ci-dessus) est
+// desormais le contenu principal. Rendu en overlay DOM autonome (meme mecanisme
+// que renderFriendProfileSheet()/openFriendProfile()) : les donnees sont deja en
+// memoire (groupDetailMembers/myFriends), aucun chargement asynchrone necessaire.
+function renderGroupInfoSheet() {
+  const membersHtml = groupDetailMembers.map((m) => {
+    const name = escapeHtml(m.displayName || '?');
+    const avatar = m.photoURL
+      ? `<img src="${escapeHtml(m.photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
+      : `<div class="leaderboard-avatar-fallback">${name.charAt(0).toUpperCase()}</div>`;
+    return `<div class="leaderboard-row">${avatar}<span class="leaderboard-name">${name}</span></div>`;
+  }).join('');
+
+  const memberUids = new Set(groupDetailMembers.map((m) => m.uid));
+  const invitableFriends = myFriends.filter((f) => !memberUids.has(f.uid));
+  const inviteHtml = invitableFriends.length > 0 ? `
+    <div class="section-label">${t('groups.inviteFriendsLabel')}</div>
+    <div class="leaderboard-list">
+      ${invitableFriends.map((f) => renderFriendActionRow(f.uid, f.displayName, f.photoURL,
+        `<button class="friend-action-btn" onclick="inviteFriendToGroup('${escapeJsAttr(groupDetailGroup.groupId)}', '${escapeJsAttr(groupDetailGroup.name)}', '${escapeJsAttr(f.uid)}')">${t('groups.inviteBtn')}</button>`
+      )).join('')}
+    </div>
+  ` : '';
+
+  return `
+    <div class="level-roadmap-sheet">
+      <button class="level-roadmap-close" onclick="closeGroupInfoOverlay()">✕</button>
+      <div class="level-roadmap-header">
+        <div class="level-roadmap-title">${escapeHtml(groupDetailGroup.emoji || '')} ${escapeHtml(groupDetailGroup.name)}</div>
+        <div class="subtitle">${t('groups.codeLabel', { code: groupDetailGroup.code })}</div>
+      </div>
+      <div class="section-label">${tn('groups.membersLabel', groupDetailMembers.length)}</div>
+      <div class="leaderboard-list">${membersHtml}</div>
+      ${inviteHtml}
+    </div>
+  `;
+}
+
+function openGroupInfoOverlay() {
+  closeGroupInfoOverlay();
+  groupInfoOverlayOpen = true;
+  const el = document.createElement('div');
+  el.id = 'groupInfoOverlay';
+  el.className = 'level-roadmap-overlay';
+  el.innerHTML = renderGroupInfoSheet();
+  document.body.appendChild(el);
+}
+function closeGroupInfoOverlay() {
+  groupInfoOverlayOpen = false;
+  const el = document.getElementById('groupInfoOverlay');
+  if (el) el.remove();
 }
 
 // stakeType: 'beer' (defaut - le cas le plus courant, evite la fragmentation de
