@@ -9,6 +9,8 @@ on:
     branches: [main]
     paths:
       - 'functions/**'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
       - '.github/workflows/deploy-functions.yml'
 
 jobs:
@@ -37,16 +39,20 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Deploy (functions UNIQUEMENT pour l'instant - voir CLAUDE.md)
-        # Phase 0/1 : ne deploie QUE les fonctions, jamais firestore:rules/indexes
-        # via la CI - meme si firestore.rules est desormais verifie contre la prod
-        # (voir CLAUDE.md), un changement de regles reste un geste a part, jamais
-        # automatique, tant qu'on n'a pas explicitement decide de l'ajouter ici -
-        # a etendre a `--only functions,firestore:rules,firestore:indexes` si/quand
-        # decide. L'action google-github-actions/auth ci-dessus place les
-        # identifiants du compte de service dans GOOGLE_APPLICATION_CREDENTIALS,
-        # que firebase-tools sait utiliser automatiquement (pas besoin de --token).
-        # --force : configure automatiquement une politique de nettoyage Artifact
-        # Registry (evite l'accumulation silencieuse d'images de conteneurs/cout de
-        # stockage) au lieu de demander une confirmation interactive, impossible en CI.
-        run: npx firebase-tools deploy --only functions --project challenge-quotidien-hector --non-interactive --force
+      - name: Deploy (functions + firestore:rules,indexes)
+        # Depuis la Phase 1 : deploie aussi firestore:rules/indexes (plus seulement
+        # functions) - necessaire des que le classement precalcule (leaderboardCache)
+        # a besoin d'une regle de lecture qui n'existait pas encore en prod. Decision
+        # explicite (voir CLAUDE.md) : firestore.rules est verifie contre la prod
+        # reelle, et cette regle est strictement additive (lecture seule, ne modifie
+        # rien d'existant). Chemins resolus par firebase-tools relativement a
+        # firebase.json (racine du repo), meme lance depuis functions/ (working-
+        # directory par defaut de ce job) - deja confirme pour --only functions au
+        # premier deploiement reussi. L'action google-github-actions/auth ci-dessus
+        # place les identifiants du compte de service dans
+        # GOOGLE_APPLICATION_CREDENTIALS, que firebase-tools sait utiliser
+        # automatiquement (pas besoin de --token). --force : configure
+        # automatiquement une politique de nettoyage Artifact Registry (evite
+        # l'accumulation silencieuse d'images de conteneurs/cout de stockage) au lieu
+        # de demander une confirmation interactive, impossible en CI.
+        run: npx firebase-tools deploy --only functions,firestore:rules,firestore:indexes --project challenge-quotidien-hector --non-interactive --force
