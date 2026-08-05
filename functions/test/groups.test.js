@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { __testables } = require('../index.js');
 const {
   computeSettlementPairs, detectClutchWin, shouldSettleChallenge, computeCreditedAmount,
-  rankForSettlement, applyDoublonMultiplier,
+  rankForSettlement, applyDoublonMultiplier, computeRaidSettlementPairs,
 } = __testables;
 
 // Ces tests couvrent uniquement la logique PURE de reglement (aucun acces
@@ -213,4 +213,36 @@ test('applyDoublonMultiplier() : fenetre expiree ou absente -> montant inchange'
   assert.equal(applyDoublonMultiplier(10, Date.now() - 1000, Date.now()), 10);
   assert.equal(applyDoublonMultiplier(10, undefined, Date.now()), 10);
   assert.equal(applyDoublonMultiplier(10, null, Date.now()), 10);
+});
+
+// --- Phase 5 : Raids Express ---
+// Pari BINAIRE createur-vs-groupe, enjeu FIXE et INVERSE (pas de classement N-way
+// comme computeSettlementPairs) : succes -> le createur offre a tout le monde ;
+// echec -> le groupe doit au createur.
+
+test('computeRaidSettlementPairs() : succes -> le createur doit une entree a CHACUN des autres', () => {
+  const pairs = computeRaidSettlementPairs('createur', ['createur', 'a', 'b'], true);
+  assert.deepEqual(pairs, [
+    { fromUid: 'createur', toUid: 'a' },
+    { fromUid: 'createur', toUid: 'b' },
+  ]);
+});
+
+test('computeRaidSettlementPairs() : echec -> CHACUN des autres doit une entree au createur', () => {
+  const pairs = computeRaidSettlementPairs('createur', ['createur', 'a', 'b'], false);
+  assert.deepEqual(pairs, [
+    { fromUid: 'a', toUid: 'createur' },
+    { fromUid: 'b', toUid: 'createur' },
+  ]);
+});
+
+test('computeRaidSettlementPairs() : le createur seul (aucun autre participant) -> aucune entree', () => {
+  assert.deepEqual(computeRaidSettlementPairs('createur', ['createur'], true), []);
+  assert.deepEqual(computeRaidSettlementPairs('createur', ['createur'], false), []);
+});
+
+test('computeRaidSettlementPairs() : le createur n apparait jamais comme "autre" (jamais d entree createur->createur)', () => {
+  const pairs = computeRaidSettlementPairs('createur', ['createur', 'a'], true);
+  assert.ok(!pairs.some((p) => p.fromUid === 'createur' && p.toUid === 'createur'));
+  assert.equal(pairs.length, 1);
 });

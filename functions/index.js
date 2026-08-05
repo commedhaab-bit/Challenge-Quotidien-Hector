@@ -310,17 +310,23 @@ async function settleChallengeIfNeeded(db, challengeRef) {
 
 // Scheduled Function (15 min) : FILET DE SECURITE uniquement - le reglement lui-meme
 // est desormais surtout declenche INSTANTANEMENT par logGroupChallengeContribution
-// des qu'une contribution atteint la cible (voir plus bas). Ce balayage ne reste
-// necessaire que pour les defis dont l'ECHEANCE se depasse SANS que personne
-// n'atteigne la cible (aucune ecriture pour reagir dans ce cas). Cherche, TOUS
-// GROUPES CONFONDUS (collectionGroup), TOUS les defis encore actifs (un seul filtre
-// d'egalite, servi par le prefixe de l'index composite existant status+endDate -
-// aucun nouvel index requis) et delegue a settleChallengeIfNeeded() pour chacun.
+// (defis) / logRaidContribution (Raids Express, Phase 5, plus bas) des qu'une
+// contribution atteint la cible. Ce balayage ne reste necessaire que pour les
+// defis/raids dont l'ECHEANCE se depasse SANS que personne n'atteigne la cible
+// (aucune ecriture pour reagir dans ce cas). Cherche, TOUS GROUPES CONFONDUS
+// (collectionGroup), TOUS les defis puis TOUS les raids encore actifs (un seul
+// filtre d'egalite chacun, servi par le prefixe de leur index composite respectif -
+// aucun index supplementaire requis au-dela de ceux deja declares) et delegue a
+// settleChallengeIfNeeded()/settleRaidIfNeeded() pour chacun.
 exports.closeExpiredGroupChallenges = onSchedule('every 15 minutes', async () => {
   const db = admin.firestore();
   const activeSnap = await db.collectionGroup('challenges').where('status', '==', 'active').get();
   for (const challengeDoc of activeSnap.docs) {
     await settleChallengeIfNeeded(db, challengeDoc.ref);
+  }
+  const activeRaidsSnap = await db.collectionGroup('raids').where('status', '==', 'active').get();
+  for (const raidDoc of activeRaidsSnap.docs) {
+    await settleRaidIfNeeded(db, raidDoc.ref);
   }
 });
 
@@ -465,6 +471,143 @@ exports.applyGroupJoker = onCall(async (request) => {
   return { ok: true };
 });
 
+// =============================================================================
+// Phase 5 : Raids Express
+// =============================================================================
+// Mini-defi spontane, duree courte choisie au lancement (24h ou 48h, defaut 24h -
+// deadline = createdAt + durationHours*3600*1000, PAS un endDate choisi par
+// calendrier comme un defi classique). Contrairement aux defis, un groupe peut
+// avoir PLUSIEURS raids actifs en parallele (pas de contrainte "un seul a la
+// fois"). Enjeu FIXE et INVERSE (pas de stakeMode a choisir) : succes -> le
+// CREATEUR offre a tout le monde ; echec -> le GROUPE doit au createur. Reprend
+// exactement le meme schema participants/{uid} (totalAmount) et le meme pipeline
+// plafond+reglement instantane que les defis (logRaidContribution/
+// settleRaidIfNeeded), sans jokers (hors perimetre, mecanique volontairement plus
+// simple/rapide qu'un defi collectif classique).
+
+// Pure (aucun acces Firestore) : reglement d'UN Raid Express - contrairement a
+// computeSettlementPairs (classement N-way entre tous les participants), un Raid
+// est un pari BINAIRE createur-vs-groupe a enjeu FIXE : si le groupe REUSSIT
+// (cible atteinte), le CREATEUR doit a chacun des autres (il offre la tournee) ;
+// si le groupe ECHOUE (echeance depassee sans atteindre la cible), c'est chacun
+// des AUTRES qui doit au createur (le groupe le dedommage).
+function computeRaidSettlementPairs(creatorUid, participantUids, success) {
+  const others = participantUids.filter((uid) => uid !== creatorUid);
+  if (others.length === 0) return [];
+  return success
+    ? others.map((uid) => ({ fromUid: creatorUid, toUid: uid }))
+    : others.map((uid) => ({ fromUid: uid, toUid: creatorUid }));
+}
+
+// Reglement d'UN raid - meme structure que settleChallengeIfNeeded (partagee entre
+// le balayage planifie et le declenchement instantane), mais sans jokers/Clutch Win
+// (raids trop courts/simples pour ces mecaniques) : classement toujours BRUT
+// (jamais de rankForSettlement()), un seul champ `success` ecrit sur le raid.
+async function settleRaidIfNeeded(db, raidRef) {
+  const raidSnap = await raidRef.get();
+  if (!raidSnap.exists || raidSnap.data().status !== 'active') return;
+  const raid = raidSnap.data();
+  const groupRef = raidRef.parent.parent; // groups/{groupId}/raids/{id} -> groups/{groupId}
+  const now = Date.now();
+
+  const participantsSnap = await raidRef.collection('participants').get();
+  const participants = participantsSnap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+  const totalProgress = participants.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+  // shouldSettleChallenge() est generique (cible atteinte OU echeance depassee) -
+  // reutilisee telle quelle, `raid.deadline` joue le role de `endDate`.
+  if (!shouldSettleChallenge(totalProgress, raid.targetTotal, raid.deadline, now)) return;
+
+  const success = (raid.targetTotal || 0) > 0 && totalProgress >= raid.targetTotal;
+  const pairs = computeRaidSettlementPairs(raid.createdBy, participants.map((p) => p.uid), success);
+
+  await db.runTransaction(async (tx) => {
+    const freshRaid = await tx.get(raidRef);
+    if (!freshRaid.exists || freshRaid.data().status !== 'active') return;
+
+    for (const pair of pairs) {
+      const entryId = `${raidRef.id}_${pair.fromUid}_${pair.toUid}`;
+      tx.set(groupRef.collection('ledger').doc(entryId), {
+        raidId: raidRef.id,
+        fromUid: pair.fromUid,
+        toUid: pair.toUid,
+        stakeDescription: raid.stakeDescription || '',
+        createdAt: now,
+        honoredAt: null,
+        honoredBy: null,
+      });
+    }
+    tx.set(raidRef, { status: 'settled', settledAt: now, success }, { merge: true });
+
+    // Memes rollups Hall of Fame que les defis (debtsOwed/totalVolume/
+    // challengesParticipated) - un Raid Express est un defi collectif a part
+    // entiere pour ces statistiques, juste plus court/spontane.
+    for (const pair of pairs) {
+      tx.set(groupRef.collection('members').doc(pair.fromUid), { debtsOwed: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    }
+    for (const participant of participants) {
+      tx.set(groupRef.collection('members').doc(participant.uid), {
+        totalVolume: admin.firestore.FieldValue.increment(participant.totalAmount || 0),
+        challengesParticipated: admin.firestore.FieldValue.increment(1),
+      }, { merge: true });
+    }
+
+    for (const participant of participants) {
+      const notifRef = db.collection('users').doc(participant.uid).collection('notifications').doc();
+      tx.set(notifRef, {
+        type: 'group_raid_settled',
+        fromUid: 'system',
+        groupId: groupRef.id,
+        raidId: raidRef.id,
+        raidName: raid.name || '',
+        success,
+        read: false,
+        createdAt: now,
+      });
+    }
+  });
+}
+
+// Callable : meme raisonnement que logGroupChallengeContribution (plafond exact au
+// restant de la cible + reglement instantane), sans le multiplicateur Doublon (pas
+// de jokers sur les raids).
+exports.logRaidContribution = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Connexion requise.');
+  const { groupId, raidId, amount } = request.data || {};
+  if (!groupId || !raidId || !(amount > 0)) {
+    throw new HttpsError('invalid-argument', 'groupId, raidId et amount (> 0) sont requis.');
+  }
+
+  const db = admin.firestore();
+  const raidRef = db.collection('groups').doc(groupId).collection('raids').doc(raidId);
+  const participantRef = raidRef.collection('participants').doc(uid);
+
+  const outcome = await db.runTransaction(async (tx) => {
+    const raidSnap = await tx.get(raidRef);
+    if (!raidSnap.exists || raidSnap.data().status !== 'active') {
+      return { credited: 0, reachedTarget: false };
+    }
+    const raid = raidSnap.data();
+    const participantsSnap = await tx.get(raidRef.collection('participants'));
+    const currentProgress = participantsSnap.docs.reduce((sum, d) => sum + (d.data().totalAmount || 0), 0);
+    const credited = computeCreditedAmount(amount, currentProgress, raid.targetTotal);
+    if (credited <= 0) {
+      return { credited: 0, reachedTarget: (raid.targetTotal || 0) > 0 && currentProgress >= raid.targetTotal };
+    }
+
+    const myDoc = participantsSnap.docs.find((d) => d.id === uid);
+    const prevAmount = myDoc ? (myDoc.data().totalAmount || 0) : 0;
+    tx.set(participantRef, { totalAmount: prevAmount + credited }, { merge: true });
+
+    return { credited, reachedTarget: (raid.targetTotal || 0) > 0 && (currentProgress + credited) >= raid.targetTotal };
+  });
+
+  if (outcome.reachedTarget) {
+    await settleRaidIfNeeded(db, raidRef);
+  }
+  return outcome;
+});
+
 // Exposees uniquement pour les tests unitaires (logique pure, sans Firestore) -
 // voir functions/test/leaderboard.test.js et functions/test/groups.test.js.
 module.exports.__testables = {
@@ -478,4 +621,5 @@ module.exports.__testables = {
   computeCreditedAmount,
   rankForSettlement,
   applyDoublonMultiplier,
+  computeRaidSettlementPairs,
 };

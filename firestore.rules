@@ -179,10 +179,40 @@ service cloud.firestore {
       }
       match /ledger/{entryId} {
         // Ecrit uniquement par closeExpiredGroupChallenges (Admin SDK) ; le client
-        // ne peut que marquer honoredAt/honoredBy (bouton "Gage honore !").
+        // ne peut que marquer honoredAt/honoredBy (bouton "Gage honore !"). Sert
+        // aussi bien aux defis classiques (champ challengeId) qu'aux Raids Express
+        // (champ raidId, Phase 5) - meme forme de document, meme regle.
         allow read: if request.auth != null;
         allow update: if request.auth != null
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['honoredAt', 'honoredBy']);
+      }
+
+      // =========================================================================
+      // Phase 5 : Raids Express - meme discipline que challenges/ ci-dessus (voir
+      // les commentaires la-bas pour le detail du raisonnement), en plus permissif
+      // sur le nombre : PLUSIEURS raids actifs en parallele sont autorises (pas de
+      // contrainte a faire respecter ici, geree cote client par la simple absence
+      // de limit(1) sur la requete).
+      // =========================================================================
+      match /raids/{raidId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+        // Le reglement (status -> 'settled', success) n'est ecrit que par
+        // settleRaidIfNeeded (Admin SDK). Seule exception cote client : le
+        // CREATEUR d'un raid encore actif peut l'annuler lui-meme, transition
+        // stricte active -> cancelled uniquement.
+        allow update: if request.auth != null
+          && resource.data.createdBy == request.auth.uid
+          && resource.data.status == 'active'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
+          && request.resource.data.status == 'cancelled';
+
+        match /participants/{participantUid} {
+          // Meme regle que les defis : creation initiale uniquement (totalAmount:0),
+          // toute incrementation passe exclusivement par logRaidContribution.
+          allow read: if request.auth != null;
+          allow create: if request.auth != null && request.auth.uid == participantUid;
+        }
       }
     }
   }

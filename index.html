@@ -1638,6 +1638,11 @@ function goBackOneLevel() {
     render(true);
     return;
   }
+  if (creatingRaid) {
+    creatingRaid = false;
+    render(true);
+    return;
+  }
   if (openGroupId !== null) {
     closeGroupDetail();
     render(true);
@@ -1692,8 +1697,9 @@ function switchTab(tab) {
     } else if (tab === 'account' && settingsScreenOpen) {
       settingsScreenOpen = false;
       hadNestedView = true;
-    } else if (tab === 'groups' && (creatingGroupChallenge || openGroupId !== null)) {
+    } else if (tab === 'groups' && (creatingGroupChallenge || creatingRaid || openGroupId !== null)) {
       creatingGroupChallenge = false;
+      creatingRaid = false;
       closeGroupDetail();
       hadNestedView = true;
     }
@@ -2263,8 +2269,19 @@ let creatingGroupChallenge = false; // formulaire de creation de defi (dans le d
 // Phase 3 : sous-onglets du detail d'un groupe (defi en cours / Ardoise Globale /
 // Hall of Fame) - purement de l'affichage, aucune donnee supplementaire a charger
 // pour hallOfFame (deja dans groupDetailMembers) ; ledger charge a part (voir plus bas).
-let groupDetailView = 'challenge'; // 'challenge' | 'ledger' | 'hallOfFame'
+let groupDetailView = 'challenge'; // 'challenge' | 'ledger' | 'hallOfFame' | 'raids'
 let groupDetailLedgerHistory = []; // Ardoise Globale : TOUTES les entrees ledger du groupe (pas juste le dernier defi)
+
+// Phase 5 : Raids Express - contrairement aux defis, PLUSIEURS raids actifs en
+// parallele sont autorises (pas de contrainte "un seul a la fois"), donc pas
+// d'equivalent "groupDetailChallenge" unique : une simple liste (recents, tous
+// statuts confondus), triee par createdAt desc.
+let groupDetailRaids = []; // [{ raidId, ...champs du raid, participants: [...] si actif }]
+let creatingRaid = false; // formulaire de lancement d'un Raid Express
+// Alimente registerRaidContributionsIfNeeded() : memes principes que
+// myActiveGroupChallenges, mais pour TOUS les raids actifs (potentiellement
+// plusieurs par groupe).
+let myActiveGroupRaids = []; // [{ groupId, raidId, exerciseSlug, targetTotal }]
 
 // ==== FIL D'ACTIVITÉ GLOBAL (amis) ====
 // `activityFeed/{autoId}` : UN document PAR défi complété (pas par série, contrairement
@@ -2481,6 +2498,18 @@ async function processUnreadNotifications(snap) {
           : t('popups.notifications.groupChallengeSettledSubtitle', { challenge: data.challengeName }),
         btnLabel: t('popups.notifications.groupChallengeSettledBtn'),
       });
+    } else if (data.type === 'group_raid_settled') {
+      // Phase 5 : reglement instantane des que la cible est atteinte OU l echeance
+      // depassee (settleRaidIfNeeded, meme mecanique que les defis) - message
+      // different selon succes/echec (enjeu fixe et inverse, voir CLAUDE.md).
+      enqueuePopup({
+        icon: data.success ? '🎉' : '💀',
+        title: t('popups.notifications.groupRaidSettledTitle'),
+        subtitle: data.success
+          ? t('popups.notifications.groupRaidSettledSubtitleSuccess', { raid: data.raidName })
+          : t('popups.notifications.groupRaidSettledSubtitleFailure', { raid: data.raidName }),
+        btnLabel: t('popups.notifications.groupChallengeSettledBtn'),
+      });
     }
   }
 }
@@ -2601,11 +2630,14 @@ async function inviteFriendToGroup(groupId, groupName, friendUid) {
   }
 }
 
-// Charge mes groupes + le defi ACTIF (s'il y en a un) de chacun - alimente
-// registerGroupChallengeContributionsIfNeeded() pour que n'importe quelle serie
-// loguee, depuis n'importe quel onglet, contribue au(x) bon(s) defi(s) de groupe.
+// Charge mes groupes + le defi ACTIF (s'il y en a un) de chacun, ET tous les Raids
+// Express actifs (Phase 5 - potentiellement PLUSIEURS par groupe, contrairement aux
+// defis) - alimente registerGroupChallengeContributionsIfNeeded()/
+// registerRaidContributionsIfNeeded() pour que n'importe quelle serie loguee,
+// depuis n'importe quel onglet, contribue au(x) bon(s) defi(s)/raid(s) de groupe.
 // Appelee au demarrage (continueStartApp()) et apres toute action qui change la
-// liste de mes groupes ou leurs defis actifs (creation/adhesion/nouveau defi).
+// liste de mes groupes ou leurs defis/raids actifs (creation/adhesion/nouveau
+// defi/nouveau raid).
 async function refreshMyGroupsAndActiveChallenges() {
   if (!currentUser) return;
   try {
@@ -2619,6 +2651,14 @@ async function refreshMyGroupsAndActiveChallenges() {
       return { groupId: g.groupId, challengeId: c.id, exerciseSlug: c.data().exerciseSlug, targetTotal: c.data().targetTotal };
     }));
     myActiveGroupChallenges = activeLists.filter(Boolean);
+    // Raids : pas de limit(1), un groupe peut avoir plusieurs raids actifs en
+    // parallele - on aplatit toutes les listes en un seul tableau.
+    const activeRaidLists = await Promise.all(myGroups.map(async (g) => {
+      const activeSnap = await db.collection('groups').doc(g.groupId).collection('raids')
+        .where('status', '==', 'active').get();
+      return activeSnap.docs.map((r) => ({ groupId: g.groupId, raidId: r.id, exerciseSlug: r.data().exerciseSlug, targetTotal: r.data().targetTotal }));
+    }));
+    myActiveGroupRaids = activeRaidLists.flat();
     render();
   } catch (e) {
     reportSaveError('refresh my groups failed', e);
@@ -2641,6 +2681,8 @@ function closeGroupDetail() {
   groupDetailView = 'challenge';
   groupDetailLedgerHistory = [];
   pickingBouletTarget = false;
+  groupDetailRaids = [];
+  creatingRaid = false;
 }
 
 // Volontairement PAS de collection-group query / where('status','in',[...]) : les
@@ -2670,7 +2712,7 @@ async function loadGroupDetail(groupId) {
     const challenges = challengesSnap.docs.map(d => ({ challengeId: d.id, ...d.data() }));
     const relevant = challenges.find(c => c.status === 'active') || challenges.find(c => c.status === 'settled') || null;
     if (relevant) {
-      if (relevant.status === 'active') await ensureMyParticipantDoc(groupId, relevant.challengeId);
+      if (relevant.status === 'active') await ensureMyParticipantDoc(db.collection('groups').doc(groupId).collection('challenges').doc(relevant.challengeId).collection('participants'));
       const participantsSnap = await db.collection('groups').doc(groupId).collection('challenges').doc(relevant.challengeId)
         .collection('participants').get();
       relevant.participants = participantsSnap.docs.map(d => ({ ...d.data() })).sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
@@ -2701,6 +2743,26 @@ async function loadGroupDetail(groupId) {
   } catch (e) {
     groupDetailLedgerHistory = [];
     console.error('group ledger history fetch failed', e);
+  }
+  // Raids Express (Phase 5) : contrairement au defi classique, PLUSIEURS peuvent
+  // etre actifs a la fois - simple liste des plus recents (actifs + regles), pas de
+  // notion de "relevant" unique. Participants charges uniquement pour les ACTIFS
+  // (les regles ont deja leur propre bilan via l'Ardoise Globale, ledgerHistory).
+  try {
+    const raidsSnap = await db.collection('groups').doc(groupId).collection('raids')
+      .orderBy('createdAt', 'desc').limit(10).get();
+    const raids = raidsSnap.docs.map(d => ({ raidId: d.id, ...d.data() }));
+    for (const raid of raids) {
+      if (raid.status !== 'active') continue;
+      await ensureMyParticipantDoc(db.collection('groups').doc(groupId).collection('raids').doc(raid.raidId).collection('participants'));
+      const participantsSnap = await db.collection('groups').doc(groupId).collection('raids').doc(raid.raidId)
+        .collection('participants').get();
+      raid.participants = participantsSnap.docs.map(d => ({ ...d.data() })).sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
+    }
+    groupDetailRaids = raids;
+  } catch (e) {
+    groupDetailRaids = [];
+    console.error('group raids fetch failed', e);
   }
   groupDetailLoading = false;
   render();
@@ -2739,12 +2801,13 @@ function computeGroupHallOfFameTitles(members) {
 
 // Auto-initialise mon propre doc participant (totalAmount:0) si je n'en ai pas
 // encore - chaque membre n'ecrit QUE son propre doc (voir les regles Firestore),
-// donc un defi ne peut pas pre-lister tous les membres a la creation. Un membre qui
-// n'a JAMAIS ouvert le detail du groupe ni contribue pendant tout le defi n'aura
-// simplement aucune ligne au reglement (ni dette ni recompense) - simplification
-// assumee, pas un bug.
-async function ensureMyParticipantDoc(groupId, challengeId) {
-  const ref = db.collection('groups').doc(groupId).collection('challenges').doc(challengeId).collection('participants').doc(currentUser.uid);
+// donc un defi (ou un Raid Express, Phase 5 - meme fonction, generique sur la
+// collection participants passee en argument) ne peut pas pre-lister tous les
+// membres a la creation. Un membre qui n'a JAMAIS ouvert le detail du groupe ni
+// contribue pendant tout le defi n'aura simplement aucune ligne au reglement (ni
+// dette ni recompense) - simplification assumee, pas un bug.
+async function ensureMyParticipantDoc(participantsRef) {
+  const ref = participantsRef.doc(currentUser.uid);
   const doc = await ref.get();
   if (doc.exists) return;
   await ref.set({
@@ -2762,7 +2825,7 @@ async function createGroupChallenge(groupId, { name, exerciseSlug, startDate, en
       stakeMode, stakeDescription: (stakeDescription || '').trim(),
       createdBy: currentUser.uid, createdAt: Date.now(), status: 'active',
     });
-    await ensureMyParticipantDoc(groupId, challengeRef.id);
+    await ensureMyParticipantDoc(challengeRef.collection('participants'));
   } catch (e) {
     reportSaveError('create group challenge failed', e);
     return;
@@ -2871,12 +2934,91 @@ async function registerGroupChallengeContributionsIfNeeded(exerciseSlug, amount)
   const matches = myActiveGroupChallenges.filter(c => c.exerciseSlug === exerciseSlug);
   for (const m of matches) {
     try {
-      await ensureMyParticipantDoc(m.groupId, m.challengeId);
+      await ensureMyParticipantDoc(db.collection('groups').doc(m.groupId).collection('challenges').doc(m.challengeId).collection('participants'));
       await functionsClient.httpsCallable('logGroupChallengeContribution')({
         groupId: m.groupId, challengeId: m.challengeId, amount,
       });
     } catch (e) {
       reportSaveError('group challenge contribution failed', e);
+    }
+  }
+}
+
+// =============================================================================
+// Phase 5 : Raids Express
+// =============================================================================
+// Mini-defi spontane, duree courte (24h ou 48h, defaut 24h - deadline calculee
+// server-side depuis durationHours, PAS un endDate choisi par calendrier comme un
+// defi classique). Plusieurs raids peuvent etre actifs en parallele dans un meme
+// groupe (contrairement aux defis, limites a un seul a la fois). Enjeu FIXE et
+// INVERSE (pas de stakeMode a choisir) : succes -> le createur offre a tout le
+// monde ; echec -> le groupe doit au createur (voir computeRaidSettlementPairs()
+// cote Cloud Function). Pas de jokers sur les raids (hors perimetre).
+async function createRaid(groupId, { name, exerciseSlug, targetTotal, stakeDescription, durationHours }) {
+  const raidRef = db.collection('groups').doc(groupId).collection('raids').doc();
+  try {
+    const createdAt = Date.now();
+    await raidRef.set({
+      name: (name || '').trim(), exerciseSlug,
+      targetTotal: Math.max(1, Math.round(targetTotal) || 0),
+      stakeDescription: (stakeDescription || '').trim(),
+      durationHours, createdBy: currentUser.uid, createdAt,
+      deadline: createdAt + durationHours * 3600 * 1000,
+      status: 'active',
+    });
+    await ensureMyParticipantDoc(raidRef.collection('participants'));
+  } catch (e) {
+    reportSaveError('create raid failed', e);
+    return;
+  }
+  creatingRaid = false;
+  await refreshMyGroupsAndActiveChallenges();
+  await loadGroupDetail(groupId);
+}
+
+// Annulation par le createur d'un raid encore actif - meme mecanique que
+// cancelGroupChallenge (transition active -> cancelled, gardee par firestore.rules).
+async function cancelRaid(groupId, raidId) {
+  try {
+    await db.collection('groups').doc(groupId).collection('raids').doc(raidId).set({
+      status: 'cancelled', cancelledAt: Date.now(),
+    }, { merge: true });
+  } catch (e) {
+    reportSaveError('cancel raid failed', e);
+    return;
+  }
+  await refreshMyGroupsAndActiveChallenges();
+  await loadGroupDetail(groupId);
+}
+
+async function cancelRaidConfirm(groupId, raidId) {
+  const accepted = await confirmModal({
+    icon: '🗑️',
+    title: t('groups.raids.cancelConfirmTitle'),
+    subtitle: t('groups.raids.cancelConfirmSubtitle'),
+    confirmLabel: t('groups.cancelChallengeConfirmLabel'),
+    danger: true,
+  });
+  if (!accepted) return;
+  await cancelRaid(groupId, raidId);
+}
+
+// Appelee depuis addSetInner(), meme principe que
+// registerGroupChallengeContributionsIfNeeded() : delegue integralement a la Cloud
+// Function logRaidContribution (plafond exact + reglement instantane), sans le
+// multiplicateur Doublon (pas de jokers sur les raids). Un meme exercice peut
+// contribuer a PLUSIEURS raids actifs simultanement.
+async function registerRaidContributionsIfNeeded(exerciseSlug, amount) {
+  if (!exerciseSlug) return;
+  const matches = myActiveGroupRaids.filter(r => r.exerciseSlug === exerciseSlug);
+  for (const m of matches) {
+    try {
+      await ensureMyParticipantDoc(db.collection('groups').doc(m.groupId).collection('raids').doc(m.raidId).collection('participants'));
+      await functionsClient.httpsCallable('logRaidContribution')({
+        groupId: m.groupId, raidId: m.raidId, amount,
+      });
+    } catch (e) {
+      reportSaveError('raid contribution failed', e);
     }
   }
 }
@@ -4772,6 +4914,7 @@ async function addSetInner(amount) {
   entry.sets.push(amount);
   await registerBossBattleContributionIfNeeded(currentChallengeId, amount); // chaque serie compte, pas seulement la complétion du défi
   await registerGroupChallengeContributionsIfNeeded(getChallenge() ? getChallenge().slug : null, amount);
+  await registerRaidContributionsIfNeeded(getChallenge() ? getChallenge().slug : null, amount);
   const total = getTotal();
   const target = getTarget();
   const willComplete = total >= target && !entry.done;
@@ -6775,6 +6918,8 @@ function renderGroupDetailScreen() {
     challengeHtml = renderGroupLedgerHistorySection();
   } else if (groupDetailView === 'hallOfFame') {
     challengeHtml = renderGroupHallOfFameSection();
+  } else if (groupDetailView === 'raids') {
+    challengeHtml = renderGroupRaidsSection();
   } else if (!groupDetailChallenge) {
     challengeHtml = `
       <div class="history-empty">${t('groups.noChallenge')}</div>
@@ -6814,6 +6959,7 @@ function renderGroupDetailScreen() {
 
   const viewTabs = [
     { id: 'challenge', label: t('groups.viewTabs.challenge') },
+    { id: 'raids', label: t('groups.viewTabs.raids') },
     { id: 'ledger', label: t('groups.viewTabs.ledger') },
     { id: 'hallOfFame', label: t('groups.viewTabs.hallOfFame') },
   ];
@@ -6895,6 +7041,102 @@ function renderCreateGroupChallengeForm() {
     <input class="library-search-input" type="text" placeholder="${t('groups.stakeDescriptionPlaceholder')}"
            value="${escapeHtml(d.stakeDescription)}" oninput="updateGroupChallengeDraft('stakeDescription', this.value)">
     <button class="friend-search-submit-btn" onclick="submitGroupChallengeForm()">${t('groups.createChallengeSubmitBtn')}</button>
+  `;
+}
+
+// Phase 5 : Raids Express - formulaire volontairement plus court qu'un defi
+// classique (pas de dates de calendrier, pas de choix du mode d'enjeu - fixe et
+// inverse, voir createRaid()) : juste nom/exercice/cible/gage/duree (24h ou 48h).
+let raidFormDraft = { name: '', exerciseSlug: '', targetTotal: '', stakeDescription: '', durationHours: 24 };
+
+function updateRaidDraft(field, value) {
+  raidFormDraft[field] = field === 'durationHours' ? parseInt(value, 10) : value;
+  render();
+}
+
+async function submitRaidForm() {
+  const d = raidFormDraft;
+  if (!d.name.trim() || !d.exerciseSlug || !d.targetTotal) return;
+  await createRaid(openGroupId, {
+    name: d.name, exerciseSlug: d.exerciseSlug,
+    targetTotal: parseInt(d.targetTotal, 10),
+    stakeDescription: d.stakeDescription, durationHours: d.durationHours,
+  });
+  raidFormDraft = { name: '', exerciseSlug: '', targetTotal: '', stakeDescription: '', durationHours: 24 };
+}
+
+function renderCreateRaidForm() {
+  const d = raidFormDraft;
+  const exerciseOptions = CHALLENGE_LIBRARY.map((c) => `<option value="${escapeHtml(c.slug)}"${d.exerciseSlug === c.slug ? ' selected' : ''}>${escapeHtml(t('exercises.' + c.slug + '.name'))}</option>`).join('');
+  return `
+    <button class="nav-back-btn" onclick="history.back()" aria-label="${t('groups.backAria')}">‹</button>
+    <h1 class="title">${t('groups.raids.createTitle')}</h1>
+    <input class="library-search-input" type="text" placeholder="${t('groups.challengeNamePlaceholder')}"
+           value="${escapeHtml(d.name)}" oninput="updateRaidDraft('name', this.value)">
+    <select class="library-search-input" onchange="updateRaidDraft('exerciseSlug', this.value)">
+      <option value="">${t('groups.exercisePlaceholder')}</option>
+      ${exerciseOptions}
+    </select>
+    <input class="library-search-input" type="number" min="1" placeholder="${t('groups.targetPlaceholder')}"
+           value="${escapeHtml(String(d.targetTotal))}" oninput="updateRaidDraft('targetTotal', this.value)">
+    <select class="library-search-input" onchange="updateRaidDraft('durationHours', this.value)">
+      <option value="24"${d.durationHours === 24 ? ' selected' : ''}>${t('groups.raids.duration24h')}</option>
+      <option value="48"${d.durationHours === 48 ? ' selected' : ''}>${t('groups.raids.duration48h')}</option>
+    </select>
+    <input class="library-search-input" type="text" placeholder="${t('groups.stakeDescriptionPlaceholder')}"
+           value="${escapeHtml(d.stakeDescription)}" oninput="updateRaidDraft('stakeDescription', this.value)">
+    <div class="rank-bar-hint">${t('groups.raids.stakeHint')}</div>
+    <button class="friend-search-submit-btn" onclick="submitRaidForm()">${t('groups.raids.createSubmitBtn')}</button>
+  `;
+}
+
+// Une ligne de la liste des raids (section "Raids Express", tous statuts recents) :
+// progression + statut si actif, resultat (succes/echec) + gage si regle.
+function renderRaidRow(raid, groupId) {
+  const exerciseName = raid.exerciseSlug ? t('exercises.' + raid.exerciseSlug + '.name') : '';
+  const canCancel = raid.status === 'active' && raid.createdBy === currentUser.uid;
+  const cancelBtn = canCancel
+    ? `<button class="friend-action-btn" onclick="cancelRaidConfirm('${escapeJsAttr(groupId)}', '${escapeJsAttr(raid.raidId)}')">${t('groups.cancelChallengeBtn')}</button>`
+    : '';
+  if (raid.status === 'active') {
+    const total = (raid.participants || []).reduce((s, p) => s + (p.totalAmount || 0), 0);
+    const target = raid.targetTotal || 0;
+    const pct = target > 0 ? Math.min(100, Math.round((total / target) * 100)) : 0;
+    const targetReachedHtml = target > 0 && total >= target
+      ? `<div class="history-empty">${t('groups.targetReachedAwaitingSettlement')}</div>` : '';
+    return `
+      <div class="section-label">${escapeHtml(raid.name)}${exerciseName ? ' — ' + escapeHtml(exerciseName) : ''}</div>
+      <div class="rank-bar-hint">${t('groups.raids.deadlineHint', { hours: raid.durationHours })}</div>
+      <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
+      <div class="athlete-xp-label">${t('groups.challengeProgress', { current: total, target })}</div>
+      ${targetReachedHtml}
+      ${cancelBtn}
+    `;
+  }
+  if (raid.status === 'settled') {
+    const resultText = raid.success ? t('groups.raids.successResult') : t('groups.raids.failureResult');
+    return `
+      <div class="section-label">${escapeHtml(raid.name)}${exerciseName ? ' — ' + escapeHtml(exerciseName) : ''}</div>
+      <div class="history-empty">${resultText}</div>
+      ${raid.stakeDescription ? `<div class="rank-bar-hint">${escapeHtml(raid.stakeDescription)}</div>` : ''}
+    `;
+  }
+  return ''; // 'cancelled' : n'apparait simplement plus (comme un defi annule)
+}
+
+// Section "Raids Express" (4e sous-onglet du detail d'un groupe) : liste des
+// raids recents (actifs affiches en premier), + bouton de lancement. Contrairement
+// au defi classique, jamais de "aucun raid, un seul bouton bloquant" - plusieurs
+// peuvent toujours etre lances en parallele.
+function renderGroupRaidsSection() {
+  if (creatingRaid) return renderCreateRaidForm();
+  const visibleRaids = groupDetailRaids.filter((r) => r.status !== 'cancelled');
+  const listHtml = visibleRaids.length > 0
+    ? visibleRaids.map((r) => renderRaidRow(r, groupDetailGroup.groupId)).join('<hr>')
+    : `<div class="history-empty">${t('groups.raids.empty')}</div>`;
+  return `
+    ${listHtml}
+    <button class="friend-action-btn" onclick="creatingRaid = true; render(true);">${t('groups.raids.launchBtn')}</button>
   `;
 }
 

@@ -278,6 +278,7 @@ const LOCALE_ES = {
     noStakes: 'Sin apuestas para este reto (modo amistoso, o empate).',
     viewTabs: {
       challenge: 'Reto',
+      raids: 'Redadas',
       ledger: 'Cuentas',
       hallOfFame: 'Palmarés',
     },
@@ -312,6 +313,20 @@ const LOCALE_ES = {
       immuniteActiveStatus: '🛡️ Inmunidad Suiza activa para este reto.',
       handicapBadge: 'Hándicap Lastre: -{{amount}}',
       immuneBadge: 'Inmunidad Suiza: excluido/a del ajuste',
+    },
+    raids: {
+      createTitle: 'Nueva Redada Express',
+      duration24h: '24 horas',
+      duration48h: '48 horas',
+      stakeHint: 'Apuesta fija: si el grupo lo consigue, tú invitas. ¡Si el grupo falla, te lo deben!',
+      createSubmitBtn: 'Lanzar la Redada',
+      empty: 'Todavía no hay ninguna Redada Express en este grupo.',
+      launchBtn: '⚡ Lanzar una Redada Express',
+      deadlineHint: 'Redada de {{hours}}h — apuesta invertida (tú invitas si hay éxito, el grupo te lo debe si falla)',
+      successResult: '🎉 ¡Redada conseguida! Tú invitas a todo el mundo.',
+      failureResult: '💀 Redada fallida. El grupo te debe una invitación.',
+      cancelConfirmTitle: '¿Cancelar esta Redada Express?',
+      cancelConfirmSubtitle: 'Esta acción es irreversible: nunca se calculará ningún ajuste para esta redada.',
     },
   },
   tour: {
@@ -527,6 +542,9 @@ const LOCALE_ES = {
       groupChallengeSettledSubtitle: 'El reto "{{challenge}}" ha terminado — descubre la clasificación y quién le debe qué a quién.',
       groupChallengeSettledSubtitleWinner: '🎉 ¡{{winner}} gana el reto "{{challenge}}"! Descubre la clasificación y quién le debe qué a quién.',
       groupChallengeSettledBtn: 'Ver',
+      groupRaidSettledTitle: '¡Redada Express terminada!',
+      groupRaidSettledSubtitleSuccess: '🎉 ¡La redada "{{raid}}" ha sido un éxito! Descubre los detalles en la pestaña Redadas.',
+      groupRaidSettledSubtitleFailure: '💀 La redada "{{raid}}" ha fallado. Descubre los detalles en la pestaña Redadas.',
     },
     removeFriend: {
       title: '¿Eliminar a este amigo?',

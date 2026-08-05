@@ -280,6 +280,7 @@ const LOCALE_FR = {
     noStakes: 'Aucun gage pour ce défi (mode amical, ou personne à égalité).',
     viewTabs: {
       challenge: 'Défi',
+      raids: 'Raids',
       ledger: 'Ardoise',
       hallOfFame: 'Palmarès',
     },
@@ -314,6 +315,20 @@ const LOCALE_FR = {
       immuniteActiveStatus: '🛡️ Immunité Swiss activée pour ce défi.',
       handicapBadge: 'Handicap Boulet : -{{amount}}',
       immuneBadge: 'Immunité Swiss : exclu(e) du règlement',
+    },
+    raids: {
+      createTitle: 'Nouveau Raid Express',
+      duration24h: '24 heures',
+      duration48h: '48 heures',
+      stakeHint: 'Enjeu fixe : si le groupe réussit, tu offres la tournée. Si le groupe échoue, il te la doit !',
+      createSubmitBtn: 'Lancer le Raid',
+      empty: 'Aucun Raid Express pour l\'instant dans ce groupe.',
+      launchBtn: '⚡ Lancer un Raid Express',
+      deadlineHint: 'Raid de {{hours}}h — enjeu inversé (tu offres si succès, le groupe te doit si échec)',
+      successResult: '🎉 Raid réussi ! Tu offres la tournée à tout le monde.',
+      failureResult: '💀 Raid échoué. Le groupe te doit une tournée.',
+      cancelConfirmTitle: 'Annuler ce Raid Express ?',
+      cancelConfirmSubtitle: 'Cette action est irréversible : aucun règlement ne sera jamais calculé pour ce raid.',
     },
   },
   tour: {
@@ -529,6 +544,9 @@ const LOCALE_FR = {
       groupChallengeSettledSubtitle: 'Le défi "{{challenge}}" est terminé — découvre le classement et qui doit quoi à qui.',
       groupChallengeSettledSubtitleWinner: '🎉 {{winner}} remporte le défi "{{challenge}}" ! Découvre le classement et qui doit quoi à qui.',
       groupChallengeSettledBtn: 'Voir',
+      groupRaidSettledTitle: 'Raid Express terminé !',
+      groupRaidSettledSubtitleSuccess: '🎉 Le raid "{{raid}}" est réussi ! Découvre le détail dans l\'onglet Raids.',
+      groupRaidSettledSubtitleFailure: '💀 Le raid "{{raid}}" a échoué. Découvre le détail dans l\'onglet Raids.',
     },
     removeFriend: {
       title: 'Retirer cet ami ?',

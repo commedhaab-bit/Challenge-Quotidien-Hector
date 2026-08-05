@@ -277,6 +277,7 @@ const LOCALE_EN = {
     noStakes: 'No stakes for this challenge (friendly mode, or a tie).',
     viewTabs: {
       challenge: 'Challenge',
+      raids: 'Raids',
       ledger: 'Ledger',
       hallOfFame: 'Hall of Fame',
     },
@@ -311,6 +312,20 @@ const LOCALE_EN = {
       immuniteActiveStatus: '🛡️ Swiss Immunity active for this challenge.',
       handicapBadge: 'Anchor handicap: -{{amount}}',
       immuneBadge: 'Swiss Immunity: excluded from settlement',
+    },
+    raids: {
+      createTitle: 'New Flash Raid',
+      duration24h: '24 hours',
+      duration48h: '48 hours',
+      stakeHint: 'Fixed stake: if the group succeeds, you treat everyone. If the group fails, they owe you!',
+      createSubmitBtn: 'Launch the Raid',
+      empty: 'No Flash Raid yet in this group.',
+      launchBtn: '⚡ Launch a Flash Raid',
+      deadlineHint: '{{hours}}h raid — inverted stake (you treat on success, the group owes you on failure)',
+      successResult: '🎉 Raid succeeded! You treat everyone.',
+      failureResult: '💀 Raid failed. The group owes you a treat.',
+      cancelConfirmTitle: 'Cancel this Flash Raid?',
+      cancelConfirmSubtitle: 'This is irreversible: no settlement will ever be computed for this raid.',
     },
   },
   tour: {
@@ -526,6 +541,9 @@ const LOCALE_EN = {
       groupChallengeSettledSubtitle: 'The "{{challenge}}" challenge is over — check the ranking and who owes what to whom.',
       groupChallengeSettledSubtitleWinner: '🎉 {{winner}} wins the "{{challenge}}" challenge! Check the ranking and who owes what to whom.',
       groupChallengeSettledBtn: 'View',
+      groupRaidSettledTitle: 'Flash Raid over!',
+      groupRaidSettledSubtitleSuccess: '🎉 The "{{raid}}" raid succeeded! Check the details in the Raids tab.',
+      groupRaidSettledSubtitleFailure: '💀 The "{{raid}}" raid failed. Check the details in the Raids tab.',
     },
     removeFriend: {
       title: 'Remove this friend?',
