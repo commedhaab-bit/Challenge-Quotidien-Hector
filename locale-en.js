@@ -229,6 +229,7 @@ const LOCALE_EN = {
     subtitle: 'Collective challenges with friends, family or colleagues — teamwork, friendly rivalry, real-world stakes.',
     myGroupsLabel: 'My groups',
     noGroups: 'No group yet — join one with a code or create your own.',
+    activeChallengeBadge: '⚡ Challenge in progress',
     joinTitle: 'Join with a code',
     joinCodePlaceholder: '6-character code',
     joinBtn: 'Join',

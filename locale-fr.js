@@ -232,6 +232,7 @@ const LOCALE_FR = {
     subtitle: 'Défis collectifs entre potes, famille ou collègues — effort d\'équipe, rivalité amicale, gages du monde réel.',
     myGroupsLabel: 'Mes groupes',
     noGroups: 'Pas encore de groupe — rejoins-en un avec un code ou crée le tien.',
+    activeChallengeBadge: '⚡ Défi en cours',
     joinTitle: 'Rejoindre avec un code',
     joinCodePlaceholder: 'Code à 6 caractères',
     joinBtn: 'Rejoindre',

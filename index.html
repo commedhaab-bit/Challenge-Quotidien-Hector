@@ -6561,19 +6561,61 @@ function updateGroupCreateNameInput(value) { groupCreateNameInput = value; rende
 function updateGroupJoinCodeInput(value) { groupJoinCodeInput = value; groupJoinError = null; render(); }
 function toggleCreatingGroupOpen() { creatingGroupOpen = !creatingGroupOpen; render(); }
 
+// Etat vide "premium" reutilisable (icone + texte + CTA optionnel) - remplace le
+// simple texte .history-empty pour les etats vides de l'onglet Groupes (retour UX :
+// l'onglet reutilisait trop de composants generiques, effet "page web plate").
+function renderGroupsEmptyState(icon, text, ctaHtml) {
+  return `
+    <div class="groups-empty-state">
+      <div class="groups-empty-icon">${icon}</div>
+      <div class="groups-empty-text">${text}</div>
+      ${ctaHtml || ''}
+    </div>
+  `;
+}
+
+// Celebration (objectif de defi atteint) : quelques confettis CSS purs a positions
+// FIXES (jamais Math.random() - deterministe/testable). Purement decoratif : aucun
+// etat, aucune ecriture.
+const CONFETTI_PRESETS = [
+  { dx: -60, dy: -55, rot: 120, color: '#39e97a', delay: 0 },
+  { dx: 55, dy: -65, rot: -140, color: '#3b82f6', delay: 40 },
+  { dx: -30, dy: -75, rot: 200, color: '#eab308', delay: 80 },
+  { dx: 70, dy: -40, rot: -90, color: '#ef4444', delay: 20 },
+  { dx: -70, dy: -30, rot: 160, color: '#39e97a', delay: 100 },
+  { dx: 20, dy: -80, rot: -180, color: '#3b82f6', delay: 60 },
+  { dx: -20, dy: -55, rot: 90, color: '#eab308', delay: 120 },
+  { dx: 40, dy: -70, rot: -110, color: '#ef4444', delay: 10 },
+];
+function renderConfettiBurst() {
+  return `<div class="confetti-burst">${CONFETTI_PRESETS.map((p) =>
+    `<span class="confetti-piece" style="--dx:${p.dx}px; --dy:${p.dy}px; --rot:${p.rot}deg; --delay:${p.delay}ms; background:${p.color};"></span>`
+  ).join('')}</div>`;
+}
+
 function renderGroupsScreen() {
   if (openGroupId !== null) return renderGroupDetailScreen();
 
+  // Cartes plutot que de simples lignes de leaderboard (retour UX) - un badge
+  // "Defi en cours" apparait si myActiveGroupChallenges contient deja ce groupe
+  // (deja charge, aucune lecture Firestore supplementaire).
   const groupsHtml = myGroups.length > 0 ? `
-    <div class="leaderboard-list">
-      ${myGroups.map(g => `
-        <div class="leaderboard-row" onclick="openGroupDetail('${escapeJsAttr(g.groupId)}')">
-          <div class="leaderboard-avatar-fallback">${escapeHtml(g.emoji || '💪')}</div>
-          <span class="leaderboard-name">${escapeHtml(g.name)}</span>
-        </div>
-      `).join('')}
+    <div class="group-card-list">
+      ${myGroups.map((g, i) => {
+        const hasActiveChallenge = myActiveGroupChallenges.some((c) => c.groupId === g.groupId);
+        return `
+          <div class="group-card" style="animation-delay:${i * 50}ms" onclick="openGroupDetail('${escapeJsAttr(g.groupId)}')">
+            <div class="group-card-emoji">${escapeHtml(g.emoji || '💪')}</div>
+            <div class="group-card-body">
+              <div class="group-card-name">${escapeHtml(g.name)}</div>
+              ${hasActiveChallenge ? `<span class="group-card-badge">${t('groups.activeChallengeBadge')}</span>` : ''}
+            </div>
+            <span class="group-card-chevron">›</span>
+          </div>
+        `;
+      }).join('')}
     </div>
-  ` : `<div class="history-empty">${t('groups.noGroups')}</div>`;
+  ` : renderGroupsEmptyState('👥', t('groups.noGroups'));
 
   const joinErrorHtml = groupJoinError === 'not-found' ? `<div class="history-empty">${t('groups.joinNotFound')}</div>`
     : groupJoinError === 'full' ? `<div class="history-empty">${t('groups.joinFull')}</div>` : '';
@@ -6646,7 +6688,7 @@ function renderGroupJokerSection(groupId, challengeId, participants) {
             `<button class="friend-action-btn" onclick="applyBouletOnTarget('${escapeJsAttr(groupId)}', '${escapeJsAttr(challengeId)}', '${escapeJsAttr(m.uid)}', '${escapeJsAttr(m.displayName || '')}')">${t('groups.jokers.pickTargetBtn')}</button>`
           )).join('')}
         </div>`
-      : `<div class="history-empty">${t('groups.jokers.pickTargetEmpty')}</div>`;
+      : renderGroupsEmptyState('🎯', t('groups.jokers.pickTargetEmpty'));
     return `
       <div class="section-label">${t('groups.jokers.title')}</div>
       <div class="history-empty">${t('groups.jokers.pickTargetLabel')}</div>
@@ -6656,39 +6698,48 @@ function renderGroupJokerSection(groupId, challengeId, participants) {
   }
 
   if (myParticipant.jokerUsed) {
-    let statusText;
+    // Meme identite visuelle (couleur/icone) que le bouton d'origine, voir plus
+    // bas - juste un statut au lieu d'une action.
+    let statusText, jokerIcon;
     if (myParticipant.jokerUsed === 'doublon') {
       const remainingMs = (myParticipant.doublonActiveUntil || 0) - Date.now();
       statusText = remainingMs > 0
         ? t('groups.jokers.doublonActiveStatus', { minutes: Math.ceil(remainingMs / 60000) })
         : t('groups.jokers.doublonUsedStatus');
+      jokerIcon = '⏫';
     } else if (myParticipant.jokerUsed === 'immunite') {
       statusText = t('groups.jokers.immuniteActiveStatus');
+      jokerIcon = '🛡️';
     } else {
       const target = participants.find((p) => p.uid === myParticipant.jokerTargetUid);
       statusText = t('groups.jokers.bouletLaunchedStatus', { name: (target && target.displayName) || '?' });
+      jokerIcon = '🎯';
     }
     return `
       <div class="section-label">${t('groups.jokers.title')}</div>
-      <div class="history-empty">${statusText}</div>
+      <div class="joker-card ${myParticipant.jokerUsed}">
+        <div class="joker-card-icon">${jokerIcon}</div>
+        <div class="joker-card-body"><span class="joker-card-name">${statusText}</span></div>
+      </div>
     `;
   }
 
   return `
     <div class="section-label">${t('groups.jokers.title')}</div>
-    <div class="leaderboard-list">
-      <div class="leaderboard-row">
-        <span class="leaderboard-name">${t('groups.jokers.doublonBtn')}</span>
-        <button class="friend-action-btn" onclick="applyGroupJokerConfirm('${escapeJsAttr(groupId)}', '${escapeJsAttr(challengeId)}', 'doublon')">${t('groups.jokers.useBtn')}</button>
-      </div>
-      <div class="leaderboard-row">
-        <span class="leaderboard-name">${t('groups.jokers.bouletBtn')}</span>
-        <button class="friend-action-btn" onclick="startBouletTargeting()">${t('groups.jokers.useBtn')}</button>
-      </div>
-      <div class="leaderboard-row">
-        <span class="leaderboard-name">${t('groups.jokers.immuniteBtn')}</span>
-        <button class="friend-action-btn" onclick="applyGroupJokerConfirm('${escapeJsAttr(groupId)}', '${escapeJsAttr(challengeId)}', 'immunite')">${t('groups.jokers.useBtn')}</button>
-      </div>
+    <div class="joker-card doublon">
+      <div class="joker-card-icon">⏫</div>
+      <div class="joker-card-body"><span class="joker-card-name">${t('groups.jokers.doublonBtn')}</span></div>
+      <button class="friend-action-btn" onclick="applyGroupJokerConfirm('${escapeJsAttr(groupId)}', '${escapeJsAttr(challengeId)}', 'doublon')">${t('groups.jokers.useBtn')}</button>
+    </div>
+    <div class="joker-card boulet">
+      <div class="joker-card-icon">🎯</div>
+      <div class="joker-card-body"><span class="joker-card-name">${t('groups.jokers.bouletBtn')}</span></div>
+      <button class="friend-action-btn" onclick="startBouletTargeting()">${t('groups.jokers.useBtn')}</button>
+    </div>
+    <div class="joker-card immunite">
+      <div class="joker-card-icon">🛡️</div>
+      <div class="joker-card-body"><span class="joker-card-name">${t('groups.jokers.immuniteBtn')}</span></div>
+      <button class="friend-action-btn" onclick="applyGroupJokerConfirm('${escapeJsAttr(groupId)}', '${escapeJsAttr(challengeId)}', 'immunite')">${t('groups.jokers.useBtn')}</button>
     </div>
   `;
 }
@@ -6726,7 +6777,7 @@ function groupLedgerEntriesForDisplay(entries) {
 // Reutilisee par le bilan d'UN defi (groupDetailLedger) ET l'Ardoise Globale
 // (groupDetailLedgerHistory, tous les defis) - meme rendu, source de donnees differente.
 function renderLedgerEntriesList(entries) {
-  if (entries.length === 0) return `<div class="history-empty">${t('groups.noStakes')}</div>`;
+  if (entries.length === 0) return renderGroupsEmptyState('🧾', t('groups.noStakes'));
   const nameById = {};
   groupDetailMembers.forEach((m) => { nameById[m.uid] = m.displayName; });
   return groupLedgerEntriesForDisplay(entries).map((g) => {
@@ -6777,7 +6828,7 @@ function renderGroupLedgerHistorySection() {
 // closeExpiredGroupChallenges()).
 function renderGroupHallOfFameSection() {
   const titles = computeGroupHallOfFameTitles(groupDetailMembers);
-  if (titles.length === 0) return `<div class="history-empty">${t('groups.hallOfFameEmpty')}</div>`;
+  if (titles.length === 0) return renderGroupsEmptyState('🏆', t('groups.hallOfFameEmpty'));
   return `
     <div class="section-label">${t('groups.hallOfFameTitle')}</div>
     <div class="leaderboard-list">
@@ -6827,10 +6878,8 @@ function renderGroupDetailScreen() {
   } else if (groupDetailView === 'hallOfFame') {
     challengeHtml = renderGroupHallOfFameSection();
   } else if (!groupDetailChallenge) {
-    challengeHtml = `
-      <div class="history-empty">${t('groups.noChallenge')}</div>
-      <button class="friend-action-btn" onclick="creatingGroupChallenge = true; render(true);">${t('groups.createChallengeBtn')}</button>
-    `;
+    challengeHtml = renderGroupsEmptyState('🏁', t('groups.noChallenge'),
+      `<button class="groups-empty-btn" onclick="creatingGroupChallenge = true; render(true);">${t('groups.createChallengeBtn')}</button>`);
   } else if (groupDetailChallenge.status === 'active') {
     const total = groupDetailChallenge.participants.reduce((s, p) => s + (p.totalAmount || 0), 0);
     const target = groupDetailChallenge.targetTotal || 0;
@@ -6841,7 +6890,7 @@ function renderGroupDetailScreen() {
     // (Cloud Function planifiee, passage toutes les 15 min) - ce message evite que
     // l'utilisateur croie a un bug pendant ce court delai d'attente.
     const targetReachedHtml = target > 0 && total >= target
-      ? `<div class="history-empty">${t('groups.targetReachedAwaitingSettlement')}</div>`
+      ? `<div class="history-empty groups-celebrate">${renderConfettiBurst()}${t('groups.targetReachedAwaitingSettlement')}</div>`
       : '';
     // Seul le createur du defi peut l'annuler (mauvais parametrage, envie de
     // retester) - voir cancelGroupChallengeConfirm()/firestore.rules.
@@ -6882,7 +6931,7 @@ function renderGroupDetailScreen() {
     <div class="leaderboard-list">${membersHtml}</div>
     ${inviteHtml}
     ${viewTabsHtml}
-    ${challengeHtml}
+    <div class="groups-subtab-content">${challengeHtml}</div>
   `;
 }
 
@@ -6995,7 +7044,7 @@ function renderAccountTabScreen() {
     <h1 class="title">${isJournal ? t('history.title') : t('profileTab.title')}</h1>
     <div class="subtitle">${isJournal ? t('history.subtitle') : t('profileTab.subtitle')}</div>
     ${viewTabsHtml}
-    ${contentHtml}
+    <div class="groups-subtab-content">${contentHtml}</div>
   `;
 }
 

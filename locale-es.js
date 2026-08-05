@@ -230,6 +230,7 @@ const LOCALE_ES = {
     subtitle: 'Retos colectivos entre amigos, familia o compañeros — esfuerzo de equipo, rivalidad amistosa, apuestas del mundo real.',
     myGroupsLabel: 'Mis grupos',
     noGroups: 'Todavía no hay ningún grupo — únete con un código o crea el tuyo.',
+    activeChallengeBadge: '⚡ Reto en curso',
     joinTitle: 'Unirse con un código',
     joinCodePlaceholder: 'Código de 6 caracteres',
     joinBtn: 'Unirme',

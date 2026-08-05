@@ -2092,3 +2092,58 @@ attendre qu'un PWA deja installee recharge son raccourci en cache. Le tour guide
 perd sa carte dediee au Journal (4 cartes au lieu de 5) - la carte "Profil"
 mentionne desormais le Journal au passage.
 
+## Passe UX premium sur l'onglet Groupes
+
+**Demande explicite de l'utilisateur** (retour UX) : l'onglet Groupes reutilisait
+uniquement des composants generiques (`.leaderboard-row`, `.history-empty`,
+`.friend-action-btn`) partout - un defi collectif, une ligne d'ardoise, un titre
+du Hall of Fame et un membre du roster se rendaient tous de facon identique et
+plate, "effet page web" plutot qu'ecran de jeu. 6 ameliorations cote CSS/rendu
+uniquement (aucun changement de donnees/architecture Firestore) :
+
+1. **Barres de progression animees** : `.athlete-xp-fill` (deja partagee entre le
+   defi/raid de groupe ET l'XP du Profil) recoit une animation `scaleX(0)->1` a
+   chaque affichage. Choix technique important : une transition CSS classique sur
+   `width` NE FONCTIONNE PAS dans cette appli, puisque `render()` remplace tout le
+   `innerHTML` a chaque rendu - un nouveau noeud DOM apparait deja a sa largeur
+   finale, aucune transition ancien->nouveau n'est possible sans changer
+   l'architecture de rendu. `transform: scaleX()` contourne ca : la largeur reelle
+   (deja fixee via `style="width:X%"` inline) sert de reference, l'animation ne
+   fait que faire *grandir* visuellement cette largeur depuis 0 a chaque montage -
+   c'est le MEME contournement utilise pour les points 3/5/6 ci-dessous (toutes les
+   animations "entrantes" de cette appli sont necessairement des animations
+   "a chaque montage", jamais de vraie transition entre 2 etats sur un meme noeud).
+2. **Celebration a l'objectif atteint** : `renderConfettiBurst()` (positions FIXES,
+   pas de `Math.random()` - deterministe et testable) accompagne le message
+   "objectif atteint" (`.groups-celebrate`), pas le bilan deja regle (aurait rejoue
+   a chaque reconsultation, effet gadget plutot que moment specifique).
+3. **Identite visuelle des jokers** : `.joker-card` + classe `doublon`/`boulet`/
+   `immunite` (couleur/glow distincts : bleu electrique, rouge impact, dore) au
+   lieu du meme bouton generique repete 3x - le statut (joker deja utilise) garde
+   la meme identite visuelle que le bouton d'origine.
+4. **Etats vides "premium"** : `renderGroupsEmptyState(icon, text, ctaHtml)`
+   (reutilisable, meme esprit que `.today-empty-*` mais sans nouvelle cle i18n -
+   reutilise le texte existant de chaque etat vide) remplace `.history-empty` pour
+   : aucun groupe, aucun defi actif (CTA "Lancer un defi" integre), aucun gage
+   (Ardoise), aucun titre (Palmares), aucune cible disponible (picker du Boulet).
+5. **Transition de sous-onglet** : `.groups-subtab-content` (reutilise
+   `card-pop-in`, deja utilisee pour l'entree en cascade des cartes Defis/
+   Aujourd'hui) enveloppe le contenu du sous-onglet actif de Groupes ET de Profil
+   (meme mecanisme de sous-onglet, meme correctif applicable) - re-joue a chaque
+   bascule (meme limite architecturale qu'au point 1 : pas de vrai crossfade
+   ancien/nouveau noeud possible).
+6. **Liste "mes groupes" en cartes** : `.group-card` (degrade, coins arrondis,
+   entree en cascade) remplace la liste de simples lignes de leaderboard - un
+   badge "⚡ Defi en cours" apparait si `myActiveGroupChallenges` contient deja ce
+   groupe (aucune lecture Firestore supplementaire, donnee deja chargee).
+
+Toutes les animations respectent `prefers-reduced-motion: reduce` (meme
+discipline que les animations existantes de l'appli - `.picker-item`,
+`.gate-arrow`).
+
+**Limite de verification connue** : ce chantier a ete verifie par la suite de
+tests (regression sur les classes/contenus attendus) + lint + relecture du code,
+mais **pas visuellement dans un vrai navigateur** - ce depot n'a ni serveur de
+developpement ni outillage de capture d'ecran/navigateur automatise. A confirmer
+visuellement par l'utilisateur avant de considerer le rendu final valide.
+

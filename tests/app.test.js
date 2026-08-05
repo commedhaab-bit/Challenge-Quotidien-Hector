@@ -2413,7 +2413,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v59'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v60'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -5291,6 +5291,18 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(myGroups.length, 1, 'je dois retrouver le groupe que je viens de creer');
   __assertEq(myActiveGroupChallenges.length, 0, 'aucun defi actif pour l instant dans ce groupe');
 
+  // Passe UX premium (retour utilisateur : l onglet Groupes reutilisait trop de
+  // composants generiques .leaderboard-row/.history-empty, effet "page web plate") :
+  // liste "mes groupes" en cartes distinctes, pas de badge "Defi en cours" tant
+  // qu aucun defi n est actif.
+  const openGroupIdBeforeCardCheck = openGroupId;
+  openGroupId = null;
+  const groupsListHtml = renderGroupsScreen();
+  __assertOk(groupsListHtml.includes('group-card') && groupsListHtml.includes('Les Costauds'), 'la liste "mes groupes" doit utiliser des cartes (.group-card), pas de simples lignes de leaderboard');
+  __assertOk(!groupsListHtml.includes(t('groups.activeChallengeBadge')), 'le badge "Defi en cours" ne doit pas apparaitre tant qu aucun defi n est actif dans ce groupe');
+  openGroupId = openGroupIdBeforeCardCheck;
+  console.log('OK: liste "mes groupes" en cartes premium (.group-card), badge "Defi en cours" conditionnel');
+
   // Creation d'un defi collectif : le createur recoit son propre doc participant
   // (initialise a 0) - chaque membre n'ecrit QUE son propre doc (voir les regles
   // Firestore), un membre qui n'ouvre jamais le groupe ni ne contribue restera hors
@@ -5403,6 +5415,7 @@ const cssText = __rawHtml + __cssSource;
   groupDetailChallenge.targetTotal = 40; // total actuel (10 + 30) atteint tout juste la cible
   const targetReachedHtml = renderGroupDetailScreen();
   __assertOk(targetReachedHtml.includes(t('groups.targetReachedAwaitingSettlement')), 'un message d attente doit s afficher des que l objectif est atteint, meme si le defi est encore actif');
+  __assertOk(targetReachedHtml.includes('confetti-piece'), 'une celebration (confettis) doit accompagner le message d objectif atteint (passe UX premium)');
   groupDetailChallenge.targetTotal = originalTarget;
   console.log('OK: message "objectif atteint, en attente du reglement" affiche des que total >= target, sans attendre l echeance');
 
@@ -5441,6 +5454,7 @@ const cssText = __rawHtml + __cssSource;
   // l effet simule par une ecriture directe (mock, pas d Admin SDK ici).
   let jokerHtml = renderGroupDetailScreen();
   __assertOk(jokerHtml.includes(t('groups.jokers.doublonBtn')) && jokerHtml.includes(t('groups.jokers.bouletBtn')) && jokerHtml.includes(t('groups.jokers.immuniteBtn')), 'les 3 jokers doivent etre proposes tant qu aucun n a ete utilise pour ce defi');
+  __assertOk(jokerHtml.includes('joker-card doublon') && jokerHtml.includes('joker-card boulet') && jokerHtml.includes('joker-card immunite'), 'chaque joker doit avoir sa propre identite visuelle (passe UX premium)');
 
   const originalConfirmModalJoker = confirmModal;
   confirmModal = async () => true;
@@ -5455,6 +5469,7 @@ const cssText = __rawHtml + __cssSource;
   jokerHtml = renderGroupDetailScreen();
   __assertOk(!jokerHtml.includes(t('groups.jokers.doublonBtn')), 'une fois Le Doublon utilise, les boutons de jokers doivent disparaitre (un seul par defi)');
   __assertOk(jokerHtml.includes('⏫'), 'le statut du Doublon actif doit s afficher');
+  __assertOk(jokerHtml.includes('joker-card doublon'), 'le statut du Doublon doit garder son identite visuelle (carte bleue electrique)');
   console.log('OK: Jokers tactiques - Le Doublon (un seul par defi, delegue a applyGroupJoker, statut affiche une fois actif)');
 
   // Le Boulet : necessite de cibler un adversaire (picker), jamais soi-meme.
@@ -5592,7 +5607,18 @@ const cssText = __rawHtml + __cssSource;
   const hallOfFameHtml = renderGroupDetailScreen();
   __assertOk(hallOfFameHtml.includes(t('groups.hallOfFameTitles.mecene')) && hallOfFameHtml.includes('Moi'), 'Le Mecene (Moi, 2 dettes) doit apparaitre dans le palmares');
   __assertOk(hallOfFameHtml.includes(t('groups.hallOfFameTitles.roiDesRepets')) && hallOfFameHtml.includes('Bob'), 'Le Roi des Repets (Bob, 300 de volume) doit apparaitre');
+  __assertOk(hallOfFameHtml.includes('groups-subtab-content'), 'le contenu du sous-onglet doit etre encapsule pour l animation de transition (passe UX premium)');
   console.log('OK: rendu Hall of Fame (sous-onglet Palmares, zero lecture supplementaire - deja dans le roster charge)');
+
+  // Etat vide "premium" (passe UX premium) : verifie via le Palmares (aucun membre
+  // n a de statistique positive) que le composant partage renderGroupsEmptyState()
+  // est bien utilise (icone + texte), pas le simple texte .history-empty d avant.
+  const membersBeforeEmptyCheck = groupDetailMembers;
+  groupDetailMembers = [];
+  const emptyHallOfFameHtml = renderGroupDetailScreen();
+  __assertOk(emptyHallOfFameHtml.includes('groups-empty-state') && emptyHallOfFameHtml.includes('groups-empty-icon') && emptyHallOfFameHtml.includes(t('groups.hallOfFameEmpty')), 'l etat vide du Palmares doit utiliser le composant premium (icone + texte)');
+  groupDetailMembers = membersBeforeEmptyCheck;
+  console.log('OK: etats vides de Groupes utilisent le composant premium renderGroupsEmptyState() (icone + texte + CTA optionnel)');
 
   // Ardoise Globale : historique COMPLET du groupe, tous defis confondus
   // (contrairement au bilan, scope a un seul defi) - seed une 2e entree ledger d un
