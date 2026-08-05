@@ -337,6 +337,15 @@ let mockGetMyRankLastArgs = null;
 let mockLogGroupChallengeContributionCalls = [];
 let mockLogGroupChallengeContributionResult = { credited: 0, reachedTarget: false };
 
+// Mock du Cloud Function Callable applyGroupJoker() (Phase 4, jokers tactiques) :
+// meme principe - la logique de plafonnage/reglement (rankForSettlement(),
+// applyDoublonMultiplier()) est deja testee en isolation dans
+// functions/test/groups.test.js, le mock enregistre juste l appel. Les tests
+// simulent ensuite l effet serveur par une ecriture directe (jokerUsed/handicap/
+// immune/doublonActiveUntil), pour verifier le rendu client (boutons, statuts,
+// badges) independamment de la logique serveur elle-meme.
+let mockApplyGroupJokerCalls = [];
+
 const sandbox = {
   console,
   Math, Date, JSON, Set, Map, Array, Object, Number, String, Promise,
@@ -432,6 +441,10 @@ const sandbox = {
                 if (name === 'logGroupChallengeContribution') {
                   mockLogGroupChallengeContributionCalls.push(data);
                   return { data: mockLogGroupChallengeContributionResult };
+                }
+                if (name === 'applyGroupJoker') {
+                  mockApplyGroupJokerCalls.push(data);
+                  return { data: { ok: true } };
                 }
                 throw new Error('Callable non mockee dans les tests : ' + name);
               };
@@ -541,6 +554,7 @@ const sandbox = {
     if (typeof sandbox.invalidateLeaderboardCache === 'function') sandbox.invalidateLeaderboardCache();
     sandbox.__resetMockGetMyRank();
     sandbox.__resetMockLogGroupChallengeContribution();
+    sandbox.__resetMockApplyGroupJoker();
   },
   alert(msg){ console.log('  [alert]', msg); },
   confirm(msg){ return true; },
@@ -577,6 +591,8 @@ const sandbox = {
     mockLogGroupChallengeContributionCalls = [];
     mockLogGroupChallengeContributionResult = { credited: 0, reachedTarget: false };
   },
+  get __mockApplyGroupJokerCalls() { return mockApplyGroupJokerCalls; },
+  __resetMockApplyGroupJoker() { mockApplyGroupJokerCalls = []; },
   __mockCacheKeys: mockCacheKeys, // Cache Storage simule (forceAppUpdate)
   __mockSwRegistrations: mockSwRegistrations, // ServiceWorkerRegistration simulees (forceAppUpdate)
   __rawHtml: html, // fichier source complet de index.html (le <style> a ete extrait dans styles.css, voir __cssSource)
@@ -2371,7 +2387,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v53'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v54'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2588,12 +2604,13 @@ const cssText = __rawHtml + __cssSource;
   // par simple recherche de texte — la preuve la plus fiable est le comptage positif
   // exact des 4 remplacements, deja verifie fonctionnellement pour deleteChallenge au
   // test 11 plus haut). ---
-  // 10 depuis l ajout de cancelGroupChallengeConfirm() (annulation d un defi de
-  // groupe) : compte x2, defi, suggestion d objectif, import de donnees, forcer la
-  // mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter
-  // une invitation de groupe depuis sa popup, + annuler un defi de groupe.
+  // 12 depuis l ajout des Jokers tactiques (Phase 4, applyGroupJokerConfirm() +
+  // applyBouletOnTarget()) : compte x2, defi, suggestion d objectif, import de
+  // donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami
+  // depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un
+  // defi de groupe, + les 2 confirmations de joker (Doublon/Immunite et Boulet).
   const confirmModalCallCount = (__rawHtml.match(/await confirmModal\\(\\{/g) || []).length;
-  __assertEq(confirmModalCallCount, 10, 'les 10 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un defi de groupe) doivent utiliser confirmModal');
+  __assertEq(confirmModalCallCount, 12, 'les 12 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un defi de groupe, 2x confirmation de joker) doivent utiliser confirmModal');
   console.log('OK: les 4 anciens confirm() natifs (compte x2, defi, suggestion objectif) passent par confirmModal');
 
   // --- 99. Ecran Parametres dedie : navigation (ouverture/fermeture) + regroupe le
@@ -5317,6 +5334,58 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(cancelledDoc.data().status, 'cancelled', 'cancelGroupChallenge() doit marquer le defi cancelled');
   __assertEq(groupDetailChallenge.challengeId, groupChallengeId, 'apres annulation, le defi actif restant (le tout premier) doit redevenir celui affiche');
   console.log('OK: cancelGroupChallenge() (annulation par le createur uniquement, libere le groupe d un defi bloquant)');
+
+  // Jokers tactiques (Phase 4) : UN SEUL joker par participant et par defi
+  // (Doublon/Boulet/Immunite Swiss), applique server-side via applyGroupJoker
+  // (Cloud Function) - la logique de plafonnage/reglement elle-meme est deja
+  // testee en isolation (rankForSettlement()/applyDoublonMultiplier(), voir
+  // functions/test/groups.test.js). Cote client, on verifie que les 3 boutons sont
+  // proposes tant qu aucun joker n a ete utilise, que l appel delegue bien a la
+  // Cloud Function, et que chaque statut/badge s affiche correctement une fois
+  // l effet simule par une ecriture directe (mock, pas d Admin SDK ici).
+  let jokerHtml = renderGroupDetailScreen();
+  __assertOk(jokerHtml.includes(t('groups.jokers.doublonBtn')) && jokerHtml.includes(t('groups.jokers.bouletBtn')) && jokerHtml.includes(t('groups.jokers.immuniteBtn')), 'les 3 jokers doivent etre proposes tant qu aucun n a ete utilise pour ce defi');
+
+  const originalConfirmModalJoker = confirmModal;
+  confirmModal = async () => true;
+  await applyGroupJokerConfirm(createdGroupId, groupChallengeId, 'doublon');
+  confirmModal = originalConfirmModalJoker;
+  __assertEq(__mockApplyGroupJokerCalls.length, 1, 'utiliser Le Doublon doit appeler applyGroupJoker');
+  __assertEq(__mockApplyGroupJokerCalls[0].jokerType, 'doublon');
+  // Simule l effet serveur (le mock ne fait qu enregistrer l appel, voir plus haut).
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid')
+    .set({ jokerUsed: 'doublon', doublonActiveUntil: Date.now() + 2 * 3600 * 1000 }, { merge: true });
+  await loadGroupDetail(createdGroupId);
+  jokerHtml = renderGroupDetailScreen();
+  __assertOk(!jokerHtml.includes(t('groups.jokers.doublonBtn')), 'une fois Le Doublon utilise, les boutons de jokers doivent disparaitre (un seul par defi)');
+  __assertOk(jokerHtml.includes('⏫'), 'le statut du Doublon actif doit s afficher');
+  console.log('OK: Jokers tactiques - Le Doublon (un seul par defi, delegue a applyGroupJoker, statut affiche une fois actif)');
+
+  // Le Boulet : necessite de cibler un adversaire (picker), jamais soi-meme.
+  currentUser = { uid: 'bob-uid', displayName: 'Bob Martin', email: 'b@test.com', photoURL: '' };
+  await loadGroupDetail(createdGroupId);
+  startBouletTargeting();
+  let bouletHtml = renderGroupDetailScreen();
+  __assertOk(bouletHtml.includes(t('groups.jokers.pickTargetLabel')) && bouletHtml.includes('Moi A.'), 'le picker du Boulet doit lister les AUTRES participants (jamais moi-meme)');
+  confirmModal = async () => true;
+  await applyBouletOnTarget(createdGroupId, groupChallengeId, 'me-uid', 'Moi A.');
+  confirmModal = originalConfirmModalJoker;
+  __assertEq(__mockApplyGroupJokerCalls.length, 2, 'lancer Le Boulet doit appeler applyGroupJoker');
+  __assertEq(__mockApplyGroupJokerCalls[1].jokerType, 'boulet');
+  __assertEq(__mockApplyGroupJokerCalls[1].targetUid, 'me-uid');
+  __assertOk(!pickingBouletTarget, 'applyGroupJoker() doit refermer le picker apres l appel');
+  // Simule l effet serveur : Bob a utilise son joker (boulet), Moi recoit le handicap.
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('bob-uid')
+    .set({ jokerUsed: 'boulet', jokerTargetUid: 'me-uid' }, { merge: true });
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid')
+    .set({ handicap: 20 }, { merge: true });
+  await loadGroupDetail(createdGroupId);
+  bouletHtml = renderGroupDetailScreen();
+  __assertOk(bouletHtml.includes(t('groups.jokers.bouletLaunchedStatus', { name: 'Moi A.' })), 'le statut du Boulet doit nommer la cible');
+  __assertOk(bouletHtml.includes(t('groups.jokers.handicapBadge', { amount: 20 })), 'le handicap doit etre affiche en badge sur la ligne de la cible');
+  console.log('OK: Jokers tactiques - Le Boulet (picker de cible, handicap applique et affiche)');
+
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
 
   // Bilan (simule ici : le reglement REEL est calcule par closeExpiredGroupChallenges,
   // une Cloud Function server-only - voir functions/test/groups.test.js pour

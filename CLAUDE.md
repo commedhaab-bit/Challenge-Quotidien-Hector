@@ -1868,3 +1868,52 @@ Comme le reglement est desormais instantane, cette popup arrive quasi
 immediatement a TOUS les participants via le canal de notifications temps reel
 deja existant (`listener unique`) - aucune nouvelle infrastructure necessaire.
 
+## Phase 4 : Jokers tactiques (applyGroupJoker)
+
+Ajoute une section "Jokers tactiques" a l'ecran d'un defi de groupe ACTIF : Le
+Doublon, Le Boulet, L'Immunite Swiss. **UN SEUL joker par participant et par
+defi** (ressource rare, choix tactique) - une fois utilise, la section affiche un
+statut au lieu des 3 boutons.
+
+**Ecrit exclusivement via `applyGroupJoker`** (Callable, Admin SDK, transaction) -
+meme raisonnement que `logGroupChallengeContribution` : `participants/{uid}` est
+deja verrouille en `create`-only cote client (Phase precedente), donc AUCUN effet
+croise entre participants (Le Boulet ecrit sur le doc d'un TIERS) n'aurait pu
+passer par les regles Firestore de toute facon. La fonction verifie le defi encore
+`active`, qu'aucun joker n'a deja ete utilise (`jokerUsed`), et pour Le Boulet que
+la cible existe et n'est jamais soi-meme.
+
+- **Le Doublon** (x2 pendant 2h) : `doublonActiveUntil = now + 2h` sur MON propre
+  doc participant. Applique par `applyDoublonMultiplier()` (logique pure) DANS
+  `logGroupChallengeContribution`, AVANT le plafonnage (`computeCreditedAmount()`) -
+  double donc aussi bien ma contribution a la cible partagee que mon totalAmount
+  reel pour le classement.
+- **Le Boulet** (+20 de handicap) : cible un ADVERSAIRE (`targetUid`, jamais
+  soi-meme) - `handicap: increment(20)` ecrit sur le doc du CIBLE, jamais le mien.
+  Le handicap ne touche QUE le classement de reglement (`rankForSettlement()`,
+  logique pure) : `effectiveAmount = max(0, totalAmount - handicap)` sert
+  uniquement a `computeSettlementPairs()` - le vrai `totalAmount` (Hall of Fame,
+  progression partagee) n'est jamais modifie.
+- **L'Immunite Swiss** : `immune: true` sur mon propre doc - `rankForSettlement()`
+  me retire ENTIEREMENT du tableau passe a `computeSettlementPairs()` (ni dette ni
+  recompense possible), mais mes vraies statistiques (Hall of Fame,
+  `challengesParticipated`, etc.) restent comptees normalement via `ranked` (le
+  classement BRUT, toujours utilise pour tout le reste : Clutch Win, rollups,
+  `winnerName`).
+
+**Separation cle** : `ranked` (brut, par `totalAmount`) sert a TOUT sauf le
+reglement financier lui-meme ; `rankForSettlement(ranked)` (immunite retiree,
+handicap applique) ne sert QUE pour `computeSettlementPairs()`. Cette distinction
+evite qu'un joker fausse les vraies statistiques de performance (Hall of Fame)
+tout en modifiant reellement qui doit quoi a qui.
+
+**Cote client** : section Jokers dans `renderGroupDetailScreen()`
+(`renderGroupJokerSection()`) - 3 boutons si `!myParticipant.jokerUsed`, sinon un
+statut (Doublon actif/utilise avec minutes restantes, Immunite activee, Boulet
+lance sur untel). Le Boulet necessite un picker de cible (`pickingBouletTarget`,
+liste les AUTRES participants uniquement) avant confirmation. Badges informatifs
+sur `renderGroupParticipantRow()` (🛡️ immunite, `-N` handicap) pour que les autres
+membres comprennent l'ecart entre le total affiche et le classement de reglement
+reel. Aucun nouvel index Firestore necessaire (aucune nouvelle requete, seulement
+des lectures de documents individuels deja connus par leur ID).
+

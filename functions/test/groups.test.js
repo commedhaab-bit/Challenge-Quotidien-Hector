@@ -1,7 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { __testables } = require('../index.js');
-const { computeSettlementPairs, detectClutchWin, shouldSettleChallenge, computeCreditedAmount } = __testables;
+const {
+  computeSettlementPairs, detectClutchWin, shouldSettleChallenge, computeCreditedAmount,
+  rankForSettlement, applyDoublonMultiplier,
+} = __testables;
 
 // Ces tests couvrent uniquement la logique PURE de reglement (aucun acces
 // Firestore reel) - closeExpiredGroupChallenges lui-meme n'est verifie qu'en
@@ -168,4 +171,46 @@ test('computeCreditedAmount() : pile la cible -> credite exactement le restant',
 test('computeCreditedAmount() : targetTotal absent/0 -> jamais de plafond', () => {
   assert.equal(computeCreditedAmount(500, 0, 0), 500);
   assert.equal(computeCreditedAmount(500, 1000, undefined), 500);
+});
+
+// --- Phase 4 : Jokers tactiques ---
+
+test('rankForSettlement() : sans joker, meme ordre que le classement brut (par totalAmount)', () => {
+  const ranked = [{ uid: 'a', totalAmount: 100 }, { uid: 'b', totalAmount: 50 }];
+  assert.deepEqual(rankForSettlement(ranked).map((p) => p.uid), ['a', 'b']);
+});
+
+test('rankForSettlement() : Immunite Swiss retire totalement le participant du classement de reglement', () => {
+  const ranked = [{ uid: 'a', totalAmount: 100 }, { uid: 'b', totalAmount: 50, immune: true }];
+  const result = rankForSettlement(ranked);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].uid, 'a');
+});
+
+test('rankForSettlement() : Le Boulet (handicap) peut faire chuter la cible sous un adversaire moins performant', () => {
+  const ranked = [{ uid: 'a', totalAmount: 80, handicap: 30 }, { uid: 'b', totalAmount: 60 }];
+  // a a reellement fait plus (80 > 60), mais son handicap de 30 le fait tomber a un
+  // effectiveAmount de 50, sous les 60 de b -> b doit desormais etre classe 1er.
+  const result = rankForSettlement(ranked);
+  assert.deepEqual(result.map((p) => p.uid), ['b', 'a']);
+});
+
+test('rankForSettlement() : le handicap ne fait jamais descendre l effectiveAmount sous 0', () => {
+  const ranked = [{ uid: 'a', totalAmount: 10, handicap: 999 }];
+  assert.equal(rankForSettlement(ranked)[0].effectiveAmount, 0);
+});
+
+test('rankForSettlement() : le totalAmount BRUT (stats Hall of Fame) n est jamais modifie par le handicap', () => {
+  const ranked = [{ uid: 'a', totalAmount: 80, handicap: 30 }];
+  assert.equal(rankForSettlement(ranked)[0].totalAmount, 80, 'le vrai totalAmount doit rester intact, seul effectiveAmount change');
+});
+
+test('applyDoublonMultiplier() : fenetre active (doublonActiveUntil dans le futur) -> montant double', () => {
+  assert.equal(applyDoublonMultiplier(10, Date.now() + 60000, Date.now()), 20);
+});
+
+test('applyDoublonMultiplier() : fenetre expiree ou absente -> montant inchange', () => {
+  assert.equal(applyDoublonMultiplier(10, Date.now() - 1000, Date.now()), 10);
+  assert.equal(applyDoublonMultiplier(10, undefined, Date.now()), 10);
+  assert.equal(applyDoublonMultiplier(10, null, Date.now()), 10);
 });

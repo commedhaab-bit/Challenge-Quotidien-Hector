@@ -192,6 +192,26 @@ function shouldSettleChallenge(totalProgress, targetTotal, endDate, now) {
   return targetReached || deadlinePassed;
 }
 
+// Pure (aucun acces Firestore) : classement utilise pour le REGLEMENT financier
+// uniquement (computeSettlementPairs) - distinct du classement BRUT (`ranked`, par
+// totalAmount reel) qui sert lui a la progression partagee, au Clutch Win et aux
+// rollups Hall of Fame. Applique les 2 jokers qui modifient le reglement (Phase 4) :
+// - L'Immunite Swiss : le participant est totalement RETIRE de ce classement (ni
+//   dette ni recompense), mais garde ses vraies statistiques ailleurs (Hall of Fame).
+// - Le Boulet : handicap soustrait du totalAmount du CIBLE (jamais son vrai
+//   totalAmount, qui reste intact pour les stats) - un handicap de 20 sur quelqu'un
+//   a 80 le classe comme s'il n'avait que 60 pour le reglement uniquement.
+// Le Doublon (x2 pendant 2h) n'a PAS sa place ici : il agit plus tot, directement
+// sur le totalAmount reel au moment de la contribution (voir applyDoublonMultiplier
+// / logGroupChallengeContribution) - une fois credite, ce montant double est un
+// totalAmount comme un autre.
+function rankForSettlement(ranked) {
+  return ranked
+    .filter((p) => !p.immune)
+    .map((p) => ({ ...p, effectiveAmount: Math.max(0, (p.totalAmount || 0) - (p.handicap || 0)) }))
+    .sort((a, b) => b.effectiveAmount - a.effectiveAmount);
+}
+
 // Reglement d'UN defi - partage entre le balayage planifie (filet de securite,
 // ci-dessous) ET le declenchement instantane (logGroupChallengeContribution, plus
 // bas) : lit l'etat FRAIS du defi, ne fait RIEN si shouldSettleChallenge() ne
@@ -215,7 +235,11 @@ async function settleChallengeIfNeeded(db, challengeRef) {
   const totalProgress = ranked.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
   if (!shouldSettleChallenge(totalProgress, challenge.targetTotal, challenge.endDate, now)) return;
 
-  const pairs = computeSettlementPairs(ranked, challenge.stakeMode);
+  // Jokers (Phase 4) : le classement REGLEMENT (immunite retiree, handicap Boulet
+  // applique) peut differer du classement BRUT `ranked` ci-dessus - voir
+  // rankForSettlement(). Le reste (Clutch Win, rollups, winnerName) continue
+  // d'utiliser `ranked` (les vraies performances), inchange.
+  const pairs = computeSettlementPairs(rankForSettlement(ranked), challenge.stakeMode);
 
   // Bornee par la duree/taille du defi (pas un balayage global) : sert uniquement a
   // detecter un Clutch Win, voir detectClutchWin().
@@ -311,6 +335,15 @@ function computeCreditedAmount(amount, currentProgress, targetTotal) {
   return Math.min(amount, remaining);
 }
 
+// Pure (aucun acces Firestore) : joker "Le Doublon" (Phase 4) - double le montant
+// BRUT d'une contribution tant que la fenetre de 2h est active, AVANT tout
+// plafonnage (computeCreditedAmount) - le doublement porte donc aussi bien sur ce
+// que le participant peut faire progresser la cible partagee que sur son propre
+// classement de reglement.
+function applyDoublonMultiplier(amount, doublonActiveUntil, now) {
+  return (doublonActiveUntil || 0) > now ? amount * 2 : amount;
+}
+
 // =============================================================================
 // Correctif : plafond exact des contributions a un defi de groupe + reglement
 // instantane des que la cible est atteinte (fini le "jusqu'a 15 min d'attente")
@@ -348,12 +381,15 @@ exports.logGroupChallengeContribution = onCall(async (request) => {
     const challenge = challengeSnap.data();
     const participantsSnap = await tx.get(challengeRef.collection('participants'));
     const currentProgress = participantsSnap.docs.reduce((sum, d) => sum + (d.data().totalAmount || 0), 0);
-    const credited = computeCreditedAmount(amount, currentProgress, challenge.targetTotal);
+    const myDoc = participantsSnap.docs.find((d) => d.id === uid);
+    // Joker "Le Doublon" (Phase 4) : double le montant BRUT avant tout plafonnage,
+    // tant que la fenetre de 2h (doublonActiveUntil) est active.
+    const doubledAmount = applyDoublonMultiplier(amount, myDoc && myDoc.data().doublonActiveUntil, Date.now());
+    const credited = computeCreditedAmount(doubledAmount, currentProgress, challenge.targetTotal);
     if (credited <= 0) {
       return { credited: 0, reachedTarget: (challenge.targetTotal || 0) > 0 && currentProgress >= challenge.targetTotal };
     }
 
-    const myDoc = participantsSnap.docs.find((d) => d.id === uid);
     const prevAmount = myDoc ? (myDoc.data().totalAmount || 0) : 0;
     tx.set(participantRef, { totalAmount: prevAmount + credited }, { merge: true });
     tx.set(challengeRef.collection('contributions').doc(), { uid, amount: credited, at: Date.now() });
@@ -367,6 +403,68 @@ exports.logGroupChallengeContribution = onCall(async (request) => {
   return outcome;
 });
 
+// =============================================================================
+// Phase 4 : Jokers tactiques (applyGroupJoker)
+// =============================================================================
+// UN SEUL joker par participant et par defi (ressource rare, choix tactique) :
+// - 'doublon'   : double mes propres contributions pendant 2h (voir
+//                 applyDoublonMultiplier(), applique par logGroupChallengeContribution).
+// - 'boulet'    : handicap de 20 sur un ADVERSAIRE (targetUid, jamais moi-meme) pour
+//                 le classement de reglement uniquement (voir rankForSettlement()) -
+//                 son vrai totalAmount et ses stats Hall of Fame restent intacts.
+// - 'immunite'  : m'exclut moi-meme du reglement financier (ni dette ni recompense),
+//                 mes stats Hall of Fame restent comptees normalement.
+// Ecrit exclusivement via cette Callable (Admin SDK) : les regles Firestore
+// n'autorisent le client qu'a CREER son propre doc participant, jamais a le
+// modifier ensuite (voir firestore.rules) - et surtout jamais a ecrire dans le doc
+// d'un tiers (necessaire pour 'boulet').
+const JOKER_TYPES = ['doublon', 'boulet', 'immunite'];
+const BOULET_HANDICAP = 20;
+const DOUBLON_DURATION_MS = 2 * 3600 * 1000;
+
+exports.applyGroupJoker = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Connexion requise.');
+  const { groupId, challengeId, jokerType, targetUid } = request.data || {};
+  if (!groupId || !challengeId || !JOKER_TYPES.includes(jokerType)) {
+    throw new HttpsError('invalid-argument', 'groupId, challengeId et un jokerType valide sont requis.');
+  }
+  if (jokerType === 'boulet' && (!targetUid || targetUid === uid)) {
+    throw new HttpsError('invalid-argument', 'Le Boulet exige une cible, differente de soi-meme.');
+  }
+
+  const db = admin.firestore();
+  const challengeRef = db.collection('groups').doc(groupId).collection('challenges').doc(challengeId);
+  const participantRef = challengeRef.collection('participants').doc(uid);
+  const targetRef = jokerType === 'boulet' ? challengeRef.collection('participants').doc(targetUid) : null;
+
+  await db.runTransaction(async (tx) => {
+    const challengeSnap = await tx.get(challengeRef);
+    if (!challengeSnap.exists || challengeSnap.data().status !== 'active') {
+      throw new HttpsError('failed-precondition', 'Ce defi n est plus actif.');
+    }
+    const participantSnap = await tx.get(participantRef);
+    if (participantSnap.exists && participantSnap.data().jokerUsed) {
+      throw new HttpsError('failed-precondition', 'Un seul joker par defi - deja utilise.');
+    }
+    const targetSnap = targetRef ? await tx.get(targetRef) : null;
+    if (targetRef && (!targetSnap || !targetSnap.exists)) {
+      throw new HttpsError('not-found', 'Cible introuvable dans ce defi.');
+    }
+
+    if (jokerType === 'doublon') {
+      tx.set(participantRef, { jokerUsed: 'doublon', doublonActiveUntil: Date.now() + DOUBLON_DURATION_MS }, { merge: true });
+    } else if (jokerType === 'immunite') {
+      tx.set(participantRef, { jokerUsed: 'immunite', immune: true }, { merge: true });
+    } else if (jokerType === 'boulet') {
+      tx.set(participantRef, { jokerUsed: 'boulet', jokerTargetUid: targetUid }, { merge: true });
+      tx.set(targetRef, { handicap: admin.firestore.FieldValue.increment(BOULET_HANDICAP) }, { merge: true });
+    }
+  });
+
+  return { ok: true };
+});
+
 // Exposees uniquement pour les tests unitaires (logique pure, sans Firestore) -
 // voir functions/test/leaderboard.test.js et functions/test/groups.test.js.
 module.exports.__testables = {
@@ -378,4 +476,6 @@ module.exports.__testables = {
   detectClutchWin,
   shouldSettleChallenge,
   computeCreditedAmount,
+  rankForSettlement,
+  applyDoublonMultiplier,
 };

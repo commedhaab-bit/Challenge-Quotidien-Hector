@@ -2640,6 +2640,7 @@ function closeGroupDetail() {
   groupDetailLedger = [];
   groupDetailView = 'challenge';
   groupDetailLedgerHistory = [];
+  pickingBouletTarget = false;
 }
 
 // Volontairement PAS de collection-group query / where('status','in',[...]) : les
@@ -2802,6 +2803,55 @@ async function cancelGroupChallengeConfirm(groupId, challengeId) {
   });
   if (!accepted) return;
   await cancelGroupChallenge(groupId, challengeId);
+}
+
+// Phase 4 : Jokers tactiques (Le Doublon / Le Boulet / L'Immunite Swiss) - voir
+// applyGroupJoker (Cloud Function, Admin SDK) : un seul joker par participant et
+// par defi, applique server-side (le client ne peut pas ecrire directement
+// handicap/immune/doublonActiveUntil - voir firestore.rules). 'boulet' exige une
+// cible (targetUid), gere par pickingBouletTarget ci-dessous.
+let pickingBouletTarget = false;
+
+async function applyGroupJoker(groupId, challengeId, jokerType, targetUid) {
+  try {
+    await functionsClient.httpsCallable('applyGroupJoker')({ groupId, challengeId, jokerType, targetUid: targetUid || null });
+  } catch (e) {
+    reportSaveError('apply group joker failed', e);
+    return;
+  }
+  pickingBouletTarget = false;
+  await loadGroupDetail(groupId);
+}
+
+// Doublon/Immunite : aucune cible necessaire, confirmation directe (effet
+// irreversible pour la duree du defi - un seul joker par participant).
+async function applyGroupJokerConfirm(groupId, challengeId, jokerType) {
+  const accepted = await confirmModal({
+    icon: jokerType === 'doublon' ? '⏫' : '🛡️',
+    title: t(`groups.jokers.${jokerType}ConfirmTitle`),
+    subtitle: t(`groups.jokers.${jokerType}ConfirmSubtitle`),
+    confirmLabel: t('groups.jokers.confirmBtn'),
+  });
+  if (!accepted) return;
+  await applyGroupJoker(groupId, challengeId, jokerType, null);
+}
+
+// Boulet : etape 1 (bouton "Le Boulet") ouvre le picker de cible via cette
+// fonction ; etape 2 (tap sur un adversaire) confirme puis applique.
+function startBouletTargeting() {
+  pickingBouletTarget = true;
+  render(true);
+}
+
+async function applyBouletOnTarget(groupId, challengeId, targetUid, targetName) {
+  const accepted = await confirmModal({
+    icon: '🎯',
+    title: t('groups.jokers.bouletConfirmTitle'),
+    subtitle: t('groups.jokers.bouletConfirmSubtitleTarget', { name: targetName }),
+    confirmLabel: t('groups.jokers.confirmBtn'),
+  });
+  if (!accepted) { pickingBouletTarget = false; render(true); return; }
+  await applyGroupJoker(groupId, challengeId, 'boulet', targetUid);
 }
 
 // Appelee depuis addSetInner() (comme registerBossBattleContributionIfNeeded()) -
@@ -6553,12 +6603,77 @@ function renderGroupParticipantRow(p, rank, highlight) {
   const avatar = p.photoURL
     ? `<img src="${escapeHtml(p.photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
     : `<div class="leaderboard-avatar-fallback">${name.charAt(0).toUpperCase()}</div>`;
+  // Badges Jokers (Phase 4) : purement informatifs - expliquent pourquoi le
+  // classement de reglement (cote serveur, rankForSettlement()) peut differer du
+  // simple totalAmount affiche ici.
+  const jokerBadges = `${p.immune ? `<span class="friend-status" title="${escapeHtml(t('groups.jokers.immuneBadge'))}">🛡️</span>` : ''}${p.handicap ? `<span class="friend-status" title="${escapeHtml(t('groups.jokers.handicapBadge', { amount: p.handicap }))}">-${p.handicap}</span>` : ''}`;
   return `
     <div class="leaderboard-row${highlight ? ' me' : ''}">
       <span class="leaderboard-rank">#${rank}</span>
       ${avatar}
       <span class="leaderboard-name">${name}</span>
+      ${jokerBadges}
       <span class="leaderboard-value">${p.totalAmount || 0}</span>
+    </div>
+  `;
+}
+
+// Section Jokers (Phase 4) sur un defi ACTIF uniquement : soit les 3 boutons (si
+// je n'ai pas encore utilise mon joker pour ce defi), soit le picker de cible du
+// Boulet (pickingBouletTarget), soit un statut informatif (joker deja utilise).
+// Aucune ecriture directe ici - tout passe par applyGroupJoker() (Callable).
+function renderGroupJokerSection(groupId, challengeId, participants) {
+  const myParticipant = participants.find((p) => p.uid === currentUser.uid);
+  if (!myParticipant) return '';
+
+  if (pickingBouletTarget) {
+    const others = participants.filter((p) => p.uid !== currentUser.uid);
+    return `
+      <div class="section-label">${t('groups.jokers.title')}</div>
+      <div class="history-empty">${t('groups.jokers.pickTargetLabel')}</div>
+      <div class="leaderboard-list">
+        ${others.map((p) => renderFriendActionRow(p.uid, p.displayName || '?', p.photoURL,
+          `<button class="friend-action-btn" onclick="applyBouletOnTarget('${escapeJsAttr(groupId)}', '${escapeJsAttr(challengeId)}', '${escapeJsAttr(p.uid)}', '${escapeJsAttr(p.displayName || '')}')">${t('groups.jokers.pickTargetBtn')}</button>`
+        )).join('')}
+      </div>
+      <button class="friend-action-btn" onclick="pickingBouletTarget = false; render(true);">${t('common.cancel')}</button>
+    `;
+  }
+
+  if (myParticipant.jokerUsed) {
+    let statusText;
+    if (myParticipant.jokerUsed === 'doublon') {
+      const remainingMs = (myParticipant.doublonActiveUntil || 0) - Date.now();
+      statusText = remainingMs > 0
+        ? t('groups.jokers.doublonActiveStatus', { minutes: Math.ceil(remainingMs / 60000) })
+        : t('groups.jokers.doublonUsedStatus');
+    } else if (myParticipant.jokerUsed === 'immunite') {
+      statusText = t('groups.jokers.immuniteActiveStatus');
+    } else {
+      const target = participants.find((p) => p.uid === myParticipant.jokerTargetUid);
+      statusText = t('groups.jokers.bouletLaunchedStatus', { name: (target && target.displayName) || '?' });
+    }
+    return `
+      <div class="section-label">${t('groups.jokers.title')}</div>
+      <div class="history-empty">${statusText}</div>
+    `;
+  }
+
+  return `
+    <div class="section-label">${t('groups.jokers.title')}</div>
+    <div class="leaderboard-list">
+      <div class="leaderboard-row">
+        <span class="leaderboard-name">${t('groups.jokers.doublonBtn')}</span>
+        <button class="friend-action-btn" onclick="applyGroupJokerConfirm('${escapeJsAttr(groupId)}', '${escapeJsAttr(challengeId)}', 'doublon')">${t('groups.jokers.useBtn')}</button>
+      </div>
+      <div class="leaderboard-row">
+        <span class="leaderboard-name">${t('groups.jokers.bouletBtn')}</span>
+        <button class="friend-action-btn" onclick="startBouletTargeting()">${t('groups.jokers.useBtn')}</button>
+      </div>
+      <div class="leaderboard-row">
+        <span class="leaderboard-name">${t('groups.jokers.immuniteBtn')}</span>
+        <button class="friend-action-btn" onclick="applyGroupJokerConfirm('${escapeJsAttr(groupId)}', '${escapeJsAttr(challengeId)}', 'immunite')">${t('groups.jokers.useBtn')}</button>
+      </div>
     </div>
   `;
 }
@@ -6690,6 +6805,7 @@ function renderGroupDetailScreen() {
       <div class="leaderboard-list">
         ${groupDetailChallenge.participants.map((p, i) => renderGroupParticipantRow(p, i + 1, p.uid === currentUser.uid)).join('')}
       </div>
+      ${renderGroupJokerSection(groupDetailGroup.groupId, groupDetailChallenge.challengeId, groupDetailChallenge.participants)}
       ${cancelBtnHtml}
     `;
   } else {
