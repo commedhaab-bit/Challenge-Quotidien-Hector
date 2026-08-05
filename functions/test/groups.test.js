@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { __testables } = require('../index.js');
-const { computeSettlementPairs, detectClutchWin, shouldSettleChallenge } = __testables;
+const { computeSettlementPairs, detectClutchWin, shouldSettleChallenge, computeCreditedAmount } = __testables;
 
 // Ces tests couvrent uniquement la logique PURE de reglement (aucun acces
 // Firestore reel) - closeExpiredGroupChallenges lui-meme n'est verifie qu'en
@@ -140,4 +140,32 @@ test('shouldSettleChallenge() : objectif non atteint et echeance future -> ne pa
 test('shouldSettleChallenge() : targetTotal absent/0 -> seule l echeance compte', () => {
   assert.equal(shouldSettleChallenge(0, 0, 1000, 2000), true);
   assert.equal(shouldSettleChallenge(0, 0, 2000, 1000), false);
+});
+
+// --- computeCreditedAmount() ---
+// Bug reel signale en prod : un objectif de 100 avec 60 deja loggues par un membre,
+// puis 60 loggues par un 2e membre, affichait "120/100" indefiniment (chaque membre
+// incrementait directement son propre doc, sans jamais voir le total des autres).
+// Desormais le serveur plafonne exactement au restant.
+
+test('computeCreditedAmount() : sous la cible -> credite le montant complet', () => {
+  assert.equal(computeCreditedAmount(60, 0, 100), 60);
+});
+
+test('computeCreditedAmount() : depasserait la cible -> ne credite que le restant exact (60 puis 40, jamais 120/100)', () => {
+  assert.equal(computeCreditedAmount(60, 60, 100), 40);
+});
+
+test('computeCreditedAmount() : cible deja atteinte -> plus rien a crediter', () => {
+  assert.equal(computeCreditedAmount(10, 100, 100), 0);
+  assert.equal(computeCreditedAmount(10, 150, 100), 0);
+});
+
+test('computeCreditedAmount() : pile la cible -> credite exactement le restant', () => {
+  assert.equal(computeCreditedAmount(40, 60, 100), 40);
+});
+
+test('computeCreditedAmount() : targetTotal absent/0 -> jamais de plafond', () => {
+  assert.equal(computeCreditedAmount(500, 0, 0), 500);
+  assert.equal(computeCreditedAmount(500, 1000, undefined), 500);
 });

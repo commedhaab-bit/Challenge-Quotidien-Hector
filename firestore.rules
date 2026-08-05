@@ -158,17 +158,23 @@ service cloud.firestore {
           && request.resource.data.status == 'cancelled';
 
         match /participants/{participantUid} {
-          // Chaque membre n'ecrit QUE son propre doc participant (totalAmount) -
-          // tout effet croise (jokers, Phase 4) passera par une Cloud Function dediee.
+          // Chaque membre peut auto-creer son propre doc (totalAmount:0, voir
+          // ensureMyParticipantDoc) - mais toute INCREMENTATION de totalAmount passe
+          // desormais exclusivement par la Cloud Function
+          // logGroupChallengeContribution (plafond exact au restant de la cible,
+          // zero race condition entre 2 membres qui contribuent en meme temps ;
+          // Admin SDK, contourne cette regle). Le client ne peut donc plus que CREER
+          // son doc, jamais le modifier ensuite - meme principe que les jokers
+          // (Phase 4), tout effet partage passe par une fonction dediee.
           allow read: if request.auth != null;
-          allow write: if request.auth != null && request.auth.uid == participantUid;
+          allow create: if request.auth != null && request.auth.uid == participantUid;
         }
-        // Historique horodate (Phase 3, detection de Clutch Win) : create-only,
-        // jamais de update/delete client - chaque evenement s'auto-attribue son uid,
-        // meme principe que activityFeed/{id}.
+        // Historique horodate (Phase 3, detection de Clutch Win) : desormais ecrit
+        // UNIQUEMENT par logGroupChallengeContribution (Admin SDK, en meme temps que
+        // l'increment plafonne de totalAmount ci-dessus) - plus aucune ecriture
+        // cliente directe ici.
         match /contributions/{entryId} {
           allow read: if request.auth != null;
-          allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
         }
       }
       match /ledger/{entryId} {

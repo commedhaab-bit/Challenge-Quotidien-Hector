@@ -192,99 +192,179 @@ function shouldSettleChallenge(totalProgress, targetTotal, endDate, now) {
   return targetReached || deadlinePassed;
 }
 
-// Scheduled Function (15 min) : cherche, TOUS GROUPES CONFONDUS (collectionGroup),
-// TOUS les defis encore actifs (un seul filtre d'egalite, servi par le prefixe de
-// l'index composite existant status+endDate - aucun nouvel index requis). Pour
-// chacun : classe les participants, verifie via shouldSettleChallenge() si l'objectif
-// est deja atteint OU l'echeance depassee, et seulement si oui calcule le reglement,
-// ecrit les entrees ledger (ID deterministe, create-only - protege contre une
-// re-execution de la fonction elle-meme, "at-least-once" par nature pour les
-// Scheduled Functions), marque le defi 'settled', et (Phase 3) met a jour les
-// compteurs Hall of Fame de chaque participant.
+// Reglement d'UN defi - partage entre le balayage planifie (filet de securite,
+// ci-dessous) ET le declenchement instantane (logGroupChallengeContribution, plus
+// bas) : lit l'etat FRAIS du defi, ne fait RIEN si shouldSettleChallenge() ne
+// l'exige pas encore, sinon calcule le reglement et ecrit ledger + rollups Hall of
+// Fame + notifications dans une seule transaction. Re-verifie le statut SOUS
+// transaction (freshChallenge) : protege contre un double reglement si cette
+// fonction est appelee 2 fois presque en meme temps (le sweep planifie ET une
+// contribution qui atteint la cible au meme moment, ou 2 contributions
+// quasi-simultanees).
+async function settleChallengeIfNeeded(db, challengeRef) {
+  const challengeSnap = await challengeRef.get();
+  if (!challengeSnap.exists || challengeSnap.data().status !== 'active') return;
+  const challenge = challengeSnap.data();
+  const groupRef = challengeRef.parent.parent; // groups/{groupId}/challenges/{id} -> groups/{groupId}
+  const now = Date.now();
+
+  const participantsSnap = await challengeRef.collection('participants').get();
+  const ranked = participantsSnap.docs
+    .map((d) => ({ uid: d.id, ...d.data() }))
+    .sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
+  const totalProgress = ranked.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+  if (!shouldSettleChallenge(totalProgress, challenge.targetTotal, challenge.endDate, now)) return;
+
+  const pairs = computeSettlementPairs(ranked, challenge.stakeMode);
+
+  // Bornee par la duree/taille du defi (pas un balayage global) : sert uniquement a
+  // detecter un Clutch Win, voir detectClutchWin().
+  const contributionsSnap = await challengeRef.collection('contributions').get();
+  const contributionEvents = contributionsSnap.docs.map((d) => d.data());
+  // challenge.createdAt (timestamp numerique) sert de "debut" pour la fenetre de
+  // detection clutch, PAS challenge.startDate (simple chaine "AAAA-MM-JJ" saisie a
+  // la creation, cosmetique/affichage) - createdAt correspond au moment reel ou le
+  // defi devient actif et peut recevoir des contributions.
+  const clutchWinnerUid = detectClutchWin(ranked, contributionEvents, challenge.createdAt, challenge.endDate);
+  // 1er contributeur (par volume) : embarque dans la notification pour un popup de
+  // felicitations immediat cote client, sans lecture supplementaire.
+  const winnerName = (ranked[0] && ranked[0].displayName) || '';
+
+  await db.runTransaction(async (tx) => {
+    const freshChallenge = await tx.get(challengeRef);
+    if (!freshChallenge.exists || freshChallenge.data().status !== 'active') return;
+
+    for (const pair of pairs) {
+      const entryId = `${challengeRef.id}_${pair.fromUid}_${pair.toUid}`;
+      tx.set(groupRef.collection('ledger').doc(entryId), {
+        challengeId: challengeRef.id,
+        fromUid: pair.fromUid,
+        toUid: pair.toUid,
+        stakeDescription: challenge.stakeDescription || '',
+        createdAt: now,
+        honoredAt: null,
+        honoredBy: null,
+      });
+    }
+    tx.set(challengeRef, { status: 'settled', settledAt: now }, { merge: true });
+
+    // Hall of Fame (Phase 3) : rollups cumulatifs sur le doc membre, lus par le
+    // CLIENT (computeGroupHallOfFameTitles(), zero lecture supplementaire - deja
+    // charges avec le roster). debtsOwed incremente uniquement pour le(s) fromUid
+    // des paires ci-dessus (pas de double-compte : un membre peut apparaitre dans
+    // plusieurs paires seulement en mode 50/50 avec des egalites, tres rare).
+    for (const pair of pairs) {
+      tx.set(groupRef.collection('members').doc(pair.fromUid), { debtsOwed: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    }
+    for (const participant of ranked) {
+      tx.set(groupRef.collection('members').doc(participant.uid), {
+        totalVolume: admin.firestore.FieldValue.increment(participant.totalAmount || 0),
+        challengesParticipated: admin.firestore.FieldValue.increment(1),
+      }, { merge: true });
+    }
+    if (clutchWinnerUid) {
+      tx.set(groupRef.collection('members').doc(clutchWinnerUid), { clutchWins: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    }
+
+    // Notification "Bilan disponible" a chaque participant (canal in-app existant,
+    // toujours pas de push OS - voir CLAUDE.md).
+    for (const participant of ranked) {
+      const notifRef = db.collection('users').doc(participant.uid).collection('notifications').doc();
+      tx.set(notifRef, {
+        type: 'group_challenge_settled',
+        fromUid: 'system',
+        groupId: groupRef.id,
+        challengeId: challengeRef.id,
+        challengeName: challenge.name || '',
+        winnerName,
+        read: false,
+        createdAt: now,
+      });
+    }
+  });
+}
+
+// Scheduled Function (15 min) : FILET DE SECURITE uniquement - le reglement lui-meme
+// est desormais surtout declenche INSTANTANEMENT par logGroupChallengeContribution
+// des qu'une contribution atteint la cible (voir plus bas). Ce balayage ne reste
+// necessaire que pour les defis dont l'ECHEANCE se depasse SANS que personne
+// n'atteigne la cible (aucune ecriture pour reagir dans ce cas). Cherche, TOUS
+// GROUPES CONFONDUS (collectionGroup), TOUS les defis encore actifs (un seul filtre
+// d'egalite, servi par le prefixe de l'index composite existant status+endDate -
+// aucun nouvel index requis) et delegue a settleChallengeIfNeeded() pour chacun.
 exports.closeExpiredGroupChallenges = onSchedule('every 15 minutes', async () => {
   const db = admin.firestore();
-  const now = Date.now();
-  const activeSnap = await db.collectionGroup('challenges')
-    .where('status', '==', 'active')
-    .get();
-
+  const activeSnap = await db.collectionGroup('challenges').where('status', '==', 'active').get();
   for (const challengeDoc of activeSnap.docs) {
-    const challenge = challengeDoc.data();
-    const groupRef = challengeDoc.ref.parent.parent; // groups/{groupId}/challenges/{id} -> groups/{groupId}
-    const participantsSnap = await challengeDoc.ref.collection('participants').get();
-    const ranked = participantsSnap.docs
-      .map((d) => ({ uid: d.id, ...d.data() }))
-      .sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
-    const totalProgress = ranked.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
-    if (!shouldSettleChallenge(totalProgress, challenge.targetTotal, challenge.endDate, now)) continue;
-
-    const pairs = computeSettlementPairs(ranked, challenge.stakeMode);
-
-    // Bornee par la duree/taille du defi (pas un balayage global) : sert uniquement
-    // a detecter un Clutch Win, voir detectClutchWin().
-    const contributionsSnap = await challengeDoc.ref.collection('contributions').get();
-    const contributionEvents = contributionsSnap.docs.map((d) => d.data());
-    // challenge.createdAt (timestamp numerique) sert de "debut" pour la fenetre de
-    // detection clutch, PAS challenge.startDate (simple chaine "AAAA-MM-JJ" saisie a
-    // la creation, cosmetique/affichage) - createdAt correspond au moment reel ou le
-    // defi devient actif et peut recevoir des contributions.
-    const clutchWinnerUid = detectClutchWin(ranked, contributionEvents, challenge.createdAt, challenge.endDate);
-
-    await db.runTransaction(async (tx) => {
-      // Re-verifie sous transaction : evite un double reglement si 2 executions de
-      // la fonction planifiee se chevauchent (retry "at-least-once").
-      const freshChallenge = await tx.get(challengeDoc.ref);
-      if (!freshChallenge.exists || freshChallenge.data().status !== 'active') return;
-
-      for (const pair of pairs) {
-        const entryId = `${challengeDoc.id}_${pair.fromUid}_${pair.toUid}`;
-        const entryRef = groupRef.collection('ledger').doc(entryId);
-        tx.set(entryRef, {
-          challengeId: challengeDoc.id,
-          fromUid: pair.fromUid,
-          toUid: pair.toUid,
-          stakeDescription: challenge.stakeDescription || '',
-          createdAt: now,
-          honoredAt: null,
-          honoredBy: null,
-        });
-      }
-      tx.set(challengeDoc.ref, { status: 'settled', settledAt: now }, { merge: true });
-
-      // Hall of Fame (Phase 3) : rollups cumulatifs sur le doc membre, lus par le
-      // CLIENT (computeGroupHallOfFameTitles(), zero lecture supplementaire - deja
-      // charges avec le roster). debtsOwed incremente uniquement pour le(s) fromUid
-      // des paires ci-dessus (pas de double-compte : un membre peut apparaitre dans
-      // plusieurs paires seulement en mode 50/50 avec des egalites, tres rare).
-      for (const pair of pairs) {
-        tx.set(groupRef.collection('members').doc(pair.fromUid), { debtsOwed: admin.firestore.FieldValue.increment(1) }, { merge: true });
-      }
-      for (const participant of ranked) {
-        tx.set(groupRef.collection('members').doc(participant.uid), {
-          totalVolume: admin.firestore.FieldValue.increment(participant.totalAmount || 0),
-          challengesParticipated: admin.firestore.FieldValue.increment(1),
-        }, { merge: true });
-      }
-      if (clutchWinnerUid) {
-        tx.set(groupRef.collection('members').doc(clutchWinnerUid), { clutchWins: admin.firestore.FieldValue.increment(1) }, { merge: true });
-      }
-
-      // Notification "Bilan disponible" a chaque participant (canal in-app existant,
-      // toujours pas de push OS - voir CLAUDE.md).
-      for (const participant of ranked) {
-        const notifRef = db.collection('users').doc(participant.uid).collection('notifications').doc();
-        tx.set(notifRef, {
-          type: 'group_challenge_settled',
-          fromUid: 'system',
-          groupId: groupRef.id,
-          challengeId: challengeDoc.id,
-          challengeName: challenge.name || '',
-          read: false,
-          createdAt: now,
-        });
-      }
-    });
+    await settleChallengeIfNeeded(db, challengeDoc.ref);
   }
+});
+
+// Pure (aucun acces Firestore) : combien credite-t-on reellement pour CETTE
+// contribution, une fois plafonnee exactement au restant pour atteindre la cible ?
+// (ex: cible 100, deja 60 accumules, quelqu'un loggue 60 de plus -> seuls 40 sont
+// credites, jamais 120/100). Sans cible chiffree (ne devrait pas arriver via le
+// formulaire, mais defensif), aucun plafond.
+function computeCreditedAmount(amount, currentProgress, targetTotal) {
+  if (!(targetTotal > 0)) return amount;
+  const remaining = Math.max(0, targetTotal - currentProgress);
+  return Math.min(amount, remaining);
+}
+
+// =============================================================================
+// Correctif : plafond exact des contributions a un defi de groupe + reglement
+// instantane des que la cible est atteinte (fini le "jusqu'a 15 min d'attente")
+// =============================================================================
+// AVANT : le client incrementait directement participants/{uid}.totalAmount (simple
+// ecriture Firestore, fonctionne hors-ligne) - mais 2 membres logant chacun leur
+// propre serie sans jamais se voir pouvaient faire depasser la cible (ex: 60+60 sur
+// un objectif de 100, affiche "120/100" indefiniment). Desormais, TOUTE contribution
+// a un defi de groupe passe par cette Callable (Admin SDK, transaction) : elle
+// resomme les participants existants (borne par la taille du groupe, <=20 - jamais
+// un champ separe a maintenir en parallele, donc toujours coherent avec la verite),
+// plafonne exactement via computeCreditedAmount(), puis declenche
+// settleChallengeIfNeeded() immediatement si la cible est atteinte. Compromis assume
+// et valide explicitement : cette action necessite desormais une connexion reseau
+// (contrairement au reste de l'app, 100% hors-ligne) - voir CLAUDE.md. Le doc
+// participant lui-meme doit deja exister (ensureMyParticipantDoc, cote client, tou-
+// jours une simple creation directe autorisee par les regles) avant cet appel.
+exports.logGroupChallengeContribution = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Connexion requise.');
+  const { groupId, challengeId, amount } = request.data || {};
+  if (!groupId || !challengeId || !(amount > 0)) {
+    throw new HttpsError('invalid-argument', 'groupId, challengeId et amount (> 0) sont requis.');
+  }
+
+  const db = admin.firestore();
+  const challengeRef = db.collection('groups').doc(groupId).collection('challenges').doc(challengeId);
+  const participantRef = challengeRef.collection('participants').doc(uid);
+
+  const outcome = await db.runTransaction(async (tx) => {
+    const challengeSnap = await tx.get(challengeRef);
+    if (!challengeSnap.exists || challengeSnap.data().status !== 'active') {
+      return { credited: 0, reachedTarget: false };
+    }
+    const challenge = challengeSnap.data();
+    const participantsSnap = await tx.get(challengeRef.collection('participants'));
+    const currentProgress = participantsSnap.docs.reduce((sum, d) => sum + (d.data().totalAmount || 0), 0);
+    const credited = computeCreditedAmount(amount, currentProgress, challenge.targetTotal);
+    if (credited <= 0) {
+      return { credited: 0, reachedTarget: (challenge.targetTotal || 0) > 0 && currentProgress >= challenge.targetTotal };
+    }
+
+    const myDoc = participantsSnap.docs.find((d) => d.id === uid);
+    const prevAmount = myDoc ? (myDoc.data().totalAmount || 0) : 0;
+    tx.set(participantRef, { totalAmount: prevAmount + credited }, { merge: true });
+    tx.set(challengeRef.collection('contributions').doc(), { uid, amount: credited, at: Date.now() });
+
+    return { credited, reachedTarget: (challenge.targetTotal || 0) > 0 && (currentProgress + credited) >= challenge.targetTotal };
+  });
+
+  if (outcome.reachedTarget) {
+    await settleChallengeIfNeeded(db, challengeRef);
+  }
+  return outcome;
 });
 
 // Exposees uniquement pour les tests unitaires (logique pure, sans Firestore) -
@@ -297,4 +377,5 @@ module.exports.__testables = {
   computeSettlementPairs,
   detectClutchWin,
   shouldSettleChallenge,
+  computeCreditedAmount,
 };

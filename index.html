@@ -2470,10 +2470,15 @@ async function processUnreadNotifications(snap) {
         await joinGroupById(data.groupId);
       }
     } else if (data.type === 'group_challenge_settled') {
+      // winnerName (1er contributeur) : embarque par settleChallengeIfNeeded() cote
+      // Cloud Function - absent uniquement sur d'anciennes notifications deja
+      // ecrites avant ce champ, d'ou le repli sur le message generique.
       enqueuePopup({
         icon: '🏁',
         title: t('popups.notifications.groupChallengeSettledTitle'),
-        subtitle: t('popups.notifications.groupChallengeSettledSubtitle', { challenge: data.challengeName }),
+        subtitle: data.winnerName
+          ? t('popups.notifications.groupChallengeSettledSubtitleWinner', { challenge: data.challengeName, winner: data.winnerName })
+          : t('popups.notifications.groupChallengeSettledSubtitle', { challenge: data.challengeName }),
         btnLabel: t('popups.notifications.groupChallengeSettledBtn'),
       });
     }
@@ -2803,19 +2808,23 @@ async function cancelGroupChallengeConfirm(groupId, challengeId) {
 // chaque serie loguee compte, pas seulement la complétion du défi. Un même exercice
 // peut contribuer a PLUSIEURS défis de groupe simultanément (contrairement au Boss
 // Battle, un seul defi communautaire a la fois) : incremente chacun independamment.
+// Passe par la Cloud Function logGroupChallengeContribution (plutôt qu'une écriture
+// Firestore directe comme avant) : plafonne exactement la contribution au restant
+// de la cible (2 membres qui logguent chacun 60 sur un objectif de 100 ne verront
+// JAMAIS "120/100" - le 2e ne sera crédité que de 40) et déclenche le règlement
+// (Ardoise + Palmarès + popup de félicitations) INSTANTANÉMENT si la cible est
+// atteinte, sans attendre le passage planifié (jusqu'à 15 min). Compromis assumé :
+// nécessite une connexion réseau au moment du tap (contrairement au reste de
+// l'app) - voir CLAUDE.md.
 async function registerGroupChallengeContributionsIfNeeded(exerciseSlug, amount) {
   if (!exerciseSlug) return;
   const matches = myActiveGroupChallenges.filter(c => c.exerciseSlug === exerciseSlug);
   for (const m of matches) {
     try {
       await ensureMyParticipantDoc(m.groupId, m.challengeId);
-      const challengeRef = db.collection('groups').doc(m.groupId).collection('challenges').doc(m.challengeId);
-      await challengeRef.collection('participants').doc(currentUser.uid)
-        .set({ totalAmount: firebase.firestore.FieldValue.increment(amount) }, { merge: true });
-      // Historique horodaté (Phase 3, Hall of Fame) : sert uniquement à
-      // closeExpiredGroupChallenges() pour détecter un "Clutch Win" (voir
-      // detectClutchWin() côté Cloud Function) - jamais relu côté client.
-      await challengeRef.collection('contributions').add({ uid: currentUser.uid, amount, at: Date.now() });
+      await functionsClient.httpsCallable('logGroupChallengeContribution')({
+        groupId: m.groupId, challengeId: m.challengeId, amount,
+      });
     } catch (e) {
       reportSaveError('group challenge contribution failed', e);
     }

@@ -505,6 +505,7 @@ const LOCALE_FR = {
       groupInviteLater: 'Plus tard',
       groupChallengeSettledTitle: 'Bilan disponible !',
       groupChallengeSettledSubtitle: 'Le défi "{{challenge}}" est terminé — découvre le classement et qui doit quoi à qui.',
+      groupChallengeSettledSubtitleWinner: '🎉 {{winner}} remporte le défi "{{challenge}}" ! Découvre le classement et qui doit quoi à qui.',
       groupChallengeSettledBtn: 'Voir',
     },
     removeFriend: {

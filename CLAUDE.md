@@ -1816,3 +1816,55 @@ propre defi tant qu'il est encore `active` — transition stricte `active` ->
 (ou le bouton "Nouveau defi" si aucun) reprend sa place immediatement, sans
 attendre la Cloud Function.
 
+## Correctif : plafond exact des contributions + reglement instantane (logGroupChallengeContribution)
+
+**Bug reel signale en prod, 2e episode** : avec la cible atteinte declenchant deja
+le reglement (correctif precedent), un test reel a quand meme montre "120/100" qui
+persistait plusieurs heures. Cause racine : chaque membre incrementait DIRECTEMENT
+son propre doc `participants/{uid}.totalAmount` (ecriture Firestore cliente,
+fonctionnant hors-ligne) sans jamais voir le total des AUTRES membres — 2 membres
+loguant chacun 60 sur un objectif de 100 faisaient donc 120/100 (au lieu du
+plafond exact attendu : 60 + 40). Le reglement lui-meme fonctionnait, mais le
+TOTAL enregistre depassait la cible.
+
+**Decision produit (validee explicitement malgre le compromis)** : un plafond
+exact et sans race condition entre 2 contributions quasi-simultanees exige une
+autorite SERVEUR unique - impossible a garantir avec 2 clients qui ecrivent
+chacun sans se voir. Bascule donc `registerGroupChallengeContributionsIfNeeded()`
+d'une ecriture Firestore directe vers un appel a une nouvelle Cloud Function
+Callable, `logGroupChallengeContribution` (Admin SDK, transaction). **Compromis
+assume** : cette action necessite desormais une connexion reseau au moment du tap
+(contrairement au reste de l'app, 100% hors-ligne) - accepte explicitement au
+profit de l'exactitude du plafond.
+
+**Cote serveur** (`functions/index.js`) : `logGroupChallengeContribution` lit le
+defi + RESOMME tous les participants existants (borne par la taille du groupe,
+<=20 - jamais un champ separe `currentProgress` a maintenir en parallele, donc
+toujours coherent avec la verite `participants/{uid}.totalAmount`, y compris pour
+un defi deja en cours AVANT ce chantier), plafonne via `computeCreditedAmount()`
+(logique pure, testee en isolation : sous la cible -> montant complet, depasserait
+-> ne credite que le restant exact, cible deja atteinte -> 0), puis appelle
+`settleChallengeIfNeeded()` **immediatement** si la cible est desormais atteinte -
+fini le "jusqu'a 15 min d'attente". `settleChallengeIfNeeded()` (extrait de
+l'ancien corps de `closeExpiredGroupChallenges`, desormais partage entre les 2
+chemins) reste inchangee dans sa logique de reglement elle-meme.
+`closeExpiredGroupChallenges` (toujours planifiee, 15 min) devient un pur FILET DE
+SECURITE : ne reste utile que pour les defis dont l'ECHEANCE se depasse SANS que
+personne n'atteigne la cible (aucune ecriture pour reagir dans ce cas).
+
+**Regles Firestore resserrees en consequence** : `participants/{uid}` passe de
+`allow write` (le membre pouvait tout modifier sur son propre doc) a `allow
+create` uniquement (creation initiale `totalAmount:0` via `ensureMyParticipantDoc`,
+toujours cote client) - toute INCREMENTATION passe desormais exclusivement par la
+Cloud Function. `contributions/{id}` perd entierement son `allow create` client
+(plus aucune ecriture directe, tout passe par la meme transaction serveur).
+
+**Popup de felicitations enrichie** : `settleChallengeIfNeeded()` embarque
+desormais `winnerName` (1er contributeur par volume) dans la notification
+`group_challenge_settled` - le popup cote client affiche un message different
+("{{winner}} remporte le defi...") quand ce champ est present, sinon repli sur le
+message generique (compatibilite avec d'anciennes notifications sans ce champ).
+Comme le reglement est desormais instantane, cette popup arrive quasi
+immediatement a TOUS les participants via le canal de notifications temps reel
+deja existant (`listener unique`) - aucune nouvelle infrastructure necessaire.
+

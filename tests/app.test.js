@@ -328,6 +328,15 @@ let mockGetMyRankShouldFail = false;
 let mockGetMyRankCallCount = 0;
 let mockGetMyRankLastArgs = null;
 
+// Mock du Cloud Function Callable logGroupChallengeContribution() (plafond exact +
+// reglement instantane, voir functions/index.js) : meme principe que getMyRank
+// ci-dessus - la logique de plafonnage/reglement est deja testee en isolation
+// (computeCreditedAmount() dans functions/test/groups.test.js), le mock se contente
+// d'enregistrer les appels pour verifier que le CLIENT delegue bien a la Cloud
+// Function (au lieu d'ecrire directement dans participants/{uid} comme avant).
+let mockLogGroupChallengeContributionCalls = [];
+let mockLogGroupChallengeContributionResult = { credited: 0, reachedTarget: false };
+
 const sandbox = {
   console,
   Math, Date, JSON, Set, Map, Array, Object, Number, String, Promise,
@@ -404,20 +413,27 @@ const sandbox = {
   firebase: {
     initializeApp(){},
     auth(){ return { onAuthStateChanged(cb){ /* pilote manuellement depuis le test */ }, signInWithPopup(){ return Promise.resolve(); }, GoogleAuthProvider: function(){} }; },
-    // Mock de firebase.app().functions(region).httpsCallable(name) (Phase 1) : seule
-    // getMyRank est mockee pour l'instant (seul Callable existant cote client) - voir
-    // mockGetMyRankResult/__setMockGetMyRank ci-dessus/plus bas.
+    // Mock de firebase.app().functions(region).httpsCallable(name) : voir
+    // mockGetMyRankResult/__setMockGetMyRank et
+    // mockLogGroupChallengeContributionCalls/__setMockLogGroupChallengeContributionResult
+    // ci-dessus/plus bas pour chaque Callable mockee.
     app(){
       return {
         functions(_region){
           return {
             httpsCallable(name){
               return async (data) => {
-                if (name !== 'getMyRank') throw new Error('Callable non mockee dans les tests : ' + name);
-                mockGetMyRankCallCount++;
-                mockGetMyRankLastArgs = data;
-                if (mockGetMyRankShouldFail) throw new Error('getMyRank : echec simule par le test');
-                return { data: mockGetMyRankResult };
+                if (name === 'getMyRank') {
+                  mockGetMyRankCallCount++;
+                  mockGetMyRankLastArgs = data;
+                  if (mockGetMyRankShouldFail) throw new Error('getMyRank : echec simule par le test');
+                  return { data: mockGetMyRankResult };
+                }
+                if (name === 'logGroupChallengeContribution') {
+                  mockLogGroupChallengeContributionCalls.push(data);
+                  return { data: mockLogGroupChallengeContributionResult };
+                }
+                throw new Error('Callable non mockee dans les tests : ' + name);
               };
             },
           };
@@ -524,6 +540,7 @@ const sandbox = {
     // repart d'un mock vide.
     if (typeof sandbox.invalidateLeaderboardCache === 'function') sandbox.invalidateLeaderboardCache();
     sandbox.__resetMockGetMyRank();
+    sandbox.__resetMockLogGroupChallengeContribution();
   },
   alert(msg){ console.log('  [alert]', msg); },
   confirm(msg){ return true; },
@@ -553,6 +570,12 @@ const sandbox = {
     mockGetMyRankShouldFail = false;
     mockGetMyRankCallCount = 0;
     mockGetMyRankLastArgs = null;
+  },
+  get __mockLogGroupChallengeContributionCalls() { return mockLogGroupChallengeContributionCalls; },
+  __setMockLogGroupChallengeContributionResult(result) { mockLogGroupChallengeContributionResult = result; },
+  __resetMockLogGroupChallengeContribution() {
+    mockLogGroupChallengeContributionCalls = [];
+    mockLogGroupChallengeContributionResult = { credited: 0, reachedTarget: false };
   },
   __mockCacheKeys: mockCacheKeys, // Cache Storage simule (forceAppUpdate)
   __mockSwRegistrations: mockSwRegistrations, // ServiceWorkerRegistration simulees (forceAppUpdate)
@@ -2348,7 +2371,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v52'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v53'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3903,6 +3926,23 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(unread.size, 0, 'meme refusee pour l instant ("Plus tard"), la notification doit etre marquee lue (pas re-proposee en boucle)');
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
 
+  // E. group_challenge_settled : la popup de felicitations doit nommer le gagnant
+  // (winnerName, embarque par settleChallengeIfNeeded() cote Cloud Function) quand
+  // il est present - repli sur le message generique sinon (anciennes notifications).
+  __resetCommunityMocks();
+  popupQueue = []; popupOpen = false;
+  await notificationsCollRef('me-uid').doc().set({
+    type: 'group_challenge_settled', fromUid: 'system', groupId: 'g1', challengeId: 'c1',
+    challengeName: '100 pompes', winnerName: 'Bob M.', read: false, createdAt: Date.now(),
+  });
+  startNotificationsListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(popupOpen && currentPopupHtml.includes('Bob M.') && currentPopupHtml.includes('100 pompes'), 'la popup de reglement doit nommer le gagnant quand winnerName est fourni');
+  document.getElementById('appPopupCloseBtn').onclick();
+  await new Promise(r => setTimeout(r, 10));
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+  console.log('OK: popup de reglement de defi de groupe enrichie du nom du gagnant (winnerName)');
+
   __resetCommunityMocks();
   popupQueue = []; popupOpen = false;
   myKudosGivenEventIds = new Set(); myKudosGivenToday = new Set();
@@ -5201,11 +5241,20 @@ const cssText = __rawHtml + __cssSource;
 
   // Contribution via addSet() (comme registerBossBattleContributionIfNeeded()) : chaque
   // serie loguee sur le MEME exercice contribue, pas seulement la complétion du défi.
+  // Delegue desormais a la Cloud Function logGroupChallengeContribution (plafond
+  // exact + reglement instantane, voir CLAUDE.md) au lieu d'un increment Firestore
+  // direct - le mock ne fait qu'enregistrer l'appel (la logique de plafonnage
+  // elle-meme est testee en isolation : computeCreditedAmount() dans
+  // functions/test/groups.test.js). On simule ensuite l'effet serveur (increment
+  // reel) par une ecriture directe, pour que les tests d affichage qui suivent
+  // (classement, bilan...) continuent de disposer de vrais totaux.
   activeToday = new Set([pompes.id]);
   await pickChallenge(pompes.id);
   await addSet(10);
-  const myParticipantAfter = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid').get();
-  __assertEq(myParticipantAfter.data().totalAmount, 10, 'ma serie loguee sur l exercice cible du defi doit incrementer mon totalAmount');
+  __assertEq(__mockLogGroupChallengeContributionCalls.length, 1, 'ma serie loguee sur l exercice cible du defi doit appeler logGroupChallengeContribution');
+  __assertEq(__mockLogGroupChallengeContributionCalls[0].amount, 10, 'le montant transmis a la Cloud Function doit etre celui de la serie loguee');
+  __assertEq(__mockLogGroupChallengeContributionCalls[0].challengeId, groupChallengeId);
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid').set({ totalAmount: 10 }, { merge: true });
 
   // Bob contribue aussi (davantage) : verifie qu un defi peut recevoir des
   // contributions de PLUSIEURS membres, chacun son propre doc.
@@ -5215,9 +5264,10 @@ const cssText = __rawHtml + __cssSource;
   activeToday = new Set([pompes.id]);
   await pickChallenge(pompes.id);
   await addSet(30);
-  const bobParticipantAfter = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('bob-uid').get();
-  __assertEq(bobParticipantAfter.data().totalAmount, 30, 'la serie de Bob doit incrementer SON PROPRE doc participant, pas celui de Moi');
-  console.log('OK: registerGroupChallengeContributionsIfNeeded() (hook addSet(), chaque membre incremente son propre doc participant)');
+  __assertEq(__mockLogGroupChallengeContributionCalls.length, 2, 'la contribution de Bob doit elle aussi appeler logGroupChallengeContribution');
+  __assertEq(__mockLogGroupChallengeContributionCalls[1].amount, 30, 'la serie de Bob doit transmettre SON PROPRE montant');
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('bob-uid').set({ totalAmount: 30 }, { merge: true });
+  console.log('OK: registerGroupChallengeContributionsIfNeeded() (hook addSet(), delegue integralement a logGroupChallengeContribution - plafond + reglement server-side)');
 
   // Detail du groupe : classement du defi actif, rang gratuit (index du tableau).
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
@@ -5377,15 +5427,16 @@ const cssText = __rawHtml + __cssSource;
   console.log('OK: Ardoise Globale (historique complet des gages, tous defis confondus, 1 seul champ trie - aucun index composite)');
 
   // Historique horodate des contributions (alimente detectClutchWin() cote Cloud
-  // Function - non executable ici, voir functions/test/groups.test.js) : verifie que
-  // chaque contribution ecrit bien un evenement, en plus de l increment totalAmount
-  // deja teste en Phase 2.
+  // Function) : desormais ecrit UNIQUEMENT server-side, dans la meme transaction que
+  // le plafonnage (logGroupChallengeContribution, non executable ici sans emulateur
+  // Firestore - voir functions/test/groups.test.js). Cote client, on verifie
+  // seulement que chaque contribution delegue bien un appel de plus a la fonction.
   myActiveGroupChallenges = [{ groupId: createdGroupId, challengeId: groupChallengeId, exerciseSlug: pompes.slug, targetTotal: 500 }];
-  const contribSnapBefore = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('contributions').get();
+  const callsBefore = __mockLogGroupChallengeContributionCalls.length;
   await registerGroupChallengeContributionsIfNeeded(pompes.slug, 5);
-  const contribSnapAfter = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('contributions').get();
-  __assertEq(contribSnapAfter.size, contribSnapBefore.size + 1, 'chaque contribution doit ecrire un evenement horodate en plus de l increment totalAmount');
-  console.log('OK: historique horodate des contributions (alimente detectClutchWin() cote Cloud Function)');
+  __assertEq(__mockLogGroupChallengeContributionCalls.length, callsBefore + 1, 'chaque contribution doit appeler la Cloud Function une fois de plus');
+  __assertEq(__mockLogGroupChallengeContributionCalls[__mockLogGroupChallengeContributionCalls.length - 1].amount, 5);
+  console.log('OK: chaque contribution delegue integralement a logGroupChallengeContribution (plafond + historique horodate + reglement, server-side)');
 
   activeTab = 'today';
 

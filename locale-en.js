@@ -502,6 +502,7 @@ const LOCALE_EN = {
       groupInviteLater: 'Later',
       groupChallengeSettledTitle: 'Report available!',
       groupChallengeSettledSubtitle: 'The "{{challenge}}" challenge is over — check the ranking and who owes what to whom.',
+      groupChallengeSettledSubtitleWinner: '🎉 {{winner}} wins the "{{challenge}}" challenge! Check the ranking and who owes what to whom.',
       groupChallengeSettledBtn: 'View',
     },
     removeFriend: {
