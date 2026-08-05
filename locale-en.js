@@ -11,7 +11,6 @@ const LOCALE_EN = {
   nav: {
     today: 'Today',
     library: 'Challenges',
-    history: 'Log',
     community: 'Community',
     groups: 'Groups',
     account: 'Profile',
@@ -327,8 +326,7 @@ const LOCALE_EN = {
     welcome: { title: 'Welcome to Défi du Jour!', text: "Let's do a quick tour to see how the app works." },
     today: { title: 'Today', text: 'Find the challenges you turned on for the day here, and follow your progress live.' },
     library: { title: 'Challenges', text: 'Start here: turn on one or more challenges for today by tapping their card.' },
-    history: { title: 'Log', text: 'Once turned on in Challenges, find your challenge in the Today tab to start it. Here: calendar, recent activity and detailed history.' },
-    account: { title: 'Profile', text: 'Your info, your fitness profile and every trophy you unlock over time.' },
+    account: { title: 'Profile', text: 'Your info, your fitness profile and every trophy you unlock over time. Right above: your Log (calendar, recent activity and detailed history).' },
     nextBtn: 'Next ›',
     finishBtn: 'Finish',
   },

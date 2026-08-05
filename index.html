@@ -989,11 +989,12 @@ let hasSeenTour = false;
 // RENDU (renderGuidedTourOverlay()) plutot que fige ici a l'evaluation de ce tableau —
 // necessaire pour reagir a un changement de langue en cours de session. emoji reste ici
 // (decoratif, langue-agnostique).
+// Plus d'etape dediee au Journal (fusionne en sous-onglet de Profil, voir
+// profileView) - la carte "account" mentionne desormais le Journal au passage.
 const GUIDED_TOUR_STEPS = [
   { tab: 'today', key: 'welcome', emoji: '👋' },
   { tab: 'today', key: 'today', emoji: "🏋️‍♂️" },
   { tab: 'library', key: 'library', emoji: '🎯' },
-  { tab: 'history', key: 'history', emoji: '📓' },
   { tab: 'account', key: 'account', emoji: '👤' },
 ];
 
@@ -1725,19 +1726,15 @@ function switchTab(tab) {
     creatingGroupChallenge = false;
     creatingGroupOpen = false;
     closeGroupDetail();
+  } else if (activeTab === 'account') {
+    // Repart toujours du sous-onglet racine (Profil) - meme principe que
+    // librarySearchQuery/openGroupId ci-dessus, cf. le commentaire en tete de
+    // cette fonction ("chaque onglet repart de son ecran racine").
+    profileView = 'profile';
   }
   if (navigator.vibrate) navigator.vibrate(8);
   activeTab = tab;
-  if (tab === 'history') {
-    historyLoading = true;
-  }
   render(true);
-  if (tab === 'history') {
-    loadHistoryEntries().then(() => {
-      historyLoading = false;
-      render();
-    });
-  }
   if (tab === 'community') {
     // Pas d'invalidation systématique à l'entrée : le cache (TTL 15 min, voir
     // fetchLeaderboardTop()/fetchMyRank()) est volontairement réutilisé d'une visite à
@@ -1901,6 +1898,9 @@ let weights = {};
 let lastCompleted = {};
 let historyEntries = [];
 let historyLoading = false;
+// Journal fusionne dans l'onglet Profil (sous-onglet, meme principe que
+// groupDetailView pour les Groupes) - plus un onglet separe dans la barre du bas.
+let profileView = 'profile'; // 'profile' | 'journal'
 
 // ==== SÉRIE (STREAK) & BOUCLIER DE PAUSE ====
 // streakCount / lastCompletedDate / hasShield / lastShieldResetWeek sont regroupés
@@ -5030,11 +5030,6 @@ function render(animate) {
     return;
   }
 
-  if (activeTab === 'history') {
-    applyContent(app, renderHistoryScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
-    return;
-  }
-
   if (activeTab === 'library') {
     // updateLibrarySearch() appelle render() à chaque frappe - voir
     // applyContentPreservingFocus().
@@ -5808,7 +5803,9 @@ function renderTrophiesGrid() {
   `;
 }
 
-function renderHistoryScreen() {
+// Contenu du sous-onglet "Journal" de Profil (voir renderAccountTabScreen()) - le
+// h1/sous-titre "Journal" sont geres par l'ecran englobant, pas ici.
+function renderJournalSection() {
   const today = new Date();
   // Calendrier du MOIS EN COURS (du 1er au dernier jour), pas une fenêtre glissante de
   // 28 jours (qui faisait disparaître les 1ers jours du mois sur un mois de 30/31 jours).
@@ -5855,8 +5852,6 @@ function renderHistoryScreen() {
   }
 
   return `
-    <h1 class="title">${t('history.title')}</h1>
-    <div class="subtitle">${t('history.subtitle')}</div>
     <button class="share-stats-btn" onclick="shareStatsImage()">
       <svg class="share-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
       ${t('history.shareBtn')}
@@ -6969,31 +6964,67 @@ function renderCreateGroupChallengeForm() {
   `;
 }
 
+// Journal fusionne ici en sous-onglet (profileView, meme principe que
+// groupDetailView pour les Groupes) - 5 onglets au lieu de 6 dans la barre du bas.
+// Le titre/sous-titre changent selon le sous-onglet actif (contrairement aux
+// Groupes, ou le h1 reste le nom du groupe quel que soit le sous-onglet : ici,
+// aucune "entite" equivalente au nom du groupe, donc le titre porte lui-meme
+// l'information de la vue active).
 function renderAccountTabScreen() {
   if (settingsScreenOpen) {
     return renderSettingsScreen();
   }
-  return `
-    <div class="header">
-      <div class="date">${formatDateLabel(new Date())}</div>
-      <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
+  const isJournal = profileView === 'journal';
+  const viewTabsHtml = `
+    <div class="leaderboard-tabs">
+      <button class="leaderboard-tab-btn${!isJournal ? ' active' : ''}" onclick="switchProfileView('profile')">${t('profileTab.title')}</button>
+      <button class="leaderboard-tab-btn${isJournal ? ' active' : ''}" onclick="switchProfileView('journal')">${t('history.title')}</button>
     </div>
-    <h1 class="title">${t('profileTab.title')}</h1>
-    <div class="subtitle">${t('profileTab.subtitle')}</div>
+  `;
+  const contentHtml = isJournal ? renderJournalSection() : `
     ${renderAthleteCard()}
     ${renderTrophiesGrid()}
     ${renderAccountSection()}
     <button class="signout-btn" onclick="openSettingsScreen()">${t('profileTab.settingsBtn')}</button>
   `;
+  return `
+    <div class="header">
+      <div class="date">${formatDateLabel(new Date())}</div>
+      <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
+    </div>
+    <h1 class="title">${isJournal ? t('history.title') : t('profileTab.title')}</h1>
+    <div class="subtitle">${isJournal ? t('history.subtitle') : t('profileTab.subtitle')}</div>
+    ${viewTabsHtml}
+    ${contentHtml}
+  `;
+}
+
+// Bascule entre les 2 sous-onglets de Profil - recharge le Journal a la demande
+// (meme comportement que l'ancien switchTab('history') dedie : loadHistoryEntries()
+// gere elle-meme son propre cache interne, voir CLAUDE.md).
+function switchProfileView(view) {
+  if (view === profileView) return;
+  profileView = view;
+  if (view === 'journal') {
+    historyLoading = true;
+    render();
+    loadHistoryEntries().then(() => {
+      historyLoading = false;
+      render();
+    });
+    return;
+  }
+  render();
 }
 
 // Barre de navigation persistante en bas de l'écran (masquée pendant les
 // écrans plein écran : onboarding, connexion, mode focus).
 function renderTabBar() {
+  // Journal n'est plus un onglet separe (fusionne en sous-onglet de Profil, voir
+  // renderAccountTabScreen()/profileView) - 5 onglets au lieu de 6.
   const tabs = [
     { id: 'today',   icon: '🏋️‍♂️', label: t('nav.today') },
     { id: 'library',  icon: '🎯', label: t('nav.library') },
-    { id: 'history',  icon: '📓', label: t('nav.history') },
     { id: 'community', icon: '🌍', label: t('nav.community') },
     { id: 'groups',   icon: '👥', label: t('nav.groups') },
     { id: 'account',  icon: '👤', label: t('nav.account') },
@@ -7084,7 +7115,7 @@ function initPullToRefresh() {
 
 async function refreshApp() {
   await loadAppData();
-  if (activeTab === 'history') {
+  if (activeTab === 'account' && profileView === 'journal') {
     await loadHistoryEntries();
   } else {
     await loadState(); // dépend de dailyActivity, chargé juste avant
@@ -7138,7 +7169,13 @@ function getSuggestion() {
 function applyShortcutTabFromUrl() {
   const params = new URLSearchParams(location.search);
   const tab = params.get('tab');
-  if (['today', 'history', 'library', 'community', 'account'].includes(tab)) {
+  // 'history' : alias retro-compatible - le raccourci PWA "Journal" (manifest.json)
+  // pointe toujours vers ?tab=history, meme depuis que le Journal a fusionne en
+  // sous-onglet de Profil (voir profileView) plutot qu'un onglet a part entiere.
+  if (tab === 'history') {
+    activeTab = 'account';
+    profileView = 'journal';
+  } else if (['today', 'library', 'community', 'account'].includes(tab)) {
     activeTab = tab;
   }
   if (params.has('tab')) {

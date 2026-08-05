@@ -12,7 +12,6 @@ const LOCALE_ES = {
   nav: {
     today: 'Hoy',
     library: 'Retos',
-    history: 'Diario',
     community: 'Comunidad',
     groups: 'Grupos',
     account: 'Perfil',
@@ -328,8 +327,7 @@ const LOCALE_ES = {
     welcome: { title: '¡Bienvenido a Défi du Jour!', text: 'Hagamos un recorrido rápido para descubrir cómo funciona la aplicación.' },
     today: { title: 'Hoy', text: 'Encuentra aquí los retos que has activado para hoy, y sigue tu progreso en directo.' },
     library: { title: 'Retos', text: 'Empieza por aquí: activa uno o varios retos para hoy pulsando su tarjeta.' },
-    history: { title: 'Diario', text: 'Una vez activado en Retos, encuentra tu reto en la pestaña Hoy para empezarlo. Aquí: calendario, actividad reciente e historial detallado.' },
-    account: { title: 'Perfil', text: 'Tu información, tu perfil deportivo y todos los trofeos que desbloqueas con el tiempo.' },
+    account: { title: 'Perfil', text: 'Tu información, tu perfil deportivo y todos los trofeos que desbloqueas con el tiempo. Justo arriba: tu Diario (calendario, actividad reciente e historial detallado).' },
     nextBtn: 'Siguiente ›',
     finishBtn: 'Terminar',
   },

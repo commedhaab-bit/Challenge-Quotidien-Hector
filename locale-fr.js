@@ -14,7 +14,6 @@ const LOCALE_FR = {
   nav: {
     today: "Aujourd'hui",
     library: 'Défis',
-    history: 'Journal',
     community: 'Commu',
     groups: 'Groupes',
     account: 'Profil',
@@ -330,8 +329,7 @@ const LOCALE_FR = {
     welcome: { title: 'Bienvenue dans Défi du Jour !', text: "Faisons un rapide tour du propriétaire pour découvrir comment fonctionne l'application." },
     today: { title: "Aujourd'hui", text: "Retrouve ici les défis que tu as activés pour la journée, et suis ta progression en direct." },
     library: { title: 'Défis', text: "Commence par cet onglet : active un ou plusieurs défis pour aujourd'hui en appuyant sur leur carte." },
-    history: { title: 'Journal', text: "Une fois activé dans Défis, retrouve ton défi dans l'onglet Aujourd'hui pour le commencer. Ici : calendrier, activité récente et historique détaillé." },
-    account: { title: 'Profil', text: "Tes infos, ton profil sportif et tous les trophées que tu débloques au fil du temps." },
+    account: { title: 'Profil', text: "Tes infos, ton profil sportif et tous les trophées que tu débloques au fil du temps. Juste au-dessus : ton Journal (calendrier, activité récente et historique détaillé)." },
     nextBtn: 'Suivant ›',
     finishBtn: 'Terminer',
   },

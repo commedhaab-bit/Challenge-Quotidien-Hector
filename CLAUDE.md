@@ -2053,3 +2053,42 @@ clic, jamais re-rendus en direct pendant la frappe) - seul ce champ reactif
 (`oninput` -> `render()` a chaque frappe, pour le calcul EN DIRECT de "~X par
 personne") avait besoin de ce traitement particulier.
 
+## Journal fusionne dans l'onglet Profil (5 onglets au lieu de 6)
+
+**Demande explicite de l'utilisateur** (retour UX) : 6 onglets dans la barre du bas
+etait juge excessif. Le Journal (calendrier, heatmap, historique) et le Profil
+(carte athlete, trophees, compte) sont tous les 2 des ecrans "retrospectifs, a
+propos de moi", visites moins souvent que les 4 autres onglets (Aujourd'hui/
+Défis/Communaute/Groupes, tous "actifs, au quotidien") - candidat de fusion le
+plus sur, contrairement a Groupes+Communaute (deja tres charges chacun, fusionner
+aurait echange "trop d'onglets" contre "un onglet trop profond") ou Défis+Aujourd'hui
+(taches trop differentes : execution du jour vs curation du catalogue).
+
+**Implementation** : `profileView` ('profile' | 'journal') - meme principe que
+`groupDetailView` pour les Groupes (sous-onglet, PAS une vue imbriquee avec pile
+d'historique/bouton retour). `renderAccountTabScreen()` affiche desormais 2
+boutons de sous-onglet (reutilisent directement `profileTab.title`/`history.title`
+comme libelles, aucune nouvelle cle i18n necessaire) et le contenu correspondant :
+`renderJournalSection()` (ex-`renderHistoryScreen()`, prive de son propre h1/
+sous-titre - geres par l'ecran englobant) ou la carte athlete + trophees + compte
+habituelle. **Contrairement aux Groupes** (h1 = nom du groupe, inchange quel que
+soit le sous-onglet), le h1/sous-titre de Profil changent selon `profileView` -
+il n'y a pas d'equivalent "nom de l'entite" pour Profil, donc le titre lui-meme
+porte l'information de la vue active (reutilise tel quel `profileTab.title/
+subtitle` et `history.title/subtitle` existants).
+
+`switchProfileView(view)` recharge le Journal a la demande en entrant dessus
+(`loadHistoryEntries()`, meme mecanisme que l'ancien `switchTab('history')`
+dedie - `historyLoading` gere le meme etat de chargement qu'avant).
+`switchTab()` reinitialise `profileView` a `'profile'` en quittant l'onglet
+Profil (meme discipline que `librarySearchQuery`/`openGroupId`/etc. - chaque
+onglet repart de son ecran racine).
+
+**Retro-compatibilite** : le raccourci PWA "Journal" (`manifest.json`, appui long
+sur l'icone) pointe toujours vers `?tab=history` - **volontairement inchange**
+(`applyShortcutTabFromUrl()` traduit desormais cet alias vers `activeTab='account'`
++ `profileView='journal'`), pour ne pas avoir a mettre a jour le manifest ni
+attendre qu'un PWA deja installee recharge son raccourci en cache. Le tour guide
+perd sa carte dediee au Journal (4 cartes au lieu de 5) - la carte "Profil"
+mentionne desormais le Journal au passage.
+

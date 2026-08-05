@@ -911,33 +911,40 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = null;
   console.log('OK: fiche detail compacte (pas de header/back-btn, PNG en premier)');
 
-  // --- 17. Barre d'onglets : nouveaux libellés/icônes, Défis avant Journal ---
+  // --- 17. Barre d'onglets : 5 onglets (Journal fusionne en sous-onglet de Profil,
+  // plus un onglet separe de la barre du bas) ---
   const tabBarHtml = renderTabBar();
   const idxDefis = tabBarHtml.indexOf('Défis');
-  const idxJournal = tabBarHtml.indexOf('Journal');
-  __assertOk(idxDefis !== -1 && idxJournal !== -1 && idxDefis < idxJournal, 'Défis doit apparaitre avant Journal dans la barre du bas');
+  const idxProfilTab = tabBarHtml.indexOf('Profil');
+  __assertOk(idxDefis !== -1 && idxProfilTab !== -1 && idxDefis < idxProfilTab, 'Défis doit apparaitre avant Profil dans la barre du bas');
   __assertOk(tabBarHtml.includes('🎯'), 'icone cible 🎯 pour l onglet Défis');
   __assertOk(tabBarHtml.includes('🏋️‍♂️'), 'icone haltere pour Aujourd hui');
-  __assertOk(tabBarHtml.includes('📓'), 'icone carnet pour Journal');
+  __assertOk(!tabBarHtml.includes('Journal'), 'Journal ne doit plus apparaitre comme onglet separe dans la barre du bas (fusionne dans Profil)');
+  __assertOk(!tabBarHtml.includes('📓'), 'l icone carnet ne doit plus apparaitre dans la barre du bas (fusionnee dans Profil)');
   __assertOk(!tabBarHtml.includes('📚'), 'ancienne icone livre 📚 ne doit plus apparaitre');
   __assertOk(!tabBarHtml.includes('>Bibliothèque<'), 'le libelle Bibliotheque ne doit plus apparaitre');
   __assertOk(!tabBarHtml.includes('>Historique<'), 'le libelle Historique ne doit plus apparaitre dans la barre');
   __assertOk(tabBarHtml.includes('>Profil<'), 'l onglet Compte doit maintenant s appeler Profil');
-  console.log('OK: onglets renommes/reordonnes (Aujourd hui / Défis / Journal / Profil)');
+  const tabBtnCount = (tabBarHtml.match(/class="tab-btn/g) || []).length;
+  __assertEq(tabBtnCount, 5, 'il ne doit plus y avoir que 5 onglets dans la barre du bas (Journal fusionne dans Profil)');
+  console.log('OK: onglets renommes/reordonnes/regroupes (Aujourd hui / Défis / Commu / Groupes / Profil)');
 
-  // --- 18. Trophées déplacés : absents du Journal, présents dans le Profil ---
-  activeTab = 'history';
+  // --- 18. Journal fusionne en sous-onglet de Profil : trophées absents du sous-onglet
+  // Journal, presents dans le sous-onglet Profil ---
+  activeTab = 'account';
+  profileView = 'journal';
   historyEntries = [];
   historyLoading = false;
-  const historyHtml = renderHistoryScreen();
-  __assertOk(!historyHtml.includes('Trophées'), 'les trophees ne doivent plus apparaitre dans le Journal');
-  __assertOk(historyHtml.includes('>Journal<'), 'le titre de page doit dire Journal (pas Historique)');
+  const historyHtml = renderAccountTabScreen();
+  __assertOk(!historyHtml.includes('Trophées'), 'les trophees ne doivent plus apparaitre dans le sous-onglet Journal');
+  __assertOk(historyHtml.includes('>Journal<'), 'le titre de page doit dire Journal quand ce sous-onglet est actif');
   currentUser = { displayName: 'Test', email: 't@test.com', photoURL: '' };
+  profileView = 'profile';
   const accountHtml = renderAccountTabScreen();
-  __assertOk(accountHtml.includes('Trophées'), 'les trophees doivent maintenant apparaitre dans Profil');
-  __assertOk(accountHtml.includes('>Profil<'), 'le titre de page doit dire Profil (pas Compte)');
+  __assertOk(accountHtml.includes('Trophées'), 'les trophees doivent apparaitre dans le sous-onglet Profil');
+  __assertOk(accountHtml.includes('>Profil<'), 'le titre de page doit dire Profil quand ce sous-onglet est actif');
   activeTab = 'today';
-  console.log('OK: trophées déplacés de Journal vers Profil, titres renommes');
+  console.log('OK: Journal fusionne en sous-onglet de Profil (trophees separees, titres corrects par sous-onglet)');
 
   // --- 19. Journal : plus de "Volume des 7 derniers jours", calendrier avant la heatmap ---
   __assertOk(!historyHtml.includes('Volume des 7 derniers jours'), 'la carte volume 7 jours doit avoir disparu du Journal');
@@ -945,6 +952,23 @@ const cssText = __rawHtml + __cssSource;
   const idxHeatmap = historyHtml.indexOf('Activité (6 derniers mois)');
   __assertOk(idxCalendrier !== -1 && idxHeatmap !== -1 && idxCalendrier < idxHeatmap, 'le calendrier du mois doit apparaitre avant la heatmap 6 mois');
   console.log('OK: Journal réorganisé (calendrier avant heatmap, volume 7j retiré)');
+
+  // --- 19b. switchProfileView() : bascule le sous-onglet Profil/Journal, recharge
+  // le Journal a la demande (meme comportement que l ancien switchTab('history')
+  // dedie - voir CLAUDE.md) ---
+  activeTab = 'account';
+  profileView = 'profile';
+  switchProfileView('profile'); // deja actif -> no-op (comme switchGroupDetailView())
+  __assertEq(profileView, 'profile', 'rester sur le meme sous-onglet ne doit rien changer');
+  switchProfileView('journal');
+  __assertEq(profileView, 'journal', 'switchProfileView doit basculer sur le sous-onglet Journal');
+  __assertOk(historyLoading, 'le Journal doit passer en chargement des le declenchement du switch, avant resolution de loadHistoryEntries()');
+  await new Promise(r => setTimeout(r, 20));
+  __assertOk(!historyLoading, 'historyLoading doit repasser a false une fois loadHistoryEntries() resolue');
+  switchProfileView('profile');
+  __assertEq(profileView, 'profile', 'switchProfileView doit revenir sur le sous-onglet Profil');
+  activeTab = 'today';
+  console.log('OK: switchProfileView() (bascule Profil/Journal, recharge le Journal a la demande)');
 
   // --- 20. Presse cubaine : objectif calculé identique à celui de Biceps ---
   userProfile = { age: 34, sex: 'homme', heightCm: 180, weightKg: 78, level: 'intermediaire' };
@@ -1182,7 +1206,7 @@ const cssText = __rawHtml + __cssSource;
   activeTab = 'today';
   await finishOnboardingTransition();
   __assertEq(guidedTourStep, 0, 'le tour doit demarrer a l etape 0 (carte de bienvenue) si jamais vu');
-  __assertEq(GUIDED_TOUR_STEPS.length, 5, 'le tour doit desormais compter 5 cartes (bienvenue + 4 onglets)');
+  __assertEq(GUIDED_TOUR_STEPS.length, 4, 'le tour doit desormais compter 4 cartes (bienvenue + 3 onglets - Journal fusionne dans Profil, plus d etape dediee)');
   let overlay = renderGuidedTourOverlay();
   __assertOk(overlay.includes('Bienvenue dans Défi du Jour !'), 'la carte 0 doit etre une bienvenue neutre dediee');
   __assertOk(overlay.includes('tour-overlay intro'), 'la carte 0 doit avoir le fond assombri/floute (intro)');
@@ -1196,9 +1220,7 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(activeTab, 'library', 'l etape suivante doit basculer sur l onglet Défis');
   __assertEq(guidedTourStep, 2);
   guidedTourNext();
-  __assertEq(activeTab, 'history', 'puis sur Journal');
-  guidedTourNext();
-  __assertEq(activeTab, 'account', 'puis sur Profil');
+  __assertEq(activeTab, 'account', 'puis directement sur Profil (plus d etape Journal separee, fusionnee en sous-onglet)');
   overlay = renderGuidedTourOverlay();
   __assertOk(overlay.includes('Terminer'), 'le dernier bouton doit dire Terminer');
   guidedTourNext(); // termine le tour (endGuidedTour() est async : on laisse la chaine se resoudre)
@@ -1208,7 +1230,7 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(__appDataStore.data.hasSeenTour, true, 'hasSeenTour doit etre persiste dans le document consolide appData');
   __assertEq(activeTab, 'today', 'le tour termine doit ramener sur Aujourd hui');
   __assertEq(renderGuidedTourOverlay(), '', 'aucune bulle ne doit plus s afficher apres la fin du tour');
-  console.log('OK: tour guidé (5 cartes dont bienvenue dediee, marqué vu, ne se relance pas)');
+  console.log('OK: tour guidé (4 cartes dont bienvenue dediee, marqué vu, ne se relance pas)');
 
   // --- 26. Un utilisateur qui a déjà vu le tour ne le revoit pas après l'onboarding ---
   onboardingTransitionPhase = 'confirm';
@@ -2176,10 +2198,11 @@ const cssText = __rawHtml + __cssSource;
   // --- 76. Journal : le calendrier doit afficher TOUS les jours du mois en cours (bug
   // corrigé : l ancienne fenêtre glissante de 28 jours faisait disparaitre les 1ers
   // jours du mois sur un mois de 30/31 jours) ---
-  activeTab = 'history';
+  activeTab = 'account';
+  profileView = 'journal';
   historyEntries = [];
   historyLoading = false;
-  const monthHtml = renderHistoryScreen();
+  const monthHtml = renderAccountTabScreen();
   const today76 = new Date();
   const daysInMonth76 = new Date(today76.getFullYear(), today76.getMonth() + 1, 0).getDate();
   // Ne pas verifier de chiffre precis dans le texte : si "aujourd'hui" correspond au
@@ -2189,6 +2212,7 @@ const cssText = __rawHtml + __cssSource;
   const emptyCalCells = (monthHtml.match(/cal-cell empty/g) || []).length;
   __assertEq(totalCalCells - emptyCalCells, daysInMonth76, 'le calendrier doit contenir exactement une cellule pour chaque jour du mois en cours');
   activeTab = 'today';
+  profileView = 'profile';
   console.log('OK: calendrier du mois affiche tous les jours (1er au dernier), plus de fenetre glissante de 28 jours');
 
   // --- 77. Heatmap : ligne d en-tete avec les noms abreges des mois au-dessus des colonnes ---
@@ -2245,12 +2269,14 @@ const cssText = __rawHtml + __cssSource;
   console.log('OK: mise en page Aujourd hui (espacement accru + trophees cales en bas si peu de defis)');
 
   // --- 81. Journal : chaque case du calendrier est cliquable, ouvre le detail du jour ---
-  activeTab = 'history';
+  activeTab = 'account';
+  profileView = 'journal';
   historyEntries = [];
   historyLoading = false;
-  const calMonthHtml = renderHistoryScreen();
+  const calMonthHtml = renderAccountTabScreen();
   __assertOk(calMonthHtml.includes("showDayDetailModal('"), 'chaque case reelle du calendrier doit ouvrir la modal de detail du jour au clic');
   activeTab = 'today';
+  profileView = 'profile';
   const pompesForDay = CHALLENGE_LIBRARY.find(x => x.name === 'Pompes');
   state = emptyDayState();
   state.challenges[pompesForDay.id] = { sets: [50, 50], targetOverride: null, done: true, hardcoreDone: false, hardcoreAnnounced: false };
@@ -2387,7 +2413,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v58'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v59'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2957,8 +2983,10 @@ const cssText = __rawHtml + __cssSource;
 
   location.search = '?tab=history';
   activeTab = 'today';
+  profileView = 'profile';
   applyShortcutTabFromUrl();
-  __assertEq(activeTab, 'history', '?tab=history doit positionner activeTab sur Journal');
+  __assertEq(activeTab, 'account', '?tab=history (raccourci PWA retro-compatible) doit positionner activeTab sur Profil');
+  __assertEq(profileView, 'journal', '?tab=history doit aussi selectionner le sous-onglet Journal');
 
   location.search = '?tab=valeur_invalide';
   activeTab = 'today';
@@ -3308,13 +3336,15 @@ const cssText = __rawHtml + __cssSource;
   // --- 135. Journal : l emoji calendrier "tear-off" (📅, "17 JUL" grave en dur dans le
   // dessin Apple) ne doit plus apparaitre dans la popup de detail du jour, remplace par
   // 🗓️ (sans date fixe dessinee) ---
-  activeTab = 'history';
+  activeTab = 'account';
+  profileView = 'journal';
   popupQueue = []; popupOpen = false;
   await showDayDetailModal(todayKey);
   __assertOk(!currentPopupHtml.includes('📅'), 'l emoji calendrier avec une date figee (17 JUL) ne doit plus apparaitre');
   __assertOk(currentPopupHtml.includes('🗓️'), 'un icone calendrier sans date figee doit le remplacer');
   document.getElementById('appPopupCloseX').onclick();
   activeTab = 'today';
+  profileView = 'profile';
   console.log('OK: emoji calendrier fige (17 JUL) remplace dans la popup de detail du jour');
 
   // --- 136. Heatmap : seulement 3 niveaux de couleur distincts (0 / 1 / 2+ defis),
@@ -3332,12 +3362,14 @@ const cssText = __rawHtml + __cssSource;
 
   // --- 137. Partage des stats (onglet Journal) : icone SVG epuree style iOS
   // (square.and.arrow.up), fini l emoji 📤 avec son fond lourd ---
-  activeTab = 'history';
+  activeTab = 'account';
+  profileView = 'journal';
   render(false);
   const journalShareHtml = document.getElementById('app').innerHTML;
   __assertOk(journalShareHtml.includes('share-icon') && journalShareHtml.includes('<svg'), 'le bouton de partage des stats doit utiliser une icone SVG');
   __assertOk(!journalShareHtml.includes('📤 Partager'), 'l ancien emoji de partage ne doit plus apparaitre devant le texte du bouton');
   activeTab = 'today';
+  profileView = 'profile';
   console.log('OK: icone de partage des stats remplacee par un SVG epure style iOS');
 
   // --- 138. Communaute (fondations) : defi du jour communautaire genere de facon
@@ -4628,15 +4660,15 @@ const cssText = __rawHtml + __cssSource;
   const localeBeforeBatch2 = currentLocale;
   currentLocale = 'fr';
   const tabBarFr = renderTabBar();
-  __assertOk(tabBarFr.includes(">Aujourd'hui<") && tabBarFr.includes('>Défis<') && tabBarFr.includes('>Journal<') && tabBarFr.includes('>Commu<') && tabBarFr.includes('>Profil<'), 'la barre d onglets doit afficher les libelles francais par defaut');
+  __assertOk(tabBarFr.includes(">Aujourd'hui<") && tabBarFr.includes('>Défis<') && tabBarFr.includes('>Commu<') && tabBarFr.includes('>Profil<'), 'la barre d onglets doit afficher les libelles francais par defaut');
 
   currentLocale = 'en';
   const tabBarEn = renderTabBar();
-  __assertOk(tabBarEn.includes('>Today<') && tabBarEn.includes('>Challenges<') && tabBarEn.includes('>Log<') && tabBarEn.includes('>Community<') && tabBarEn.includes('>Profile<'), 'la barre d onglets doit basculer entierement en anglais via t()');
+  __assertOk(tabBarEn.includes('>Today<') && tabBarEn.includes('>Challenges<') && tabBarEn.includes('>Community<') && tabBarEn.includes('>Profile<'), 'la barre d onglets doit basculer entierement en anglais via t()');
 
   currentLocale = 'es';
   const tabBarEs = renderTabBar();
-  __assertOk(tabBarEs.includes('>Hoy<') && tabBarEs.includes('>Retos<') && tabBarEs.includes('>Diario<') && tabBarEs.includes('>Comunidad<') && tabBarEs.includes('>Perfil<'), 'la barre d onglets doit basculer entierement en espagnol via t()');
+  __assertOk(tabBarEs.includes('>Hoy<') && tabBarEs.includes('>Retos<') && tabBarEs.includes('>Comunidad<') && tabBarEs.includes('>Perfil<'), 'la barre d onglets doit basculer entierement en espagnol via t()');
 
   // Ecran Parametres : contenu traduit + selecteur de langue (3 boutons natifs, celui
   // de la langue active seul marque '.active').
@@ -4726,9 +4758,15 @@ const cssText = __rawHtml + __cssSource;
   historyEntries = [];
   historyLoading = false;
   currentLocale = 'en';
-  const historyHtmlEn = renderHistoryScreen();
+  const profileViewBeforeBatch4 = profileView;
+  const activeTabBeforeBatch4 = activeTab;
+  activeTab = 'account';
+  profileView = 'journal';
+  const historyHtmlEn = renderAccountTabScreen();
   __assertOk(historyHtmlEn.includes('>Log<'), 'le titre du Journal doit etre traduit');
   __assertOk(historyHtmlEn.includes('No history yet'), 'l etat vide du Journal doit etre traduit');
+  profileView = profileViewBeforeBatch4;
+  activeTab = activeTabBeforeBatch4;
   historyEntries = historyEntriesBeforeSnapshot;
 
   editingChallengeId = editingBefore;
@@ -4925,12 +4963,14 @@ const cssText = __rawHtml + __cssSource;
   const weekStripHtmlEn = document.getElementById('app').innerHTML;
   __assertOk(/class="dow">[SMTWF]</.test(weekStripHtmlEn), 'la bande de semaine (accueil) doit utiliser les lettres de jour traduites (DOW_LABELS -> dates.dowShort)');
 
-  activeTab = 'history';
+  activeTab = 'account';
+  profileView = 'journal';
   historyEntries = [];
   historyLoading = false;
-  const historyHtmlEnFull = renderHistoryScreen();
+  const historyHtmlEnFull = renderAccountTabScreen();
   __assertOk(historyHtmlEnFull.includes('class="cal-dow">M<') && historyHtmlEnFull.includes('class="cal-dow">S<'), 'l en-tete du calendrier mensuel (Journal) doit utiliser les lettres de jour traduites');
   activeTab = 'today';
+  profileView = 'profile';
 
   currentLocale = 'es';
   const heatmapHtmlEs = renderHeatmap();
