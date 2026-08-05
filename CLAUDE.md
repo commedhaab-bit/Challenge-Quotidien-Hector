@@ -1739,3 +1739,36 @@ direct sur une collection (sans `where`/`orderBy` prealable) — valide en vrai
 Firestore, jamais necessaire avant (toutes les fonctionnalites precedentes
 filtraient/triaient toujours avant de lire).
 
+## Phase 3 : Ardoise Globale + Hall of Fame
+
+Ajoute 2 sous-onglets au detail d'un groupe (Defi / Ardoise / Palmares, bascule
+`groupDetailView`) : **Ardoise Globale** (historique COMPLET des gages du
+groupe, tous defis confondus - contrairement au bilan d'un defi, qui reste
+scope a UN seul defi) et **Hall of Fame** (5 titres : Le Mecene, Le Roi des
+Repets, Le Clutch Player, Le Fantome, Le Metronome).
+
+**Rollups cumulatifs** sur `groups/{groupId}/members/{uid}` (`debtsOwed`,
+`totalVolume`, `challengesParticipated`, `clutchWins`) : maintenus
+UNIQUEMENT par `closeExpiredGroupChallenges` (Admin SDK) a chaque reglement -
+le CLIENT ne fait que LIRE ces champs, deja charges avec le roster
+(`groupDetailMembers`), donc **zero lecture supplementaire** pour calculer les
+5 titres (`computeGroupHallOfFameTitles()`, logique pure cote client).
+
+**Clutch Player** : seul titre necessitant une nouvelle donnee - un historique
+horodate des contributions (`groups/{id}/challenges/{id}/contributions/{id}`,
+meme pattern que le fil de contributions du Boss Battle), ecrit par le CLIENT
+(`registerGroupChallengeContributionsIfNeeded()`, en plus de l'increment
+`totalAmount` deja existant depuis la Phase 2), mais lu UNIQUEMENT par
+`closeExpiredGroupChallenges` (jamais par un client). `detectClutchWin()`
+(logique pure, testee en isolation) definit un "Clutch Win" comme un VRAI
+comeback : si on retire tout ce que le 1er a contribue pendant la derniere
+fenetre (les derniers 25% de la duree du defi, mesuree depuis `createdAt` -
+PAS `startDate`, simple chaine cosmetique saisie a la creation, pas un
+timestamp), le 2e serait-il passe devant ? Si oui, la fin de defi a
+reellement fait gagner le 1er - pas juste "actif en fin de defi" alors qu'il
+etait deja tres largement devant.
+
+**Aucun nouvel index Firestore necessaire** : l'Ardoise Globale trie sur un
+seul champ (`createdAt`), et le Hall of Fame ne fait aucune requete du tout
+(donnees deja chargees).
+

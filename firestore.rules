@@ -156,6 +156,13 @@ service cloud.firestore {
           allow read: if request.auth != null;
           allow write: if request.auth != null && request.auth.uid == participantUid;
         }
+        // Historique horodate (Phase 3, detection de Clutch Win) : create-only,
+        // jamais de update/delete client - chaque evenement s'auto-attribue son uid,
+        // meme principe que activityFeed/{id}.
+        match /contributions/{entryId} {
+          allow read: if request.auth != null;
+          allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+        }
       }
       match /ledger/{entryId} {
         // Ecrit uniquement par closeExpiredGroupChallenges (Admin SDK) ; le client

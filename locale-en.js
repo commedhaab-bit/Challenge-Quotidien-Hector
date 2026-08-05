@@ -270,6 +270,21 @@ const LOCALE_EN = {
     honored: '✓ Honored',
     honorBtn: 'Stake honored!',
     noStakes: 'No stakes for this challenge (friendly mode, or a tie).',
+    viewTabs: {
+      challenge: 'Challenge',
+      ledger: 'Ledger',
+      hallOfFame: 'Hall of Fame',
+    },
+    ledgerHistoryTitle: 'The Global Ledger',
+    hallOfFameTitle: 'Hall of Fame',
+    hallOfFameEmpty: 'No titles yet — finish a first collective challenge to see the hall of fame appear.',
+    hallOfFameTitles: {
+      mecene: 'The Sponsor',
+      roiDesRepets: 'The Rep King',
+      clutchPlayer: 'The Clutch Player',
+      fantome: 'The Ghost',
+      metronome: 'The Metronome',
+    },
   },
   tour: {
     welcome: { title: 'Welcome to Défi du Jour!', text: "Let's do a quick tour to see how the app works." },

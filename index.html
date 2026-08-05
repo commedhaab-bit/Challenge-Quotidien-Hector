@@ -2260,6 +2260,11 @@ let groupDetailMembers = []; // [{ uid, displayName, photoURL, role, joinedAt }]
 let groupDetailChallenge = null; // { challengeId, ...champs du defi, participants: [...] }
 let groupDetailLedger = []; // entrees ledger du defi regle affiche (bilan), [] sinon
 let creatingGroupChallenge = false; // formulaire de creation de defi (dans le detail d'un groupe)
+// Phase 3 : sous-onglets du detail d'un groupe (defi en cours / Ardoise Globale /
+// Hall of Fame) - purement de l'affichage, aucune donnee supplementaire a charger
+// pour hallOfFame (deja dans groupDetailMembers) ; ledger charge a part (voir plus bas).
+let groupDetailView = 'challenge'; // 'challenge' | 'ledger' | 'hallOfFame'
+let groupDetailLedgerHistory = []; // Ardoise Globale : TOUTES les entrees ledger du groupe (pas juste le dernier defi)
 
 // ==== FIL D'ACTIVITÉ GLOBAL (amis) ====
 // `activityFeed/{autoId}` : UN document PAR défi complété (pas par série, contrairement
@@ -2628,6 +2633,8 @@ function closeGroupDetail() {
   groupDetailMembers = [];
   groupDetailChallenge = null;
   groupDetailLedger = [];
+  groupDetailView = 'challenge';
+  groupDetailLedgerHistory = [];
 }
 
 // Volontairement PAS de collection-group query / where('status','in',[...]) : les
@@ -2677,8 +2684,51 @@ async function loadGroupDetail(groupId) {
     groupDetailLedger = [];
     console.error('group challenge fetch failed', e);
   }
+  // Ardoise Globale (Phase 3) : TOUTES les entrees ledger du groupe (pas seulement
+  // celles du dernier defi, contrairement a groupDetailLedger ci-dessus) - un seul
+  // champ trie (createdAt), aucun index composite necessaire. Etat d'echec
+  // independant du reste (meme discipline que Top N/mon rang du classement).
+  try {
+    const historySnap = await db.collection('groups').doc(groupId).collection('ledger')
+      .orderBy('createdAt', 'desc').limit(30).get();
+    groupDetailLedgerHistory = historySnap.docs.map(d => ({ entryId: d.id, ...d.data() }));
+  } catch (e) {
+    groupDetailLedgerHistory = [];
+    console.error('group ledger history fetch failed', e);
+  }
   groupDetailLoading = false;
   render();
+}
+
+// Pure (aucune donnee supplementaire a charger : deja dans groupDetailMembers,
+// rollups mis a jour par closeExpiredGroupChallenges()) - Hall of Fame a 5 titres :
+// Le Mecene (le plus souvent payeur), Le Roi des Repets (volume cumule le plus
+// eleve), Le Clutch Player (victoires de derniere minute), Le Fantome (volume le
+// plus faible, titre "a charge" pour rire), Le Metronome (le plus regulier -
+// present sur le plus de defis differents). Chaque titre n'est attribue que si au
+// moins un membre a une statistique strictement positive (sinon rien a celebrer).
+function computeGroupHallOfFameTitles(members) {
+  if (!members || members.length === 0) return [];
+  const titles = [];
+  const maxBy = (field) => {
+    const pool = members.filter((m) => (m[field] || 0) > 0);
+    if (pool.length === 0) return null;
+    return pool.reduce((a, b) => ((b[field] || 0) > (a[field] || 0) ? b : a));
+  };
+  const mecene = maxBy('debtsOwed');
+  if (mecene) titles.push({ id: 'mecene', icon: '🍺', member: mecene });
+  const roiDesRepets = maxBy('totalVolume');
+  if (roiDesRepets) titles.push({ id: 'roiDesRepets', icon: '💪', member: roiDesRepets });
+  const clutch = maxBy('clutchWins');
+  if (clutch) titles.push({ id: 'clutchPlayer', icon: '⚡', member: clutch });
+  const participated = members.filter((m) => (m.challengesParticipated || 0) > 0);
+  if (participated.length > 0) {
+    const fantome = participated.reduce((a, b) => ((b.totalVolume || 0) < (a.totalVolume || 0) ? b : a));
+    titles.push({ id: 'fantome', icon: '👻', member: fantome });
+  }
+  const metronome = maxBy('challengesParticipated');
+  if (metronome) titles.push({ id: 'metronome', icon: '🎯', member: metronome });
+  return titles;
 }
 
 // Auto-initialise mon propre doc participant (totalAmount:0) si je n'en ai pas
@@ -2726,9 +2776,13 @@ async function registerGroupChallengeContributionsIfNeeded(exerciseSlug, amount)
   for (const m of matches) {
     try {
       await ensureMyParticipantDoc(m.groupId, m.challengeId);
-      await db.collection('groups').doc(m.groupId).collection('challenges').doc(m.challengeId)
-        .collection('participants').doc(currentUser.uid)
+      const challengeRef = db.collection('groups').doc(m.groupId).collection('challenges').doc(m.challengeId);
+      await challengeRef.collection('participants').doc(currentUser.uid)
         .set({ totalAmount: firebase.firestore.FieldValue.increment(amount) }, { merge: true });
+      // Historique horodaté (Phase 3, Hall of Fame) : sert uniquement à
+      // closeExpiredGroupChallenges() pour détecter un "Clutch Win" (voir
+      // detectClutchWin() côté Cloud Function) - jamais relu côté client.
+      await challengeRef.collection('contributions').add({ uid: currentUser.uid, amount, at: Date.now() });
     } catch (e) {
       reportSaveError('group challenge contribution failed', e);
     }
@@ -6467,14 +6521,13 @@ function renderGroupParticipantRow(p, rank, highlight) {
   `;
 }
 
-function renderGroupChallengeBilan() {
-  const c = groupDetailChallenge;
-  const total = c.participants.reduce((s, p) => s + (p.totalAmount || 0), 0);
-  const rankingHtml = c.participants.map((p, i) => renderGroupParticipantRow(p, i + 1, p.uid === currentUser.uid)).join('');
-
+// Reutilisee par le bilan d'UN defi (groupDetailLedger) ET l'Ardoise Globale
+// (groupDetailLedgerHistory, tous les defis) - meme rendu, source de donnees differente.
+function renderLedgerEntriesList(entries) {
+  if (entries.length === 0) return `<div class="history-empty">${t('groups.noStakes')}</div>`;
   const nameById = {};
   groupDetailMembers.forEach((m) => { nameById[m.uid] = m.displayName; });
-  const ledgerHtml = groupDetailLedger.length > 0 ? groupDetailLedger.map((entry) => {
+  return entries.map((entry) => {
     const fromName = escapeHtml(nameById[entry.fromUid] || '?');
     const toName = escapeHtml(nameById[entry.toUid] || '?');
     const honorBtn = entry.honoredAt
@@ -6487,14 +6540,46 @@ function renderGroupChallengeBilan() {
       </div>
       ${entry.stakeDescription ? `<div class="rank-bar-hint">${escapeHtml(entry.stakeDescription)}</div>` : ''}
     `;
-  }).join('') : `<div class="history-empty">${t('groups.noStakes')}</div>`;
+  }).join('');
+}
 
+function renderGroupChallengeBilan() {
+  const c = groupDetailChallenge;
+  const rankingHtml = c.participants.map((p, i) => renderGroupParticipantRow(p, i + 1, p.uid === currentUser.uid)).join('');
   return `
     <div class="section-label">${t('groups.bilanTitle', { name: escapeHtml(c.name) })}</div>
     <div class="leaderboard-list">${rankingHtml}</div>
     <div class="section-label">${t('groups.ledgerTitle')}</div>
-    <div class="leaderboard-list">${ledgerHtml}</div>
+    <div class="leaderboard-list">${renderLedgerEntriesList(groupDetailLedger)}</div>
     <button class="friend-action-btn" onclick="creatingGroupChallenge = true; render(true);">${t('groups.createChallengeBtn')}</button>
+  `;
+}
+
+// Ardoise Globale (Phase 3) : historique complet des gages du groupe, tous defis
+// confondus (contrairement au bilan ci-dessus, scope a UN seul defi).
+function renderGroupLedgerHistorySection() {
+  return `
+    <div class="section-label">${t('groups.ledgerHistoryTitle')}</div>
+    <div class="leaderboard-list">${renderLedgerEntriesList(groupDetailLedgerHistory)}</div>
+  `;
+}
+
+// Hall of Fame (Phase 3) : 5 titres calcules cote client, zero lecture
+// supplementaire (deja dans groupDetailMembers, rollups maintenus par
+// closeExpiredGroupChallenges()).
+function renderGroupHallOfFameSection() {
+  const titles = computeGroupHallOfFameTitles(groupDetailMembers);
+  if (titles.length === 0) return `<div class="history-empty">${t('groups.hallOfFameEmpty')}</div>`;
+  return `
+    <div class="section-label">${t('groups.hallOfFameTitle')}</div>
+    <div class="leaderboard-list">
+      ${titles.map((entry) => `
+        <div class="leaderboard-row">
+          <div class="leaderboard-avatar-fallback">${entry.icon}</div>
+          <span class="leaderboard-name">${t('groups.hallOfFameTitles.' + entry.id)} — ${escapeHtml(entry.member.displayName || '?')}</span>
+        </div>
+      `).join('')}
+    </div>
   `;
 }
 
@@ -6529,7 +6614,11 @@ function renderGroupDetailScreen() {
   ` : '';
 
   let challengeHtml;
-  if (!groupDetailChallenge) {
+  if (groupDetailView === 'ledger') {
+    challengeHtml = renderGroupLedgerHistorySection();
+  } else if (groupDetailView === 'hallOfFame') {
+    challengeHtml = renderGroupHallOfFameSection();
+  } else if (!groupDetailChallenge) {
     challengeHtml = `
       <div class="history-empty">${t('groups.noChallenge')}</div>
       <button class="friend-action-btn" onclick="creatingGroupChallenge = true; render(true);">${t('groups.createChallengeBtn')}</button>
@@ -6551,6 +6640,17 @@ function renderGroupDetailScreen() {
     challengeHtml = renderGroupChallengeBilan();
   }
 
+  const viewTabs = [
+    { id: 'challenge', label: t('groups.viewTabs.challenge') },
+    { id: 'ledger', label: t('groups.viewTabs.ledger') },
+    { id: 'hallOfFame', label: t('groups.viewTabs.hallOfFame') },
+  ];
+  const viewTabsHtml = `
+    <div class="leaderboard-tabs">
+      ${viewTabs.map(v => `<button class="leaderboard-tab-btn${groupDetailView === v.id ? ' active' : ''}" onclick="switchGroupDetailView('${v.id}')">${v.label}</button>`).join('')}
+    </div>
+  `;
+
   return `
     <button class="nav-back-btn" onclick="history.back()" aria-label="${t('groups.backAria')}">‹</button>
     <h1 class="title">${escapeHtml(groupDetailGroup.emoji || '')} ${escapeHtml(groupDetailGroup.name)}</h1>
@@ -6558,8 +6658,15 @@ function renderGroupDetailScreen() {
     <div class="section-label">${tn('groups.membersLabel', groupDetailMembers.length)}</div>
     <div class="leaderboard-list">${membersHtml}</div>
     ${inviteHtml}
+    ${viewTabsHtml}
     ${challengeHtml}
   `;
+}
+
+function switchGroupDetailView(view) {
+  if (view === groupDetailView) return;
+  groupDetailView = view;
+  render();
 }
 
 let groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeDescription: '' };

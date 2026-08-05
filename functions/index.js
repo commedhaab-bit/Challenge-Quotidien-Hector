@@ -159,11 +159,34 @@ function computeSettlementPairs(rankedParticipants, mode) {
   return entries;
 }
 
+// Fraction finale de la duree d'un defi consideree comme "derniere minute" pour la
+// detection d'un "Clutch Win" (voir Phase 3, Hall of Fame).
+const CLUTCH_WINDOW_FRACTION = 0.25;
+
+// Pure (aucun acces Firestore) : le 1er (rankedParticipants[0]) est-il un "Clutch
+// Player" pour ce defi ? Definition retenue : un VRAI comeback, pas juste "actif en
+// fin de defi" - si on retire tout ce que le 1er a contribue pendant la derniere
+// fenetre (les derniers 25% de la duree du defi), le 2e serait-il passe devant (ou
+// egal) ? Si oui, c'est bien la fin de defi qui a fait gagner le 1er. Retourne l'uid
+// du gagnant "clutch", ou null (pas de comeback, ou moins de 2 participants).
+function detectClutchWin(rankedParticipants, contributionEvents, startDate, endDate) {
+  if (!rankedParticipants || rankedParticipants.length < 2) return null;
+  const winner = rankedParticipants[0];
+  const runnerUp = rankedParticipants[1];
+  const finalWindowStart = endDate - (endDate - startDate) * CLUTCH_WINDOW_FRACTION;
+  const winnerLateAmount = (contributionEvents || [])
+    .filter((e) => e.uid === winner.uid && e.at >= finalWindowStart)
+    .reduce((sum, e) => sum + (e.amount || 0), 0);
+  const winnerEarlyTotal = (winner.totalAmount || 0) - winnerLateAmount;
+  return winnerEarlyTotal <= (runnerUp.totalAmount || 0) ? winner.uid : null;
+}
+
 // Scheduled Function (15 min) : cherche, TOUS GROUPES CONFONDUS (collectionGroup),
 // les defis actifs dont l'echeance est passee. Pour chacun : classe les
 // participants, calcule le reglement, ecrit les entrees ledger (ID deterministe,
 // create-only - protege contre une re-execution de la fonction elle-meme, "at-
-// least-once" par nature pour les Scheduled Functions) et marque le defi 'settled'.
+// least-once" par nature pour les Scheduled Functions), marque le defi 'settled', et
+// (Phase 3) met a jour les compteurs Hall of Fame de chaque participant.
 exports.closeExpiredGroupChallenges = onSchedule('every 15 minutes', async () => {
   const db = admin.firestore();
   const now = Date.now();
@@ -180,6 +203,16 @@ exports.closeExpiredGroupChallenges = onSchedule('every 15 minutes', async () =>
       .map((d) => ({ uid: d.id, ...d.data() }))
       .sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
     const pairs = computeSettlementPairs(ranked, challenge.stakeMode);
+
+    // Bornee par la duree/taille du defi (pas un balayage global) : sert uniquement
+    // a detecter un Clutch Win, voir detectClutchWin().
+    const contributionsSnap = await challengeDoc.ref.collection('contributions').get();
+    const contributionEvents = contributionsSnap.docs.map((d) => d.data());
+    // challenge.createdAt (timestamp numerique) sert de "debut" pour la fenetre de
+    // detection clutch, PAS challenge.startDate (simple chaine "AAAA-MM-JJ" saisie a
+    // la creation, cosmetique/affichage) - createdAt correspond au moment reel ou le
+    // defi devient actif et peut recevoir des contributions.
+    const clutchWinnerUid = detectClutchWin(ranked, contributionEvents, challenge.createdAt, challenge.endDate);
 
     await db.runTransaction(async (tx) => {
       // Re-verifie sous transaction : evite un double reglement si 2 executions de
@@ -201,6 +234,24 @@ exports.closeExpiredGroupChallenges = onSchedule('every 15 minutes', async () =>
         });
       }
       tx.set(challengeDoc.ref, { status: 'settled', settledAt: now }, { merge: true });
+
+      // Hall of Fame (Phase 3) : rollups cumulatifs sur le doc membre, lus par le
+      // CLIENT (computeGroupHallOfFameTitles(), zero lecture supplementaire - deja
+      // charges avec le roster). debtsOwed incremente uniquement pour le(s) fromUid
+      // des paires ci-dessus (pas de double-compte : un membre peut apparaitre dans
+      // plusieurs paires seulement en mode 50/50 avec des egalites, tres rare).
+      for (const pair of pairs) {
+        tx.set(groupRef.collection('members').doc(pair.fromUid), { debtsOwed: admin.firestore.FieldValue.increment(1) }, { merge: true });
+      }
+      for (const participant of ranked) {
+        tx.set(groupRef.collection('members').doc(participant.uid), {
+          totalVolume: admin.firestore.FieldValue.increment(participant.totalAmount || 0),
+          challengesParticipated: admin.firestore.FieldValue.increment(1),
+        }, { merge: true });
+      }
+      if (clutchWinnerUid) {
+        tx.set(groupRef.collection('members').doc(clutchWinnerUid), { clutchWins: admin.firestore.FieldValue.increment(1) }, { merge: true });
+      }
 
       // Notification "Bilan disponible" a chaque participant (canal in-app existant,
       // toujours pas de push OS - voir CLAUDE.md).
@@ -228,4 +279,5 @@ module.exports.__testables = {
   mondayOfWeekUTC,
   dateKeyUTC,
   computeSettlementPairs,
+  detectClutchWin,
 };

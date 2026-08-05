@@ -2348,7 +2348,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v49'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v50'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -5285,6 +5285,69 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(openGroupId, null, 'cliquer sur l onglet Groupes deja actif doit fermer le detail ouvert et revenir a la racine');
   activeTab = 'today';
   console.log('OK: navigation Groupes (goBackOneLevel() ferme le plus imbrique en premier, clic sur l onglet deja actif reinitialise)');
+
+  // --- 172. Phase 3 : Ardoise Globale + Hall of Fame. Les ROLLUPS eux-memes
+  // (debtsOwed/totalVolume/challengesParticipated/clutchWins) sont maintenus par
+  // closeExpiredGroupChallenges(), une Cloud Function server-only (voir
+  // functions/test/groups.test.js pour detectClutchWin()) - ici on teste uniquement
+  // le calcul PUR des titres et le rendu client a partir de rollups simules. ---
+  const hofMembers = [
+    { uid: 'a', displayName: 'Alice', debtsOwed: 3, totalVolume: 500, challengesParticipated: 2, clutchWins: 1 },
+    { uid: 'b', displayName: 'Bob', debtsOwed: 1, totalVolume: 900, challengesParticipated: 4, clutchWins: 0 },
+    { uid: 'c', displayName: 'Chloe', debtsOwed: 0, totalVolume: 50, challengesParticipated: 1, clutchWins: 0 },
+  ];
+  const hofTitles = computeGroupHallOfFameTitles(hofMembers);
+  const titleFor = (id) => hofTitles.find(t => t.id === id);
+  __assertEq(titleFor('mecene').member.uid, 'a', 'Le Mecene doit etre celui avec le plus de debtsOwed (Alice, 3)');
+  __assertEq(titleFor('roiDesRepets').member.uid, 'b', 'Le Roi des Repets doit etre celui avec le plus de totalVolume (Bob, 900)');
+  __assertEq(titleFor('clutchPlayer').member.uid, 'a', 'Le Clutch Player doit etre celui avec le plus de clutchWins (Alice, 1)');
+  __assertEq(titleFor('fantome').member.uid, 'c', 'Le Fantome doit etre celui avec le moins de totalVolume PARMI CEUX AYANT PARTICIPE (Chloe, 50)');
+  __assertEq(titleFor('metronome').member.uid, 'b', 'Le Metronome doit etre celui avec le plus de challengesParticipated (Bob, 4)');
+  __assertEq(computeGroupHallOfFameTitles([]).length, 0, 'aucun membre -> aucun titre');
+  __assertEq(computeGroupHallOfFameTitles([{ uid: 'z', displayName: 'Z' }]).length, 0, 'un membre sans aucune statistique positive -> aucun titre attribue');
+  console.log('OK: computeGroupHallOfFameTitles() (5 titres, chacun sur sa propre statistique, aucun titre si personne n a de stat positive)');
+
+  // Rendu Hall of Fame : simule des rollups deja ecrits par closeExpiredGroupChallenges()
+  // directement sur les docs membres, verifie juste le RENDU cote client (zero
+  // lecture supplementaire - deja dans groupDetailMembers).
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  await db.collection('groups').doc(createdGroupId).collection('members').doc('me-uid').set({ debtsOwed: 2, totalVolume: 10, challengesParticipated: 1, clutchWins: 1 }, { merge: true });
+  await db.collection('groups').doc(createdGroupId).collection('members').doc('bob-uid').set({ debtsOwed: 0, totalVolume: 300, challengesParticipated: 1, clutchWins: 0 }, { merge: true });
+  await loadGroupDetail(createdGroupId);
+  switchGroupDetailView('hallOfFame');
+  __assertEq(groupDetailView, 'hallOfFame');
+  const hallOfFameHtml = renderGroupDetailScreen();
+  __assertOk(hallOfFameHtml.includes(t('groups.hallOfFameTitles.mecene')) && hallOfFameHtml.includes('Moi'), 'Le Mecene (Moi, 2 dettes) doit apparaitre dans le palmares');
+  __assertOk(hallOfFameHtml.includes(t('groups.hallOfFameTitles.roiDesRepets')) && hallOfFameHtml.includes('Bob'), 'Le Roi des Repets (Bob, 300 de volume) doit apparaitre');
+  console.log('OK: rendu Hall of Fame (sous-onglet Palmares, zero lecture supplementaire - deja dans le roster charge)');
+
+  // Ardoise Globale : historique COMPLET du groupe, tous defis confondus
+  // (contrairement au bilan, scope a un seul defi) - seed une 2e entree ledger d un
+  // defi DIFFERENT de celui deja regle plus haut.
+  const anotherLedgerEntryId = 'autre-defi_bob-uid_me-uid';
+  await db.collection('groups').doc(createdGroupId).collection('ledger').doc(anotherLedgerEntryId).set({
+    challengeId: 'autre-defi', fromUid: 'bob-uid', toUid: 'me-uid',
+    stakeDescription: 'Fait la vaisselle', createdAt: Date.now() - 100000, honoredAt: null, honoredBy: null,
+  });
+  await loadGroupDetail(createdGroupId);
+  __assertOk(groupDetailLedgerHistory.length >= 2, 'l Ardoise Globale doit contenir les entrees de PLUSIEURS defis, pas seulement le dernier');
+  switchGroupDetailView('ledger');
+  const ledgerHistoryHtml = renderGroupDetailScreen();
+  __assertOk(ledgerHistoryHtml.includes('Fait la vaisselle') && ledgerHistoryHtml.includes('Offre une biere'), 'l Ardoise doit afficher les gages de TOUS les defis passes, pas juste le dernier');
+  console.log('OK: Ardoise Globale (historique complet des gages, tous defis confondus, 1 seul champ trie - aucun index composite)');
+
+  // Historique horodate des contributions (alimente detectClutchWin() cote Cloud
+  // Function - non executable ici, voir functions/test/groups.test.js) : verifie que
+  // chaque contribution ecrit bien un evenement, en plus de l increment totalAmount
+  // deja teste en Phase 2.
+  myActiveGroupChallenges = [{ groupId: createdGroupId, challengeId: groupChallengeId, exerciseSlug: pompes.slug, targetTotal: 500 }];
+  const contribSnapBefore = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('contributions').get();
+  await registerGroupChallengeContributionsIfNeeded(pompes.slug, 5);
+  const contribSnapAfter = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('contributions').get();
+  __assertEq(contribSnapAfter.size, contribSnapBefore.size + 1, 'chaque contribution doit ecrire un evenement horodate en plus de l increment totalAmount');
+  console.log('OK: historique horodate des contributions (alimente detectClutchWin() cote Cloud Function)');
+
+  activeTab = 'today';
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

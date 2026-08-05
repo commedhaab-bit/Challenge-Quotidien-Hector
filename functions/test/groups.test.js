@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { __testables } = require('../index.js');
-const { computeSettlementPairs } = __testables;
+const { computeSettlementPairs, detectClutchWin } = __testables;
 
 // Ces tests couvrent uniquement la logique PURE de reglement (aucun acces
 // Firestore reel) - closeExpiredGroupChallenges lui-meme n'est verifie qu'en
@@ -61,4 +61,56 @@ test('cas limites : 0 ou 1 participant ne doit jamais produire d entree, quel qu
 
 test('50/50 avec exactement 2 participants : une seule entree, le perdant paye le gagnant', () => {
   assert.deepEqual(computeSettlementPairs(ranked('a', 'b'), '5050'), [{ fromUid: 'b', toUid: 'a' }]);
+});
+
+// --- detectClutchWin() (Phase 3, Hall of Fame) ---
+// Defi de 1000ms (0 -> 1000), fenetre "derniere minute" = les 25% finaux = [750, 1000].
+const START = 0;
+const END = 1000;
+
+test('detectClutchWin() : vrai comeback - sans les contributions tardives, le 2e serait passe devant', () => {
+  const rankedParticipants = [
+    { uid: 'winner', totalAmount: 100 }, // 1er au final
+    { uid: 'runnerUp', totalAmount: 90 }, // 2e au final
+  ];
+  // Le gagnant n avait que 50 avant la derniere fenetre (750-1000) : sans les 50
+  // derniers, il aurait ete a 50 < 90 (le 2e) -> vrai comeback.
+  const events = [
+    { uid: 'winner', amount: 50, at: 500 },
+    { uid: 'winner', amount: 50, at: 900 }, // dans la derniere fenetre
+    { uid: 'runnerUp', amount: 90, at: 500 },
+  ];
+  assert.equal(detectClutchWin(rankedParticipants, events, START, END), 'winner');
+});
+
+test('detectClutchWin() : pas de comeback - le gagnant etait deja devant avant la derniere fenetre', () => {
+  const rankedParticipants = [
+    { uid: 'winner', totalAmount: 100 },
+    { uid: 'runnerUp', totalAmount: 90 },
+  ];
+  // Le gagnant avait deja 95 avant la derniere fenetre (95 > 90) : les 5 derniers
+  // points ne changent rien au resultat -> pas un comeback, juste une victoire nette.
+  const events = [
+    { uid: 'winner', amount: 95, at: 100 },
+    { uid: 'winner', amount: 5, at: 900 },
+    { uid: 'runnerUp', amount: 90, at: 100 },
+  ];
+  assert.equal(detectClutchWin(rankedParticipants, events, START, END), null);
+});
+
+test('detectClutchWin() : moins de 2 participants -> jamais de clutch win', () => {
+  assert.equal(detectClutchWin([{ uid: 'solo', totalAmount: 10 }], [], START, END), null);
+  assert.equal(detectClutchWin([], [], START, END), null);
+});
+
+test('detectClutchWin() : aucune contribution tardive -> pas de comeback a detecter', () => {
+  const rankedParticipants = [
+    { uid: 'winner', totalAmount: 100 },
+    { uid: 'runnerUp', totalAmount: 90 },
+  ];
+  const events = [
+    { uid: 'winner', amount: 100, at: 100 },
+    { uid: 'runnerUp', amount: 90, at: 100 },
+  ];
+  assert.equal(detectClutchWin(rankedParticipants, events, START, END), null);
 });

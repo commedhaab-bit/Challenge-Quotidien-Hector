@@ -273,6 +273,21 @@ const LOCALE_FR = {
     honored: '✓ Honoré',
     honorBtn: 'Gage honoré !',
     noStakes: 'Aucun gage pour ce défi (mode amical, ou personne à égalité).',
+    viewTabs: {
+      challenge: 'Défi',
+      ledger: 'Ardoise',
+      hallOfFame: 'Palmarès',
+    },
+    ledgerHistoryTitle: "L'Ardoise Globale",
+    hallOfFameTitle: 'Hall of Fame',
+    hallOfFameEmpty: 'Pas encore de titre — termine un premier défi collectif pour voir apparaître le palmarès.',
+    hallOfFameTitles: {
+      mecene: 'Le Mécène',
+      roiDesRepets: 'Le Roi des Répets',
+      clutchPlayer: 'Le Clutch Player',
+      fantome: 'Le Fantôme',
+      metronome: 'Le Métronome',
+    },
   },
   tour: {
     welcome: { title: 'Bienvenue dans Défi du Jour !', text: "Faisons un rapide tour du propriétaire pour découvrir comment fonctionne l'application." },

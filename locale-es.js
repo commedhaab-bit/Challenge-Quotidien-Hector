@@ -271,6 +271,21 @@ const LOCALE_ES = {
     honored: '✓ Honrado',
     honorBtn: '¡Apuesta honrada!',
     noStakes: 'Sin apuestas para este reto (modo amistoso, o empate).',
+    viewTabs: {
+      challenge: 'Reto',
+      ledger: 'Cuentas',
+      hallOfFame: 'Palmarés',
+    },
+    ledgerHistoryTitle: 'La Cuenta Global',
+    hallOfFameTitle: 'Salón de la Fama',
+    hallOfFameEmpty: 'Todavía no hay títulos — termina un primer reto colectivo para ver aparecer el palmarés.',
+    hallOfFameTitles: {
+      mecene: 'El Mecenas',
+      roiDesRepets: 'El Rey de las Repeticiones',
+      clutchPlayer: 'El Clutch Player',
+      fantome: 'El Fantasma',
+      metronome: 'El Metrónomo',
+    },
   },
   tour: {
     welcome: { title: '¡Bienvenido a Défi du Jour!', text: 'Hagamos un recorrido rápido para descubrir cómo funciona la aplicación.' },
