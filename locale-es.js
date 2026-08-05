@@ -252,6 +252,7 @@ const LOCALE_ES = {
     noChallenge: 'Todavía no hay ningún reto en este grupo.',
     createChallengeBtn: '+ Nuevo reto colectivo',
     challengeProgress: '{{current}} / {{target}}',
+    targetReachedAwaitingSettlement: '🎉 ¡Objetivo alcanzado! El ajuste (Cuenta + Salón de la Fama) se actualizará automáticamente en menos de 15 minutos.',
     createChallengeTitle: 'Nuevo reto colectivo',
     challengeNamePlaceholder: 'Nombre del reto',
     exercisePlaceholder: 'Elegir un ejercicio',

@@ -181,27 +181,43 @@ function detectClutchWin(rankedParticipants, contributionEvents, startDate, endD
   return winnerEarlyTotal <= (runnerUp.totalAmount || 0) ? winner.uid : null;
 }
 
+// Pure (aucun acces Firestore) : un defi doit-il etre regle des ce passage ? Soit
+// l'objectif chiffre est deja atteint (peu importe l'echeance - un groupe qui finit
+// "125/100" en avance ne doit pas attendre la date de fin pour voir son Ardoise/
+// Palmares se mettre a jour), soit l'echeance est depassee (filet de securite : le
+// defi se cloture quand meme si personne n'a atteint la cible a temps).
+function shouldSettleChallenge(totalProgress, targetTotal, endDate, now) {
+  const targetReached = (targetTotal || 0) > 0 && totalProgress >= targetTotal;
+  const deadlinePassed = (endDate || 0) <= now;
+  return targetReached || deadlinePassed;
+}
+
 // Scheduled Function (15 min) : cherche, TOUS GROUPES CONFONDUS (collectionGroup),
-// les defis actifs dont l'echeance est passee. Pour chacun : classe les
-// participants, calcule le reglement, ecrit les entrees ledger (ID deterministe,
-// create-only - protege contre une re-execution de la fonction elle-meme, "at-
-// least-once" par nature pour les Scheduled Functions), marque le defi 'settled', et
-// (Phase 3) met a jour les compteurs Hall of Fame de chaque participant.
+// TOUS les defis encore actifs (un seul filtre d'egalite, servi par le prefixe de
+// l'index composite existant status+endDate - aucun nouvel index requis). Pour
+// chacun : classe les participants, verifie via shouldSettleChallenge() si l'objectif
+// est deja atteint OU l'echeance depassee, et seulement si oui calcule le reglement,
+// ecrit les entrees ledger (ID deterministe, create-only - protege contre une
+// re-execution de la fonction elle-meme, "at-least-once" par nature pour les
+// Scheduled Functions), marque le defi 'settled', et (Phase 3) met a jour les
+// compteurs Hall of Fame de chaque participant.
 exports.closeExpiredGroupChallenges = onSchedule('every 15 minutes', async () => {
   const db = admin.firestore();
   const now = Date.now();
-  const expiredSnap = await db.collectionGroup('challenges')
+  const activeSnap = await db.collectionGroup('challenges')
     .where('status', '==', 'active')
-    .where('endDate', '<=', now)
     .get();
 
-  for (const challengeDoc of expiredSnap.docs) {
+  for (const challengeDoc of activeSnap.docs) {
     const challenge = challengeDoc.data();
     const groupRef = challengeDoc.ref.parent.parent; // groups/{groupId}/challenges/{id} -> groups/{groupId}
     const participantsSnap = await challengeDoc.ref.collection('participants').get();
     const ranked = participantsSnap.docs
       .map((d) => ({ uid: d.id, ...d.data() }))
       .sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
+    const totalProgress = ranked.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+    if (!shouldSettleChallenge(totalProgress, challenge.targetTotal, challenge.endDate, now)) continue;
+
     const pairs = computeSettlementPairs(ranked, challenge.stakeMode);
 
     // Bornee par la duree/taille du defi (pas un balayage global) : sert uniquement
@@ -280,4 +296,5 @@ module.exports.__testables = {
   dateKeyUTC,
   computeSettlementPairs,
   detectClutchWin,
+  shouldSettleChallenge,
 };

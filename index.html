@@ -6628,10 +6628,18 @@ function renderGroupDetailScreen() {
     const target = groupDetailChallenge.targetTotal || 0;
     const pct = target > 0 ? Math.min(100, Math.round((total / target) * 100)) : 0;
     const exerciseName = groupDetailChallenge.exerciseSlug ? t('exercises.' + groupDetailChallenge.exerciseSlug + '.name') : '';
+    // L'objectif peut etre atteint avant l'echeance choisie a la creation : le
+    // reglement (Ardoise + Palmares) n'est ecrit que par closeExpiredGroupChallenges
+    // (Cloud Function planifiee, passage toutes les 15 min) - ce message evite que
+    // l'utilisateur croie a un bug pendant ce court delai d'attente.
+    const targetReachedHtml = target > 0 && total >= target
+      ? `<div class="history-empty">${t('groups.targetReachedAwaitingSettlement')}</div>`
+      : '';
     challengeHtml = `
       <div class="section-label">${escapeHtml(groupDetailChallenge.name)}${exerciseName ? ' — ' + escapeHtml(exerciseName) : ''}</div>
       <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
       <div class="athlete-xp-label">${t('groups.challengeProgress', { current: total, target })}</div>
+      ${targetReachedHtml}
       <div class="leaderboard-list">
         ${groupDetailChallenge.participants.map((p, i) => renderGroupParticipantRow(p, i + 1, p.uid === currentUser.uid)).join('')}
       </div>

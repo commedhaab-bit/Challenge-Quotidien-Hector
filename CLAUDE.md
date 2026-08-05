@@ -1772,3 +1772,33 @@ etait deja tres largement devant.
 seul champ (`createdAt`), et le Hall of Fame ne fait aucune requete du tout
 (donnees deja chargees).
 
+## Correctif post-Phase 3 : reglement uniquement declenche par l'echeance, pas par l'objectif atteint
+
+**Bug reel signale en prod** : un groupe de 2 personnes a lance un defi "100
+pompes", atteint 125/100, et l'app affichait le defi comme "termine" (barre de
+progression pleine) mais l'Ardoise restait vide ("aucun gage") et le Palmares
+ne montrait aucun titre. `closeExpiredGroupChallenges` ne cherchait QUE les
+defis dont `endDate <= now` (`.where('status','==','active').where('endDate',
+'<=',now)`) — atteindre l'objectif chiffre n'avait strictement aucun effet sur
+le declenchement du reglement, qui n'arrivait qu'a l'echeance choisie a la
+creation (souvent plusieurs jours plus tard). La barre de progression a 125%
+donnait l'illusion d'un defi cloture, alors que `status` restait `'active'`
+tant que l'echeance n'etait pas atteinte.
+
+**Corrige** en ajoutant un 2e declencheur, `shouldSettleChallenge(totalProgress,
+targetTotal, endDate, now)` (logique pure, testee en isolation dans
+`functions/test/groups.test.js`) : reglement des que l'objectif est atteint
+OU que l'echeance est depassee (peu importe lequel arrive en premier).
+`closeExpiredGroupChallenges` interroge desormais TOUS les defis `status==
+'active'` (un seul filtre d'egalite — servi par le PREFIXE de l'index
+composite `status`+`endDate` deja deploye, aucun nouvel index necessaire),
+calcule `totalProgress` a partir des participants deja lus pour le classement,
+et ne procede au reglement que si `shouldSettleChallenge()` renvoie vrai.
+L'echeance reste un filet de securite : un defi dont personne n'atteint la
+cible se cloture quand meme a la date prevue.
+
+**Cote client** : un message d'attente (`groups.targetReachedAwaitingSettlement`)
+s'affiche des que la somme des participants atteint la cible, meme si le defi
+est encore `active` — evite qu'un utilisateur croie a un bug pendant le court
+delai (jusqu'a 15 min) avant le prochain passage de la fonction planifiee.
+

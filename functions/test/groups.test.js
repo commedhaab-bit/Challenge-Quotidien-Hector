@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { __testables } = require('../index.js');
-const { computeSettlementPairs, detectClutchWin } = __testables;
+const { computeSettlementPairs, detectClutchWin, shouldSettleChallenge } = __testables;
 
 // Ces tests couvrent uniquement la logique PURE de reglement (aucun acces
 // Firestore reel) - closeExpiredGroupChallenges lui-meme n'est verifie qu'en
@@ -113,4 +113,31 @@ test('detectClutchWin() : aucune contribution tardive -> pas de comeback a detec
     { uid: 'runnerUp', amount: 90, at: 100 },
   ];
   assert.equal(detectClutchWin(rankedParticipants, events, START, END), null);
+});
+
+// --- shouldSettleChallenge() ---
+// Bug reel signale en prod : un defi de groupe a 125/100 (objectif depasse) restait
+// affiche comme actif indefiniment, sans Ardoise ni Palmares, car le reglement
+// n'etait alors declenche QUE par l'echeance (endDate). Corrige en ajoutant un 2e
+// declencheur : objectif atteint, peu importe l'echeance.
+
+test('shouldSettleChallenge() : objectif atteint avant l echeance -> regler des maintenant', () => {
+  assert.equal(shouldSettleChallenge(125, 100, /* endDate */ Date.now() + 999999, /* now */ Date.now()), true);
+});
+
+test('shouldSettleChallenge() : objectif tout juste atteint (egalite) -> regler', () => {
+  assert.equal(shouldSettleChallenge(100, 100, Date.now() + 999999, Date.now()), true);
+});
+
+test('shouldSettleChallenge() : objectif non atteint mais echeance depassee -> regler quand meme (filet de securite)', () => {
+  assert.equal(shouldSettleChallenge(40, 100, /* endDate */ 1000, /* now */ 2000), true);
+});
+
+test('shouldSettleChallenge() : objectif non atteint et echeance future -> ne pas regler', () => {
+  assert.equal(shouldSettleChallenge(40, 100, /* endDate */ 2000, /* now */ 1000), false);
+});
+
+test('shouldSettleChallenge() : targetTotal absent/0 -> seule l echeance compte', () => {
+  assert.equal(shouldSettleChallenge(0, 0, 1000, 2000), true);
+  assert.equal(shouldSettleChallenge(0, 0, 2000, 1000), false);
 });

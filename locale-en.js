@@ -251,6 +251,7 @@ const LOCALE_EN = {
     noChallenge: 'No challenge yet in this group.',
     createChallengeBtn: '+ New collective challenge',
     challengeProgress: '{{current}} / {{target}}',
+    targetReachedAwaitingSettlement: '🎉 Target reached! The settlement (Ledger + Hall of Fame) will update automatically within 15 minutes.',
     createChallengeTitle: 'New collective challenge',
     challengeNamePlaceholder: 'Challenge name',
     exercisePlaceholder: 'Choose an exercise',

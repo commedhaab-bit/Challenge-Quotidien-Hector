@@ -254,6 +254,7 @@ const LOCALE_FR = {
     noChallenge: 'Aucun défi pour l\'instant dans ce groupe.',
     createChallengeBtn: '+ Nouveau défi collectif',
     challengeProgress: '{{current}} / {{target}}',
+    targetReachedAwaitingSettlement: '🎉 Objectif atteint ! Le règlement (Ardoise + Palmarès) se met à jour automatiquement d\'ici 15 minutes.',
     createChallengeTitle: 'Nouveau défi collectif',
     challengeNamePlaceholder: 'Nom du défi',
     exercisePlaceholder: 'Choisir un exercice',
