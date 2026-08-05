@@ -346,13 +346,6 @@ let mockLogGroupChallengeContributionResult = { credited: 0, reachedTarget: fals
 // badges) independamment de la logique serveur elle-meme.
 let mockApplyGroupJokerCalls = [];
 
-// Mock du Cloud Function Callable logRaidContribution() (Phase 5, Raids Express) :
-// meme principe que logGroupChallengeContribution - la logique de plafonnage est
-// PARTAGEE (computeCreditedAmount(), deja testee en isolation), le mock enregistre
-// juste l appel.
-let mockLogRaidContributionCalls = [];
-let mockLogRaidContributionResult = { credited: 0, reachedTarget: false };
-
 const sandbox = {
   console,
   Math, Date, JSON, Set, Map, Array, Object, Number, String, Promise,
@@ -452,10 +445,6 @@ const sandbox = {
                 if (name === 'applyGroupJoker') {
                   mockApplyGroupJokerCalls.push(data);
                   return { data: { ok: true } };
-                }
-                if (name === 'logRaidContribution') {
-                  mockLogRaidContributionCalls.push(data);
-                  return { data: mockLogRaidContributionResult };
                 }
                 throw new Error('Callable non mockee dans les tests : ' + name);
               };
@@ -566,7 +555,6 @@ const sandbox = {
     sandbox.__resetMockGetMyRank();
     sandbox.__resetMockLogGroupChallengeContribution();
     sandbox.__resetMockApplyGroupJoker();
-    sandbox.__resetMockLogRaidContribution();
   },
   alert(msg){ console.log('  [alert]', msg); },
   confirm(msg){ return true; },
@@ -605,11 +593,6 @@ const sandbox = {
   },
   get __mockApplyGroupJokerCalls() { return mockApplyGroupJokerCalls; },
   __resetMockApplyGroupJoker() { mockApplyGroupJokerCalls = []; },
-  get __mockLogRaidContributionCalls() { return mockLogRaidContributionCalls; },
-  __resetMockLogRaidContribution() {
-    mockLogRaidContributionCalls = [];
-    mockLogRaidContributionResult = { credited: 0, reachedTarget: false };
-  },
   __mockCacheKeys: mockCacheKeys, // Cache Storage simule (forceAppUpdate)
   __mockSwRegistrations: mockSwRegistrations, // ServiceWorkerRegistration simulees (forceAppUpdate)
   __rawHtml: html, // fichier source complet de index.html (le <style> a ete extrait dans styles.css, voir __cssSource)
@@ -2404,7 +2387,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v55'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v54'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2621,13 +2604,13 @@ const cssText = __rawHtml + __cssSource;
   // par simple recherche de texte — la preuve la plus fiable est le comptage positif
   // exact des 4 remplacements, deja verifie fonctionnellement pour deleteChallenge au
   // test 11 plus haut). ---
-  // 13 depuis l ajout des Raids Express (Phase 5, cancelRaidConfirm()) : compte x2,
-  // defi, suggestion d objectif, import de donnees, forcer la mise a jour, retirer
-  // un ami, accepter une demande d ami depuis sa popup, accepter une invitation de
-  // groupe depuis sa popup, annuler un defi de groupe, 2x confirmation de joker,
-  // + annuler un raid.
+  // 12 depuis l ajout des Jokers tactiques (Phase 4, applyGroupJokerConfirm() +
+  // applyBouletOnTarget()) : compte x2, defi, suggestion d objectif, import de
+  // donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami
+  // depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un
+  // defi de groupe, + les 2 confirmations de joker (Doublon/Immunite et Boulet).
   const confirmModalCallCount = (__rawHtml.match(/await confirmModal\\(\\{/g) || []).length;
-  __assertEq(confirmModalCallCount, 13, 'les 13 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un defi de groupe, 2x confirmation de joker, annuler un raid) doivent utiliser confirmModal');
+  __assertEq(confirmModalCallCount, 12, 'les 12 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un defi de groupe, 2x confirmation de joker) doivent utiliser confirmModal');
   console.log('OK: les 4 anciens confirm() natifs (compte x2, defi, suggestion objectif) passent par confirmModal');
 
   // --- 99. Ecran Parametres dedie : navigation (ouverture/fermeture) + regroupe le
@@ -5403,77 +5386,6 @@ const cssText = __rawHtml + __cssSource;
   console.log('OK: Jokers tactiques - Le Boulet (picker de cible, handicap applique et affiche)');
 
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
-
-  // --- Phase 5 : Raids Express. Contrairement au defi classique (un seul actif a
-  // la fois), plusieurs raids peuvent coexister - enjeu FIXE et INVERSE (succes ->
-  // le createur offre, echec -> le groupe doit au createur), calcule server-side
-  // (computeRaidSettlementPairs(), teste en isolation dans
-  // functions/test/groups.test.js). Aucun joker sur les raids. ---
-  await createRaid(createdGroupId, {
-    name: 'Raid Pompes Express', exerciseSlug: pompes.slug,
-    targetTotal: 50, stakeDescription: 'Offre les bieres', durationHours: 24,
-  });
-  const raidsSnap0 = await db.collection('groups').doc(createdGroupId).collection('raids').get();
-  __assertEq(raidsSnap0.size, 1, 'un seul raid doit avoir ete cree');
-  const raidId = raidsSnap0.docs[0].id;
-  const raidData0 = raidsSnap0.docs[0].data();
-  __assertEq(raidData0.status, 'active');
-  __assertEq(raidData0.durationHours, 24);
-  __assertEq(raidData0.deadline, raidData0.createdAt + 24 * 3600 * 1000, 'la deadline doit etre calculee depuis durationHours, pas une date de calendrier');
-  const myRaidParticipant0 = await db.collection('groups').doc(createdGroupId).collection('raids').doc(raidId).collection('participants').doc('me-uid').get();
-  __assertOk(myRaidParticipant0.exists && myRaidParticipant0.data().totalAmount === 0, 'le createur du raid doit avoir son propre doc participant initialise a 0');
-
-  await refreshMyGroupsAndActiveChallenges();
-  __assertOk(myActiveGroupRaids.some(r => r.raidId === raidId), 'le nouveau raid actif doit apparaitre dans myActiveGroupRaids');
-
-  await loadGroupDetail(createdGroupId);
-  switchGroupDetailView('raids');
-  let raidsHtml = renderGroupDetailScreen();
-  __assertOk(raidsHtml.includes('Raid Pompes Express') && raidsHtml.includes(t('groups.raids.launchBtn')), 'le raid actif et le bouton de lancement doivent etre affiches');
-
-  // Contribution : delegue integralement a logRaidContribution (meme principe que
-  // les defis, plafond + reglement geres server-side - pas de Doublon possible ici).
-  await registerRaidContributionsIfNeeded(pompes.slug, 20);
-  __assertEq(__mockLogRaidContributionCalls.length, 1, 'une serie loguee sur l exercice cible du raid doit appeler logRaidContribution');
-  __assertEq(__mockLogRaidContributionCalls[0].raidId, raidId);
-  __assertEq(__mockLogRaidContributionCalls[0].amount, 20);
-  // Simule l effet serveur.
-  await db.collection('groups').doc(createdGroupId).collection('raids').doc(raidId).collection('participants').doc('me-uid')
-    .set({ totalAmount: 20 }, { merge: true });
-  await loadGroupDetail(createdGroupId);
-  raidsHtml = renderGroupDetailScreen();
-  __assertOk(raidsHtml.includes(t('groups.challengeProgress', { current: 20, target: 50 })), 'la progression du raid doit refleter la contribution simulee');
-  console.log('OK: Raids Express (lancement, deadline calculee depuis durationHours, contribution deleguee a logRaidContribution)');
-
-  // Annulation par le createur (meme mecanique que cancelGroupChallenge).
-  const originalConfirmModalRaid = confirmModal;
-  confirmModal = async () => true;
-  await cancelRaidConfirm(createdGroupId, raidId);
-  confirmModal = originalConfirmModalRaid;
-  const cancelledRaidDoc = await db.collection('groups').doc(createdGroupId).collection('raids').doc(raidId).get();
-  __assertEq(cancelledRaidDoc.data().status, 'cancelled');
-  raidsHtml = renderGroupDetailScreen();
-  __assertOk(!raidsHtml.includes('Raid Pompes Express'), 'un raid annule ne doit plus apparaitre dans la liste');
-  console.log('OK: cancelRaid() (annulation par le createur, le raid annule disparait simplement de la liste)');
-
-  // Rendu du resultat d un raid REGLE (succes/echec) - reglement REEL calcule par
-  // settleRaidIfNeeded, simule ici comme pour le bilan des defis classiques.
-  await db.collection('groups').doc(createdGroupId).collection('raids').doc().set({
-    name: 'Raid reussi', exerciseSlug: pompes.slug, targetTotal: 10, stakeDescription: 'Tournee generale',
-    durationHours: 24, createdBy: 'me-uid', createdAt: Date.now() + 1, deadline: Date.now() + 999999,
-    status: 'settled', settledAt: Date.now(), success: true,
-  });
-  await db.collection('groups').doc(createdGroupId).collection('raids').doc().set({
-    name: 'Raid rate', exerciseSlug: pompes.slug, targetTotal: 10, stakeDescription: 'Une biere',
-    durationHours: 24, createdBy: 'me-uid', createdAt: Date.now() + 2, deadline: Date.now() - 1000,
-    status: 'settled', settledAt: Date.now(), success: false,
-  });
-  await loadGroupDetail(createdGroupId);
-  raidsHtml = renderGroupDetailScreen();
-  __assertOk(raidsHtml.includes(t('groups.raids.successResult')), 'un raid reussi doit afficher le message de succes');
-  __assertOk(raidsHtml.includes(t('groups.raids.failureResult')), 'un raid rate doit afficher le message d echec');
-  console.log('OK: rendu du resultat d un Raid Express regle (succes/echec)');
-  switchGroupDetailView('challenge'); // revient au sous-onglet Defi pour la suite du scenario (Bilan)
 
   // Bilan (simule ici : le reglement REEL est calcule par closeExpiredGroupChallenges,
   // une Cloud Function server-only - voir functions/test/groups.test.js pour
