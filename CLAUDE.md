@@ -1676,3 +1676,66 @@ Index plutot que de se fier uniquement a une relecture du code — un index cree
 manuellement par le passe et jamais documente peut toujours exister sans que
 personne (y compris moi) ne le sache.
 
+## Phase 2 : Groupes & Defis Collectifs Gamifies (fondations)
+
+Nouvel onglet **Groupes** dedie (tab-bar) : creation/adhesion par code, roster,
+premier defi collectif simple, reglement automatique cote serveur, bilan +
+"Gage honore !". Prochaines phases (non livrees ici) : Ardoise/Hall of Fame
+(Phase 3), Jokers (Phase 4), Raids Express (Phase 5).
+
+**Schema Firestore** : `groups/{groupId}` (name/emoji/code/memberCount) +
+`groups/{groupId}/members/{uid}` (jamais un tableau - chaque membre n'ecrit QUE
+son propre doc, meme principe que `friendships`) ; `groups_by_code/{CODE}`
+(reservation create-only, meme pattern que `usernames/{pseudo}`) ;
+`users/{uid}/myGroups/{groupId}` (index personnel, evite une collectionGroup
+query pour "mes groupes") ; `groups/{groupId}/challenges/{challengeId}` +
+`.../participants/{uid}` (chaque membre n'ecrit que SON PROPRE `totalAmount`) ;
+`groups/{groupId}/ledger/{entryId}` (ID deterministe `{challengeId}_{fromUid}_{toUid}`,
+ecrit uniquement par la Cloud Function, le client ne peut que marquer
+`honoredAt`/`honoredBy`).
+
+**`closeExpiredGroupChallenges`** (Scheduled Function, 15 min, nouvelle) :
+`collectionGroup('challenges').where('status','==','active')
+.where('endDate','<=',now)` (necessite l'index collection-group `challenges`
+`status`+`endDate`, ajoute proactivement des ce chantier — pas une redecouverte
+a la dailyContributors). Pour chaque defi expire : classe les participants,
+calcule le reglement (`computeSettlementPairs()`, logique PURE testee en
+isolation - un seul algorithme couvre le mode 50/50 pair ET impair : le i-eme
+depuis le haut est appaire au (n-1-i)-eme depuis le bas, le milieu exact d'un N
+impair n'est simplement jamais touche par la boucle = Zone Neutre), ecrit les
+entrees `ledger` + marque le defi `settled`, dans une transaction (protege contre
+une re-execution de la fonction elle-meme - Scheduled Functions "at-least-once").
+
+**Contribution** : `registerGroupChallengeContributionsIfNeeded()`, appelee depuis
+`addSetInner()` comme `registerBossBattleContributionIfNeeded()` — chaque serie
+loguee compte, pas seulement la complétion du défi. Un meme exercice peut
+contribuer a PLUSIEURS defis de groupe simultanement (contrairement au Boss
+Battle, un seul defi communautaire a la fois). `myActiveGroupChallenges`
+(charge au demarrage + a chaque changement de mes groupes/defis) permet a une
+serie loguee depuis N'IMPORTE QUEL onglet de contribuer, sans passer par l'onglet
+Groupes.
+
+**Simplification assumee** : un membre qui n'a JAMAIS ouvert le detail du groupe
+ni contribue pendant tout un defi n'aura aucun doc participant, et n'apparait donc
+pas au reglement final (ni dette ni recompense) — chaque membre n'ecrivant QUE
+son propre doc participant (regle Firestore), le createur du defi ne peut pas
+pre-lister tous les membres a la creation (aurait exige d'ecrire dans le doc
+d'autrui). Pas un bug, un compromis delibere pour garder les regles simples.
+
+**Aucune notification push OS** : les invitations de groupe et les bilans de defi
+regle passent par le canal de notifications in-app deja existant (`users/{uid}/
+notifications`), pas de nouvelle infrastructure - toujours pas de push reel
+(voir le plan : hors perimetre sauf demande explicite).
+
+**Nouveau dans le harnais de test** (`tests/app.test.js`) : `makeMockCollection()`
+memoise desormais son wrapper PAR INSTANCE de store (Map), pas seulement la
+donnee sous-jacente - un vrai bug de mock decouvert par les Groupes (1er
+chantier a imbriquer 3 niveaux de sous-collections,
+`groups/{id}/challenges/{id}/participants`) : sans cette memoisation, chaque
+nouvel appel a `.collection('challenges')` sur le meme doc parent perdait le
+suivi de SES PROPRES sous-collections (participants), meme si la donnee du
+niveau `challenges` lui-meme restait bien partagee. Egalement ajoute : `.get()`
+direct sur une collection (sans `where`/`orderBy` prealable) — valide en vrai
+Firestore, jamais necessaire avant (toutes les fonctionnalites precedentes
+filtraient/triaient toujours avant de lire).
+

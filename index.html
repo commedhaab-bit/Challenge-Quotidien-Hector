@@ -1633,6 +1633,16 @@ function goBackOneLevel() {
     render(true);
     return;
   }
+  if (creatingGroupChallenge) {
+    creatingGroupChallenge = false;
+    render(true);
+    return;
+  }
+  if (openGroupId !== null) {
+    closeGroupDetail();
+    render(true);
+    return;
+  }
   if (settingsScreenOpen) {
     settingsScreenOpen = false;
     render(true);
@@ -1682,6 +1692,10 @@ function switchTab(tab) {
     } else if (tab === 'account' && settingsScreenOpen) {
       settingsScreenOpen = false;
       hadNestedView = true;
+    } else if (tab === 'groups' && (creatingGroupChallenge || openGroupId !== null)) {
+      creatingGroupChallenge = false;
+      closeGroupDetail();
+      hadNestedView = true;
     }
     if (hadNestedView) {
       if (navigator.vibrate) navigator.vibrate(8);
@@ -1707,6 +1721,10 @@ function switchTab(tab) {
     // pendant qu'elle affiche "Aujourd'hui". Rattachés à la ré-entrée (voir plus bas).
     if (communityActivityFeedUnsub) { communityActivityFeedUnsub(); communityActivityFeedUnsub = null; }
     if (communityContributionsUnsub) { communityContributionsUnsub(); communityContributionsUnsub = null; }
+  } else if (activeTab === 'groups') {
+    creatingGroupChallenge = false;
+    creatingGroupOpen = false;
+    closeGroupDetail();
   }
   if (navigator.vibrate) navigator.vibrate(8);
   activeTab = tab;
@@ -1738,6 +1756,9 @@ function switchTab(tab) {
     // n'est nécessaire pour ça.
     startActivityFeedListener();
     startRecentContributionsListener();
+  }
+  if (tab === 'groups') {
+    refreshMyGroupsAndActiveChallenges();
   }
 }
 
@@ -2212,6 +2233,34 @@ let myFriends = []; // [{ uid, displayName, photoURL }]
 let incomingFriendRequests = []; // [{ fromUid, displayName, photoURL, at }]
 let outgoingFriendRequestUids = new Set();
 
+// ==== GROUPES & DEFIS COLLECTIFS (Phase 2 - fondations) ====
+// groups/{groupId} + groups/{groupId}/members/{uid} : jamais un tableau sur le doc
+// groupe, meme principe que friendships - chaque membre n'ecrit que SON PROPRE doc
+// membre/participant. groups_by_code/{CODE} : reservation de code a 6 caracteres,
+// meme pattern create-only que usernames/{pseudo}. users/{uid}/myGroups/{groupId} :
+// index personnel (jamais lu par personne d'autre), evite une collectionGroup query
+// (et la config d'index qu'elle exigerait) pour retrouver "mes groupes".
+const GROUP_MEMBER_CAP = 20;
+let myGroups = []; // [{ groupId, name, emoji, joinedAt }]
+// Alimente registerGroupChallengeContributionsIfNeeded() : seulement les defis actifs
+// dont JE fais partie, pour associer chaque serie loguee (n'importe quel onglet) au(x)
+// bon(s) defi(s) de groupe sans avoir a rouvrir l'onglet Groupes.
+let myActiveGroupChallenges = []; // [{ groupId, challengeId, exerciseSlug, targetTotal }]
+let creatingGroupOpen = false; // formulaire "creer un groupe" (racine de l'onglet Groupes)
+let groupCreateNameInput = '';
+let groupJoinCodeInput = '';
+let groupJoinError = null; // null | 'not-found' | 'full'
+
+let openGroupId = null; // detail d'un groupe (ecran pousse depuis l'onglet Groupes)
+let groupDetailLoading = false;
+let groupDetailGroup = null; // { groupId, name, emoji, code, memberCount, createdBy }
+let groupDetailMembers = []; // [{ uid, displayName, photoURL, role, joinedAt }]
+// Le defi actif OU le plus recemment regle (bilan) - jamais les deux a la fois, voir
+// loadGroupDetail(). null si aucun defi n'a encore ete cree dans ce groupe.
+let groupDetailChallenge = null; // { challengeId, ...champs du defi, participants: [...] }
+let groupDetailLedger = []; // entrees ledger du defi regle affiche (bilan), [] sinon
+let creatingGroupChallenge = false; // formulaire de creation de defi (dans le detail d'un groupe)
+
 // ==== FIL D'ACTIVITÉ GLOBAL (amis) ====
 // `activityFeed/{autoId}` : UN document PAR défi complété (pas par série, contrairement
 // à registerBossBattleContributionIfNeeded() qui compte chaque série pour la jauge
@@ -2404,6 +2453,24 @@ async function processUnreadNotifications(snap) {
       if (accepted) {
         await acceptFriendRequest(data.fromUid);
       }
+    } else if (data.type === 'group_invite') {
+      const accepted = await confirmModal({
+        icon: '👥',
+        title: t('popups.notifications.groupInviteTitle'),
+        subtitle: t('popups.notifications.groupInviteSubtitle', { name: data.fromName, group: data.groupName }),
+        confirmLabel: t('popups.notifications.groupInviteAccept'),
+        cancelLabel: t('popups.notifications.groupInviteLater'),
+      });
+      if (accepted) {
+        await joinGroupById(data.groupId);
+      }
+    } else if (data.type === 'group_challenge_settled') {
+      enqueuePopup({
+        icon: '🏁',
+        title: t('popups.notifications.groupChallengeSettledTitle'),
+        subtitle: t('popups.notifications.groupChallengeSettledSubtitle', { challenge: data.challengeName }),
+        btnLabel: t('popups.notifications.groupChallengeSettledBtn'),
+      });
     }
   }
 }
@@ -2413,6 +2480,269 @@ function friendRequestId(fromUid, toUid) {
 }
 function friendshipPairId(uidX, uidY) {
   return [uidX, uidY].sort().join('_');
+}
+
+// ==== GROUPES & DEFIS COLLECTIFS : logique (Phase 2 - fondations) ====
+
+// Charset sans caracteres ambigus (pas de 0/O ni 1/I) - meme souci de lisibilite
+// qu'un code tape a la main (partage oral/SMS), voir usernames/{pseudo} pour la
+// meme reservation create-only.
+function generateGroupCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+  return code;
+}
+
+async function createGroup(name, emoji) {
+  if (!name || !name.trim()) return;
+  const code = generateGroupCode();
+  const groupRef = db.collection('groups').doc();
+  const batch = db.batch();
+  batch.set(groupRef, {
+    name: name.trim(), emoji: emoji || '💪', code,
+    createdBy: currentUser.uid, createdAt: Date.now(), memberCount: 1,
+  });
+  batch.set(groupRef.collection('members').doc(currentUser.uid), {
+    uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName),
+    photoURL: currentUser.photoURL || '', joinedAt: Date.now(), role: 'creator',
+  });
+  batch.set(db.collection('groups_by_code').doc(code), { groupId: groupRef.id });
+  batch.set(db.collection('users').doc(currentUser.uid).collection('myGroups').doc(groupRef.id), {
+    groupId: groupRef.id, name: name.trim(), emoji: emoji || '💪', joinedAt: Date.now(),
+  });
+  try {
+    await batch.commit();
+  } catch (e) {
+    reportSaveError('create group failed', e);
+    return;
+  }
+  creatingGroupOpen = false;
+  groupCreateNameInput = '';
+  await refreshMyGroupsAndActiveChallenges();
+  openGroupDetail(groupRef.id);
+}
+
+// Partagee par joinGroupByCode()/joinGroupById() : un membre n'ecrit jamais que SON
+// PROPRE doc membre/index perso (voir les regles Firestore) - le memberCount du
+// groupe est le seul champ du doc groupe qu'un client puisse modifier (increment).
+async function performJoinGroup(groupId, groupMeta) {
+  const groupRef = db.collection('groups').doc(groupId);
+  const already = await groupRef.collection('members').doc(currentUser.uid).get();
+  if (already.exists) { openGroupDetail(groupId); return; }
+  const batch = db.batch();
+  batch.set(groupRef.collection('members').doc(currentUser.uid), {
+    uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName),
+    photoURL: currentUser.photoURL || '', joinedAt: Date.now(), role: 'member',
+  });
+  batch.set(groupRef, { memberCount: firebase.firestore.FieldValue.increment(1) }, { merge: true });
+  batch.set(db.collection('users').doc(currentUser.uid).collection('myGroups').doc(groupId), {
+    groupId, name: groupMeta.name, emoji: groupMeta.emoji, joinedAt: Date.now(),
+  });
+  await batch.commit();
+  await refreshMyGroupsAndActiveChallenges();
+  openGroupDetail(groupId);
+}
+
+async function joinGroupByCode(code) {
+  const normalized = (code || '').trim().toUpperCase();
+  if (!normalized) return;
+  groupJoinError = null;
+  try {
+    const codeDoc = await db.collection('groups_by_code').doc(normalized).get();
+    if (!codeDoc.exists) { groupJoinError = 'not-found'; render(); return; }
+    const groupId = codeDoc.data().groupId;
+    const groupDoc = await db.collection('groups').doc(groupId).get();
+    if (!groupDoc.exists) { groupJoinError = 'not-found'; render(); return; }
+    if ((groupDoc.data().memberCount || 0) >= GROUP_MEMBER_CAP) { groupJoinError = 'full'; render(); return; }
+    groupJoinCodeInput = '';
+    await performJoinGroup(groupId, groupDoc.data());
+  } catch (e) {
+    reportSaveError('join group by code failed', e);
+  }
+}
+
+// Rejoint directement par ID (invitation via notification, voir processUnreadNotifications())
+// - le code n'est utile que pour un partage libre (lien/SMS), pas ici.
+async function joinGroupById(groupId) {
+  try {
+    const groupDoc = await db.collection('groups').doc(groupId).get();
+    if (!groupDoc.exists) return;
+    if ((groupDoc.data().memberCount || 0) >= GROUP_MEMBER_CAP) { groupJoinError = 'full'; render(); return; }
+    await performJoinGroup(groupId, groupDoc.data());
+  } catch (e) {
+    reportSaveError('join group by id failed', e);
+  }
+}
+
+async function inviteFriendToGroup(groupId, groupName, friendUid) {
+  try {
+    await db.collection('users').doc(friendUid).collection('notifications').doc().set({
+      type: 'group_invite',
+      fromUid: currentUser.uid,
+      fromName: formatDisplayName(currentUser.displayName),
+      groupId, groupName,
+      read: false,
+      createdAt: Date.now(),
+    });
+    showToast(t('groups.inviteSent'));
+  } catch (e) {
+    reportSaveError('invite friend to group failed', e);
+  }
+}
+
+// Charge mes groupes + le defi ACTIF (s'il y en a un) de chacun - alimente
+// registerGroupChallengeContributionsIfNeeded() pour que n'importe quelle serie
+// loguee, depuis n'importe quel onglet, contribue au(x) bon(s) defi(s) de groupe.
+// Appelee au demarrage (continueStartApp()) et apres toute action qui change la
+// liste de mes groupes ou leurs defis actifs (creation/adhesion/nouveau defi).
+async function refreshMyGroupsAndActiveChallenges() {
+  if (!currentUser) return;
+  try {
+    const snap = await db.collection('users').doc(currentUser.uid).collection('myGroups').get();
+    myGroups = snap.docs.map(d => ({ ...d.data() }));
+    const activeLists = await Promise.all(myGroups.map(async (g) => {
+      const activeSnap = await db.collection('groups').doc(g.groupId).collection('challenges')
+        .where('status', '==', 'active').limit(1).get();
+      if (activeSnap.empty) return null;
+      const c = activeSnap.docs[0];
+      return { groupId: g.groupId, challengeId: c.id, exerciseSlug: c.data().exerciseSlug, targetTotal: c.data().targetTotal };
+    }));
+    myActiveGroupChallenges = activeLists.filter(Boolean);
+    render();
+  } catch (e) {
+    reportSaveError('refresh my groups failed', e);
+  }
+}
+
+function openGroupDetail(groupId) {
+  openGroupId = groupId;
+  creatingGroupChallenge = false;
+  pushNavState();
+  render(true);
+  loadGroupDetail(groupId);
+}
+function closeGroupDetail() {
+  openGroupId = null;
+  groupDetailGroup = null;
+  groupDetailMembers = [];
+  groupDetailChallenge = null;
+  groupDetailLedger = [];
+}
+
+// Volontairement PAS de collection-group query / where('status','in',[...]) : les
+// defis d'UN groupe sont naturellement peu nombreux, un simple orderBy(createdAt)
+// borne suffit et n'exige aucun index composite (contrairement a where+orderBy sur
+// des champs differents - voir l'incident dailyContributors documente dans CLAUDE.md).
+async function loadGroupDetail(groupId) {
+  groupDetailLoading = true;
+  render();
+  try {
+    const groupDoc = await db.collection('groups').doc(groupId).get();
+    groupDetailGroup = groupDoc.exists ? { groupId, ...groupDoc.data() } : null;
+  } catch (e) {
+    groupDetailGroup = null;
+    console.error('group detail fetch failed', e);
+  }
+  try {
+    const membersSnap = await db.collection('groups').doc(groupId).collection('members').get();
+    groupDetailMembers = membersSnap.docs.map(d => ({ ...d.data() }));
+  } catch (e) {
+    groupDetailMembers = [];
+    console.error('group members fetch failed', e);
+  }
+  try {
+    const challengesSnap = await db.collection('groups').doc(groupId).collection('challenges')
+      .orderBy('createdAt', 'desc').limit(5).get();
+    const challenges = challengesSnap.docs.map(d => ({ challengeId: d.id, ...d.data() }));
+    const relevant = challenges.find(c => c.status === 'active') || challenges.find(c => c.status === 'settled') || null;
+    if (relevant) {
+      if (relevant.status === 'active') await ensureMyParticipantDoc(groupId, relevant.challengeId);
+      const participantsSnap = await db.collection('groups').doc(groupId).collection('challenges').doc(relevant.challengeId)
+        .collection('participants').get();
+      relevant.participants = participantsSnap.docs.map(d => ({ ...d.data() })).sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
+      if (relevant.status === 'settled') {
+        const ledgerSnap = await db.collection('groups').doc(groupId).collection('ledger')
+          .where('challengeId', '==', relevant.challengeId).get();
+        groupDetailLedger = ledgerSnap.docs.map(d => ({ entryId: d.id, ...d.data() }));
+      } else {
+        groupDetailLedger = [];
+      }
+    } else {
+      groupDetailLedger = [];
+    }
+    groupDetailChallenge = relevant;
+  } catch (e) {
+    groupDetailChallenge = null;
+    groupDetailLedger = [];
+    console.error('group challenge fetch failed', e);
+  }
+  groupDetailLoading = false;
+  render();
+}
+
+// Auto-initialise mon propre doc participant (totalAmount:0) si je n'en ai pas
+// encore - chaque membre n'ecrit QUE son propre doc (voir les regles Firestore),
+// donc un defi ne peut pas pre-lister tous les membres a la creation. Un membre qui
+// n'a JAMAIS ouvert le detail du groupe ni contribue pendant tout le defi n'aura
+// simplement aucune ligne au reglement (ni dette ni recompense) - simplification
+// assumee, pas un bug.
+async function ensureMyParticipantDoc(groupId, challengeId) {
+  const ref = db.collection('groups').doc(groupId).collection('challenges').doc(challengeId).collection('participants').doc(currentUser.uid);
+  const doc = await ref.get();
+  if (doc.exists) return;
+  await ref.set({
+    uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName),
+    photoURL: currentUser.photoURL || '', totalAmount: 0,
+  });
+}
+
+async function createGroupChallenge(groupId, { name, exerciseSlug, startDate, endDate, targetTotal, stakeMode, stakeDescription }) {
+  const challengeRef = db.collection('groups').doc(groupId).collection('challenges').doc();
+  try {
+    await challengeRef.set({
+      name: (name || '').trim(), exerciseSlug, startDate, endDate,
+      targetTotal: Math.max(1, Math.round(targetTotal) || 0),
+      stakeMode, stakeDescription: (stakeDescription || '').trim(),
+      createdBy: currentUser.uid, createdAt: Date.now(), status: 'active',
+    });
+    await ensureMyParticipantDoc(groupId, challengeRef.id);
+  } catch (e) {
+    reportSaveError('create group challenge failed', e);
+    return;
+  }
+  creatingGroupChallenge = false;
+  await refreshMyGroupsAndActiveChallenges();
+  await loadGroupDetail(groupId);
+}
+
+// Appelee depuis addSetInner() (comme registerBossBattleContributionIfNeeded()) -
+// chaque serie loguee compte, pas seulement la complétion du défi. Un même exercice
+// peut contribuer a PLUSIEURS défis de groupe simultanément (contrairement au Boss
+// Battle, un seul defi communautaire a la fois) : incremente chacun independamment.
+async function registerGroupChallengeContributionsIfNeeded(exerciseSlug, amount) {
+  if (!exerciseSlug) return;
+  const matches = myActiveGroupChallenges.filter(c => c.exerciseSlug === exerciseSlug);
+  for (const m of matches) {
+    try {
+      await ensureMyParticipantDoc(m.groupId, m.challengeId);
+      await db.collection('groups').doc(m.groupId).collection('challenges').doc(m.challengeId)
+        .collection('participants').doc(currentUser.uid)
+        .set({ totalAmount: firebase.firestore.FieldValue.increment(amount) }, { merge: true });
+    } catch (e) {
+      reportSaveError('group challenge contribution failed', e);
+    }
+  }
+}
+
+async function honorLedgerEntry(groupId, entryId) {
+  try {
+    await db.collection('groups').doc(groupId).collection('ledger').doc(entryId)
+      .set({ honoredAt: Date.now(), honoredBy: currentUser.uid }, { merge: true });
+    await loadGroupDetail(groupId);
+  } catch (e) {
+    reportSaveError('honor ledger entry failed', e);
+  }
 }
 
 // Source d'affichage publique (avatar/nom déjà anonymisé) pour un uid quelconque :
@@ -4295,6 +4625,7 @@ async function addSetInner(amount) {
   const entry = getEntry(currentChallengeId);
   entry.sets.push(amount);
   await registerBossBattleContributionIfNeeded(currentChallengeId, amount); // chaque serie compte, pas seulement la complétion du défi
+  await registerGroupChallengeContributionsIfNeeded(getChallenge() ? getChallenge().slug : null, amount);
   const total = getTotal();
   const target = getTarget();
   const willComplete = total >= target && !entry.done;
@@ -4563,6 +4894,11 @@ function render(animate) {
 
   if (activeTab === 'community') {
     applyContent(app, renderCommunityScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
+    return;
+  }
+
+  if (activeTab === 'groups') {
+    applyContent(app, renderGroupsScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
     return;
   }
 
@@ -6067,6 +6403,222 @@ function renderFriendsScreen() {
   `;
 }
 
+// ==== GROUPES & DEFIS COLLECTIFS : rendu (Phase 2 - fondations) ====
+
+function updateGroupCreateNameInput(value) { groupCreateNameInput = value; render(); }
+function updateGroupJoinCodeInput(value) { groupJoinCodeInput = value; groupJoinError = null; render(); }
+function toggleCreatingGroupOpen() { creatingGroupOpen = !creatingGroupOpen; render(); }
+
+function renderGroupsScreen() {
+  if (openGroupId !== null) return renderGroupDetailScreen();
+
+  const groupsHtml = myGroups.length > 0 ? `
+    <div class="leaderboard-list">
+      ${myGroups.map(g => `
+        <div class="leaderboard-row" onclick="openGroupDetail('${escapeJsAttr(g.groupId)}')">
+          <div class="leaderboard-avatar-fallback">${escapeHtml(g.emoji || '💪')}</div>
+          <span class="leaderboard-name">${escapeHtml(g.name)}</span>
+        </div>
+      `).join('')}
+    </div>
+  ` : `<div class="history-empty">${t('groups.noGroups')}</div>`;
+
+  const joinErrorHtml = groupJoinError === 'not-found' ? `<div class="history-empty">${t('groups.joinNotFound')}</div>`
+    : groupJoinError === 'full' ? `<div class="history-empty">${t('groups.joinFull')}</div>` : '';
+
+  const createFormHtml = creatingGroupOpen ? `
+    <div class="section-label">${t('groups.createTitle')}</div>
+    <input class="library-search-input" type="text" placeholder="${t('groups.createNamePlaceholder')}"
+           value="${escapeHtml(groupCreateNameInput)}" oninput="updateGroupCreateNameInput(this.value)">
+    <button class="friend-search-submit-btn" onclick="createGroup(groupCreateNameInput, '💪')">${t('groups.createSubmitBtn')}</button>
+  ` : `<button class="friend-action-btn" onclick="toggleCreatingGroupOpen()">${t('groups.createBtn')}</button>`;
+
+  return `
+    <div class="header">
+      <div class="date">${formatDateLabel(new Date())}</div>
+    </div>
+    <h1 class="title">${t('nav.groups')}</h1>
+    <div class="subtitle">${t('groups.subtitle')}</div>
+    <div class="section-label">${t('groups.myGroupsLabel')}</div>
+    ${groupsHtml}
+    <div class="section-label">${t('groups.joinTitle')}</div>
+    <input class="library-search-input" type="text" placeholder="${t('groups.joinCodePlaceholder')}"
+           value="${escapeHtml(groupJoinCodeInput)}" oninput="updateGroupJoinCodeInput(this.value)">
+    <button class="friend-search-submit-btn" onclick="joinGroupByCode(groupJoinCodeInput)">${t('groups.joinBtn')}</button>
+    ${joinErrorHtml}
+    ${createFormHtml}
+  `;
+}
+
+// Ligne d'un participant a un defi de groupe (classement OU bilan) : PAS de bouton
+// kudos (contrairement a renderLeaderboardRow(), sans rapport avec cette fonctionnalite).
+function renderGroupParticipantRow(p, rank, highlight) {
+  const name = escapeHtml(p.displayName || '?');
+  const avatar = p.photoURL
+    ? `<img src="${escapeHtml(p.photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
+    : `<div class="leaderboard-avatar-fallback">${name.charAt(0).toUpperCase()}</div>`;
+  return `
+    <div class="leaderboard-row${highlight ? ' me' : ''}">
+      <span class="leaderboard-rank">#${rank}</span>
+      ${avatar}
+      <span class="leaderboard-name">${name}</span>
+      <span class="leaderboard-value">${p.totalAmount || 0}</span>
+    </div>
+  `;
+}
+
+function renderGroupChallengeBilan() {
+  const c = groupDetailChallenge;
+  const total = c.participants.reduce((s, p) => s + (p.totalAmount || 0), 0);
+  const rankingHtml = c.participants.map((p, i) => renderGroupParticipantRow(p, i + 1, p.uid === currentUser.uid)).join('');
+
+  const nameById = {};
+  groupDetailMembers.forEach((m) => { nameById[m.uid] = m.displayName; });
+  const ledgerHtml = groupDetailLedger.length > 0 ? groupDetailLedger.map((entry) => {
+    const fromName = escapeHtml(nameById[entry.fromUid] || '?');
+    const toName = escapeHtml(nameById[entry.toUid] || '?');
+    const honorBtn = entry.honoredAt
+      ? `<span class="friend-status">${t('groups.honored')}</span>`
+      : `<button class="friend-action-btn" onclick="honorLedgerEntry('${escapeJsAttr(groupDetailGroup.groupId)}', '${escapeJsAttr(entry.entryId)}')">${t('groups.honorBtn')}</button>`;
+    return `
+      <div class="leaderboard-row">
+        <span class="leaderboard-name">${t('groups.ledgerLine', { from: fromName, to: toName })}</span>
+        ${honorBtn}
+      </div>
+      ${entry.stakeDescription ? `<div class="rank-bar-hint">${escapeHtml(entry.stakeDescription)}</div>` : ''}
+    `;
+  }).join('') : `<div class="history-empty">${t('groups.noStakes')}</div>`;
+
+  return `
+    <div class="section-label">${t('groups.bilanTitle', { name: escapeHtml(c.name) })}</div>
+    <div class="leaderboard-list">${rankingHtml}</div>
+    <div class="section-label">${t('groups.ledgerTitle')}</div>
+    <div class="leaderboard-list">${ledgerHtml}</div>
+    <button class="friend-action-btn" onclick="creatingGroupChallenge = true; render(true);">${t('groups.createChallengeBtn')}</button>
+  `;
+}
+
+function renderGroupDetailScreen() {
+  if (groupDetailLoading || !groupDetailGroup) {
+    return `
+      <button class="nav-back-btn" onclick="history.back()" aria-label="${t('groups.backAria')}">‹</button>
+      <div class="history-empty">${t('groups.loading')}</div>
+    `;
+  }
+  if (creatingGroupChallenge) return renderCreateGroupChallengeForm();
+
+  const membersHtml = groupDetailMembers.map((m) => {
+    const name = escapeHtml(m.displayName || '?');
+    const avatar = m.photoURL
+      ? `<img src="${escapeHtml(m.photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
+      : `<div class="leaderboard-avatar-fallback">${name.charAt(0).toUpperCase()}</div>`;
+    return `<div class="leaderboard-row">${avatar}<span class="leaderboard-name">${name}</span></div>`;
+  }).join('');
+
+  // Amis pas encore membres de ce groupe : invitation via le canal de notifications
+  // existant (voir inviteFriendToGroup()), meme geste que "Inviter des proches" ailleurs.
+  const memberUids = new Set(groupDetailMembers.map((m) => m.uid));
+  const invitableFriends = myFriends.filter((f) => !memberUids.has(f.uid));
+  const inviteHtml = invitableFriends.length > 0 ? `
+    <div class="section-label">${t('groups.inviteFriendsLabel')}</div>
+    <div class="leaderboard-list">
+      ${invitableFriends.map((f) => renderFriendActionRow(f.uid, f.displayName, f.photoURL,
+        `<button class="friend-action-btn" onclick="inviteFriendToGroup('${escapeJsAttr(groupDetailGroup.groupId)}', '${escapeJsAttr(groupDetailGroup.name)}', '${escapeJsAttr(f.uid)}')">${t('groups.inviteBtn')}</button>`
+      )).join('')}
+    </div>
+  ` : '';
+
+  let challengeHtml;
+  if (!groupDetailChallenge) {
+    challengeHtml = `
+      <div class="history-empty">${t('groups.noChallenge')}</div>
+      <button class="friend-action-btn" onclick="creatingGroupChallenge = true; render(true);">${t('groups.createChallengeBtn')}</button>
+    `;
+  } else if (groupDetailChallenge.status === 'active') {
+    const total = groupDetailChallenge.participants.reduce((s, p) => s + (p.totalAmount || 0), 0);
+    const target = groupDetailChallenge.targetTotal || 0;
+    const pct = target > 0 ? Math.min(100, Math.round((total / target) * 100)) : 0;
+    const exerciseName = groupDetailChallenge.exerciseSlug ? t('exercises.' + groupDetailChallenge.exerciseSlug + '.name') : '';
+    challengeHtml = `
+      <div class="section-label">${escapeHtml(groupDetailChallenge.name)}${exerciseName ? ' — ' + escapeHtml(exerciseName) : ''}</div>
+      <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
+      <div class="athlete-xp-label">${t('groups.challengeProgress', { current: total, target })}</div>
+      <div class="leaderboard-list">
+        ${groupDetailChallenge.participants.map((p, i) => renderGroupParticipantRow(p, i + 1, p.uid === currentUser.uid)).join('')}
+      </div>
+    `;
+  } else {
+    challengeHtml = renderGroupChallengeBilan();
+  }
+
+  return `
+    <button class="nav-back-btn" onclick="history.back()" aria-label="${t('groups.backAria')}">‹</button>
+    <h1 class="title">${escapeHtml(groupDetailGroup.emoji || '')} ${escapeHtml(groupDetailGroup.name)}</h1>
+    <div class="subtitle">${t('groups.codeLabel', { code: groupDetailGroup.code })}</div>
+    <div class="section-label">${tn('groups.membersLabel', groupDetailMembers.length)}</div>
+    <div class="leaderboard-list">${membersHtml}</div>
+    ${inviteHtml}
+    ${challengeHtml}
+  `;
+}
+
+let groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeDescription: '' };
+
+function updateGroupChallengeDraft(field, value) {
+  groupChallengeFormDraft[field] = value;
+  render();
+}
+
+async function submitGroupChallengeForm() {
+  const d = groupChallengeFormDraft;
+  if (!d.name.trim() || !d.exerciseSlug || !d.endDate || !d.targetTotal) return;
+  await createGroupChallenge(openGroupId, {
+    name: d.name,
+    exerciseSlug: d.exerciseSlug,
+    startDate: d.startDate || dateKey(new Date()),
+    endDate: new Date(d.endDate + 'T23:59:59').getTime(),
+    targetTotal: parseInt(d.targetTotal, 10),
+    stakeMode: d.stakeMode,
+    stakeDescription: d.stakeDescription,
+  });
+  groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeDescription: '' };
+}
+
+// Helper UX demande explicitement : calcul EN DIRECT de "~X par personne" pendant la
+// saisie de l'objectif, a partir de memberCount deja en memoire (groupDetailMembers) -
+// aucun cout supplementaire, purement client.
+function renderCreateGroupChallengeForm() {
+  const d = groupChallengeFormDraft;
+  const memberCount = groupDetailMembers.length || 1;
+  const target = parseInt(d.targetTotal, 10) || 0;
+  const perPerson = target > 0 ? Math.round(target / memberCount) : 0;
+  const exerciseOptions = CHALLENGE_LIBRARY.map((c) => `<option value="${escapeHtml(c.slug)}"${d.exerciseSlug === c.slug ? ' selected' : ''}>${escapeHtml(t('exercises.' + c.slug + '.name'))}</option>`).join('');
+  const stakeOptions = ['5050', 'lastPaysAll', 'winnerTakesAll', 'friendly']
+    .map((m) => `<option value="${m}"${d.stakeMode === m ? ' selected' : ''}>${t('groups.stakeMode.' + m)}</option>`).join('');
+
+  return `
+    <button class="nav-back-btn" onclick="history.back()" aria-label="${t('groups.backAria')}">‹</button>
+    <h1 class="title">${t('groups.createChallengeTitle')}</h1>
+    <input class="library-search-input" type="text" placeholder="${t('groups.challengeNamePlaceholder')}"
+           value="${escapeHtml(d.name)}" oninput="updateGroupChallengeDraft('name', this.value)">
+    <select class="library-search-input" onchange="updateGroupChallengeDraft('exerciseSlug', this.value)">
+      <option value="">${t('groups.exercisePlaceholder')}</option>
+      ${exerciseOptions}
+    </select>
+    <input class="library-search-input" type="date" value="${escapeHtml(d.startDate)}" onchange="updateGroupChallengeDraft('startDate', this.value)">
+    <input class="library-search-input" type="date" value="${escapeHtml(d.endDate)}" onchange="updateGroupChallengeDraft('endDate', this.value)">
+    <input class="library-search-input" type="number" min="1" placeholder="${t('groups.targetPlaceholder')}"
+           value="${escapeHtml(String(d.targetTotal))}" oninput="updateGroupChallengeDraft('targetTotal', this.value)">
+    ${target > 0 ? `<div class="rank-bar-hint">${t('groups.perPersonHint', { n: perPerson })}</div>` : ''}
+    <select class="library-search-input" onchange="updateGroupChallengeDraft('stakeMode', this.value)">
+      ${stakeOptions}
+    </select>
+    <input class="library-search-input" type="text" placeholder="${t('groups.stakeDescriptionPlaceholder')}"
+           value="${escapeHtml(d.stakeDescription)}" oninput="updateGroupChallengeDraft('stakeDescription', this.value)">
+    <button class="friend-search-submit-btn" onclick="submitGroupChallengeForm()">${t('groups.createChallengeSubmitBtn')}</button>
+  `;
+}
+
 function renderAccountTabScreen() {
   if (settingsScreenOpen) {
     return renderSettingsScreen();
@@ -6093,6 +6645,7 @@ function renderTabBar() {
     { id: 'library',  icon: '🎯', label: t('nav.library') },
     { id: 'history',  icon: '📓', label: t('nav.history') },
     { id: 'community', icon: '🌍', label: t('nav.community') },
+    { id: 'groups',   icon: '👥', label: t('nav.groups') },
     { id: 'account',  icon: '👤', label: t('nav.account') },
   ];
   return `
@@ -6287,6 +6840,10 @@ async function continueStartApp() {
   // Pas de await : sert uniquement au badge de notification sur le bouton "Amis" (écran
   // Communauté), pas bloquant pour le premier rendu — se termine par son propre render().
   refreshFriendsData();
+  // Idem : alimente myActiveGroupChallenges (voir registerGroupChallengeContributionsIfNeeded())
+  // pour qu'une série loguée depuis N'IMPORTE QUEL onglet contribue aux défis de
+  // groupe actifs, sans attendre une visite de l'onglet Groupes — pas bloquant.
+  refreshMyGroupsAndActiveChallenges();
   // Rattrapage natif inclus : les notifications non lues reçues hors ligne se
   // déclenchent exactement comme celles reçues en direct, dès ce premier instantané.
   startNotificationsListener();

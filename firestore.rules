@@ -3,11 +3,11 @@
 // ligne a ligne le jour de la mise en place de la Phase 0 Cloud Functions - texte
 // fourni directement depuis Firebase Console > Firestore Database > Regles).
 //
-// Sections marquees "AJOUT Phase 0/1" et "STUB Phase 2+ (Groupes)" ci-dessous : NON
-// encore verifiees en production (n'existent pas encore cote client) - a re-verifier
-// au moment ou chaque fonctionnalite correspondante sera reellement implementee et
-// deployee, meme discipline que le reste (jamais deployer un changement de regles
-// sans le comparer d'abord au contenu reel de la Console).
+// Sections ajoutees APRES cette verification initiale (leaderboardCache Phase 1,
+// groups/* Phase 2, ...) : nouvelles, jamais en conflit avec les regles verifiees
+// ci-dessus - Console verifiee de nouveau apres chaque deploiement reel (voir
+// l'incident dailyContributors documente dans CLAUDE.md : verifier aussi les INDEX
+// existants, pas seulement les regles, avant tout `firestore:indexes` deploy).
 // =============================================================================
 
 rules_version = '2';
@@ -125,9 +125,7 @@ service cloud.firestore {
     }
 
     // ===========================================================================
-    // STUB Phase 2+ (Groupes) - PAS ENCORE VERIFIE EN PRODUCTION (la fonctionnalite
-    // n'existe pas encore cote client). A reverifier/affiner precisement au moment
-    // de l'implementation reelle, avant tout premier deploiement de ce bloc.
+    // Phase 2 : Groupes & Defis Collectifs (fondations)
     // ===========================================================================
     match /groups_by_code/{code} {
       allow read: if request.auth != null;
@@ -135,7 +133,11 @@ service cloud.firestore {
     }
     match /groups/{groupId} {
       allow read: if request.auth != null;
-      allow create, update: if request.auth != null;
+      allow create: if request.auth != null;
+      // Seul memberCount peut etre modifie par un client (increment a l'adhesion) -
+      // name/emoji/code/createdBy sont immuables une fois le groupe cree.
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberCount']);
 
       match /members/{memberUid} {
         allow read: if request.auth != null;
@@ -144,18 +146,16 @@ service cloud.firestore {
       match /challenges/{challengeId} {
         allow read: if request.auth != null;
         allow create: if request.auth != null;
-        // Le doc defi (status/currentProgress) n'est plus modifie que par
-        // closeExpiredGroupChallenges (Admin SDK) une fois implementee - pas de
-        // regle client update ici.
+        // Le doc defi (status/currentProgress) n'est modifie que par
+        // closeExpiredGroupChallenges (Admin SDK, contourne ces regles) - aucune
+        // regle update cliente ici.
 
         match /participants/{participantUid} {
+          // Chaque membre n'ecrit QUE son propre doc participant (totalAmount) -
+          // tout effet croise (jokers, Phase 4) passera par une Cloud Function dediee.
           allow read: if request.auth != null;
           allow write: if request.auth != null && request.auth.uid == participantUid;
         }
-      }
-      match /raids/{raidId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null;
       }
       match /ledger/{entryId} {
         // Ecrit uniquement par closeExpiredGroupChallenges (Admin SDK) ; le client

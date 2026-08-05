@@ -120,11 +120,112 @@ exports.getMyRank = onCall(async (request) => {
   return { rank: countSnap.data().count + 1, value: myValue };
 });
 
+// =============================================================================
+// Phase 2 : Groupes & Defis Collectifs - fondations (closeExpiredGroupChallenges)
+// =============================================================================
+// Reglement automatique des defis de groupe a echeance, cote serveur - remplace la
+// resolution paresseuse cote client envisagee dans la version 100% Spark du plan :
+// desormais un seul passage planifie regle TOUS les defis expires, deterministe,
+// sans dependre qu'un membre ouvre l'app.
+
+// Pure (aucun acces Firestore) : classe les participants (deja RANGES par
+// totalAmount decroissant, rang 0 = 1er) en paires gagnant/perdant selon le mode
+// d'enjeu du defi. Un seul algorithme couvre le mode 50/50 pair ET impair (voir
+// commentaire ci-dessous) - testable directement avec de simples tableaux JS.
+function computeSettlementPairs(rankedParticipants, mode) {
+  const n = rankedParticipants.length;
+  if (mode === 'friendly' || n < 2) return [];
+
+  if (mode === 'lastPaysAll') {
+    const last = rankedParticipants[n - 1];
+    return rankedParticipants.slice(0, n - 1).map((other) => ({ fromUid: last.uid, toUid: other.uid }));
+  }
+  if (mode === 'winnerTakesAll') {
+    const winner = rankedParticipants[0];
+    return rankedParticipants.slice(1).map((other) => ({ fromUid: other.uid, toUid: winner.uid }));
+  }
+
+  // Mode 50/50 (par defaut) : un seul algorithme pour pair ET impair - le i-eme
+  // (depuis le haut, index 0) est appaire au (n-1-i)-eme (depuis le bas). Pour n
+  // PAIR, la boucle couvre tout le monde (ex: n=6 -> paires (0,5)(1,4)(2,3)). Pour n
+  // IMPAIR, floor(n/2) s'arrete AVANT l'element du milieu (ex: n=5 -> paires
+  // (0,4)(1,3), index 2 jamais touche = Zone Neutre, ni dette ni recompense).
+  const entries = [];
+  for (let i = 0; i < Math.floor(n / 2); i++) {
+    const winner = rankedParticipants[i];
+    const loser = rankedParticipants[n - 1 - i];
+    entries.push({ fromUid: loser.uid, toUid: winner.uid });
+  }
+  return entries;
+}
+
+// Scheduled Function (15 min) : cherche, TOUS GROUPES CONFONDUS (collectionGroup),
+// les defis actifs dont l'echeance est passee. Pour chacun : classe les
+// participants, calcule le reglement, ecrit les entrees ledger (ID deterministe,
+// create-only - protege contre une re-execution de la fonction elle-meme, "at-
+// least-once" par nature pour les Scheduled Functions) et marque le defi 'settled'.
+exports.closeExpiredGroupChallenges = onSchedule('every 15 minutes', async () => {
+  const db = admin.firestore();
+  const now = Date.now();
+  const expiredSnap = await db.collectionGroup('challenges')
+    .where('status', '==', 'active')
+    .where('endDate', '<=', now)
+    .get();
+
+  for (const challengeDoc of expiredSnap.docs) {
+    const challenge = challengeDoc.data();
+    const groupRef = challengeDoc.ref.parent.parent; // groups/{groupId}/challenges/{id} -> groups/{groupId}
+    const participantsSnap = await challengeDoc.ref.collection('participants').get();
+    const ranked = participantsSnap.docs
+      .map((d) => ({ uid: d.id, ...d.data() }))
+      .sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
+    const pairs = computeSettlementPairs(ranked, challenge.stakeMode);
+
+    await db.runTransaction(async (tx) => {
+      // Re-verifie sous transaction : evite un double reglement si 2 executions de
+      // la fonction planifiee se chevauchent (retry "at-least-once").
+      const freshChallenge = await tx.get(challengeDoc.ref);
+      if (!freshChallenge.exists || freshChallenge.data().status !== 'active') return;
+
+      for (const pair of pairs) {
+        const entryId = `${challengeDoc.id}_${pair.fromUid}_${pair.toUid}`;
+        const entryRef = groupRef.collection('ledger').doc(entryId);
+        tx.set(entryRef, {
+          challengeId: challengeDoc.id,
+          fromUid: pair.fromUid,
+          toUid: pair.toUid,
+          stakeDescription: challenge.stakeDescription || '',
+          createdAt: now,
+          honoredAt: null,
+          honoredBy: null,
+        });
+      }
+      tx.set(challengeDoc.ref, { status: 'settled', settledAt: now }, { merge: true });
+
+      // Notification "Bilan disponible" a chaque participant (canal in-app existant,
+      // toujours pas de push OS - voir CLAUDE.md).
+      for (const participant of ranked) {
+        const notifRef = db.collection('users').doc(participant.uid).collection('notifications').doc();
+        tx.set(notifRef, {
+          type: 'group_challenge_settled',
+          fromUid: 'system',
+          groupId: groupRef.id,
+          challengeId: challengeDoc.id,
+          challengeName: challenge.name || '',
+          read: false,
+          createdAt: now,
+        });
+      }
+    });
+  }
+});
+
 // Exposees uniquement pour les tests unitaires (logique pure, sans Firestore) -
-// voir functions/test/leaderboard.test.js.
+// voir functions/test/leaderboard.test.js et functions/test/groups.test.js.
 module.exports.__testables = {
   computeLeaderboardCaches,
   leaderboardFieldForView,
   mondayOfWeekUTC,
   dateKeyUTC,
+  computeSettlementPairs,
 };

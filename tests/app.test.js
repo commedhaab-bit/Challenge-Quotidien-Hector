@@ -178,7 +178,17 @@ function __applyMockMergeValue(current, incoming) {
   }
   return incoming;
 }
+// Memoise le wrapper par instance de `store` (une Map = une collection precise) :
+// sans ca, un 3e niveau d'imbrication (ex: groups/{id}/challenges/{id}/participants,
+// necessaire pour les Groupes - Phase 2) perdrait le suivi de SES PROPRES
+// sous-collections a chaque nouvel appel de `.collection('challenges')` sur le meme
+// doc parent (chaque appel recreait un wrapper avec un `subcollections` vide, donc
+// invisible d'un appel a l'autre, meme si le contenu de `store` lui restait bien
+// partage) - jamais rencontre avant les Groupes, aucune fonctionnalite precedente
+// n'imbriquait plus de 2 niveaux (ex: community/{weekStart}/dailyContributors).
+const mockCollectionWrapperCache = new Map();
 function makeMockCollection(store) {
+  if (mockCollectionWrapperCache.has(store)) return mockCollectionWrapperCache.get(store);
   const listenersByDoc = new Map();
   const subcollections = new Map();
 
@@ -282,7 +292,7 @@ function makeMockCollection(store) {
     };
   }
 
-  return {
+  const wrapper = {
     doc(id) { return makeDocRef(id != null ? String(id) : 'auto_' + Math.random().toString(36).slice(2)); },
     async add(data) {
       const ref = makeDocRef('auto_' + Math.random().toString(36).slice(2));
@@ -291,7 +301,13 @@ function makeMockCollection(store) {
     },
     where(field, op, value) { return makeQuery([{ field, op, value }], null, null); },
     orderBy(field, dir) { return makeQuery([], { field, dir: dir || 'asc' }, null); },
+    // .get() direct sur la collection (sans where/orderBy) : valide en vrai Firestore
+    // (renvoie tous les documents), jamais utilise avant les Groupes (Phase 2) - toutes
+    // les fonctionnalites precedentes filtraient/triaient toujours avant de lire.
+    get() { return makeQuery([], null, null).get(); },
   };
+  mockCollectionWrapperCache.set(store, wrapper);
+  return wrapper;
 }
 const mockTopCollections = new Map();
 // Sous-collections sous users/{uid}/... (autres que kv, voir plus bas) : isolées PAR
@@ -2332,7 +2348,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v48'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v49'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2552,7 +2568,7 @@ const cssText = __rawHtml + __cssSource;
   // 7 depuis l ajout de removeFriend() (chantier amis) : compte x2, defi, suggestion
   // d objectif, import de donnees, forcer la mise a jour, + retirer un ami.
   const confirmModalCallCount = (__rawHtml.match(/await confirmModal\\(\\{/g) || []).length;
-  __assertEq(confirmModalCallCount, 8, 'les 8 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup) doivent utiliser confirmModal');
+  __assertEq(confirmModalCallCount, 9, 'les 9 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup) doivent utiliser confirmModal');
   console.log('OK: les 4 anciens confirm() natifs (compte x2, defi, suggestion objectif) passent par confirmModal');
 
   // --- 99. Ecran Parametres dedie : navigation (ouverture/fermeture) + regroupe le
@@ -5101,6 +5117,174 @@ const cssText = __rawHtml + __cssSource;
 
   fetchFriendRecentActivities = originalFetchFriendRecentActivities;
   console.log('OK: openFriendProfile() ne lit que les donnees de CET ami via une requete ciblee, et court-circuite proprement si le profil est indisponible');
+
+  // --- 171. Groupes & Defis Collectifs (Phase 2 - fondations) : creation/adhesion par
+  // code, defi collectif simple (contribution via addSet(), comme le Boss Battle),
+  // reglement (simule ici cote client - le calcul reel vit dans
+  // functions/test/groups.test.js, closeExpiredGroupChallenges etant une Cloud
+  // Function server-only), bilan + "Gage honore", invitation via notification. ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  myGroups = []; myActiveGroupChallenges = [];
+  groupJoinError = null;
+
+  await createGroup('Les Costauds', '💪');
+  __assertOk(openGroupId, 'creer un groupe doit ouvrir directement son detail');
+  const createdGroupId = openGroupId;
+  const createdGroupDoc = await db.collection('groups').doc(createdGroupId).get();
+  __assertOk(createdGroupDoc.exists && createdGroupDoc.data().name === 'Les Costauds' && createdGroupDoc.data().memberCount === 1, 'le doc groupe doit etre cree avec memberCount=1');
+  __assertOk(/^[A-Z0-9]{6}$/.test(createdGroupDoc.data().code), 'le code doit faire 6 caracteres alphanumeriques majuscules');
+  const groupCode = createdGroupDoc.data().code;
+  const codeDoc = await db.collection('groups_by_code').doc(groupCode).get();
+  __assertEq(codeDoc.data().groupId, createdGroupId, 'le code doit pointer vers le bon groupe');
+  const myMemberDoc = await db.collection('groups').doc(createdGroupId).collection('members').doc('me-uid').get();
+  __assertOk(myMemberDoc.exists && myMemberDoc.data().role === 'creator', 'le createur doit avoir son propre doc membre avec role creator');
+  const myGroupsIndexDoc = await db.collection('users').doc('me-uid').collection('myGroups').doc(createdGroupId).get();
+  __assertOk(myGroupsIndexDoc.exists, 'un index personnel doit etre cree dans users/{uid}/myGroups (jamais lu par personne d autre)');
+  console.log('OK: createGroup() (code a 6 caracteres, doc groupe + membre + index personnel en un seul batch)');
+
+  // Bob rejoint avec le code.
+  currentUser = { uid: 'bob-uid', displayName: 'Bob Martin', email: 'b@test.com', photoURL: '' };
+  await joinGroupByCode(groupCode);
+  __assertEq(openGroupId, createdGroupId, 'rejoindre par code doit ouvrir le detail du groupe');
+  const bobMemberDoc = await db.collection('groups').doc(createdGroupId).collection('members').doc('bob-uid').get();
+  __assertOk(bobMemberDoc.exists && bobMemberDoc.data().role === 'member', 'Bob doit avoir son propre doc membre, role member');
+  const groupAfterJoin = await db.collection('groups').doc(createdGroupId).get();
+  __assertEq(groupAfterJoin.data().memberCount, 2, 'memberCount doit s incrementer a l adhesion');
+
+  // Code invalide.
+  groupJoinError = null;
+  await joinGroupByCode('ZZZZZZ');
+  __assertEq(groupJoinError, 'not-found', 'un code inconnu doit signaler not-found, sans planter');
+
+  // Groupe plein (plafond 20 membres).
+  await db.collection('groups').doc(createdGroupId).set({ memberCount: 20 }, { merge: true });
+  groupJoinError = null;
+  currentUser = { uid: 'chloe-uid', displayName: 'Chloe D.', email: 'c@test.com', photoURL: '' };
+  await joinGroupByCode(groupCode);
+  __assertEq(groupJoinError, 'full', 'un groupe deja a 20 membres doit refuser une nouvelle adhesion');
+  await db.collection('groups').doc(createdGroupId).set({ memberCount: 2 }, { merge: true }); // restaure pour la suite
+  console.log('OK: joinGroupByCode() (adhesion, code introuvable, groupe complet)');
+
+  // refreshMyGroupsAndActiveChallenges() : alimente myActiveGroupChallenges (utilise par
+  // registerGroupChallengeContributionsIfNeeded()), aucun defi actif pour l instant.
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  myGroups = []; myActiveGroupChallenges = [];
+  await refreshMyGroupsAndActiveChallenges();
+  __assertEq(myGroups.length, 1, 'je dois retrouver le groupe que je viens de creer');
+  __assertEq(myActiveGroupChallenges.length, 0, 'aucun defi actif pour l instant dans ce groupe');
+
+  // Creation d'un defi collectif : le createur recoit son propre doc participant
+  // (initialise a 0) - chaque membre n'ecrit QUE son propre doc (voir les regles
+  // Firestore), un membre qui n'ouvre jamais le groupe ni ne contribue restera hors
+  // du reglement final (simplification assumee, voir le commentaire de
+  // ensureMyParticipantDoc()).
+  const challengeEndDate = Date.now() + 7 * 24 * 3600 * 1000;
+  await createGroupChallenge(createdGroupId, {
+    name: 'Pompes de la semaine', exerciseSlug: pompes.slug,
+    startDate: dateKey(new Date()), endDate: challengeEndDate,
+    targetTotal: 500, stakeMode: '5050', stakeDescription: 'Offre une biere',
+  });
+  const challengesSnap = await db.collection('groups').doc(createdGroupId).collection('challenges').get();
+  __assertEq(challengesSnap.size, 1, 'un seul defi doit avoir ete cree');
+  const groupChallengeId = challengesSnap.docs[0].id;
+  __assertEq(challengesSnap.docs[0].data().status, 'active');
+  __assertEq(challengesSnap.docs[0].data().stakeMode, '5050');
+  const myParticipantDoc0 = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid').get();
+  __assertOk(myParticipantDoc0.exists && myParticipantDoc0.data().totalAmount === 0, 'le createur du defi doit avoir son propre doc participant initialise a 0');
+  await refreshMyGroupsAndActiveChallenges();
+  __assertEq(myActiveGroupChallenges.length, 1, 'le nouveau defi actif doit apparaitre dans myActiveGroupChallenges');
+  __assertEq(myActiveGroupChallenges[0].exerciseSlug, pompes.slug, 'le bon exerciseSlug doit etre associe');
+  console.log('OK: createGroupChallenge() (doc defi + mon propre doc participant, repris par refreshMyGroupsAndActiveChallenges())');
+
+  // Contribution via addSet() (comme registerBossBattleContributionIfNeeded()) : chaque
+  // serie loguee sur le MEME exercice contribue, pas seulement la complétion du défi.
+  activeToday = new Set([pompes.id]);
+  await pickChallenge(pompes.id);
+  await addSet(10);
+  const myParticipantAfter = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid').get();
+  __assertEq(myParticipantAfter.data().totalAmount, 10, 'ma serie loguee sur l exercice cible du defi doit incrementer mon totalAmount');
+
+  // Bob contribue aussi (davantage) : verifie qu un defi peut recevoir des
+  // contributions de PLUSIEURS membres, chacun son propre doc.
+  currentUser = { uid: 'bob-uid', displayName: 'Bob Martin', email: 'b@test.com', photoURL: '' };
+  myActiveGroupChallenges = [];
+  await refreshMyGroupsAndActiveChallenges();
+  activeToday = new Set([pompes.id]);
+  await pickChallenge(pompes.id);
+  await addSet(30);
+  const bobParticipantAfter = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('bob-uid').get();
+  __assertEq(bobParticipantAfter.data().totalAmount, 30, 'la serie de Bob doit incrementer SON PROPRE doc participant, pas celui de Moi');
+  console.log('OK: registerGroupChallengeContributionsIfNeeded() (hook addSet(), chaque membre incremente son propre doc participant)');
+
+  // Detail du groupe : classement du defi actif, rang gratuit (index du tableau).
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  await loadGroupDetail(createdGroupId);
+  __assertOk(groupDetailChallenge && groupDetailChallenge.status === 'active', 'le defi actif doit etre charge');
+  __assertEq(groupDetailChallenge.participants.length, 2, 'les 2 participants ayant contribue doivent apparaitre');
+  __assertEq(groupDetailChallenge.participants[0].uid, 'bob-uid', 'Bob (30) doit etre classe avant Moi (10)');
+  const groupDetailHtml = renderGroupDetailScreen();
+  __assertOk(groupDetailHtml.includes('Pompes de la semaine'), 'le nom du defi doit etre affiche');
+  __assertOk(groupDetailHtml.includes('#1') && groupDetailHtml.includes('#2'), 'le classement doit afficher un rang numerique exact pour chaque participant');
+  console.log('OK: loadGroupDetail() (roster + defi actif classe par totalAmount decroissant, rang exact gratuit)');
+
+  // Bilan (simule ici : le reglement REEL est calcule par closeExpiredGroupChallenges,
+  // une Cloud Function server-only - voir functions/test/groups.test.js pour
+  // computeSettlementPairs()). On simule juste l etat "regle" pour tester le rendu et
+  // le bouton "Gage honore !".
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).set({ status: 'settled', settledAt: Date.now() }, { merge: true });
+  const ledgerEntryId = groupChallengeId + '_me-uid_bob-uid';
+  await db.collection('groups').doc(createdGroupId).collection('ledger').doc(ledgerEntryId).set({
+    challengeId: groupChallengeId, fromUid: 'me-uid', toUid: 'bob-uid',
+    stakeDescription: 'Offre une biere', createdAt: Date.now(), honoredAt: null, honoredBy: null,
+  });
+  await loadGroupDetail(createdGroupId);
+  __assertEq(groupDetailChallenge.status, 'settled');
+  __assertEq(groupDetailLedger.length, 1, 'l entree ledger du defi regle doit etre chargee');
+  const bilanHtml = renderGroupDetailScreen();
+  __assertOk(bilanHtml.includes('Offre une biere'), 'le gage doit etre affiche dans le bilan');
+  __assertOk(bilanHtml.includes(t('groups.honorBtn')), 'le bouton "Gage honore !" doit etre propose tant que non honore');
+
+  await honorLedgerEntry(createdGroupId, ledgerEntryId);
+  const honoredDoc = await db.collection('groups').doc(createdGroupId).collection('ledger').doc(ledgerEntryId).get();
+  __assertOk(honoredDoc.data().honoredAt, 'honorLedgerEntry() doit marquer honoredAt');
+  __assertEq(honoredDoc.data().honoredBy, 'me-uid', 'honoredBy doit etre celui qui declare le gage honore');
+  console.log('OK: bilan (classement + % implicite, "qui doit quoi a qui", bouton Gage honore!)');
+
+  // Invitation d'un ami via le canal de notifications existant (comme les demandes
+  // d ami) - acceptee via processUnreadNotifications()/confirmModal().
+  myFriends = [{ uid: 'chloe-uid', displayName: 'Chloe D.', photoURL: '' }];
+  await inviteFriendToGroup(createdGroupId, 'Les Costauds', 'chloe-uid');
+  const inviteNotifSnap = await notificationsCollRef('chloe-uid').where('read', '==', false).get();
+  __assertEq(inviteNotifSnap.size, 1, 'une notification group_invite doit etre creee pour Chloe');
+  __assertEq(inviteNotifSnap.docs[0].data().type, 'group_invite');
+
+  currentUser = { uid: 'chloe-uid', displayName: 'Chloe D.', email: 'c@test.com', photoURL: '' };
+  const originalConfirmModalGroups = confirmModal;
+  confirmModal = async () => true; // simule l acceptation de l invitation
+  await processUnreadNotifications(inviteNotifSnap);
+  confirmModal = originalConfirmModalGroups;
+  const chloeMemberDoc = await db.collection('groups').doc(createdGroupId).collection('members').doc('chloe-uid').get();
+  __assertOk(chloeMemberDoc.exists, 'accepter l invitation depuis la notification doit ajouter Chloe comme membre');
+  console.log('OK: invitation a un groupe via le canal de notifications existant (accept -> joinGroupById())');
+
+  // Navigation : goBackOneLevel() ferme le plus imbrique en premier (formulaire de
+  // defi avant le detail du groupe), meme discipline que le reste de l app.
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  activeTab = 'groups';
+  openGroupId = createdGroupId;
+  creatingGroupChallenge = true;
+  goBackOneLevel();
+  __assertOk(!creatingGroupChallenge, 'goBackOneLevel() doit fermer le formulaire de defi en premier (le plus imbrique)');
+  __assertEq(openGroupId, createdGroupId, 'le detail du groupe doit rester ouvert apres avoir juste ferme le formulaire');
+  goBackOneLevel();
+  __assertEq(openGroupId, null, 'un 2e goBackOneLevel() doit fermer le detail du groupe');
+
+  openGroupId = createdGroupId;
+  switchTab('groups'); // onglet deja actif -> doit reinitialiser sa pile de navigation
+  __assertEq(openGroupId, null, 'cliquer sur l onglet Groupes deja actif doit fermer le detail ouvert et revenir a la racine');
+  activeTab = 'today';
+  console.log('OK: navigation Groupes (goBackOneLevel() ferme le plus imbrique en premier, clic sur l onglet deja actif reinitialise)');
 
   console.log('\\nTous les tests runtime sont passes.');
 })().then(() => { __done(); }).catch(e => { __fail(e); });

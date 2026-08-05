@@ -23,6 +23,14 @@
         { "fieldPath": "date", "order": "ASCENDING" },
         { "fieldPath": "amount", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "challenges",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "endDate", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
