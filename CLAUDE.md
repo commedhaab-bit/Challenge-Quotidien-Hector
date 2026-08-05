@@ -1917,3 +1917,44 @@ membres comprennent l'ecart entre le total affiche et le classement de reglement
 reel. Aucun nouvel index Firestore necessaire (aucune nouvelle requete, seulement
 des lectures de documents individuels deja connus par leur ID).
 
+## Phase 5 (Raids Express) implementee puis retiree
+
+Une Phase 5 "Raids Express" (mini-defi spontane 24h/48h, enjeu fixe et inverse -
+le createur offre en cas de succes) a ete implementee, testee, deployee en prod,
+puis **retiree a la demande explicite de l'utilisateur** (`git revert`) apres un
+premier test reel : l'enjeu "inverse" (le createur, qui a lui-meme fait le travail
+et "gagne", doit pourtant payer) s'est avere contre-intuitif en pratique, et
+l'utilisateur a juge la fonctionnalite peu interessante dans l'ensemble. **Ne pas
+la re-proposer sans qu'elle soit explicitement redemandee** - si elle revient un
+jour, repartir du principe INVERSE (succes -> le groupe doit au createur, coherent
+avec le mode `winnerTakesAll` des defis classiques) plutot que le sens original du
+plan initial.
+
+## Correctif : perte de focus/clavier a chaque frappe (onglet Groupes)
+
+**Bug reel signale en prod** : dans TOUS les formulaires texte de l'onglet Groupes
+(creer un groupe, rejoindre par code, creer un defi collectif - nom/objectif/gage),
+taper une lettre faisait disparaitre le clavier/focus, obligeant a recliquer dans
+le champ a chaque caractere. Cause racine : `render()` remplace INTEGRALEMENT le
+`innerHTML` de `#app` a chaque frappe (chaque `updateXxxDraft()` appelle `render()`
+en direct) - un `<input>` recree perd toujours son focus navigateur. Ce probleme
+etait deja identifie et corrige au cas par cas pour la recherche Defis
+(`librarySearchInput`), la recherche d'amis (`friendSearchInput`) et le pseudo
+(`usernameSetupInput`), mais **la branche `activeTab === 'groups'` n'avait jamais
+recu ce filet** - oubli lors de l'implementation initiale des Groupes (Phase 2).
+
+**Corrige** en **generalisant** le filet plutot qu'en dupliquant un 4e bloc
+quasi-identique : `applyContentPreservingFocus(app, html, animate)` capture
+`document.activeElement` AVANT le re-rendu (id + position du curseur), puis le
+retrouve par son `id` APRES et lui rend le focus - fonctionne pour N'IMPORTE quel
+champ, peu importe l'ecran, contrairement aux 3 filets precedents qui ciblaient un
+seul id fixe chacun. Les 3 blocs existants (username/friends/library) ET le
+nouveau bloc Groupes utilisent desormais cette meme fonction. **Piege identifie en
+implementant** : ce mecanisme necessite que le champ concerne ait un `id="..."`
+explicite (recherche par `getElementById` apres le re-rendu) - `groupCreateNameInput`,
+`groupJoinCodeInput`, `groupChallengeNameInput`, `groupChallengeTargetInput` et
+`groupChallengeStakeDescInput` ont ete ajoutes a cet effet. **Tout futur champ
+texte dont le `oninput` appelle `render()` en direct doit recevoir un `id`
+explicite**, sinon `applyContentPreservingFocus()` ne peut pas le retrouver et le
+meme bug reapparaitra silencieusement.
+

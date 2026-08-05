@@ -4963,6 +4963,31 @@ function applyContent(app, html, animate, afterRender) {
   }
 }
 
+// applyContent() remplace TOUT le innerHTML de #app à chaque appel - y compris à
+// chaque frappe dans un champ texte dont le oninput appelle render() pour mettre à
+// jour un draft en direct (recherche, formulaires...). Sans filet, le NAVIGATEUR
+// détruit l'ancien <input> et en crée un nouveau (même valeur affichée) qui ne
+// reçoit jamais le focus : l'utilisateur ne peut alors taper qu'un seul caractère
+// à la fois avant de devoir recliquer dans le champ (bug de prod signalé sur les
+// formulaires de groupe). Générique (par ID, pas par écran) plutôt que dupliqué
+// par formulaire : capture l'input actuellement focus AVANT le re-rendu, le
+// retrouve par son id APRÈS, et lui rend le focus + la position du curseur.
+function applyContentPreservingFocus(app, html, animate) {
+  const el = document.activeElement;
+  const wasFocused = !!(el && el.id);
+  const focusedId = wasFocused ? el.id : null;
+  const caret = (wasFocused && typeof el.selectionStart === 'number') ? el.selectionStart : null;
+  applyContent(app, html, animate, () => {
+    if (!focusedId) return;
+    const input = document.getElementById(focusedId);
+    if (!input) return;
+    input.focus();
+    if (caret !== null && input.setSelectionRange) {
+      try { input.setSelectionRange(caret, caret); } catch (e) { /* certains types (number, select) ne supportent pas setSelectionRange */ }
+    }
+  });
+}
+
 function render(animate) {
   const app = document.getElementById('app');
   const today = new Date();
@@ -4978,35 +5003,16 @@ function render(animate) {
   }
 
   if (usernameSetupMode) {
-    // Même filet de restauration du focus/curseur que le champ de recherche Défis
-    // (updateUsernameDraft() appelle render() à chaque frappe pour la vérif de
-    // disponibilité en direct) : sans ça, un seul caractère taperait à la fois.
-    const usernameEl = document.activeElement;
-    const usernameWasFocused = !!(usernameEl && usernameEl.id === 'usernameSetupInput');
-    const usernameCaret = usernameWasFocused ? usernameEl.selectionStart : null;
-    applyContent(app, renderUsernameSetupScreen(), animate, () => {
-      if (!usernameWasFocused) return;
-      const input = document.getElementById('usernameSetupInput');
-      if (!input) return;
-      input.focus();
-      if (usernameCaret !== null && input.setSelectionRange) input.setSelectionRange(usernameCaret, usernameCaret);
-    });
+    // updateUsernameDraft() appelle render() à chaque frappe (vérif de disponibilité
+    // en direct) - voir applyContentPreservingFocus().
+    applyContentPreservingFocus(app, renderUsernameSetupScreen(), animate);
     return;
   }
 
   if (friendsScreenOpen) {
-    // Même filet de restauration du focus/curseur (voir usernameSetupMode ci-dessus) :
-    // updateFriendSearchQuery() appelle render() à chaque frappe.
-    const friendEl = document.activeElement;
-    const friendWasFocused = !!(friendEl && friendEl.id === 'friendSearchInput');
-    const friendCaret = friendWasFocused ? friendEl.selectionStart : null;
-    applyContent(app, renderFriendsScreen(), animate, () => {
-      if (!friendWasFocused) return;
-      const input = document.getElementById('friendSearchInput');
-      if (!input) return;
-      input.focus();
-      if (friendCaret !== null && input.setSelectionRange) input.setSelectionRange(friendCaret, friendCaret);
-    });
+    // updateFriendSearchQuery() appelle render() à chaque frappe - voir
+    // applyContentPreservingFocus().
+    applyContentPreservingFocus(app, renderFriendsScreen(), animate);
     return;
   }
 
@@ -5016,20 +5022,9 @@ function render(animate) {
   }
 
   if (activeTab === 'library') {
-    // applyContent() remplace tout le innerHTML de #app à chaque frappe dans le champ
-    // de recherche (updateLibrarySearch() appelle render() sur chaque oninput) : sans
-    // ce filet, le nouvel <input> (même valeur affichée) ne recevrait jamais le focus
-    // du navigateur, et l'utilisateur ne pourrait taper qu'un seul caractère à la fois.
-    const searchEl = document.activeElement;
-    const searchWasFocused = !!(searchEl && searchEl.id === 'librarySearchInput');
-    const searchCaret = searchWasFocused ? searchEl.selectionStart : null;
-    applyContent(app, renderLibraryScreen() + renderTabBar() + renderGuidedTourOverlay(), animate, () => {
-      if (!searchWasFocused) return;
-      const input = document.getElementById('librarySearchInput');
-      if (!input) return;
-      input.focus();
-      if (searchCaret !== null && input.setSelectionRange) input.setSelectionRange(searchCaret, searchCaret);
-    });
+    // updateLibrarySearch() appelle render() à chaque frappe - voir
+    // applyContentPreservingFocus().
+    applyContentPreservingFocus(app, renderLibraryScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
     return;
   }
 
@@ -5044,7 +5039,9 @@ function render(animate) {
   }
 
   if (activeTab === 'groups') {
-    applyContent(app, renderGroupsScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
+    // Plusieurs champs texte possibles selon l'écran (créer un groupe, rejoindre par
+    // code, formulaire de défi collectif...) - voir applyContentPreservingFocus().
+    applyContentPreservingFocus(app, renderGroupsScreen() + renderTabBar() + renderGuidedTourOverlay(), animate);
     return;
   }
 
@@ -6574,7 +6571,7 @@ function renderGroupsScreen() {
 
   const createFormHtml = creatingGroupOpen ? `
     <div class="section-label">${t('groups.createTitle')}</div>
-    <input class="library-search-input" type="text" placeholder="${t('groups.createNamePlaceholder')}"
+    <input id="groupCreateNameInput" class="library-search-input" type="text" placeholder="${t('groups.createNamePlaceholder')}"
            value="${escapeHtml(groupCreateNameInput)}" oninput="updateGroupCreateNameInput(this.value)">
     <button class="friend-search-submit-btn" onclick="createGroup(groupCreateNameInput, '💪')">${t('groups.createSubmitBtn')}</button>
   ` : `<button class="friend-action-btn" onclick="toggleCreatingGroupOpen()">${t('groups.createBtn')}</button>`;
@@ -6588,7 +6585,7 @@ function renderGroupsScreen() {
     <div class="section-label">${t('groups.myGroupsLabel')}</div>
     ${groupsHtml}
     <div class="section-label">${t('groups.joinTitle')}</div>
-    <input class="library-search-input" type="text" placeholder="${t('groups.joinCodePlaceholder')}"
+    <input id="groupJoinCodeInput" class="library-search-input" type="text" placeholder="${t('groups.joinCodePlaceholder')}"
            value="${escapeHtml(groupJoinCodeInput)}" oninput="updateGroupJoinCodeInput(this.value)">
     <button class="friend-search-submit-btn" onclick="joinGroupByCode(groupJoinCodeInput)">${t('groups.joinBtn')}</button>
     ${joinErrorHtml}
@@ -6878,7 +6875,7 @@ function renderCreateGroupChallengeForm() {
   return `
     <button class="nav-back-btn" onclick="history.back()" aria-label="${t('groups.backAria')}">‹</button>
     <h1 class="title">${t('groups.createChallengeTitle')}</h1>
-    <input class="library-search-input" type="text" placeholder="${t('groups.challengeNamePlaceholder')}"
+    <input id="groupChallengeNameInput" class="library-search-input" type="text" placeholder="${t('groups.challengeNamePlaceholder')}"
            value="${escapeHtml(d.name)}" oninput="updateGroupChallengeDraft('name', this.value)">
     <select class="library-search-input" onchange="updateGroupChallengeDraft('exerciseSlug', this.value)">
       <option value="">${t('groups.exercisePlaceholder')}</option>
@@ -6886,13 +6883,13 @@ function renderCreateGroupChallengeForm() {
     </select>
     <input class="library-search-input" type="date" value="${escapeHtml(d.startDate)}" onchange="updateGroupChallengeDraft('startDate', this.value)">
     <input class="library-search-input" type="date" value="${escapeHtml(d.endDate)}" onchange="updateGroupChallengeDraft('endDate', this.value)">
-    <input class="library-search-input" type="number" min="1" placeholder="${t('groups.targetPlaceholder')}"
+    <input id="groupChallengeTargetInput" class="library-search-input" type="number" min="1" placeholder="${t('groups.targetPlaceholder')}"
            value="${escapeHtml(String(d.targetTotal))}" oninput="updateGroupChallengeDraft('targetTotal', this.value)">
     ${target > 0 ? `<div class="rank-bar-hint">${t('groups.perPersonHint', { n: perPerson })}</div>` : ''}
     <select class="library-search-input" onchange="updateGroupChallengeDraft('stakeMode', this.value)">
       ${stakeOptions}
     </select>
-    <input class="library-search-input" type="text" placeholder="${t('groups.stakeDescriptionPlaceholder')}"
+    <input id="groupChallengeStakeDescInput" class="library-search-input" type="text" placeholder="${t('groups.stakeDescriptionPlaceholder')}"
            value="${escapeHtml(d.stakeDescription)}" oninput="updateGroupChallengeDraft('stakeDescription', this.value)">
     <button class="friend-search-submit-btn" onclick="submitGroupChallengeForm()">${t('groups.createChallengeSubmitBtn')}</button>
   `;

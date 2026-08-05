@@ -2387,7 +2387,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v54'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v56'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2928,6 +2928,24 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(focusCalls, 1, 'render() doit rappeler focus() sur le champ de recherche apres chaque frappe (callback afterRender), sinon la saisie serait cassee');
   activeTab = 'today';
   console.log('OK: le focus du champ de recherche est restaure apres chaque frappe (render() complet)');
+
+  // Regression d un bug reel signale en prod : les champs texte de l onglet Groupes
+  // (creer un groupe, formulaire de defi collectif...) perdaient le focus/clavier a
+  // CHAQUE frappe - contrairement a la recherche Defis ci-dessus, la branche
+  // activeTab==='groups' de render() n avait PAS le meme filet de restauration.
+  // Corrige en generalisant le filet (applyContentPreservingFocus(), par ID plutot
+  // que par ecran) et en ajoutant les id="..." manquants sur ces champs.
+  activeTab = 'groups';
+  openGroupId = null;
+  render();
+  const groupNameInputEl = document.getElementById('groupCreateNameInput');
+  groupNameInputEl.focus();
+  let groupNameFocusCalls = 0;
+  groupNameInputEl.focus = () => { groupNameFocusCalls++; };
+  updateGroupCreateNameInput('Les Costauds');
+  __assertEq(groupNameFocusCalls, 1, 'taper dans le champ "creer un groupe" ne doit plus faire perdre le focus a chaque frappe (bug reel signale en prod)');
+  activeTab = 'today';
+  console.log('OK: le focus des champs texte de l onglet Groupes est restaure apres chaque frappe (regression corrigee)');
 
   // --- 116. Raccourcis PWA (#7) : ?tab=... positionne activeTab au demarrage
   // et nettoie ensuite l URL (evite de re-declencher au prochain rechargement) ---
