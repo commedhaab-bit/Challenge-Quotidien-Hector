@@ -772,12 +772,6 @@
   /* Badge texte ("Hors Top 50"/"Juste devant"/"Juste derrière") remplaçant un rang
      numérique dans le bloc hors Top 50 (voir renderLeaderboardRow()) : la largeur
      fixe de 28px ci-dessus est bien trop étroite pour du texte. */
-  .leaderboard-rank-badge {
-    width: auto;
-    max-width: 78px;
-    font-size: 10.5px;
-    line-height: 1.2;
-  }
   .leaderboard-avatar, .leaderboard-avatar-fallback {
     width: 32px;
     height: 32px;
@@ -855,7 +849,7 @@
   /* Écart de points avec la personne juste au-dessus (voir renderCommunityScreen()) :
      petit texte centré sous le bloc "Hors Top 50", garde le côté stimulant sans rang
      numérique exact. */
-  .rank-gap-hint {
+  .rank-bar-hint {
     font-size: 11px;
     font-weight: 700;
     color: var(--chalk-dim);

@@ -177,10 +177,7 @@ const LOCALE_FR = {
     shareInviteText: 'Rejoins-moi sur Défi du Jour pour relever le défi communautaire ⚡',
     streakValue: '🔥 {{n}} j',
     xpValue: '⚡ {{n}} XP',
-    outsideTop50: 'Hors Top 50',
-    rankAbove: 'Juste devant',
-    rankBelow: 'Juste derrière',
-    rankGapHint: 'Encore {{gap}} pour dépasser {{name}} !',
+    rankOutOfTotal: 'sur {{total}} participants',
     views: {
       streaks: 'Séries',
       weekly: 'Hebdo',

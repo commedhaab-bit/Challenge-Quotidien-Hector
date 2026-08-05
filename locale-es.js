@@ -175,10 +175,7 @@ const LOCALE_ES = {
     shareInviteText: 'Únete a mí en Défi du Jour para aceptar el reto comunitario ⚡',
     streakValue: '🔥 {{n}} d',
     xpValue: '⚡ {{n}} XP',
-    outsideTop50: 'Fuera del Top 50',
-    rankAbove: 'Justo delante',
-    rankBelow: 'Justo detrás',
-    rankGapHint: '¡Solo {{gap}} más para superar a {{name}}!',
+    rankOutOfTotal: 'de {{total}} participantes',
     views: {
       streaks: 'Rachas',
       weekly: 'Semanal',

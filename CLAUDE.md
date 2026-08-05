@@ -1602,3 +1602,44 @@ ou proactivement dans Firestore > Index > Composites.
 
 Runtime des fonctions : Node 22 (bascule depuis Node 20, deprecie et decommissionne le 2026-10-30).
 
+## Phase 1 : classement precalcule cote serveur (aggregateLeaderboard + getMyRank)
+
+Remplace l'ancien mecanisme 100% client (Top 50 par `.limit()` + 2 requetes ciblees
+"voisins" pour approximer la position hors Top 50, sans jamais afficher de rang
+exact - `.count()` indisponible sur le SDK compat client) par une agregation
+planifiee cote serveur : le client ne fait plus qu'UNE lecture d'un document deja
+calcule.
+
+- **`aggregateLeaderboard`** (Scheduled Function, 15 min) : lit `leaderboard` en
+entier (1 passage partage par tout le monde), ecrit UNIQUEMENT 3 documents
+`leaderboardCache/{streaks|weekly|alltime}` (Top 100 + `totalCount`) — **n'ecrit
+jamais** sur les documents individuels `leaderboard/{uid}` (aurait fait exploser
+le quota gratuit d'ecritures des quelques centaines d'utilisateurs).
+- **`getMyRank`** (Callable) : rang exact pour qui n'est pas dans le Top 100,
+calcule A LA DEMANDE via `.count()` cote Admin SDK (fonctionnel, contrairement au
+SDK compat client - voir le bug deja documente plus haut). `weekStart` est fourni
+par le CLIENT (coherent avec sa propre notion locale de "cette semaine"), jamais
+recalcule cote serveur (fuseau horaire).
+- **UI simplifiee** : rang numerique EXACT partout desormais (gratuit dans le Top
+100, via `getMyRank` sinon) — retrait complet du badge "Hors Top 50"/voisins
+"Juste devant"/"Juste derriere" et de `rank-gap-hint` (renomme `rank-bar-hint`,
+reutilise pour afficher "sur N participants", desormais disponible sans cout
+supplementaire dans le meme document `leaderboardCache`).
+- **Ma propre ligne toujours a jour** : `leaderboardCache` n'etant rafraichi que
+toutes les 15 min cote serveur, `loadCommunityLeaderboard()` PATCHE ma propre
+entree (si visible dans le Top N) avec ma valeur EN MEMOIRE a jour, cote client,
+sans lecture supplementaire - garantit que je vois toujours mon propre score a
+jour meme si le cache serveur ne l'a pas encore rattrape. Mon RANG (si hors Top
+100) reste lui invalide/recalcule immediatement via `invalidateLeaderboardCache()`
+(deja appele par `syncLeaderboardEntry()`), puisque `getMyRank` lit toujours des
+donnees live.
+- **Aucun nouvel index Firestore necessaire** : l'index composite
+`xpWeekStart`+`xpWeekly` deja cree pour l'ancien mecanisme couvre aussi la
+requete hebdomadaire de `getMyRank` (memes champs, direction compatible avec une
+inegalite simple sans `orderBy` explicite).
+- **Client** : ajout du SDK `firebase-functions-compat.js` (4e script Firebase,
+meme discipline de chargement synchrone que les 3 autres - voir l'avertissement
+`defer` en tete du fichier) + `functionsClient = firebase.app().functions(
+'europe-west1')` (la region DOIT correspondre exactement a `setGlobalOptions()`
+dans `functions/index.js`).
+

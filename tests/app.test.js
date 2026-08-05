@@ -300,6 +300,17 @@ const mockTopCollections = new Map();
 const usersSubcollections = new Map();
 let leaderboardSetCallCount = 0;
 let leaderboardGetCallCount = 0;
+let leaderboardCacheGetCallCount = 0;
+
+// Mock du Cloud Function Callable getMyRank() (Phase 1 : classement precalcule cote
+// serveur, voir functions/index.js) : contrairement au reste du mock Firestore, on ne
+// reimplemente PAS la logique de calcul du rang ici (deja testee en isolation dans
+// functions/test/leaderboard.test.js) - le test controle directement la reponse
+// attendue, comme n'importe quelle dependance externe mockee.
+let mockGetMyRankResult = { rank: null, value: 0 };
+let mockGetMyRankShouldFail = false;
+let mockGetMyRankCallCount = 0;
+let mockGetMyRankLastArgs = null;
 
 const sandbox = {
   console,
@@ -377,6 +388,26 @@ const sandbox = {
   firebase: {
     initializeApp(){},
     auth(){ return { onAuthStateChanged(cb){ /* pilote manuellement depuis le test */ }, signInWithPopup(){ return Promise.resolve(); }, GoogleAuthProvider: function(){} }; },
+    // Mock de firebase.app().functions(region).httpsCallable(name) (Phase 1) : seule
+    // getMyRank est mockee pour l'instant (seul Callable existant cote client) - voir
+    // mockGetMyRankResult/__setMockGetMyRank ci-dessus/plus bas.
+    app(){
+      return {
+        functions(_region){
+          return {
+            httpsCallable(name){
+              return async (data) => {
+                if (name !== 'getMyRank') throw new Error('Callable non mockee dans les tests : ' + name);
+                mockGetMyRankCallCount++;
+                mockGetMyRankLastArgs = data;
+                if (mockGetMyRankShouldFail) throw new Error('getMyRank : echec simule par le test');
+                return { data: mockGetMyRankResult };
+              };
+            },
+          };
+        },
+      };
+    },
     firestore(){
       return {
         enablePersistence: () => Promise.resolve(),
@@ -418,6 +449,19 @@ const sandbox = {
                 ...ref,
                 async set(fields, opts) { leaderboardSetCallCount++; return ref.set(fields, opts); },
                 async get() { leaderboardGetCallCount++; return ref.get(); }, // voir fetchPublicProfile()
+              };
+            } };
+          }
+          // Compte les lectures du document precalcule leaderboardCache/{view} (Phase 1 :
+          // classement precalcule cote serveur, voir fetchLeaderboardTop()) : sert a
+          // verifier que le cache TTL cote client evite bien une relecture a chaque
+          // visite/changement de vue.
+          if (name === 'leaderboardCache') {
+            return { ...coll, doc(id) {
+              const ref = coll.doc(id);
+              return {
+                ...ref,
+                async get() { leaderboardCacheGetCallCount++; return ref.get(); },
               };
             } };
           }
@@ -463,6 +507,7 @@ const sandbox = {
     // rempli par un scenario precedent pourrait fausser un scenario suivant qui
     // repart d'un mock vide.
     if (typeof sandbox.invalidateLeaderboardCache === 'function') sandbox.invalidateLeaderboardCache();
+    sandbox.__resetMockGetMyRank();
   },
   alert(msg){ console.log('  [alert]', msg); },
   confirm(msg){ return true; },
@@ -481,6 +526,18 @@ const sandbox = {
   __resetLeaderboardSetCallCount() { leaderboardSetCallCount = 0; },
   get __leaderboardGetCallCount() { return leaderboardGetCallCount; },
   __resetLeaderboardGetCallCount() { leaderboardGetCallCount = 0; },
+  get __leaderboardCacheGetCallCount() { return leaderboardCacheGetCallCount; },
+  __resetLeaderboardCacheGetCallCount() { leaderboardCacheGetCallCount = 0; },
+  __setMockGetMyRank(result) { mockGetMyRankResult = result; },
+  __setMockGetMyRankShouldFail(shouldFail) { mockGetMyRankShouldFail = shouldFail; },
+  get __mockGetMyRankCallCount() { return mockGetMyRankCallCount; },
+  get __mockGetMyRankLastArgs() { return mockGetMyRankLastArgs; },
+  __resetMockGetMyRank() {
+    mockGetMyRankResult = { rank: null, value: 0 };
+    mockGetMyRankShouldFail = false;
+    mockGetMyRankCallCount = 0;
+    mockGetMyRankLastArgs = null;
+  },
   __mockCacheKeys: mockCacheKeys, // Cache Storage simule (forceAppUpdate)
   __mockSwRegistrations: mockSwRegistrations, // ServiceWorkerRegistration simulees (forceAppUpdate)
   __rawHtml: html, // fichier source complet de index.html (le <style> a ete extrait dans styles.css, voir __cssSource)
@@ -2263,7 +2320,7 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!inlineAppScriptTag.includes('defer'), 'le script inline de l appli ne doit jamais porter defer (no-op sur un script sans src, casse l ordre avec les SDK Firebase differes)');
   __assertOk(!inlineAppScriptTag.includes('async'), 'le script inline de l appli ne doit jamais porter async, pour la meme raison');
   const firebaseScriptTags = scriptTagsFound.filter(t => t.includes('gstatic.com/firebasejs'));
-  __assertEq(firebaseScriptTags.length, 3, 'les 3 SDK Firebase doivent etre presents');
+  __assertEq(firebaseScriptTags.length, 4, 'les 4 SDK Firebase doivent etre presents (app/auth/firestore + functions depuis la Phase 1 Cloud Functions)');
   __assertOk(firebaseScriptTags.every(t => !t.includes('defer') && !t.includes('async')), 'les SDK Firebase doivent rester charges de maniere synchrone (coherent avec le script inline non differe)');
   console.log('OK: SDK Firebase + script inline charges de maniere synchrone (pas de defer/async, ordre garanti)');
 
@@ -2275,7 +2332,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v46'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v47'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3724,9 +3781,9 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(selfDoc.data().kudosTotal, 0, 'impossible de se donner un kudos a soi-meme');
 
   // Rendu classement : jamais sur sa propre ligne (highlight=true), affiche ailleurs.
-  const ownLeaderboardRowHtml = renderLeaderboardRow({ uid: 'me-uid', displayName: 'Moi', streakCount: 5, kudosTotal: 0 }, 1, 'streaks', true);
+  const ownLeaderboardRowHtml = renderLeaderboardRow({ uid: 'me-uid', displayName: 'Moi', value: 5, kudosTotal: 0 }, 1, 'streaks', true);
   __assertOk(!ownLeaderboardRowHtml.includes('kudos-btn'), 'le bouton kudos ne doit jamais apparaitre sur sa propre ligne du classement');
-  const otherLeaderboardRowHtml = renderLeaderboardRow({ uid: 'cible-uid', displayName: 'Cible C.', streakCount: 3, kudosTotal: 5 }, 2, 'streaks', false);
+  const otherLeaderboardRowHtml = renderLeaderboardRow({ uid: 'cible-uid', displayName: 'Cible C.', value: 3, kudosTotal: 5 }, 2, 'streaks', false);
   __assertOk(otherLeaderboardRowHtml.includes('kudos-btn') && otherLeaderboardRowHtml.includes('👏 5'), 'le bouton kudos doit apparaitre sur la ligne de quelqu un d autre, avec son cumul a vie');
 
   __resetCommunityMocks();
@@ -3834,19 +3891,32 @@ const cssText = __rawHtml + __cssSource;
   currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
   console.log('OK: notifications (sous-collection users/uid/notifications, listener unique, rattrapage natif, nom stocke a l ecriture)');
 
-  // --- 146. Classement : Top 50 par simple .limit() (plus de scan complet) ---
+  // --- 146. Classement precalcule cote serveur (Phase 1, Cloud Functions) : le
+  // client lit desormais UNIQUEMENT le document deja agrege leaderboardCache/{view}
+  // (voir functions/index.js:aggregateLeaderboard), simulé ici par une ecriture
+  // directe du document (comme si la fonction planifiee venait de s executer) - 1
+  // seule lecture, quelle que soit la taille reelle de la communaute. Rang exact
+  // gratuit pour tout le monde dans le Top N (simple index du tableau precalcule). ---
   __resetCommunityMocks();
-  await db.collection('leaderboard').doc('uidA').set({ displayName: 'Alice', streakCount: 10, xpTotal: 500, xpWeekly: 50, xpWeekStart: wkNow }, { merge: true });
-  await db.collection('leaderboard').doc('uidB').set({ displayName: 'Bob', streakCount: 8, xpTotal: 300, xpWeekly: 90, xpWeekStart: wkNow }, { merge: true });
-  await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Moi', streakCount: 5, xpTotal: 150, xpWeekly: 20, xpWeekStart: wkNow }, { merge: true });
-  await db.collection('leaderboard').doc('uidD').set({ displayName: 'Dan', streakCount: 3, xpTotal: 50, xpWeekly: 5, xpWeekStart: wkNow }, { merge: true });
+  currentUser = { uid: 'test-uid', displayName: 'Moi', email: 'a@test.com', photoURL: '' };
+  xpTotal = 150; xpWeekly = 20; streakCount = 5;
+  const seedCache = (view, entries, totalCount) => db.collection('leaderboardCache').doc(view).set({ entries, totalCount, updatedAt: Date.now() });
+  await seedCache('streaks', [
+    { uid: 'uidA', displayName: 'Alice', photoURL: '', value: 10, kudosTotal: 0 },
+    { uid: 'uidB', displayName: 'Bob', photoURL: '', value: 8, kudosTotal: 0 },
+    { uid: 'test-uid', displayName: 'Moi', photoURL: '', value: 5, kudosTotal: 0 },
+    { uid: 'uidD', displayName: 'Dan', photoURL: '', value: 3, kudosTotal: 0 },
+  ], 4);
+  await seedCache('alltime', [
+    { uid: 'uidA', displayName: 'Alice', photoURL: '', value: 500, kudosTotal: 0 },
+    { uid: 'uidB', displayName: 'Bob', photoURL: '', value: 300, kudosTotal: 0 },
+    { uid: 'test-uid', displayName: 'Moi', photoURL: '', value: 150, kudosTotal: 0 },
+    { uid: 'uidD', displayName: 'Dan', photoURL: '', value: 50, kudosTotal: 0 },
+  ], 4);
 
-  const topStreaks = await fetchLeaderboardTop('streaks', 50);
-  __assertEq(topStreaks.map(e => e.displayName), ['Alice', 'Bob', 'Moi', 'Dan'], 'la vue Series doit trier par streakCount decroissant');
-  const topAlltime = await fetchLeaderboardTop('alltime', 50);
-  __assertEq(topAlltime.map(e => e.displayName), ['Alice', 'Bob', 'Moi', 'Dan'], 'la vue Legendes doit trier par xpTotal decroissant');
-  const topWeekly = await fetchLeaderboardTop('weekly', 50);
-  __assertEq(topWeekly.map(e => e.displayName), ['Bob', 'Alice', 'Moi', 'Dan'], 'la vue Hebdomadaire doit trier par xpWeekly decroissant');
+  const topStreaks = await fetchLeaderboardTop('streaks');
+  __assertEq(topStreaks.entries.map(e => e.displayName), ['Alice', 'Bob', 'Moi', 'Dan'], 'fetchLeaderboardTop() doit renvoyer les entrees telles que precalculees par aggregateLeaderboard, sans re-trier ni re-filtrer cote client');
+  __assertEq(topStreaks.totalCount, 4);
 
   activeTab = 'today';
   activeTab = 'community';
@@ -3854,47 +3924,56 @@ const cssText = __rawHtml + __cssSource;
   await loadCommunityLeaderboard('alltime');
   const communityHtml = renderCommunityScreen();
   __assertOk(communityHtml.includes('leaderboard-tabs') && communityHtml.includes('leaderboard-row'), 'l ecran Communaute doit afficher les onglets et les lignes de classement');
-  // Ici, seulement 4 personnes au total : "Moi" est deja dans le Top 50 -> aucune
-  // requete de voisins ne doit avoir ete declenchee, pas de barre "Hors Top 50".
-  __assertEq(communityLeaderboardNeighbors, null, 'aucune requete de voisins ne doit etre declenchee quand je suis deja dans le Top 50 affiche');
-  __assertOk(!communityHtml.includes('rank-bar'), 'la barre "Hors Top 50" ne doit PAS s afficher quand je suis deja visible dans la liste principale (evite le doublon de ma ligne)');
-  console.log('OK: classement Top 50 (limit direct, sans scan complet) trie correctement selon les 3 vues');
+  __assertOk(communityHtml.includes('#1') && communityHtml.includes('#3'), 'chaque ligne doit afficher un rang numerique EXACT (gratuit, simple index du tableau precalcule) - plus de badge approximatif');
+  // Ici, "Moi" est deja dans le Top N affiche -> aucun appel a getMyRank ne doit
+  // avoir ete declenche (pas seulement son resultat ignore : l appel lui-meme doit
+  // etre evite, voir loadCommunityLeaderboard()).
+  __assertEq(communityLeaderboardMyRank, null, 'aucun appel a getMyRank ne doit etre declenche quand je suis deja visible dans le Top N mis en cache');
+  __assertEq(__mockGetMyRankCallCount, 0, 'getMyRank() ne doit meme pas etre appelee dans ce cas');
+  __assertOk(!communityHtml.includes('rank-bar'), 'la barre de mon propre rang ne doit PAS s afficher quand je suis deja visible dans la liste principale (evite le doublon de ma ligne)');
 
-  // --- 146bis. Hors Top 50 : bloc "voisins" via 2 requetes CIBLEES (where(champ,'>',
-  // ...).limit(1) et l inverse), jamais un scan complet - badge "Hors Top 50" a la
-  // place d un rang numerique exact (impossible sans scan ni .count(), voir CLAUDE.md),
-  // et ecart de points affiche avec la personne juste au-dessus ---
-  for (let i = 0; i < 50; i++) {
-    await db.collection('leaderboard').doc('extra' + i).set(
-      { displayName: 'Extra' + i, streakCount: 1, xpTotal: 1000 - i, xpWeekly: 1, xpWeekStart: wkNow },
-      { merge: true }
-    );
-  }
-  // Ces 50 ecritures simulent d'AUTRES utilisateurs qui rejoignent PENDANT la visite
-  // deja en cours (146) - dans l'appli reelle, un nouveau chargement viendrait d'une
-  // VRAIE ré-entree sur l'onglet. On simule cette ré-entree ici (invalidation du cache
-  // TTL, voir 146quater plus bas pour le detail du TTL lui-meme).
-  invalidateLeaderboardCache();
+  // Ma propre ligne doit TOUJOURS refleter ma valeur EN MEMOIRE a jour, meme si le
+  // document leaderboardCache (rafraichi toutes les 15 min cote serveur seulement)
+  // n a pas encore vu un changement que je viens de faire moi-meme - patch cote
+  // client, sans lecture Firestore supplementaire (voir loadCommunityLeaderboard()).
+  xpTotal = 777;
   await loadCommunityLeaderboard('alltime');
-  __assertOk(!communityLeaderboardTop.some(e => e.uid === 'test-uid'), 'avec 54 personnes, mon xpTotal (150) ne doit plus faire partie du Top 50 affiche');
-  __assertOk(communityLeaderboardNeighbors, 'une requete de voisins ciblee doit avoir ete declenchee des que je ne suis plus dans le Top 50');
-  __assertEq(communityLeaderboardNeighbors.me.uid, 'test-uid', 'le bloc voisins doit contenir mes propres donnees');
-  __assertOk(communityLeaderboardNeighbors.above && communityLeaderboardNeighbors.above.displayName === 'Bob', 'la personne juste au-dessus (xpTotal=300, le plus proche superieur a 150) doit etre trouvee par requete ciblee, sans scan');
-  __assertOk(communityLeaderboardNeighbors.below && communityLeaderboardNeighbors.below.displayName === 'Dan', 'la personne juste en-dessous (xpTotal=50, le plus proche inferieur a 150) doit etre trouvee par requete ciblee, sans scan');
+  __assertOk(renderCommunityScreen().includes('777'), 'ma propre ligne doit toujours afficher ma valeur en memoire a jour, meme si le document leaderboardCache (15 min) n a pas ete rafraichi entre-temps');
+  xpTotal = 150;
+  console.log('OK: classement precalcule cote serveur (1 lecture du document leaderboardCache, rang exact gratuit dans le Top N, ma propre valeur toujours a jour)');
+
+  // --- 146bis. Hors du Top N precalcule : mon rang EXACT vient desormais de
+  // getMyRank() (Cloud Function Callable, .count() cote Admin SDK - fonctionnel
+  // contrairement au SDK compat client), plus le badge "Hors Top 50"/voisins
+  // approximatifs de l ancien mecanisme 100% client. ---
+  __resetCommunityMocks();
+  currentUser = { uid: 'test-uid', displayName: 'Moi', email: 'a@test.com', photoURL: '' };
+  xpTotal = 150;
+  // Simule un classement bien plus grand que moi (54 participants au total, mais je
+  // ne fais pas partie des 2 entrees mises en cache dans ce test).
+  await seedCache('alltime', [
+    { uid: 'uidA', displayName: 'Alice', photoURL: '', value: 500, kudosTotal: 0 },
+    { uid: 'uidB', displayName: 'Bob', photoURL: '', value: 300, kudosTotal: 0 },
+  ], 54);
+  __setMockGetMyRank({ rank: 42, value: 150 });
+  activeTab = 'community';
+  await loadCommunityLeaderboard('alltime');
+  __assertEq(__mockGetMyRankCallCount, 1, 'getMyRank() doit etre appelee exactement une fois des que je ne suis pas dans le Top N mis en cache');
+  __assertEq(__mockGetMyRankLastArgs.view, 'alltime', 'le bon parametre de vue doit etre transmis a getMyRank()');
+  __assertOk(communityLeaderboardMyRank && communityLeaderboardMyRank.rank === 42, 'mon rang exact (renvoye par getMyRank) doit etre stocke');
   const communityHtmlBig = renderCommunityScreen();
-  __assertOk(communityHtmlBig.includes('rank-bar') && communityHtmlBig.includes('>Moi<'), 'la barre "Hors Top 50" doit apparaitre (avec ma ligne) des que je sors du Top 50 affiche');
-  __assertOk(communityHtmlBig.includes('Hors Top 50'), 'le badge "Hors Top 50" doit remplacer le rang numerique exact (non calculable sans scan complet)');
-  __assertOk(communityHtmlBig.includes('Juste devant') && communityHtmlBig.includes('Juste derrière'), 'les voisins doivent porter des labels relatifs ("Juste devant"/"Juste derriere"), pas un rang numerique qu on ne connait pas');
-  __assertOk(communityHtmlBig.includes('Bob') && communityHtmlBig.includes('150'), 'l ecart de points avec la personne juste au-dessus (Bob, 300-150=150) doit etre affiche pour garder le cote stimulant');
+  __assertOk(communityHtmlBig.includes('rank-bar'), 'la barre de mon propre rang doit apparaitre des que je sors du Top N mis en cache');
+  __assertOk(communityHtmlBig.includes('#42'), 'mon rang EXACT (calcule par la Cloud Function, pas un badge approximatif) doit etre affiche');
+  __assertOk(communityHtmlBig.includes('54'), 'le nombre total de participants (deja disponible sans cout supplementaire dans le meme document leaderboardCache) doit etre affiche');
   activeTab = 'today';
-  console.log('OK: bloc "Hors Top 50" (voisins par requetes ciblees, badge au lieu du rang, ecart de points) sans jamais scanner tout le classement');
+  console.log('OK: rang exact hors du Top N via getMyRank() (Cloud Function, .count() cote Admin SDK) - plus de badge approximatif ni de requetes "voisins"');
 
   // --- 146ter. Empty state du classement : incite a inviter des proches tant que la
   // communaute visible est trop petite (<3) pour etre motivante ---
   __resetCommunityMocks();
   currentUser = { uid: 'test-uid', displayName: 'Moi', email: 'a@test.com', photoURL: '' };
   leaderboardOptOut = false;
-  await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Moi', streakCount: 2, xpTotal: 10, xpWeekly: 10, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
+  await seedCache('streaks', [{ uid: 'test-uid', displayName: 'Moi', photoURL: '', value: 2, kudosTotal: 0 }], 1);
   activeTab = 'community';
   communityLeaderboardView = 'streaks';
   await loadCommunityLeaderboard('streaks');
@@ -3905,41 +3984,49 @@ const cssText = __rawHtml + __cssSource;
 
   // Avec 3 personnes ou plus, l empty state ne doit plus s afficher (la communaute
   // est deja assez fournie pour etre motivante).
-  await db.collection('leaderboard').doc('uidX').set({ displayName: 'X', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
-  await db.collection('leaderboard').doc('uidY').set({ displayName: 'Y', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
-  invalidateLeaderboardCache(); // simule une vraie ré-entree sur l onglet (voir 146bis)
+  await seedCache('streaks', [
+    { uid: 'test-uid', displayName: 'Moi', photoURL: '', value: 2, kudosTotal: 0 },
+    { uid: 'uidX', displayName: 'X', photoURL: '', value: 1, kudosTotal: 0 },
+    { uid: 'uidY', displayName: 'Y', photoURL: '', value: 1, kudosTotal: 0 },
+  ], 3);
+  invalidateLeaderboardCache(); // simule une vraie ré-entree sur l onglet
   await loadCommunityLeaderboard('streaks');
   __assertOk(communityLeaderboardTop.length >= 3, 'ce 2e scenario doit avoir 3 personnes ou plus');
   const filledCommunityHtml = renderCommunityScreen();
   __assertOk(!filledCommunityHtml.includes('community-invite-card'), 'la carte d invitation ne doit plus s afficher des que le classement compte 3 personnes ou plus');
   activeTab = 'today';
+  console.log('OK: empty state du classement (carte d invitation a partager si moins de 3 membres)');
 
-  // --- 146quater. Cache TTL 15 min sur le classement (voir discussion utilisateur) :
-  // une nouvelle visite/changement de vue REUTILISE les donnees tant que le cache est
-  // frais (meme si d autres membres ont change entre-temps - compromis explicitement
-  // accepte), MAIS s invalide IMMEDIATEMENT des que MON PROPRE score change
-  // (syncLeaderboardEntry()), pour ne jamais retarder l affichage de mes propres
-  // donnees a moi ---
+  // --- 146quater. Cache TTL 15 min sur le classement : une nouvelle visite/
+  // changement de vue REUTILISE le document leaderboardCache deja lu (1 seule
+  // lecture reelle, meme apres plusieurs visites dans la fenetre de fraicheur), MAIS
+  // (a) ma propre ligne dans le Top N reste TOUJOURS a jour (patch cote client, voir
+  // 146 ci-dessus, independant du TTL) et (b) mon rang (getMyRank) est recalcule
+  // immediatement des que MES propres donnees changent (invalidateLeaderboardCache()
+  // dans syncLeaderboardEntry()), pour ne jamais servir un rang perime. ---
   __resetCommunityMocks();
   currentUser = { uid: 'test-uid', displayName: 'Moi', email: 'a@test.com', photoURL: '' };
-  await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Moi', streakCount: 5, xpTotal: 5, xpWeekly: 5, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
-  await loadCommunityLeaderboard('streaks');
-  __assertEq(communityLeaderboardTop.length, 1, 'etat initial : une seule personne dans le classement');
-  // Un AUTRE utilisateur rejoint (mutation directe du mock, comme un vrai changement
-  // cote serveur) : tant que le cache TTL (15 min) est frais, une nouvelle visite/
-  // changement de vue ne doit PAS relire Firestore.
-  await db.collection('leaderboard').doc('nouveau-uid').set({ displayName: 'Nouveau', streakCount: 1, xpTotal: 1, xpWeekly: 1, xpWeekStart: mondayOfWeek(new Date()) }, { merge: true });
-  await loadCommunityLeaderboard('streaks');
-  __assertEq(communityLeaderboardTop.length, 1, 'tant que le cache TTL (15 min) est frais, une nouvelle visite ne doit PAS relire Firestore (le nouvel arrivant n apparait pas encore, compromis explicitement accepte)');
-  // En revanche, DES QUE MON PROPRE score change, le cache doit s invalider tout de
-  // suite, quelle que soit la vue consultee ensuite (invalidateLeaderboardCache() vide
-  // le cache de TOUTES les vues, pas seulement celle en cours).
+  xpTotal = 150;
+  await seedCache('alltime', [{ uid: 'uidA', displayName: 'Alice', photoURL: '', value: 500, kudosTotal: 0 }], 54);
+  __setMockGetMyRank({ rank: 10, value: 150 });
+  __resetLeaderboardCacheGetCallCount();
+  await loadCommunityLeaderboard('alltime');
+  __assertEq(__leaderboardCacheGetCallCount, 1, 'le 1er appel doit bien lire le document leaderboardCache');
+  __assertEq(__mockGetMyRankCallCount, 1, 'le 1er appel doit bien appeler getMyRank (je ne suis pas dans le Top N mis en cache)');
+  await loadCommunityLeaderboard('alltime');
+  __assertEq(__leaderboardCacheGetCallCount, 1, 'tant que le cache TTL (15 min) cote client est frais, une 2e visite ne doit PAS relire le document leaderboardCache');
+  __assertEq(__mockGetMyRankCallCount, 1, 'tant que le cache TTL est frais, une 2e visite ne doit PAS rappeler getMyRank non plus');
+  // DES QUE MON PROPRE score change, le rang doit etre recalcule immediatement, sans
+  // attendre le TTL de 15 min (invalidateLeaderboardCache() vide aussi le cache du
+  // rang, pas seulement celui du Top N).
   xpTotal = 999;
+  __setMockGetMyRank({ rank: 3, value: 999 });
   await syncLeaderboardEntry();
   await loadCommunityLeaderboard('alltime');
-  __assertOk(communityLeaderboardTop.some(e => e.uid === 'test-uid' && e.xpTotal === 999), 'apres syncLeaderboardEntry() (mon propre score qui change), je dois voir ma valeur a jour immediatement, sans attendre le TTL de 15 min');
-  console.log('OK: cache TTL 15 min sur le classement, invalide immediatement des que mon propre score change');
-  console.log('OK: empty state du classement (carte d invitation a partager si moins de 3 membres)');
+  __assertEq(__mockGetMyRankCallCount, 2, 'apres syncLeaderboardEntry() (mon propre score qui change), getMyRank doit etre rappelee immediatement, sans attendre le TTL de 15 min');
+  __assertOk(communityLeaderboardMyRank.rank === 3, 'mon nouveau rang (3) doit etre reflete immediatement');
+  xpTotal = 150;
+  console.log('OK: cache TTL 15 min sur le classement (document + rang), invalide immediatement des que mon propre score change');
 
   // --- 146quater-bis. Optimisation quota Firestore : le Journal met en cache les jours
   // PASSES (immuables une fois le jour termine) - une 2e ouverture dans la meme session
@@ -4226,21 +4313,32 @@ const cssText = __rawHtml + __cssSource;
   __resetCommunityMocks();
   console.log('OK: la synchronisation du classement se fait aussi au demarrage (pas seulement sur un nouveau gain XP/serie)');
 
-  // --- 154. loadCommunityLeaderboard() : l echec de la requete de voisins ne doit
-  // JAMAIS vider le top N alors qu il a reussi (deja vecu en production : un
-  // Promise.all englobant les 2 requetes effacait le top 20 a tort a cause d un
-  // souci isole aux voisins) -- chaque requete garde son propre etat d echec ---
+  // --- 154. loadCommunityLeaderboard() : l echec de getMyRank() ne doit JAMAIS
+  // vider le top N alors qu il a reussi (deja vecu en production avec l ancien
+  // mecanisme "voisins" : un Promise.all englobant les 2 requetes effacait le top 20
+  // a tort a cause d un souci isole) -- chaque partie garde son propre etat d echec ---
   __resetCommunityMocks();
   currentUser = { uid: 'test-uid', displayName: 'Alice', email: 'a@test.com', photoURL: '' };
-  await db.collection('leaderboard').doc('test-uid').set({ displayName: 'Alice', streakCount: 3 }, { merge: true });
+  await db.collection('leaderboardCache').doc('streaks').set({
+    entries: [{ uid: 'autre-uid', displayName: 'Quelqu un d autre', photoURL: '', value: 3, kudosTotal: 0 }],
+    totalCount: 5,
+    updatedAt: Date.now(),
+  });
+  __setMockGetMyRankShouldFail(true);
+  await loadCommunityLeaderboard('streaks');
+  __assertEq(communityLeaderboardTop.length, 1, 'le top N doit rester peuple meme si l appel getMyRank echoue independamment');
+  __assertEq(communityLeaderboardMyRank, null, 'mon rang doit rester null (pas de valeur fantome) quand son propre appel a echoue');
+
+  // Regression : un souci sur currentUser (ex: deconnexion en cours) ne doit PAS non
+  // plus casser le top N, meme depuis l ajout du patch "ma propre ligne a jour" (voir
+  // 146) qui referme lui aussi currentUser.uid - doit etre protege (currentUser &&).
   const realCurrentUser154 = currentUser;
-  currentUser = null; // fait echouer le calcul meInTop/fetchMyLeaderboardNeighbors() (reference currentUser.uid), sans toucher fetchLeaderboardTop()
+  currentUser = null;
   await loadCommunityLeaderboard('streaks');
   currentUser = realCurrentUser154;
-  __assertEq(communityLeaderboardTop.length, 1, 'le top N doit rester peuple meme si la requete de voisins echoue independamment');
-  __assertEq(communityLeaderboardNeighbors, null, 'les voisins doivent rester null (pas de valeur fantome) quand leur propre requete a echoue');
+  __assertEq(communityLeaderboardTop.length, 1, 'un currentUser absent ne doit pas casser le top N (patch "ma propre ligne" protege contre currentUser null)');
   __resetCommunityMocks();
-  console.log('OK: le top N du classement et les voisins ont des etats d echec independants');
+  console.log('OK: le top N du classement et mon propre rang ont des etats d echec independants');
 
   // --- 155. Cliquer sur l onglet deja actif doit reinitialiser sa pile de navigation
   // (fiche defi ouverte, formulaire, Parametres) et revenir a la racine -- avant ce
@@ -4568,9 +4666,9 @@ const cssText = __rawHtml + __cssSource;
   __resetCommunityMocks();
 
   currentLocale = 'en';
-  const leaderboardRowStreaksEn = renderLeaderboardRow({ uid: 'x', displayName: 'Bob', streakCount: 5 }, 1, 'streaks', false);
+  const leaderboardRowStreaksEn = renderLeaderboardRow({ uid: 'x', displayName: 'Bob', value: 5 }, 1, 'streaks', false);
   __assertOk(leaderboardRowStreaksEn.includes('5d'), 'la valeur de la vue Series (jours de suite) doit etre traduite en anglais');
-  const leaderboardRowXpEn = renderLeaderboardRow({ uid: 'x', displayName: 'Bob', xpTotal: 300 }, 1, 'alltime', false);
+  const leaderboardRowXpEn = renderLeaderboardRow({ uid: 'x', displayName: 'Bob', value: 300 }, 1, 'alltime', false);
   __assertOk(leaderboardRowXpEn.includes('300 XP'), 'la valeur de la vue Legendes (XP) doit rester lisible en anglais');
 
   communityBossBattleTargetCache = { weekStart: mondayOfWeek(new Date()), targetChallengeId: pompes.id, targetAmount: 1000 };
