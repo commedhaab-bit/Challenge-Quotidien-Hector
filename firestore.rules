@@ -146,9 +146,16 @@ service cloud.firestore {
       match /challenges/{challengeId} {
         allow read: if request.auth != null;
         allow create: if request.auth != null;
-        // Le doc defi (status/currentProgress) n'est modifie que par
-        // closeExpiredGroupChallenges (Admin SDK, contourne ces regles) - aucune
-        // regle update cliente ici.
+        // Le reglement (status -> 'settled', currentProgress) n'est ecrit que par
+        // closeExpiredGroupChallenges (Admin SDK, contourne ces regles). Seule
+        // exception cote client : le CREATEUR d'un defi encore actif peut l'annuler
+        // lui-meme (mauvais parametrage, test) - transition stricte active ->
+        // cancelled uniquement, aucun autre champ ni aucune autre valeur de status.
+        allow update: if request.auth != null
+          && resource.data.createdBy == request.auth.uid
+          && resource.data.status == 'active'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
+          && request.resource.data.status == 'cancelled';
 
         match /participants/{participantUid} {
           // Chaque membre n'ecrit QUE son propre doc participant (totalAmount) -

@@ -2766,6 +2766,39 @@ async function createGroupChallenge(groupId, { name, exerciseSlug, startDate, en
   await loadGroupDetail(groupId);
 }
 
+// Annulation par le createur d'un defi encore actif (mauvais parametrage, envie de
+// retester...) - seule transition autorisee cote client (voir firestore.rules :
+// active -> cancelled uniquement, sinon tout le reglement passe par
+// closeExpiredGroupChallenges). Un defi annule n'est plus 'active' ni 'settled',
+// donc loadGroupDetail() ne le retrouve plus comme "relevant" : le groupe redevient
+// libre de lancer un nouveau defi immediatement.
+async function cancelGroupChallenge(groupId, challengeId) {
+  try {
+    await db.collection('groups').doc(groupId).collection('challenges').doc(challengeId).set({
+      status: 'cancelled', cancelledAt: Date.now(),
+    }, { merge: true });
+  } catch (e) {
+    reportSaveError('cancel group challenge failed', e);
+    return;
+  }
+  await refreshMyGroupsAndActiveChallenges();
+  await loadGroupDetail(groupId);
+}
+
+// Passe par confirmModal() avant d'annuler : action irreversible (le defi disparait
+// definitivement du groupe, aucune Ardoise/Palmares ne sera jamais calcule pour lui).
+async function cancelGroupChallengeConfirm(groupId, challengeId) {
+  const accepted = await confirmModal({
+    icon: '🗑️',
+    title: t('groups.cancelChallengeConfirmTitle'),
+    subtitle: t('groups.cancelChallengeConfirmSubtitle'),
+    confirmLabel: t('groups.cancelChallengeConfirmLabel'),
+    danger: true,
+  });
+  if (!accepted) return;
+  await cancelGroupChallenge(groupId, challengeId);
+}
+
 // Appelee depuis addSetInner() (comme registerBossBattleContributionIfNeeded()) -
 // chaque serie loguee compte, pas seulement la complétion du défi. Un même exercice
 // peut contribuer a PLUSIEURS défis de groupe simultanément (contrairement au Boss
@@ -6635,6 +6668,11 @@ function renderGroupDetailScreen() {
     const targetReachedHtml = target > 0 && total >= target
       ? `<div class="history-empty">${t('groups.targetReachedAwaitingSettlement')}</div>`
       : '';
+    // Seul le createur du defi peut l'annuler (mauvais parametrage, envie de
+    // retester) - voir cancelGroupChallengeConfirm()/firestore.rules.
+    const cancelBtnHtml = groupDetailChallenge.createdBy === currentUser.uid
+      ? `<button class="friend-action-btn" onclick="cancelGroupChallengeConfirm('${escapeJsAttr(groupDetailGroup.groupId)}', '${escapeJsAttr(groupDetailChallenge.challengeId)}')">${t('groups.cancelChallengeBtn')}</button>`
+      : '';
     challengeHtml = `
       <div class="section-label">${escapeHtml(groupDetailChallenge.name)}${exerciseName ? ' — ' + escapeHtml(exerciseName) : ''}</div>
       <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
@@ -6643,6 +6681,7 @@ function renderGroupDetailScreen() {
       <div class="leaderboard-list">
         ${groupDetailChallenge.participants.map((p, i) => renderGroupParticipantRow(p, i + 1, p.uid === currentUser.uid)).join('')}
       </div>
+      ${cancelBtnHtml}
     `;
   } else {
     challengeHtml = renderGroupChallengeBilan();

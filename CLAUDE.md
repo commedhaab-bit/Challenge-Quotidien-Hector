@@ -1802,3 +1802,17 @@ s'affiche des que la somme des participants atteint la cible, meme si le defi
 est encore `active` — evite qu'un utilisateur croie a un bug pendant le court
 delai (jusqu'a 15 min) avant le prochain passage de la fonction planifiee.
 
+**Annulation d'un defi bloquant** (`cancelGroupChallenge()`/
+`cancelGroupChallengeConfirm()`) : ajoutee suite a ce meme bug — pendant qu'un
+defi teste en prod restait coince "actif" en attendant le prochain passage de
+la fonction planifiee, aucun moyen de le supprimer ni d'en lancer un autre pour
+retester (un groupe n'affiche le bouton "Nouveau defi" que si aucun defi
+`active`/`settled` n'est trouve). Seul `createdBy` peut desormais annuler SON
+propre defi tant qu'il est encore `active` — transition stricte `active` ->
+`cancelled`, gardee cote regles (`firestore.rules`, `affectedKeys().hasOnly(
+['status','cancelledAt'])`) en plus du bouton conditionnel cote client. Un defi
+`cancelled` ne correspond a aucun des 2 statuts recherches par `loadGroupDetail()`
+(`active` ou `settled`), donc il est simplement ignore — le defi actif suivant
+(ou le bouton "Nouveau defi" si aucun) reprend sa place immediatement, sans
+attendre la Cloud Function.
+

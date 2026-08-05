@@ -2348,7 +2348,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v51'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v52'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2565,10 +2565,12 @@ const cssText = __rawHtml + __cssSource;
   // par simple recherche de texte — la preuve la plus fiable est le comptage positif
   // exact des 4 remplacements, deja verifie fonctionnellement pour deleteChallenge au
   // test 11 plus haut). ---
-  // 7 depuis l ajout de removeFriend() (chantier amis) : compte x2, defi, suggestion
-  // d objectif, import de donnees, forcer la mise a jour, + retirer un ami.
+  // 10 depuis l ajout de cancelGroupChallengeConfirm() (annulation d un defi de
+  // groupe) : compte x2, defi, suggestion d objectif, import de donnees, forcer la
+  // mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter
+  // une invitation de groupe depuis sa popup, + annuler un defi de groupe.
   const confirmModalCallCount = (__rawHtml.match(/await confirmModal\\(\\{/g) || []).length;
-  __assertEq(confirmModalCallCount, 9, 'les 9 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup) doivent utiliser confirmModal');
+  __assertEq(confirmModalCallCount, 10, 'les 10 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un defi de groupe) doivent utiliser confirmModal');
   console.log('OK: les 4 anciens confirm() natifs (compte x2, defi, suggestion objectif) passent par confirmModal');
 
   // --- 99. Ecran Parametres dedie : navigation (ouverture/fermeture) + regroupe le
@@ -5240,6 +5242,31 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(targetReachedHtml.includes(t('groups.targetReachedAwaitingSettlement')), 'un message d attente doit s afficher des que l objectif est atteint, meme si le defi est encore actif');
   groupDetailChallenge.targetTotal = originalTarget;
   console.log('OK: message "objectif atteint, en attente du reglement" affiche des que total >= target, sans attendre l echeance');
+
+  // cancelGroupChallenge() : le CREATEUR d'un defi encore actif peut l'annuler (ex :
+  // mauvais parametrage, envie de retester un scenario sans attendre une echeance) -
+  // seul lui voit le bouton, et un defi annule ne bloque plus jamais le groupe (le
+  // defi actif le plus recent redevient le defi "relevant" affiche).
+  const throwawayChallengeRef = db.collection('groups').doc(createdGroupId).collection('challenges').doc();
+  await throwawayChallengeRef.set({
+    name: 'Defi jetable', exerciseSlug: pompes.slug, startDate: dateKey(new Date()),
+    endDate: Date.now() + 999999, targetTotal: 10, stakeMode: '5050', stakeDescription: '',
+    createdBy: 'me-uid', createdAt: Date.now() + 1, status: 'active',
+  });
+  await loadGroupDetail(createdGroupId);
+  __assertEq(groupDetailChallenge.challengeId, throwawayChallengeRef.id, 'le defi actif le plus recent doit devenir le defi affiche');
+  __assertOk(renderGroupDetailScreen().includes(t('groups.cancelChallengeBtn')), 'le createur doit voir le bouton d annulation');
+
+  currentUser = { uid: 'bob-uid', displayName: 'Bob Martin', email: 'b@test.com', photoURL: '' };
+  await loadGroupDetail(createdGroupId);
+  __assertOk(!renderGroupDetailScreen().includes(t('groups.cancelChallengeBtn')), 'un membre qui n est pas le createur ne doit jamais voir le bouton d annulation');
+
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  await cancelGroupChallenge(createdGroupId, throwawayChallengeRef.id);
+  const cancelledDoc = await throwawayChallengeRef.get();
+  __assertEq(cancelledDoc.data().status, 'cancelled', 'cancelGroupChallenge() doit marquer le defi cancelled');
+  __assertEq(groupDetailChallenge.challengeId, groupChallengeId, 'apres annulation, le defi actif restant (le tout premier) doit redevenir celui affiche');
+  console.log('OK: cancelGroupChallenge() (annulation par le createur uniquement, libere le groupe d un defi bloquant)');
 
   // Bilan (simule ici : le reglement REEL est calcule par closeExpiredGroupChallenges,
   // une Cloud Function server-only - voir functions/test/groups.test.js pour
