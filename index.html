@@ -1727,8 +1727,12 @@ function switchTab(tab) {
     // syncLeaderboardEntry()), décision explicite pour réduire les lectures (voir
     // CLAUDE.md).
     loadCommunityLeaderboard(communityLeaderboardView);
-    fetchTopContributorToday().then((c) => { communityTopContributorToday = c; render(); });
-    fetchBossBattleArchive().then((a) => { communityBossBattleArchive = a; render(); });
+    // .catch() sur chacun : un souci isole sur l'un de ces 2 badges annexes (ex: index
+    // Firestore manquant) ne doit jamais faire planter tout l'onglet Communaute via
+    // l'ecran d'erreur fatale (rejet de promesse non intercepte) — juste ce badge qui
+    // reste absent, comme pour le Top N/mon rang du classement (voir loadCommunityLeaderboard()).
+    fetchTopContributorToday().then((c) => { communityTopContributorToday = c; render(); }).catch((e) => console.error('top contributor fetch failed', e));
+    fetchBossBattleArchive().then((a) => { communityBossBattleArchive = a; render(); }).catch((e) => console.error('boss battle archive fetch failed', e));
     // Rattache les 2 listeners suspendus en quittant l'onglet (voir plus haut) —
     // myFriends est déjà en mémoire (chargé au démarrage), aucune relecture des amis
     // n'est nécessaire pour ça.

@@ -1643,3 +1643,36 @@ meme discipline de chargement synchrone que les 3 autres - voir l'avertissement
 'europe-west1')` (la region DOIT correspondre exactement a `setGlobalOptions()`
 dans `functions/index.js`).
 
+## Incident post-Phase 1 : `firestore:indexes` a supprime un index non documente (dailyContributors)
+
+**Ce qui s'est passe** : le premier `firebase deploy --only firestore:indexes` via
+la CI (ajoute en meme temps que la Phase 1) a fait planter tout l'onglet
+Communaute en production (`FirebaseError: The query requires an index`) sur
+`fetchTopContributorToday()` (badge "Contributeur du jour", fonctionnalite Boss
+Battle deja existante, aucun rapport avec le classement precalcule).
+
+**Cause reelle** : `firestore.indexes.json` ne listait que les 2 index connus
+(`leaderboard` xpWeekStart+xpWeekly, `activityFeed` uid+at), tous deux
+documentes dans ce fichier depuis leur creation manuelle via la Console. Un
+3e index (`dailyContributors` : `date` Ascendant + `amount` Descendant),
+necessaire pour `where('date','==',...).orderBy('amount','desc')`, existait
+probablement DEJA en production (cree manuellement au moment du developpement
+du Boss Battle) mais n'avait jamais ete consigne nulle part. `firebase deploy
+--only firestore:indexes` traite le fichier local comme l'etat COMPLET desire
+et supprime tout index existant qui n'y figure pas — ce 3e index a donc ete
+supprime des le premier deploiement via la CI.
+
+**Corrige** : index rajoute dans `firestore.indexes.json` (a recreer
+immediatement en prod via le lien direct fourni par l'erreur Firebase, plus
+rapide qu'attendre un nouveau deploiement CI) + `fetchTopContributorToday()`/
+`fetchBossBattleArchive()` protegees par un `.catch()` (index.html, ~ligne 1730)
+- un souci sur l'un de ces 2 badges annexes ne doit plus jamais faire planter
+tout l'onglet Communaute via l'ecran d'erreur fatale globale, meme cause qui
+avait deja motive la meme protection sur le Top N/mon rang du classement.
+
+**Lecon retenue** : avant tout futur `firebase deploy --only firestore:indexes`,
+verifier la liste REELLE des index dans Firebase Console > Firestore Database >
+Index plutot que de se fier uniquement a une relecture du code — un index cree
+manuellement par le passe et jamais documente peut toujours exister sans que
+personne (y compris moi) ne le sache.
+

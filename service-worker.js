@@ -1,4 +1,4 @@
-const CACHE_NAME = 'defi-du-jour-v47';
+const CACHE_NAME = 'defi-du-jour-v48';
 const ASSETS = [
   './',
   './index.html',
