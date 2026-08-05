@@ -266,10 +266,17 @@ const LOCALE_EN = {
     cancelChallengeConfirmSubtitle: 'This is irreversible: no settlement (Ledger, Hall of Fame) will ever be computed for this challenge.',
     cancelChallengeConfirmLabel: 'Yes, cancel',
     createChallengeTitle: 'New collective challenge',
+    formSections: {
+      challenge: '🎯 The challenge',
+      dates: '📅 Date & duration',
+      reward: '🎁 Reward',
+    },
     challengeNamePlaceholder: 'Challenge name',
     exercisePlaceholder: 'Choose an exercise',
     targetPlaceholder: 'Overall target',
     perPersonHint: 'That\'s ~{{n}} per person',
+    startDateLabel: 'Start',
+    endDateLabel: 'End',
     stakeMode: {
       '5050': '50/50 mode',
       lastPaysAll: 'Last place pays for everyone',

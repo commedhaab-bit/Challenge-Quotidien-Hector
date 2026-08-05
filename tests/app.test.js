@@ -2413,7 +2413,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v61'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v62'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -5365,6 +5365,15 @@ const cssText = __rawHtml + __cssSource;
   creatingGroupChallenge = true;
   let challengeFormHtml = renderCreateGroupChallengeForm();
   __assertOk(!challengeFormHtml.includes('id="groupChallengeStakeDescInput"'), 'le champ texte libre ne doit PAS etre affiche tant que "beer" (defaut) est selectionne');
+
+  // Retour utilisateur (capture d ecran) : le formulaire, auparavant une liste
+  // plate de champs identiques, doit regrouper clairement 3 idees distinctes -
+  // Defi (nom/exercice/objectif), Date & duree (debut/fin), Recompense (mode/gage).
+  const challengeFormSectionCount = (challengeFormHtml.match(/group-challenge-form-section-label/g) || []).length;
+  __assertEq(challengeFormSectionCount, 3, 'le formulaire de defi collectif doit etre regroupe en exactement 3 sections visuelles');
+  __assertOk(challengeFormHtml.includes(t('groups.formSections.challenge')) && challengeFormHtml.includes(t('groups.formSections.dates')) && challengeFormHtml.includes(t('groups.formSections.reward')), 'les 3 sections doivent etre intitulees Defi / Date & duree / Recompense');
+  __assertOk(challengeFormHtml.includes(t('groups.startDateLabel')) && challengeFormHtml.includes(t('groups.endDateLabel')), 'les 2 champs date doivent etre distingues par un libelle (Debut/Fin), pas 2 champs identiques sans repere');
+  console.log('OK: formulaire de defi collectif regroupe en 3 sections visuelles distinctes (Defi / Date & duree / Recompense)');
   updateGroupChallengeDraft('stakeType', 'custom');
   challengeFormHtml = renderCreateGroupChallengeForm();
   __assertOk(challengeFormHtml.includes('id="groupChallengeStakeDescInput"'), 'le champ texte libre doit apparaitre des que "Autre" est selectionne');

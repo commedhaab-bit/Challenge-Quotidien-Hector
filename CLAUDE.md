@@ -2192,3 +2192,30 @@ Aucun changement de donnees/architecture Firestore - uniquement du rendu/etat
 client. CACHE_NAME -> v61. Meme limite de verification que le chantier
 precedent : valide par tests+lint, **pas visuellement dans un vrai navigateur**.
 
+## Formulaire "Nouveau defi collectif" regroupe en 3 sections
+
+**Demande explicite de l'utilisateur**, capture d'ecran a l'appui : le formulaire
+etait une liste plate de champs visuellement identiques (nom, exercice, 2 champs
+date sans libelle distinctif, objectif, mode, gage) - impossible de deviner d'un
+coup d'oeil ce qui relevait de la definition du defi, des dates, ou de la
+recompense. `renderCreateGroupChallengeForm()` regroupe desormais les champs en 3
+blocs `.group-challenge-form-section` (carte + petit intitule en majuscules,
+couleur accent) :
+
+1. **🎯 Le defi** : nom, exercice, objectif global (+ l'indication "~X par
+   personne" deja existante) - place ici plutot que dans une 4e section, car
+   l'objectif definit CE QU'EST le defi, ni une date ni une recompense.
+2. **📅 Date & duree** : debut, fin - chaque champ recoit desormais un petit
+   libelle au-dessus (`.group-challenge-field-label`, "Debut"/"Fin") : avant ce
+   correctif, les 2 `<input type="date">` etaient visuellement indiscernables
+   tant qu'aucune date n'etait choisie (capture d'ecran utilisateur : 2 lignes
+   vides identiques).
+3. **🎁 Recompense** : mode de partage (50/50, dernier paye tout...) + gage
+   (biere/personnalise).
+
+Purement visuel (memes ids/noms de champs, meme logique de soumission/validation)
+- aucun test existant sur `submitGroupChallengeForm()`/`updateGroupChallengeDraft()`
+n'a du etre modifie, seules de nouvelles assertions structurelles ont ete
+ajoutees. CACHE_NAME -> v62. Meme limite de verification que les chantiers
+precedents : valide par tests+lint, **pas visuellement dans un vrai navigateur**.
+

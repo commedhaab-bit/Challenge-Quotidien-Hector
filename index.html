@@ -7056,31 +7056,50 @@ function renderCreateGroupChallengeForm() {
   const stakeOptions = ['5050', 'lastPaysAll', 'winnerTakesAll', 'friendly']
     .map((m) => `<option value="${m}"${d.stakeMode === m ? ' selected' : ''}>${t('groups.stakeMode.' + m)}</option>`).join('');
 
+  // Formulaire regroupe en 3 sections visuellement distinctes (retour UX : la
+  // liste plate de champs identiques ne laissait pas deviner ce qui relevait du
+  // defi/des dates/de la recompense) : Defi (nom, exercice, objectif), Date &
+  // duree (debut/fin), Recompense (mode + gage).
   return `
     <button class="nav-back-btn" onclick="history.back()" aria-label="${t('groups.backAria')}">‹</button>
     <h1 class="title">${t('groups.createChallengeTitle')}</h1>
-    <input id="groupChallengeNameInput" class="library-search-input" type="text" placeholder="${t('groups.challengeNamePlaceholder')}"
-           value="${escapeHtml(d.name)}" oninput="updateGroupChallengeDraft('name', this.value)">
-    <select class="library-search-input" onchange="updateGroupChallengeDraft('exerciseSlug', this.value)">
-      <option value="">${t('groups.exercisePlaceholder')}</option>
-      ${exerciseOptions}
-    </select>
-    <input class="library-search-input" type="date" value="${escapeHtml(d.startDate)}" onchange="updateGroupChallengeDraft('startDate', this.value)">
-    <input class="library-search-input" type="date" value="${escapeHtml(d.endDate)}" onchange="updateGroupChallengeDraft('endDate', this.value)">
-    <input id="groupChallengeTargetInput" class="library-search-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="${t('groups.targetPlaceholder')}"
-           value="${escapeHtml(String(d.targetTotal))}" oninput="updateGroupChallengeDraft('targetTotal', this.value)">
-    ${target > 0 ? `<div class="rank-bar-hint">${t('groups.perPersonHint', { n: perPerson })}</div>` : ''}
-    <select class="library-search-input" onchange="updateGroupChallengeDraft('stakeMode', this.value)">
-      ${stakeOptions}
-    </select>
-    <select class="library-search-input" onchange="updateGroupChallengeDraft('stakeType', this.value)">
-      <option value="beer"${d.stakeType === 'beer' ? ' selected' : ''}>${t('groups.stakeTypes.beerOption')}</option>
-      <option value="custom"${d.stakeType === 'custom' ? ' selected' : ''}>${t('groups.stakeTypes.customOption')}</option>
-    </select>
-    ${d.stakeType === 'custom' ? `
-    <input id="groupChallengeStakeDescInput" class="library-search-input" type="text" placeholder="${t('groups.stakeDescriptionPlaceholder')}"
-           value="${escapeHtml(d.stakeDescription)}" oninput="updateGroupChallengeDraft('stakeDescription', this.value)">
-    ` : ''}
+
+    <div class="group-challenge-form-section">
+      <div class="group-challenge-form-section-label">${t('groups.formSections.challenge')}</div>
+      <input id="groupChallengeNameInput" class="library-search-input" type="text" placeholder="${t('groups.challengeNamePlaceholder')}"
+             value="${escapeHtml(d.name)}" oninput="updateGroupChallengeDraft('name', this.value)">
+      <select class="library-search-input" onchange="updateGroupChallengeDraft('exerciseSlug', this.value)">
+        <option value="">${t('groups.exercisePlaceholder')}</option>
+        ${exerciseOptions}
+      </select>
+      <input id="groupChallengeTargetInput" class="library-search-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="${t('groups.targetPlaceholder')}"
+             value="${escapeHtml(String(d.targetTotal))}" oninput="updateGroupChallengeDraft('targetTotal', this.value)">
+      ${target > 0 ? `<div class="rank-bar-hint">${t('groups.perPersonHint', { n: perPerson })}</div>` : ''}
+    </div>
+
+    <div class="group-challenge-form-section">
+      <div class="group-challenge-form-section-label">${t('groups.formSections.dates')}</div>
+      <div class="group-challenge-field-label">${t('groups.startDateLabel')}</div>
+      <input class="library-search-input" type="date" value="${escapeHtml(d.startDate)}" onchange="updateGroupChallengeDraft('startDate', this.value)">
+      <div class="group-challenge-field-label">${t('groups.endDateLabel')}</div>
+      <input class="library-search-input" type="date" value="${escapeHtml(d.endDate)}" onchange="updateGroupChallengeDraft('endDate', this.value)">
+    </div>
+
+    <div class="group-challenge-form-section">
+      <div class="group-challenge-form-section-label">${t('groups.formSections.reward')}</div>
+      <select class="library-search-input" onchange="updateGroupChallengeDraft('stakeMode', this.value)">
+        ${stakeOptions}
+      </select>
+      <select class="library-search-input" onchange="updateGroupChallengeDraft('stakeType', this.value)">
+        <option value="beer"${d.stakeType === 'beer' ? ' selected' : ''}>${t('groups.stakeTypes.beerOption')}</option>
+        <option value="custom"${d.stakeType === 'custom' ? ' selected' : ''}>${t('groups.stakeTypes.customOption')}</option>
+      </select>
+      ${d.stakeType === 'custom' ? `
+      <input id="groupChallengeStakeDescInput" class="library-search-input" type="text" placeholder="${t('groups.stakeDescriptionPlaceholder')}"
+             value="${escapeHtml(d.stakeDescription)}" oninput="updateGroupChallengeDraft('stakeDescription', this.value)">
+      ` : ''}
+    </div>
+
     <button class="friend-search-submit-btn" onclick="submitGroupChallengeForm()">${t('groups.createChallengeSubmitBtn')}</button>
   `;
 }

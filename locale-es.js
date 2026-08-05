@@ -267,10 +267,17 @@ const LOCALE_ES = {
     cancelChallengeConfirmSubtitle: 'Esta acción es irreversible: nunca se calculará ningún ajuste (Cuenta, Salón de la Fama) para este reto.',
     cancelChallengeConfirmLabel: 'Sí, cancelar',
     createChallengeTitle: 'Nuevo reto colectivo',
+    formSections: {
+      challenge: '🎯 El reto',
+      dates: '📅 Fecha y duración',
+      reward: '🎁 Recompensa',
+    },
     challengeNamePlaceholder: 'Nombre del reto',
     exercisePlaceholder: 'Elegir un ejercicio',
     targetPlaceholder: 'Objetivo global',
     perPersonHint: 'Es decir, ~{{n}} por persona',
+    startDateLabel: 'Inicio',
+    endDateLabel: 'Fin',
     stakeMode: {
       '5050': 'Modo 50/50',
       lastPaysAll: 'El último paga todo',

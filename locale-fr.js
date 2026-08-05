@@ -269,10 +269,17 @@ const LOCALE_FR = {
     cancelChallengeConfirmSubtitle: 'Cette action est irréversible : aucun règlement (Ardoise, Palmarès) ne sera jamais calculé pour ce défi.',
     cancelChallengeConfirmLabel: 'Oui, annuler',
     createChallengeTitle: 'Nouveau défi collectif',
+    formSections: {
+      challenge: '🎯 Le défi',
+      dates: '📅 Date & durée',
+      reward: '🎁 Récompense',
+    },
     challengeNamePlaceholder: 'Nom du défi',
     exercisePlaceholder: 'Choisir un exercice',
     targetPlaceholder: 'Objectif global',
     perPersonHint: 'Soit ~{{n}} par personne',
+    startDateLabel: 'Début',
+    endDateLabel: 'Fin',
     stakeMode: {
       '5050': 'Mode 50/50',
       lastPaysAll: 'Le dernier paye tout',
