@@ -47,7 +47,12 @@ module.exports = [
     // un artefact TEMPORAIRE genere par tests/extract-script.js (verification node -c) :
     // s'il traine sur le disque au moment du lint (ex: etape CI precedente non
     // nettoyee), il ne doit jamais etre analyse par ESLint.
-    ignores: ['node_modules/**', '.extracted-script.js'],
+    // `functions/**` : package Node independant (Cloud Functions, son propre
+    // package.json/runtime/eslint.config.js) - linte via `npm run lint` DEPUIS
+    // functions/, jamais par le lint racine (evite aussi de scanner
+    // functions/node_modules/**, non couvert par le `node_modules/**` ci-dessous qui
+    // ne matche qu'a la racine).
+    ignores: ['node_modules/**', '.extracted-script.js', 'functions/**'],
   },
   {
     files: ['exercise-data.js', 'exercise-pictograms.js'],

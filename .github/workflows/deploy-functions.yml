@@ -1,0 +1,49 @@
+name: Deploy Cloud Functions
+
+# Workflow separe et independant du CI client (.github/workflows/ci.yml) : ne se
+# declenche QUE sur des changements touchant les Cloud Functions, jamais sur des
+# changements du front (index.html/locale-*.js/etc, deja publies via GitHub Pages
+# par un simple push, sans lien avec Firebase).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - '.github/workflows/deploy-functions.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Tests (smoke - Phase 0 ; emulateur Firestore a integrer en Phase 1+)
+        run: npm test
+
+      - name: Authentification Google Cloud (compte de service, sans terminal local)
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Deploy (functions UNIQUEMENT pour l'instant - voir CLAUDE.md)
+        # Phase 0/1 : ne deploie QUE les fonctions, jamais firestore:rules/indexes
+        # via la CI - meme si firestore.rules est desormais verifie contre la prod
+        # (voir CLAUDE.md), un changement de regles reste un geste a part, jamais
+        # automatique, tant qu'on n'a pas explicitement decide de l'ajouter ici -
+        # a etendre a `--only functions,firestore:rules,firestore:indexes` si/quand
+        # decide. L'action google-github-actions/auth ci-dessus place les
+        # identifiants du compte de service dans GOOGLE_APPLICATION_CREDENTIALS,
+        # que firebase-tools sait utiliser automatiquement (pas besoin de --token).
+        run: npx firebase-tools deploy --only functions --project challenge-quotidien-hector --non-interactive

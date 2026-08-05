@@ -1,0 +1,21 @@
+{
+  "name": "functions",
+  "private": true,
+  "description": "Cloud Functions (Blaze) pour Challenge Quotidien Hector : agregation classement, cloture/reglement automatique des defis de groupe, jokers. Package independant du package.json racine (client, lint/tests statiques).",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.4.0"
+  },
+  "devDependencies": {
+    "eslint": "^10.8.0",
+    "firebase-functions-test": "^3.4.1"
+  }
+}

@@ -1573,3 +1573,23 @@ par le `try/catch` : la fiche affiche juste "Aucune activite recente", aucun cra
 jusqu'a ce que l'index soit cree, via le lien Firebase dans la console au premier echec
 ou proactivement dans Firestore > Index > Composites.
 
+## Groupes & Defis Collectifs Gamifies + couche Cloud Functions (Blaze) — Phase 0 en cours
+
+**Chantier en cours, le plus gros jamais entrepris sur cette appli.** Cahier des charges complet et plan d'architecture detaille dans une conversation dediee (groupes fermes, Ardoise cumulative, Hall of Fame, jokers tactiques, Raids Express). **Revirement architectural valide** : passage du plan Spark (gratuit, 100% client) au plan **Blaze** + **Cloud Functions**, pour precalculer le classement general cote serveur, cloturer/regler automatiquement les defis de groupe a echeance fixe (Scheduled Functions), et alleger le JS client.
+
+**Nouveaute pour ce depot** : jusqu'ici, AUCUNE infrastructure serveur n'existait — tout etait gere a la main dans la Console Firebase, seul `index.html` etait deploye (GitHub Pages, simple push). Cette Phase 0 introduit pour la premiere fois :
+- `functions/` — package Node independant (Cloud Functions), son propre `package.json`/`eslint.config.js`/tests, exclu du lint/tests du client racine (voir `ignores: ['functions/**']` dans `eslint.config.js` racine).
+- `firebase.json` / `.firebaserc` — outillage CLI Firebase (projet `challenge-quotidien-hector`), scope volontairement limite a `functions` + `firestore` (rules/indexes) — **pas de bloc `hosting`**, GitHub Pages reste le seul hebergeur du front, inchange.
+- `firestore.rules` / `firestore.indexes.json` — **rapatries dans le depot pour la premiere fois**, alors qu'ils n'existaient jusque-la que dans la Console.
+- `.github/workflows/deploy-functions.yml` — CI separee du workflow client existant (`ci.yml`), declenchee uniquement sur des changements sous `functions/**`.
+
+**`firestore.rules` verifie** : le texte reel des regles en production a ete fourni et compare ligne a ligne — `firestore.rules` reflete desormais fidelement la prod existante (users/{uid} wildcard, kudos par increment borne a +1 sur `kudosTotal`, usernames/friendRequests/friendships avec preuve d'existence de la demande, activityFeed/community ouverts a tout utilisateur authentifie, etc.), avec un seul AJOUT Phase 0/1 (`leaderboardCache/{view}`, lecture seule cote client) et un STUB Phase 2+ (Groupes) explicitement marque comme non encore verifie en production (la fonctionnalite n'existe pas encore cote client). Le deploiement `firestore:rules`/`firestore:indexes` reste malgre tout volontairement HORS de la CI pour l'instant (`deploy-functions.yml` ne deploie que `functions`) — un changement de regles reste un geste a part, jamais automatique, tant qu'on n'a pas explicitement decide de l'y integrer.
+
+**Authentification CI** : compte de service Google Cloud (cle JSON generee depuis la Console, sans terminal), stockee dans le secret GitHub `GCP_SA_KEY`, utilisee via l'action `google-github-actions/auth` (remplace l'approche `firebase login:ci`/`FIREBASE_TOKEN` envisagee initialement).
+
+**Fonctions Cloud prevues** (voir le plan pour le detail complet) : `aggregateLeaderboard` (Scheduled, 15 min — ecrit UNIQUEMENT `leaderboardCache/{view}`, jamais sur les documents individuels `leaderboard/{uid}`, pour ne jamais risquer d'exploser le quota gratuit d'ecritures ; rang exact hors Top 100 calcule a la demande via `getMyRank`, un Callable qui utilise `.count()` cote Admin SDK — fonctionnel contrairement au bug du SDK compat client deja documente plus haut), `closeExpiredGroupChallenges` (Scheduled, reglement automatique 50/50 + Ardoise + Hall of Fame), `applyGroupJoker` (Callable, usage unique securise cote serveur), `aggregateGroupContribution` (Trigger, allegement JS client, phase tardive).
+
+**Decisions actees** : plafond de groupe 20 membres, appartenance a un groupe prime sur l'opt-out classement (visible par les co-membres), nouvel onglet dedie "Groupes", 5 titres Hall of Fame des la Phase 3 (Mecene, Roi des Repets, Clutch Player, Fantome, Metronome), Raids Express a duree configurable au lancement (24h/48h, defaut 24h). Cout Cloud Functions estime a l'echelle actuelle : negligeable (tres largement sous le palier gratuit 2M invocations/mois).
+
+**Etat actuel (Phase 0)** : `functions/index.js` expose `helloWorld` (Callable, region `europe-west1`) pour valider toute la chaine outillage -> CI -> deploiement AVANT d'ecrire la moindre logique metier. **Pas encore deploye** : bascule Spark -> Blaze, premier `firebase login`, et premier run de la CI restent des actions manuelles a faire cote utilisateur (voir rapport de session correspondant).
+
