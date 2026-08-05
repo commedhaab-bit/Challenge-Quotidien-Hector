@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - run: npm ci
 
@@ -46,4 +46,7 @@ jobs:
         # decide. L'action google-github-actions/auth ci-dessus place les
         # identifiants du compte de service dans GOOGLE_APPLICATION_CREDENTIALS,
         # que firebase-tools sait utiliser automatiquement (pas besoin de --token).
-        run: npx firebase-tools deploy --only functions --project challenge-quotidien-hector --non-interactive
+        # --force : configure automatiquement une politique de nettoyage Artifact
+        # Registry (evite l'accumulation silencieuse d'images de conteneurs/cout de
+        # stockage) au lieu de demander une confirmation interactive, impossible en CI.
+        run: npx firebase-tools deploy --only functions --project challenge-quotidien-hector --non-interactive --force

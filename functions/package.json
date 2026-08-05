@@ -3,7 +3,7 @@
   "private": true,
   "description": "Cloud Functions (Blaze) pour Challenge Quotidien Hector : agregation classement, cloture/reglement automatique des defis de groupe, jokers. Package independant du package.json racine (client, lint/tests statiques).",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "scripts": {
