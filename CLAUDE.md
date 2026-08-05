@@ -2001,3 +2001,55 @@ l'ancienne `honorLedgerEntry()` a un seul document) - correspond au modele menta
 "je regle toute mon ardoise de bieres aupres de cette personne d'un coup", plutot
 que de forcer un clic par biere individuelle.
 
+## Correctifs : Le Boulet cible vide + curseur casse sur l'objectif chiffre
+
+**Bug reel signale en prod (Le Boulet)** : "je clique sur Le Boulet, rien ne se
+passe". En realite le picker de cible s'ouvrait bien (`pickingBouletTarget =
+true`), mais restait **VIDE** des que l'adversaire vise n'avait jamais ouvert le
+detail du groupe NI contribue a CE defi precis - il n'avait alors AUCUN doc
+`participants/{uid}` (voir la simplification assumee documentee en Phase 2), et le
+picker listait `challenge.participants` (les seuls a avoir un doc) au lieu de
+`groupDetailMembers` (TOUS les membres du groupe). Un groupe fraichement cree,
+juste apres avoir lance un defi, tombe systematiquement dans ce cas (aucun autre
+membre n'a encore eu l'occasion d'ouvrir/contribuer).
+
+**Corrige cote client** : le picker liste desormais `groupDetailMembers` (tous les
+membres reels du groupe), plus jamais seulement les participants deja actifs sur
+ce defi - avec un message vide explicite (`groups.jokers.pickTargetEmpty`) pour le
+cas (rare) d'un groupe a un seul membre.
+
+**Corrige cote serveur** (`applyGroupJoker`, cas `'boulet'`) : si la cible n'a
+aucun doc participant, la Cloud Function le **cree a la volee** (`totalAmount:0`,
+`handicap:20` directement, pas un increment) a partir de son profil de membre
+(`groups/{groupId}/members/{uid}`, toujours disponible pour n'importe quel membre)
+- au lieu de rejeter l'appel avec une erreur 'not-found' que le client n'affichait
+nulle part de facon visible (autre cause du "rien ne se passe" ressenti).
+
+**Reponse a la question posee** ("si la cible a 0 pompes, est-ce que ca la met a
+-20 ?") : NON - `rankForSettlement()` plafonne deja `effectiveAmount` a
+`Math.max(0, totalAmount - handicap)`, jamais negatif. Une cible a 0 contributions
+qui recoit un handicap de 20 reste simplement a effectiveAmount 0 (aucun effet
+concret) **jusqu'a ce qu'elle contribue elle-meme au moins 20** - a partir de la,
+chaque contribution supplementaire compte normalement, moins les 20 de handicap.
+Le texte de confirmation (`bouletConfirmSubtitleTarget`) precise desormais
+explicitement "jamais en dessous de 0, aucun effet sur ses vraies repetitions".
+
+**Bug reel signale en prod (curseur)** : dans le champ "objectif" (nombre de
+repetitions) du formulaire de defi de groupe, taper un chiffre faisait sauter le
+curseur au DEBUT du champ, rendant la saisie de nombres a plusieurs chiffres
+impossible (taper "1" puis "0" donnait "01" au lieu de "10"). Cause : ce champ
+etait en `type="number"`, qui NE SUPPORTE PAS `setSelectionRange()` (restriction du
+DOM standard, contrairement a `type="text"`) - `applyContentPreservingFocus()` (le
+correctif de perte de focus documente plus haut) ne pouvait donc jamais restaurer
+la position du curseur pour ce champ specifiquement, et le navigateur retombait
+sur son comportement par defaut (debut du champ). **Corrige** en passant ce champ
+en `type="text" inputmode="numeric" pattern="[0-9]*"` (meme clavier numerique
+mobile, mais support complet de la position du curseur) + un filtre JS
+(`updateGroupChallengeDraft()`) qui retire les caracteres non numeriques, pour
+compenser la perte de la contrainte native du navigateur sur `type="number"`. Les
+AUTRES champs numeriques de l'app (`cfTarget`, `customAddInput`) n'ont pas ce
+probleme : ils sont "non controles" (lus directement via `.value` au moment du
+clic, jamais re-rendus en direct pendant la frappe) - seul ce champ reactif
+(`oninput` -> `render()` a chaque frappe, pour le calcul EN DIRECT de "~X par
+personne") avait besoin de ce traitement particulier.
+

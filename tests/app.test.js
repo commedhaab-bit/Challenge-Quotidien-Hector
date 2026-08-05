@@ -2387,7 +2387,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v57'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v58'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -5440,6 +5440,24 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(bouletHtml.includes(t('groups.jokers.bouletLaunchedStatus', { name: 'Moi A.' })), 'le statut du Boulet doit nommer la cible');
   __assertOk(bouletHtml.includes(t('groups.jokers.handicapBadge', { amount: 20 })), 'le handicap doit etre affiche en badge sur la ligne de la cible');
   console.log('OK: Jokers tactiques - Le Boulet (picker de cible, handicap applique et affiche)');
+
+  // Regression d un bug reel signale en prod : "je clique sur Le Boulet, rien ne se
+  // passe" - en realite le picker s ouvrait bien mais restait VIDE des que
+  // l adversaire vise n avait pas encore de doc participant pour CE defi (n avait
+  // jamais ouvert le groupe ni contribue - voir ensureMyParticipantDoc()). Corrige
+  // en listant N IMPORTE QUEL MEMBRE DU GROUPE (groupDetailMembers), pas seulement
+  // les participants du defi.
+  await db.collection('groups').doc(createdGroupId).collection('members').doc('dave-uid').set({
+    uid: 'dave-uid', displayName: 'Dave D.', photoURL: '', joinedAt: Date.now(), role: 'member',
+  });
+  await loadGroupDetail(createdGroupId);
+  const daveParticipantDoc = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('dave-uid').get();
+  __assertOk(!daveParticipantDoc.exists, 'Dave ne doit PAS avoir de doc participant (n a jamais ouvert ce defi ni contribue)');
+  pickingBouletTarget = true;
+  const pickerWithDaveHtml = renderGroupDetailScreen();
+  __assertOk(pickerWithDaveHtml.includes('Dave D.'), 'un membre du groupe SANS doc participant doit quand meme apparaitre comme cible possible du Boulet');
+  pickingBouletTarget = false;
+  console.log('OK: le picker du Boulet liste TOUS les membres du groupe, meme ceux sans doc participant pour ce defi');
 
   currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
 

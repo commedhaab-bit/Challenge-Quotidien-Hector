@@ -6638,15 +6638,24 @@ function renderGroupJokerSection(groupId, challengeId, participants) {
   if (!myParticipant) return '';
 
   if (pickingBouletTarget) {
-    const others = participants.filter((p) => p.uid !== currentUser.uid);
+    // Cible = n'importe quel AUTRE MEMBRE DU GROUPE (groupDetailMembers), PAS
+    // seulement les participants ayant deja ouvert ce defi (`participants` du
+    // parametre) - sans ca, impossible de viser quelqu'un qui n'a pas encore
+    // interagi avec CE defi precis, alors que c'est le cas le plus frequent juste
+    // apres la creation (voir applyGroupJoker() cote Cloud Function : cree le doc
+    // participant de la cible a la volee si besoin).
+    const others = groupDetailMembers.filter((m) => m.uid !== currentUser.uid);
+    const targetListHtml = others.length > 0
+      ? `<div class="leaderboard-list">
+          ${others.map((m) => renderFriendActionRow(m.uid, m.displayName || '?', m.photoURL,
+            `<button class="friend-action-btn" onclick="applyBouletOnTarget('${escapeJsAttr(groupId)}', '${escapeJsAttr(challengeId)}', '${escapeJsAttr(m.uid)}', '${escapeJsAttr(m.displayName || '')}')">${t('groups.jokers.pickTargetBtn')}</button>`
+          )).join('')}
+        </div>`
+      : `<div class="history-empty">${t('groups.jokers.pickTargetEmpty')}</div>`;
     return `
       <div class="section-label">${t('groups.jokers.title')}</div>
       <div class="history-empty">${t('groups.jokers.pickTargetLabel')}</div>
-      <div class="leaderboard-list">
-        ${others.map((p) => renderFriendActionRow(p.uid, p.displayName || '?', p.photoURL,
-          `<button class="friend-action-btn" onclick="applyBouletOnTarget('${escapeJsAttr(groupId)}', '${escapeJsAttr(challengeId)}', '${escapeJsAttr(p.uid)}', '${escapeJsAttr(p.displayName || '')}')">${t('groups.jokers.pickTargetBtn')}</button>`
-        )).join('')}
-      </div>
+      ${targetListHtml}
       <button class="friend-action-btn" onclick="pickingBouletTarget = false; render(true);">${t('common.cancel')}</button>
     `;
   }
@@ -6893,7 +6902,12 @@ function switchGroupDetailView(view) {
 let groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
 
 function updateGroupChallengeDraft(field, value) {
-  groupChallengeFormDraft[field] = value;
+  // targetTotal : le champ est en type="text" (pas type="number", voir
+  // renderCreateGroupChallengeForm() - un <input type="number"> ne supporte pas
+  // setSelectionRange(), ce qui faisait sauter le curseur au DEBUT du champ a
+  // chaque frappe des que ce champ redevient reactif via applyContentPreservingFocus() -
+  // bug reel signale en prod), donc on filtre nous-memes les caracteres non numeriques.
+  groupChallengeFormDraft[field] = field === 'targetTotal' ? value.replace(/[^0-9]/g, '') : value;
   render();
 }
 
@@ -6937,7 +6951,7 @@ function renderCreateGroupChallengeForm() {
     </select>
     <input class="library-search-input" type="date" value="${escapeHtml(d.startDate)}" onchange="updateGroupChallengeDraft('startDate', this.value)">
     <input class="library-search-input" type="date" value="${escapeHtml(d.endDate)}" onchange="updateGroupChallengeDraft('endDate', this.value)">
-    <input id="groupChallengeTargetInput" class="library-search-input" type="number" min="1" placeholder="${t('groups.targetPlaceholder')}"
+    <input id="groupChallengeTargetInput" class="library-search-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="${t('groups.targetPlaceholder')}"
            value="${escapeHtml(String(d.targetTotal))}" oninput="updateGroupChallengeDraft('targetTotal', this.value)">
     ${target > 0 ? `<div class="rank-bar-hint">${t('groups.perPersonHint', { n: perPerson })}</div>` : ''}
     <select class="library-search-input" onchange="updateGroupChallengeDraft('stakeMode', this.value)">

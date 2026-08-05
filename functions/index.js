@@ -443,6 +443,13 @@ exports.applyGroupJoker = onCall(async (request) => {
   const challengeRef = db.collection('groups').doc(groupId).collection('challenges').doc(challengeId);
   const participantRef = challengeRef.collection('participants').doc(uid);
   const targetRef = jokerType === 'boulet' ? challengeRef.collection('participants').doc(targetUid) : null;
+  // La cible du Boulet est n'importe quel AUTRE MEMBRE DU GROUPE, pas seulement les
+  // participants ayant deja ouvert ce defi precis (ensureMyParticipantDoc() ne cree
+  // leur doc participant qu'a la premiere ouverture/contribution) - sans ca,
+  // impossible de viser quelqu'un qui n'a pas encore interagi avec le defi, alors
+  // que c'est justement le cas le plus frequent juste apres la creation. Lu
+  // uniquement en repli, si la cible n'a pas encore de doc participant.
+  const targetMemberRef = jokerType === 'boulet' ? db.collection('groups').doc(groupId).collection('members').doc(targetUid) : null;
 
   await db.runTransaction(async (tx) => {
     const challengeSnap = await tx.get(challengeRef);
@@ -454,8 +461,12 @@ exports.applyGroupJoker = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Un seul joker par defi - deja utilise.');
     }
     const targetSnap = targetRef ? await tx.get(targetRef) : null;
+    let targetMemberSnap = null;
     if (targetRef && (!targetSnap || !targetSnap.exists)) {
-      throw new HttpsError('not-found', 'Cible introuvable dans ce defi.');
+      targetMemberSnap = await tx.get(targetMemberRef);
+      if (!targetMemberSnap.exists) {
+        throw new HttpsError('not-found', 'Cible introuvable dans ce groupe.');
+      }
     }
 
     if (jokerType === 'doublon') {
@@ -464,7 +475,20 @@ exports.applyGroupJoker = onCall(async (request) => {
       tx.set(participantRef, { jokerUsed: 'immunite', immune: true }, { merge: true });
     } else if (jokerType === 'boulet') {
       tx.set(participantRef, { jokerUsed: 'boulet', jokerTargetUid: targetUid }, { merge: true });
-      tx.set(targetRef, { handicap: admin.firestore.FieldValue.increment(BOULET_HANDICAP) }, { merge: true });
+      if (targetMemberSnap) {
+        // Cree le doc participant de la cible a la volee (totalAmount:0), a partir
+        // de son profil de membre - le handicap de 20 s'applique des le depart, le
+        // classement de reglement la traite comme a effectiveAmount 0 (jamais
+        // negatif, voir rankForSettlement()) tant qu'elle n'a pas elle-meme
+        // contribue au moins 20.
+        const m = targetMemberSnap.data();
+        tx.set(targetRef, {
+          uid: targetUid, displayName: m.displayName || '', photoURL: m.photoURL || '',
+          totalAmount: 0, handicap: BOULET_HANDICAP,
+        });
+      } else {
+        tx.set(targetRef, { handicap: admin.firestore.FieldValue.increment(BOULET_HANDICAP) }, { merge: true });
+      }
     }
   });
 
