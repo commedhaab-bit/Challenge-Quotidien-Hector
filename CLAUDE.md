@@ -1591,5 +1591,14 @@ ou proactivement dans Firestore > Index > Composites.
 
 **Decisions actees** : plafond de groupe 20 membres, appartenance a un groupe prime sur l'opt-out classement (visible par les co-membres), nouvel onglet dedie "Groupes", 5 titres Hall of Fame des la Phase 3 (Mecene, Roi des Repets, Clutch Player, Fantome, Metronome), Raids Express a duree configurable au lancement (24h/48h, defaut 24h). Cout Cloud Functions estime a l'echelle actuelle : negligeable (tres largement sous le palier gratuit 2M invocations/mois).
 
-**Etat actuel (Phase 0)** : `functions/index.js` expose `helloWorld` (Callable, region `europe-west1`) pour valider toute la chaine outillage -> CI -> deploiement AVANT d'ecrire la moindre logique metier. **Pas encore deploye** : bascule Spark -> Blaze, premier `firebase login`, et premier run de la CI restent des actions manuelles a faire cote utilisateur (voir rapport de session correspondant).
+**Phase 0 : TERMINEE.** `functions/index.js` expose `helloWorld` (Callable, region `europe-west1`), **deploye avec succes en production** via `deploy-functions.yml` le jour de la mise en place. La chaine outillage -> CI -> deploiement Blaze est validee de bout en bout.
+
+**Roles IAM necessaires sur le compte de service de deploiement** (`firebase-adminsdk-fbsvc@challenge-quotidien-hector.iam.gserviceaccount.com`), decouverts un par un au fil des echecs reels de deploiement — a reproduire si ce compte de service est un jour recree :
+- **Editeur** (`roles/editor`) — couvre la quasi-totalite des operations (activation d'API, Cloud Build, Artifact Registry, etc.), mais PAS les actions de type "definir une policy IAM" (exclues par conception de ce role).
+- **Utilisateur du compte de service** (`roles/iam.serviceAccountUser`) — necessaire pour executer les fonctions en tant que `challenge-quotidien-hector@appspot.gserviceaccount.com` (erreur `iam.serviceAccounts.ActAs` sinon).
+- **Administrateur Cloud Functions** (`roles/cloudfunctions.admin`) — necessaire specifiquement pour definir la policy IAM d'invocation de la fonction (`roles/cloudfunctions.developer` ne suffit pas, message d'erreur explicite a ce sujet).
+
+**APIs Google Cloud a activer manuellement une fois** (le compte de service ne peut pas les activer lui-meme, action reservee au proprietaire du projet) : Cloud Functions, Cloud Build, Artifact Registry, Cloud Run Admin, Eventarc, Cloud Scheduler, Pub/Sub — toutes deja activees a ce stade.
+
+Runtime des fonctions : Node 22 (bascule depuis Node 20, deprecie et decommissionne le 2026-10-30).
 
