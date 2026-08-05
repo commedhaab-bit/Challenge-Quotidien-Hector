@@ -267,7 +267,16 @@ const LOCALE_EN = {
       winnerTakesAll: 'Winner takes it all',
       friendly: 'Friendly mode (just for glory)',
     },
-    stakeDescriptionPlaceholder: 'Stake / reward (e.g. buys a round)',
+    stakeDescriptionPlaceholder: 'Custom stake / reward',
+    stakeTypes: {
+      beerOption: '🍺 A beer',
+      customOption: 'Other...',
+      beerLabel: {
+        one: '🍺 A beer',
+        other: '🍺 {{n}} beers',
+      },
+    },
+    stakeCustomCount: '{{desc}} (x{{n}})',
     createChallengeSubmitBtn: 'Launch the challenge',
     bilanTitle: 'Report: {{name}}',
     ledgerTitle: 'Who owes what to whom',

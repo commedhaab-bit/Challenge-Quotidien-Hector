@@ -270,7 +270,16 @@ const LOCALE_FR = {
       winnerTakesAll: 'Le vainqueur gagne tout',
       friendly: 'Mode amical (juste pour la gloire)',
     },
-    stakeDescriptionPlaceholder: 'Gage / récompense (ex: offre une bière)',
+    stakeDescriptionPlaceholder: 'Gage / récompense personnalisé',
+    stakeTypes: {
+      beerOption: '🍺 Une bière',
+      customOption: 'Autre...',
+      beerLabel: {
+        one: '🍺 Une bière',
+        other: '🍺 {{n}} bières',
+      },
+    },
+    stakeCustomCount: '{{desc}} (x{{n}})',
     createChallengeSubmitBtn: 'Lancer le défi',
     bilanTitle: 'Bilan : {{name}}',
     ledgerTitle: 'Qui doit quoi à qui',

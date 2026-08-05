@@ -2753,13 +2753,19 @@ async function ensureMyParticipantDoc(groupId, challengeId) {
   });
 }
 
-async function createGroupChallenge(groupId, { name, exerciseSlug, startDate, endDate, targetTotal, stakeMode, stakeDescription }) {
+async function createGroupChallenge(groupId, { name, exerciseSlug, startDate, endDate, targetTotal, stakeMode, stakeType, stakeDescription }) {
   const challengeRef = db.collection('groups').doc(groupId).collection('challenges').doc();
   try {
     await challengeRef.set({
       name: (name || '').trim(), exerciseSlug, startDate, endDate,
       targetTotal: Math.max(1, Math.round(targetTotal) || 0),
-      stakeMode, stakeDescription: (stakeDescription || '').trim(),
+      stakeMode,
+      // stakeType structure le gage ('beer' ou 'custom') au lieu de texte libre non
+      // contraint - permet a l'Ardoise de regrouper/sommer proprement des gages
+      // identiques (ex: "3 bieres") au lieu de fragmenter en lignes distinctes a
+      // cause de simples variations de saisie (voir CLAUDE.md).
+      stakeType: stakeType === 'custom' ? 'custom' : 'beer',
+      stakeDescription: stakeType === 'custom' ? (stakeDescription || '').trim() : '',
       createdBy: currentUser.uid, createdAt: Date.now(), status: 'active',
     });
     await ensureMyParticipantDoc(groupId, challengeRef.id);
@@ -2881,13 +2887,21 @@ async function registerGroupChallengeContributionsIfNeeded(exerciseSlug, amount)
   }
 }
 
-async function honorLedgerEntry(groupId, entryId) {
+// Honore UN OU PLUSIEURS gages identiques en un seul batch (voir
+// groupLedgerEntriesForDisplay() : l'Ardoise regroupe les gages fragmentes
+// "ex: 3 bieres" sous un seul bouton - honorer la ligne honore les 3 en une fois,
+// coherent avec "j'ai regle toute l'ardoise de bieres d'un coup").
+async function honorLedgerEntries(groupId, entryIds) {
   try {
-    await db.collection('groups').doc(groupId).collection('ledger').doc(entryId)
-      .set({ honoredAt: Date.now(), honoredBy: currentUser.uid }, { merge: true });
+    const batch = db.batch();
+    for (const entryId of entryIds) {
+      batch.set(db.collection('groups').doc(groupId).collection('ledger').doc(entryId),
+        { honoredAt: Date.now(), honoredBy: currentUser.uid }, { merge: true });
+    }
+    await batch.commit();
     await loadGroupDetail(groupId);
   } catch (e) {
-    reportSaveError('honor ledger entry failed', e);
+    reportSaveError('honor ledger entries failed', e);
   }
 }
 
@@ -6675,24 +6689,60 @@ function renderGroupJokerSection(groupId, challengeId, participants) {
   `;
 }
 
+// Pure (aucun acces Firestore) : regroupe les entrees ledger IDENTIQUES (meme
+// debiteur/creancier, meme type de gage, meme statut honore ou non) en une seule
+// ligne avec un compteur - evite la fragmentation demandee ("3 bieres" au lieu de
+// 3 lignes distinctes). stakeType='beer' regroupe TOUJOURS (texte structure, pas
+// de variation possible) ; stakeType='custom' (ou absent - anciens defis d'avant
+// ce champ) ne regroupe que les textes EXACTEMENT identiques, jamais des libelles
+// differents. Ne regroupe jamais un gage honore avec un gage encore en attente
+// (statuts distincts), pour ne pas donner l'impression qu'honorer 1 des 3 en
+// honore 3.
+function groupLedgerEntriesForDisplay(entries) {
+  const groups = new Map();
+  const order = [];
+  for (const entry of entries) {
+    const stakeType = entry.stakeType || 'custom';
+    const key = [entry.fromUid, entry.toUid, stakeType, stakeType === 'custom' ? (entry.stakeDescription || '') : '', entry.honoredAt ? 'h' : 'p'].join('|');
+    if (!groups.has(key)) {
+      groups.set(key, {
+        fromUid: entry.fromUid, toUid: entry.toUid, stakeType,
+        stakeDescription: entry.stakeDescription || '', honored: !!entry.honoredAt,
+        count: 0, entryIds: [],
+      });
+      order.push(key);
+    }
+    const g = groups.get(key);
+    g.count++;
+    g.entryIds.push(entry.entryId);
+  }
+  return order.map((key) => groups.get(key));
+}
+
 // Reutilisee par le bilan d'UN defi (groupDetailLedger) ET l'Ardoise Globale
 // (groupDetailLedgerHistory, tous les defis) - meme rendu, source de donnees differente.
 function renderLedgerEntriesList(entries) {
   if (entries.length === 0) return `<div class="history-empty">${t('groups.noStakes')}</div>`;
   const nameById = {};
   groupDetailMembers.forEach((m) => { nameById[m.uid] = m.displayName; });
-  return entries.map((entry) => {
-    const fromName = escapeHtml(nameById[entry.fromUid] || '?');
-    const toName = escapeHtml(nameById[entry.toUid] || '?');
-    const honorBtn = entry.honoredAt
+  return groupLedgerEntriesForDisplay(entries).map((g) => {
+    const fromName = escapeHtml(nameById[g.fromUid] || '?');
+    const toName = escapeHtml(nameById[g.toUid] || '?');
+    const entryIdsJs = g.entryIds.map((id) => `'${escapeJsAttr(id)}'`).join(',');
+    const honorBtn = g.honored
       ? `<span class="friend-status">${t('groups.honored')}</span>`
-      : `<button class="friend-action-btn" onclick="honorLedgerEntry('${escapeJsAttr(groupDetailGroup.groupId)}', '${escapeJsAttr(entry.entryId)}')">${t('groups.honorBtn')}</button>`;
+      : `<button class="friend-action-btn" onclick="honorLedgerEntries('${escapeJsAttr(groupDetailGroup.groupId)}', [${entryIdsJs}])">${t('groups.honorBtn')}</button>`;
+    // Gage structure (beer) : label toujours pluralise correctement (tn()). Gage
+    // libre (custom) : texte saisi tel quel, suffixe "x{{n}}" uniquement si regroupe.
+    const stakeLabel = g.stakeType === 'beer'
+      ? tn('groups.stakeTypes.beerLabel', g.count)
+      : (g.count > 1 ? t('groups.stakeCustomCount', { desc: g.stakeDescription, n: g.count }) : g.stakeDescription);
     return `
       <div class="leaderboard-row">
         <span class="leaderboard-name">${t('groups.ledgerLine', { from: fromName, to: toName })}</span>
         ${honorBtn}
       </div>
-      ${entry.stakeDescription ? `<div class="rank-bar-hint">${escapeHtml(entry.stakeDescription)}</div>` : ''}
+      ${stakeLabel ? `<div class="rank-bar-hint">${escapeHtml(stakeLabel)}</div>` : ''}
     `;
   }).join('');
 }
@@ -6838,7 +6888,9 @@ function switchGroupDetailView(view) {
   render();
 }
 
-let groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeDescription: '' };
+// stakeType: 'beer' (defaut - le cas le plus courant, evite la fragmentation de
+// texte libre) ou 'custom' (revele le champ texte). Voir CLAUDE.md.
+let groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
 
 function updateGroupChallengeDraft(field, value) {
   groupChallengeFormDraft[field] = value;
@@ -6848,6 +6900,7 @@ function updateGroupChallengeDraft(field, value) {
 async function submitGroupChallengeForm() {
   const d = groupChallengeFormDraft;
   if (!d.name.trim() || !d.exerciseSlug || !d.endDate || !d.targetTotal) return;
+  if (d.stakeType === 'custom' && !d.stakeDescription.trim()) return;
   await createGroupChallenge(openGroupId, {
     name: d.name,
     exerciseSlug: d.exerciseSlug,
@@ -6855,9 +6908,10 @@ async function submitGroupChallengeForm() {
     endDate: new Date(d.endDate + 'T23:59:59').getTime(),
     targetTotal: parseInt(d.targetTotal, 10),
     stakeMode: d.stakeMode,
+    stakeType: d.stakeType,
     stakeDescription: d.stakeDescription,
   });
-  groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeDescription: '' };
+  groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
 }
 
 // Helper UX demande explicitement : calcul EN DIRECT de "~X par personne" pendant la
@@ -6889,8 +6943,14 @@ function renderCreateGroupChallengeForm() {
     <select class="library-search-input" onchange="updateGroupChallengeDraft('stakeMode', this.value)">
       ${stakeOptions}
     </select>
+    <select class="library-search-input" onchange="updateGroupChallengeDraft('stakeType', this.value)">
+      <option value="beer"${d.stakeType === 'beer' ? ' selected' : ''}>${t('groups.stakeTypes.beerOption')}</option>
+      <option value="custom"${d.stakeType === 'custom' ? ' selected' : ''}>${t('groups.stakeTypes.customOption')}</option>
+    </select>
+    ${d.stakeType === 'custom' ? `
     <input id="groupChallengeStakeDescInput" class="library-search-input" type="text" placeholder="${t('groups.stakeDescriptionPlaceholder')}"
            value="${escapeHtml(d.stakeDescription)}" oninput="updateGroupChallengeDraft('stakeDescription', this.value)">
+    ` : ''}
     <button class="friend-search-submit-btn" onclick="submitGroupChallengeForm()">${t('groups.createChallengeSubmitBtn')}</button>
   `;
 }

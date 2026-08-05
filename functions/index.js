@@ -264,6 +264,12 @@ async function settleChallengeIfNeeded(db, challengeRef) {
         challengeId: challengeRef.id,
         fromUid: pair.fromUid,
         toUid: pair.toUid,
+        // stakeType structure le gage (ex: 'beer') plutot que du texte libre, pour
+        // que le client puisse regrouper/sommer proprement plusieurs gages
+        // identiques dans l'Ardoise (ex: "3 bieres" au lieu de 3 lignes fragmentees
+        // par de legeres variations de texte). 'custom' (defaut si absent, defis
+        // crees avant ce champ) garde le texte libre historique tel quel.
+        stakeType: challenge.stakeType || 'custom',
         stakeDescription: challenge.stakeDescription || '',
         createdAt: now,
         honoredAt: null,

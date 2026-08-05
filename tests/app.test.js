@@ -2387,7 +2387,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v56'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v57'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -5260,19 +5260,57 @@ const cssText = __rawHtml + __cssSource;
   await createGroupChallenge(createdGroupId, {
     name: 'Pompes de la semaine', exerciseSlug: pompes.slug,
     startDate: dateKey(new Date()), endDate: challengeEndDate,
-    targetTotal: 500, stakeMode: '5050', stakeDescription: 'Offre une biere',
+    targetTotal: 500, stakeMode: '5050', stakeType: 'custom', stakeDescription: 'Offre une biere',
   });
   const challengesSnap = await db.collection('groups').doc(createdGroupId).collection('challenges').get();
   __assertEq(challengesSnap.size, 1, 'un seul defi doit avoir ete cree');
   const groupChallengeId = challengesSnap.docs[0].id;
   __assertEq(challengesSnap.docs[0].data().status, 'active');
   __assertEq(challengesSnap.docs[0].data().stakeMode, '5050');
+  __assertEq(challengesSnap.docs[0].data().stakeType, 'custom');
+  __assertEq(challengesSnap.docs[0].data().stakeDescription, 'Offre une biere');
   const myParticipantDoc0 = await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid').get();
   __assertOk(myParticipantDoc0.exists && myParticipantDoc0.data().totalAmount === 0, 'le createur du defi doit avoir son propre doc participant initialise a 0');
   await refreshMyGroupsAndActiveChallenges();
   __assertEq(myActiveGroupChallenges.length, 1, 'le nouveau defi actif doit apparaitre dans myActiveGroupChallenges');
   __assertEq(myActiveGroupChallenges[0].exerciseSlug, pompes.slug, 'le bon exerciseSlug doit etre associe');
   console.log('OK: createGroupChallenge() (doc defi + mon propre doc participant, repris par refreshMyGroupsAndActiveChallenges())');
+
+  // stakeType structure ('beer' par defaut, evite la fragmentation de texte libre) :
+  // createGroupChallenge() force stakeDescription a vide pour 'beer' (rien a saisir),
+  // et le formulaire ne revele le champ texte que pour 'custom' (voir
+  // renderCreateGroupChallengeForm()). submitGroupChallengeForm() bloque la
+  // soumission si 'custom' est choisi sans texte (evite un gage vide).
+  await createGroupChallenge(createdGroupId, {
+    name: 'Squats du mois', exerciseSlug: pompes.slug,
+    startDate: dateKey(new Date()), endDate: challengeEndDate,
+    targetTotal: 100, stakeMode: 'winnerTakesAll', stakeType: 'beer', stakeDescription: 'ignore-moi',
+  });
+  const beerChallengesSnap = await db.collection('groups').doc(createdGroupId).collection('challenges').where('name', '==', 'Squats du mois').get();
+  __assertEq(beerChallengesSnap.docs[0].data().stakeType, 'beer');
+  __assertEq(beerChallengesSnap.docs[0].data().stakeDescription, '', 'le texte libre doit etre ignore/vide pour le gage structure "beer"');
+  // Annule immediatement : ce 2e defi n etait la que pour verifier stakeType, il ne
+  // doit pas devenir le defi "actif" a la place de "Pompes de la semaine" pour le
+  // reste du scenario (loadGroupDetail() prend le plus RECENT defi actif).
+  await cancelGroupChallenge(createdGroupId, beerChallengesSnap.docs[0].id);
+
+  __assertEq(groupChallengeFormDraft.stakeType, 'beer', 'le formulaire doit proposer "Une biere" par defaut');
+  creatingGroupChallenge = true;
+  let challengeFormHtml = renderCreateGroupChallengeForm();
+  __assertOk(!challengeFormHtml.includes('id="groupChallengeStakeDescInput"'), 'le champ texte libre ne doit PAS etre affiche tant que "beer" (defaut) est selectionne');
+  updateGroupChallengeDraft('stakeType', 'custom');
+  challengeFormHtml = renderCreateGroupChallengeForm();
+  __assertOk(challengeFormHtml.includes('id="groupChallengeStakeDescInput"'), 'le champ texte libre doit apparaitre des que "Autre" est selectionne');
+  groupChallengeFormDraft.name = 'Test validation'; groupChallengeFormDraft.exerciseSlug = pompes.slug;
+  groupChallengeFormDraft.endDate = dateKey(new Date()); groupChallengeFormDraft.targetTotal = '50';
+  groupChallengeFormDraft.stakeDescription = '';
+  const challengeCountBefore = (await db.collection('groups').doc(createdGroupId).collection('challenges').get()).size;
+  await submitGroupChallengeForm();
+  const challengeCountAfterEmpty = (await db.collection('groups').doc(createdGroupId).collection('challenges').get()).size;
+  __assertEq(challengeCountAfterEmpty, challengeCountBefore, '"Autre" sans texte saisi ne doit PAS creer de defi (gage vide refuse)');
+  creatingGroupChallenge = false;
+  groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
+  console.log('OK: gage structure "beer" par defaut + "Autre" revele le champ texte + validation (gage custom vide refuse)');
 
   // Contribution via addSet() (comme registerBossBattleContributionIfNeeded()) : chaque
   // serie loguee sur le MEME exercice contribue, pas seulement la complétion du défi.
@@ -5422,9 +5460,9 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(bilanHtml.includes('Offre une biere'), 'le gage doit etre affiche dans le bilan');
   __assertOk(bilanHtml.includes(t('groups.honorBtn')), 'le bouton "Gage honore !" doit etre propose tant que non honore');
 
-  await honorLedgerEntry(createdGroupId, ledgerEntryId);
+  await honorLedgerEntries(createdGroupId, [ledgerEntryId]);
   const honoredDoc = await db.collection('groups').doc(createdGroupId).collection('ledger').doc(ledgerEntryId).get();
-  __assertOk(honoredDoc.data().honoredAt, 'honorLedgerEntry() doit marquer honoredAt');
+  __assertOk(honoredDoc.data().honoredAt, 'honorLedgerEntries() doit marquer honoredAt');
   __assertEq(honoredDoc.data().honoredBy, 'me-uid', 'honoredBy doit etre celui qui declare le gage honore');
   console.log('OK: bilan (classement + % implicite, "qui doit quoi a qui", bouton Gage honore!)');
 
@@ -5512,6 +5550,36 @@ const cssText = __rawHtml + __cssSource;
   const ledgerHistoryHtml = renderGroupDetailScreen();
   __assertOk(ledgerHistoryHtml.includes('Fait la vaisselle') && ledgerHistoryHtml.includes('Offre une biere'), 'l Ardoise doit afficher les gages de TOUS les defis passes, pas juste le dernier');
   console.log('OK: Ardoise Globale (historique complet des gages, tous defis confondus, 1 seul champ trie - aucun index composite)');
+
+  // Regroupement/somme des gages structures identiques ("beer", Phase suivante) :
+  // 2 gages "biere" distincts (2 defis differents) entre les 2 MEMES personnes
+  // doivent s afficher comme une seule ligne "2 bieres" (pluralise via tn()), pas 2
+  // lignes separees - c est exactement le probleme de fragmentation de texte libre
+  // que stakeType structure resout.
+  await db.collection('groups').doc(createdGroupId).collection('ledger').doc('defi-biere-1_me-uid_bob-uid').set({
+    challengeId: 'defi-biere-1', fromUid: 'me-uid', toUid: 'bob-uid',
+    stakeType: 'beer', stakeDescription: '', createdAt: Date.now() - 50000, honoredAt: null, honoredBy: null,
+  });
+  await db.collection('groups').doc(createdGroupId).collection('ledger').doc('defi-biere-2_me-uid_bob-uid').set({
+    challengeId: 'defi-biere-2', fromUid: 'me-uid', toUid: 'bob-uid',
+    stakeType: 'beer', stakeDescription: '', createdAt: Date.now() - 10000, honoredAt: null, honoredBy: null,
+  });
+  await loadGroupDetail(createdGroupId);
+  const groupedLedger = groupLedgerEntriesForDisplay(groupDetailLedgerHistory);
+  const beerGroup = groupedLedger.find(g => g.stakeType === 'beer' && g.fromUid === 'me-uid' && g.toUid === 'bob-uid');
+  __assertOk(beerGroup && beerGroup.count === 2, 'les 2 gages "biere" identiques (meme paire, meme statut) doivent etre regroupes en une seule entree avec un compteur de 2');
+  switchGroupDetailView('ledger');
+  const aggregatedHtml = renderGroupDetailScreen();
+  __assertOk(aggregatedHtml.includes(tn('groups.stakeTypes.beerLabel', 2)), 'l Ardoise doit afficher "2 bieres" (pluralise), pas 2 lignes separees');
+  __assertOk(!aggregatedHtml.includes(tn('groups.stakeTypes.beerLabel', 1)), 'ne doit jamais afficher "1 biere" en plus du total agrege');
+
+  // honorLedgerEntries() honore les 2 gages agreges EN UN SEUL geste (1 clic honore
+  // tout le "paquet" de bieres identiques).
+  await honorLedgerEntries(createdGroupId, beerGroup.entryIds);
+  const honoredBeer1 = await db.collection('groups').doc(createdGroupId).collection('ledger').doc('defi-biere-1_me-uid_bob-uid').get();
+  const honoredBeer2 = await db.collection('groups').doc(createdGroupId).collection('ledger').doc('defi-biere-2_me-uid_bob-uid').get();
+  __assertOk(honoredBeer1.data().honoredAt && honoredBeer2.data().honoredAt, 'honorer une ligne agregee doit honorer TOUTES les entrees du groupe en un seul batch');
+  console.log('OK: les gages structures "beer" identiques (meme paire, meme statut) sont regroupes/sommes dans l Ardoise ("2 bieres" au lieu de 2 lignes), honores en un seul geste');
 
   // Historique horodate des contributions (alimente detectClutchWin() cote Cloud
   // Function) : desormais ecrit UNIQUEMENT server-side, dans la meme transaction que

@@ -268,7 +268,16 @@ const LOCALE_ES = {
       winnerTakesAll: 'El ganador se lo lleva todo',
       friendly: 'Modo amistoso (solo por la gloria)',
     },
-    stakeDescriptionPlaceholder: 'Apuesta / recompensa (ej: paga una ronda)',
+    stakeDescriptionPlaceholder: 'Apuesta / recompensa personalizada',
+    stakeTypes: {
+      beerOption: '🍺 Una cerveza',
+      customOption: 'Otra...',
+      beerLabel: {
+        one: '🍺 Una cerveza',
+        other: '🍺 {{n}} cervezas',
+      },
+    },
+    stakeCustomCount: '{{desc}} (x{{n}})',
     createChallengeSubmitBtn: 'Lanzar el reto',
     bilanTitle: 'Balance: {{name}}',
     ledgerTitle: 'Quién le debe qué a quién',

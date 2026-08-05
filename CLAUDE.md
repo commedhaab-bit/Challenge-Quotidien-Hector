@@ -1958,3 +1958,46 @@ texte dont le `oninput` appelle `render()` en direct doit recevoir un `id`
 explicite**, sinon `applyContentPreservingFocus()` ne peut pas le retrouver et le
 meme bug reapparaitra silencieusement.
 
+## Gage structure ('beer' / 'custom') a la creation d'un defi de groupe
+
+**Demande utilisateur** : le champ de gage 100% texte libre fragmentait les
+saisies (variations de casse/orthographe/espaces) - impossible de sommer
+proprement dans l'Ardoise (ex: afficher "3 bieres" au lieu de 3 lignes quasi
+identiques mais techniquement distinctes).
+
+**Remplace le texte libre par un selecteur structure** sur le defi
+(`challenge.stakeType: 'beer' | 'custom'`) :
+- `'beer'` (defaut) : aucune saisie necessaire, `stakeDescription` force a `''` a
+  la creation (`createGroupChallenge()`) - le libelle affiche ("🍺 Une biere" /
+  "🍺 N bieres") est TOUJOURS derive via `tn('groups.stakeTypes.beerLabel', count)`,
+  jamais stocke comme texte - donc jamais de variation possible, agregation fiable
+  a 100%.
+- `'custom'` ("Autre..." dans le selecteur) : revele le champ texte libre
+  historique (`groupChallengeStakeDescInput`), soumission bloquee si vide
+  (`submitGroupChallengeForm()`). Les gages custom identiques MOT POUR MOT se
+  regroupent aussi (comportement naturel de l'algorithme de regroupement,
+  pas de traitement special), mais 2 textes differents ne fusionnent jamais.
+
+**Le reglement (`settleChallengeIfNeeded`, Cloud Function) copie `stakeType` sur
+chaque entree `ledger`** exactement comme il copiait deja `stakeDescription` -
+`stakeType` absent (defis crees AVANT ce champ) => traite comme `'custom'` a
+l'affichage, texte historique inchange, **retro-compatible sans migration**.
+
+**Agregation cote client, PUREMENT a l'affichage** (aucune ecriture
+supplementaire, aucun changement du nombre de documents `ledger` reellement
+ecrits - toujours un document par paire gagnant/perdant et par defi regle) :
+`groupLedgerEntriesForDisplay(entries)` (logique pure) regroupe les entrees
+IDENTIQUES - meme `(fromUid, toUid, stakeType, stakeDescription-si-custom,
+honore-ou-non)` - en une seule ligne avec un compteur. **Ne fusionne JAMAIS un
+gage honore avec un gage en attente** (statuts distincts dans la cle de
+regroupement) - eviterait l'illusion qu'honorer 1 gage sur 3 les honore tous.
+Reutilisee identiquement par le bilan d'UN defi (`groupDetailLedger`) ET
+l'Ardoise Globale (`groupDetailLedgerHistory`, tous defis confondus) via
+`renderLedgerEntriesList()` - meme fonction, memes garanties.
+
+**Honorer une ligne agregee honore TOUS les gages qu'elle represente en un seul
+geste** : `honorLedgerEntries(groupId, entryIds)` (batch Firestore, remplace
+l'ancienne `honorLedgerEntry()` a un seul document) - correspond au modele mental
+"je regle toute mon ardoise de bieres aupres de cette personne d'un coup", plutot
+que de forcer un clic par biere individuelle.
+
