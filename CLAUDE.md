@@ -2641,3 +2641,69 @@ Meme limite de verification que les chantiers precedents : valide par
 tests+lint (client ET Cloud Functions), **pas visuellement dans un vrai
 navigateur**.
 
+## Lot de retours utilisateur - 2e vague (notification d'attaque, bug d'affichage du handicap, date de debut par defaut)
+
+**Notification "tu te fais attaquer" (Boulet)** : `applyGroupJoker` (Cloud
+Function, cas `'boulet'`) ecrit desormais aussi une notification
+`boulet_attack` vers la CIBLE, dans la MEME transaction que l'application du
+handicap - meme canal que tout le reste (`sendPushOnNotificationCreate`
+l'intercepte automatiquement, in-app si l'appli est ouverte, push OS sinon).
+Necessite 2 lectures supplementaires DANS la transaction, uniquement pour le
+cas `'boulet'` (regle des transactions Firestore : tous les reads avant le
+premier write) : le nom de l'ATTAQUANT (lu depuis son doc MEMBRE, `groups/
+{groupId}/members/{uid}`, jamais son doc participant - qui peut ne pas encore
+exister, `applyGroupJoker()` n'appelant jamais `ensureMyParticipantDoc()`
+contrairement a `logGroupChallengeContribution()`) et le nom du groupe (doc
+`groups/{groupId}`). Nouvelle entree `boulet_attack` dans `PUSH_MESSAGES`
+(fr/en/es) + `KNOWN_NOTIFICATION_TYPES` (regression test deja en place, voir
+plus haut "kudo totalement absent de PUSH_MESSAGES" - ce test aurait
+immediatement attrape un oubli similaire ici). Cote client,
+`processUnreadNotifications()` gagne une 5e branche (`boulet_attack`),
+popup nommant l'attaquant + le handicap + le defi concerne.
+
+**Bug reel signale : le nombre affiche ne refletait jamais le handicap du
+Boulet deja inflige.** Une victime ayant fait 10 repetitions reelles avec un
+handicap de -20 continuait d'afficher "10" (le `totalAmount` BRUT) sur sa
+ligne de classement EN DIRECT (pendant que le defi est encore actif) -
+donnant l'impression trompeuse de "gagner" alors que le reglement final la
+placerait tres loin derriere. Cause : `renderGroupParticipantRow()` affichait
+`p.totalAmount` brut, et `loadGroupDetail()` triait les participants par ce
+meme `totalAmount` brut - le handicap n'etait jamais applique AVANT le
+reglement final (`rankForSettlement()`, Cloud Function). **Corrige** par une
+nouvelle fonction pure cote client, `computeGroupParticipantDisplayAmount(p)`
+= `(p.totalAmount||0) - (p.handicap||0)` (meme formule que
+`rankForSettlement()`, volontairement dupliquee - aucun import possible entre
+`index.html` et `functions/index.js`), utilisee a la fois pour le TRI des
+participants dans `loadGroupDetail()` et pour la VALEUR affichee dans
+`renderGroupParticipantRow()` - le classement en direct (et le bilan, qui
+reutilise la meme fonction de rendu) reflete desormais la meme realite que le
+reglement final, pas seulement apres coup. **Le vrai `totalAmount` Firestore
+n'est jamais modifie** (Hall of Fame, cible partagee du defi affichee en haut
+de la carte hero - voir Phase 4 plus haut : cette separation etait deja
+deliberee, seul l'AFFICHAGE en direct manquait le correctif).
+
+**Date de debut par defaut = "Aujourd'hui" (texte), pas des chiffres.**
+`renderCreateGroupChallengeForm()` : le champ "Debut" n'est plus un
+`<input type="date">` natif directement visible (dont le navigateur impose
+son propre rendu numerique de la valeur, aucun moyen de le personnaliser) -
+c'est desormais un BOUTON stylise comme `.library-search-input`
+(`.group-challenge-date-btn`) affichant `t('nav.today')` ("Aujourd'hui",
+reutilise tel quel - meme mot que l'onglet, aucune nouvelle cle necessaire)
+tant que la date choisie est aujourd'hui, ou la date formatee normalement
+sinon (`formatGroupChallengeStartDateLabel()`, pure). Le VRAI champ
+`<input type="date">` (`#groupChallengeStartDateInput`) existe toujours,
+mais rendu invisible (`.group-challenge-hidden-date-input` : `opacity:0` +
+1x1px + `pointer-events:none`, **jamais `display:none`** - necessaire pour
+que `showPicker()`/`.click()` fonctionnent) ; le bouton visible delegue au
+picker natif via `openGroupChallengeStartDatePicker()`
+(`input.showPicker()` si disponible, repli `focus()+click()` sinon - Safari
+16.4+, deja le plancher iOS retenu pour le push, voir plus haut). La valeur
+REELLEMENT stockee (`groupChallengeFormDraft.startDate`) est inchangee -
+seul le LIBELLE affiche change, jamais la donnee.
+
+CACHE_NAME -> v71. Aucun changement de regles Firestore, aucun nouvel index.
+Meme limite de verification que les chantiers precedents : valide par
+tests+lint (client ET Cloud Functions) - le nouveau bouton date/picker natif
+cache n'a pas pu etre verifie visuellement dans un vrai navigateur (limite
+deja documentee ailleurs dans ce fichier), a confirmer par l'utilisateur.
+

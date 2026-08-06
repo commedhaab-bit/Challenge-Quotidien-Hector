@@ -11,7 +11,7 @@ const { PUSH_MESSAGES } = __testables;
 // Cette liste doit rester en phase avec CHAQUE endroit du code qui ecrit une
 // notification (voir index.html: kudo/friend_request/friend_request_accepted/
 // group_invite/group_challenge_created/group_member_joined, et plus haut dans
-// ce fichier: group_challenge_settled/group_challenge_reminder).
+// ce fichier: group_challenge_settled/group_challenge_reminder/boulet_attack).
 const KNOWN_NOTIFICATION_TYPES = [
   'kudo',
   'friend_request',
@@ -21,6 +21,7 @@ const KNOWN_NOTIFICATION_TYPES = [
   'group_member_joined',
   'group_challenge_settled',
   'group_challenge_reminder',
+  'boulet_attack',
 ];
 
 test('PUSH_MESSAGES.fr couvre TOUS les types de notification reellement ecrits par l app (sinon sendPushToUser() abandonne silencieusement pour ce type)', () => {
@@ -40,7 +41,7 @@ test('PUSH_MESSAGES : chaque langue (en/es) couvre EXACTEMENT le meme jeu de typ
 test('PUSH_MESSAGES : chaque constructeur de message renvoie bien {title, body} non-vides, pour un jeu de donnees minimal', () => {
   const sampleData = {
     fromName: 'Alex M.', groupName: 'Les Costauds', challengeName: '100 pompes',
-    winnerName: 'Alex M.', targetReached: true, thresholdLabel: '24h',
+    winnerName: 'Alex M.', targetReached: true, thresholdLabel: '24h', amount: 20,
   };
   for (const locale of Object.keys(PUSH_MESSAGES)) {
     for (const type of Object.keys(PUSH_MESSAGES[locale])) {

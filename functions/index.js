@@ -524,7 +524,8 @@ exports.applyGroupJoker = onCall(async (request) => {
   }
 
   const db = admin.firestore();
-  const challengeRef = db.collection('groups').doc(groupId).collection('challenges').doc(challengeId);
+  const groupRef = db.collection('groups').doc(groupId);
+  const challengeRef = groupRef.collection('challenges').doc(challengeId);
   const participantRef = challengeRef.collection('participants').doc(uid);
   const targetRef = jokerType === 'boulet' ? challengeRef.collection('participants').doc(targetUid) : null;
   // La cible du Boulet est n'importe quel AUTRE MEMBRE DU GROUPE, pas seulement les
@@ -533,7 +534,13 @@ exports.applyGroupJoker = onCall(async (request) => {
   // impossible de viser quelqu'un qui n'a pas encore interagi avec le defi, alors
   // que c'est justement le cas le plus frequent juste apres la creation. Lu
   // uniquement en repli, si la cible n'a pas encore de doc participant.
-  const targetMemberRef = jokerType === 'boulet' ? db.collection('groups').doc(groupId).collection('members').doc(targetUid) : null;
+  const targetMemberRef = jokerType === 'boulet' ? groupRef.collection('members').doc(targetUid) : null;
+  // Nom de l'attaquant (pour la notification "tu es attaque", voir plus bas) : lu
+  // depuis le doc membre plutot que le doc participant de l'attaquant lui-meme,
+  // qui peut ne pas encore exister (applyGroupJoker(), contrairement a
+  // logGroupChallengeContribution(), n'appelle jamais ensureMyParticipantDoc()
+  // avant - un membre peut utiliser un joker sans avoir jamais contribue).
+  const attackerMemberRef = jokerType === 'boulet' ? groupRef.collection('members').doc(uid) : null;
 
   await db.runTransaction(async (tx) => {
     const challengeSnap = await tx.get(challengeRef);
@@ -552,6 +559,11 @@ exports.applyGroupJoker = onCall(async (request) => {
         throw new HttpsError('not-found', 'Cible introuvable dans ce groupe.');
       }
     }
+    // Lus AVANT toute ecriture (regle des transactions Firestore : tous les reads
+    // avant le premier write) - uniquement necessaires pour la notification
+    // "attaque" ci-dessous, mais doivent quand meme etre lus ici.
+    const groupSnap = jokerType === 'boulet' ? await tx.get(groupRef) : null;
+    const attackerMemberSnap = jokerType === 'boulet' ? await tx.get(attackerMemberRef) : null;
 
     if (jokerType === 'doublon') {
       tx.set(participantRef, { jokerUsed: 'doublon', doublonActiveUntil: Date.now() + DOUBLON_DURATION_MS }, { merge: true });
@@ -573,6 +585,20 @@ exports.applyGroupJoker = onCall(async (request) => {
       } else {
         tx.set(targetRef, { handicap: admin.firestore.FieldValue.increment(BOULET_HANDICAP) }, { merge: true });
       }
+      // Retour utilisateur : la cible doit savoir qu'elle se fait attaquer (in-app
+      // si l'appli est ouverte, push OS sinon) - meme mecanisme que toute autre
+      // notification (sendPushOnNotificationCreate intercepte cette ecriture
+      // automatiquement, voir plus bas), aucun nouveau point d'envoi a cabler.
+      const notifRef = db.collection('users').doc(targetUid).collection('notifications').doc();
+      tx.set(notifRef, {
+        type: 'boulet_attack',
+        fromUid: uid,
+        fromName: (attackerMemberSnap && attackerMemberSnap.exists && attackerMemberSnap.data().displayName) || '',
+        groupId, groupName: (groupSnap && groupSnap.exists && groupSnap.data().name) || '',
+        challengeId, challengeName: challengeSnap.data().name || '',
+        amount: BOULET_HANDICAP,
+        read: false, createdAt: Date.now(),
+      });
     }
   });
 
@@ -653,6 +679,7 @@ const PUSH_MESSAGES = {
       title: d.thresholdLabel === '3h' ? 'Dernière ligne droite !' : 'Plus que 24h !',
       body: `Le défi "${d.challengeName}" se termine bientôt - encore le temps de contribuer.`,
     }),
+    boulet_attack: (d) => ({ title: 'Tu te fais attaquer !', body: `${d.fromName} t'a collé Le Boulet (-${d.amount}) sur "${d.challengeName}".` }),
   },
   en: {
     kudo: (d) => ({ title: 'New kudos!', body: `${d.fromName} just cheered you on.` }),
@@ -671,6 +698,7 @@ const PUSH_MESSAGES = {
       title: d.thresholdLabel === '3h' ? 'Final stretch!' : '24 hours left!',
       body: `The "${d.challengeName}" challenge ends soon - there's still time to contribute.`,
     }),
+    boulet_attack: (d) => ({ title: 'You\'re under attack!', body: `${d.fromName} hit you with The Anchor (-${d.amount}) on "${d.challengeName}".` }),
   },
   es: {
     kudo: (d) => ({ title: '¡Nuevo kudo!', body: `${d.fromName} acaba de animarte.` }),
@@ -689,6 +717,7 @@ const PUSH_MESSAGES = {
       title: d.thresholdLabel === '3h' ? '¡Recta final!' : '¡Quedan 24 horas!',
       body: `El reto "${d.challengeName}" termina pronto - todavía hay tiempo para contribuir.`,
     }),
+    boulet_attack: (d) => ({ title: '¡Te están atacando!', body: `${d.fromName} te ha puesto El Lastre (-${d.amount}) en "${d.challengeName}".` }),
   },
 };
 

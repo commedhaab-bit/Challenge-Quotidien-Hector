@@ -589,6 +589,8 @@ const LOCALE_FR = {
       reminderTitle24h: 'Plus que 24h !',
       reminderTitle3h: 'Dernière ligne droite !',
       reminderSubtitle: 'Le défi "{{challenge}}" se termine bientôt — encore le temps de contribuer.',
+      bouletAttackTitle: 'Tu te fais attaquer !',
+      bouletAttackSubtitle: '{{name}} t\'a collé Le Boulet (-{{amount}}) sur "{{challenge}}" !',
     },
     removeFriend: {
       title: 'Retirer cet ami ?',

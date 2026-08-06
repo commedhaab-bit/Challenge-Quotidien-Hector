@@ -2481,7 +2481,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v70'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v71'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4174,6 +4174,23 @@ const cssText = __rawHtml + __cssSource;
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
   console.log('OK: 4 nouveaux types de notification (friend_request_accepted, group_challenge_created, group_member_joined, group_challenge_reminder) affichent chacun leur popup dediee');
 
+  // Retour utilisateur : quand un membre du groupe active Le Boulet contre moi, je
+  // dois etre prevenu (in-app si l appli est ouverte, push OS sinon - meme canal,
+  // ecrit par applyGroupJoker() cote Cloud Function).
+  __resetCommunityMocks();
+  popupQueue = []; popupOpen = false;
+  await notificationsCollRef('me-uid').doc().set({
+    type: 'boulet_attack', fromUid: 'bob-uid', fromName: 'Bob M.', groupId: 'g1', groupName: 'Les Costauds',
+    challengeId: 'c1', challengeName: '500 squats', amount: 20, read: false, createdAt: Date.now(),
+  });
+  startNotificationsListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(popupOpen && currentPopupHtml.includes(t('popups.notifications.bouletAttackTitle')) && currentPopupHtml.includes('Bob M.') && currentPopupHtml.includes('-20') && currentPopupHtml.includes('500 squats'), 'boulet_attack doit nommer l attaquant, le handicap inflige et le defi concerne');
+  document.getElementById('appPopupCloseBtn').onclick();
+  await new Promise(r => setTimeout(r, 10));
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+  console.log('OK: notification boulet_attack (la victime du Boulet est prevenue, in-app ou push OS)');
+
   __resetCommunityMocks();
   popupQueue = []; popupOpen = false;
   myKudosGivenEventIds = new Set(); myKudosGivenToday = new Set();
@@ -5566,6 +5583,17 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(challengeFormHtml.includes(t('groups.formSections.challenge')) && challengeFormHtml.includes(t('groups.formSections.dates')) && challengeFormHtml.includes(t('groups.formSections.reward')), 'les 3 sections doivent etre intitulees Defi / Date & duree / Recompense');
   __assertOk(challengeFormHtml.includes(t('groups.startDateLabel')) && challengeFormHtml.includes(t('groups.endDateLabel')), 'les 2 champs date doivent etre distingues par un libelle (Debut/Fin), pas 2 champs identiques sans repere');
   console.log('OK: formulaire de defi collectif regroupe en 3 sections visuelles distinctes (Defi / Date & duree / Recompense)');
+
+  // Retour utilisateur : le champ "Debut" doit afficher "Aujourd'hui" (texte) par
+  // defaut plutot qu'une date numerique, tout en restant un vrai champ date
+  // cliquable (bouton visible -> input natif cache, voir openGroupChallengeStartDatePicker()).
+  __assertEq(formatGroupChallengeStartDateLabel(''), t('nav.today'), 'aucune date choisie -> le libelle affiche doit etre "Aujourd hui"');
+  __assertEq(formatGroupChallengeStartDateLabel(dateKey(new Date())), t('nav.today'), 'la date du jour explicitement choisie doit aussi afficher "Aujourd hui", pas les chiffres');
+  const futureDateKey = dateKey(new Date(Date.now() + 5 * 86400000));
+  __assertEq(formatGroupChallengeStartDateLabel(futureDateKey), formatDateLabel(new Date(futureDateKey + 'T00:00:00')), 'une date differente d aujourd hui doit afficher la date formatee normalement (pas "Aujourd hui")');
+  __assertOk(challengeFormHtml.includes('id="groupChallengeStartDateInput"') && challengeFormHtml.includes(escapeHtml(t('nav.today'))), 'le formulaire doit afficher "Aujourd hui" sur le bouton Debut par defaut, avec le vrai champ date natif cache juste en dessous');
+  __assertOk(!challengeFormHtml.includes('group-challenge-hidden-date-input" value=""'), 'le champ date natif cache doit deja porter la date du jour comme valeur par defaut, jamais une valeur vide');
+  console.log('OK: champ "Debut" du defi collectif affiche "Aujourd hui" par defaut (texte), reste cliquable via le calendrier natif');
   updateGroupChallengeDraft('stakeType', 'custom');
   challengeFormHtml = renderCreateGroupChallengeForm();
   __assertOk(challengeFormHtml.includes('id="groupChallengeStakeDescInput"'), 'le champ texte libre doit apparaitre des que "Autre" est selectionne');
@@ -5754,6 +5782,20 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(bouletHtml.includes(t('groups.jokers.bouletLaunchedStatus', { name: 'Moi A.' })), 'le statut du Boulet doit nommer la cible');
   __assertOk(bouletHtml.includes(t('groups.jokers.handicapBadge', { amount: 20 })), 'le handicap doit etre affiche en badge sur la ligne de la cible');
   console.log('OK: Jokers tactiques - Le Boulet (picker de cible, handicap applique et affiche)');
+
+  // Bug reel signale en prod : le nombre affiche pour la victime du Boulet restait
+  // le totalAmount BRUT (10 repetitions reellement faites), sans jamais refleter
+  // visuellement le handicap deja inflige (-20) - laissant croire a tort que la
+  // victime "gagne" alors qu elle est tres loin derriere une fois le reglement
+  // applique. Corrige : le nombre affiche ET le classement EN DIRECT (pas
+  // seulement le bilan apres coup) doivent refleter la valeur NETTE.
+  __assertEq(computeGroupParticipantDisplayAmount({ totalAmount: 10, handicap: 20 }), -10, 'la valeur nette (repetitions - handicap) doit pouvoir etre negative, comme rankForSettlement() cote Cloud Function');
+  __assertOk(bouletHtml.includes('leaderboard-value">-10<'), 'le nombre affiche sur la ligne de la victime doit deja etre net du handicap (-10), jamais le total brut de repetitions (10)');
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('bob-uid')
+    .set({ uid: 'bob-uid', displayName: 'Bob Martin', totalAmount: 0 }, { merge: true });
+  await loadGroupDetail(createdGroupId);
+  __assertEq(groupDetailChallenge.participants[0].uid, 'bob-uid', 'Bob (0 repetition, aucun handicap = 0 net) doit desormais devancer la victime du Boulet (10 repetitions mais -20 = -10 net) dans le classement EN DIRECT, pas seulement au reglement final');
+  console.log('OK: le classement en direct et le nombre affiche refletent desormais le handicap du Boulet (bug reel corrige)');
 
   // Regression d un bug reel signale en prod : "je clique sur Le Boulet, rien ne se
   // passe" - en realite le picker s ouvrait bien mais restait VIDE des que

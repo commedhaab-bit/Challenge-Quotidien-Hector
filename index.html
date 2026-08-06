@@ -2556,6 +2556,19 @@ async function processUnreadNotifications(snap) {
         subtitle: t('popups.notifications.reminderSubtitle', { challenge: escapeHtml(data.challengeName || '') }),
         btnLabel: t('common.close'),
       });
+    } else if (data.type === 'boulet_attack') {
+      // Retour utilisateur : la victime du Boulet doit savoir qu elle se fait
+      // attaquer, en direct (popup in-app si l appli est ouverte) ou en rattrapage
+      // au prochain demarrage/tap sur la notification push OS (ecrite cote Cloud
+      // Function, voir applyGroupJoker() dans functions/index.js).
+      enqueuePopup({
+        icon: '🎯',
+        title: t('popups.notifications.bouletAttackTitle'),
+        subtitle: t('popups.notifications.bouletAttackSubtitle', {
+          name: escapeHtml(data.fromName || ''), amount: data.amount || 0, challenge: escapeHtml(data.challengeName || ''),
+        }),
+        btnLabel: t('common.close'),
+      });
     }
   }
 }
@@ -2764,7 +2777,14 @@ async function loadGroupDetail(groupId) {
       if (relevant.status === 'active') await ensureMyParticipantDoc(groupId, relevant.challengeId);
       const participantsSnap = await db.collection('groups').doc(groupId).collection('challenges').doc(relevant.challengeId)
         .collection('participants').get();
-      relevant.participants = participantsSnap.docs.map(d => ({ ...d.data() })).sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
+      // Classe par la valeur NETTE (totalAmount - handicap, voir
+      // computeGroupParticipantDisplayAmount()) - pas le totalAmount brut : sinon
+      // une victime du Boulet continuerait d'apparaitre "en tete" pendant tout le
+      // defi actif malgre un handicap deja inflige, jusqu'au reglement final
+      // (bug reel signale - le classement en direct doit refleter la meme realite
+      // que rankForSettlement() cote Cloud Function, pas seulement le bilan apres coup).
+      relevant.participants = participantsSnap.docs.map(d => ({ ...d.data() }))
+        .sort((a, b) => computeGroupParticipantDisplayAmount(b) - computeGroupParticipantDisplayAmount(a));
       if (relevant.status === 'settled') {
         const ledgerSnap = await db.collection('groups').doc(groupId).collection('ledger')
           .where('challengeId', '==', relevant.challengeId).get();
@@ -7001,6 +7021,19 @@ function renderGroupsScreen() {
   `;
 }
 
+// Retour utilisateur (bug reel signale) : la ligne d'un participant affichait le
+// totalAmount BRUT (ex: 10 repetitions faites) sans jamais refleter visuellement
+// le handicap du Boulet deja inflige (-20) - laissant croire a tort que la
+// victime "gagne" alors qu'elle est en realite tres loin derriere une fois le
+// reglement applique. Le vrai totalAmount (Hall of Fame, cible partagee du defi,
+// voir la ligne juste en dessous de la carte hero) n'est JAMAIS modifie - seul ce
+// qui est AFFICHE/CLASSE en direct doit refleter le handicap, meme formule que
+// rankForSettlement() cote Cloud Function (volontairement dupliquee cote client :
+// aucun import possible entre index.html et functions/index.js).
+function computeGroupParticipantDisplayAmount(p) {
+  return (p.totalAmount || 0) - (p.handicap || 0);
+}
+
 // Ligne d'un participant a un defi de groupe (classement OU bilan) : PAS de bouton
 // kudos (contrairement a renderLeaderboardRow(), sans rapport avec cette fonctionnalite).
 function renderGroupParticipantRow(p, rank, highlight) {
@@ -7008,9 +7041,9 @@ function renderGroupParticipantRow(p, rank, highlight) {
   const avatar = p.photoURL
     ? `<img src="${escapeHtml(p.photoURL)}" class="leaderboard-avatar" referrerpolicy="no-referrer">`
     : `<div class="leaderboard-avatar-fallback">${name.charAt(0).toUpperCase()}</div>`;
-  // Badges Jokers (Phase 4) : purement informatifs - expliquent pourquoi le
-  // classement de reglement (cote serveur, rankForSettlement()) peut differer du
-  // simple totalAmount affiche ici.
+  // Badges Jokers (Phase 4) : purement informatifs - expliquent POURQUOI le nombre
+  // affiche (deja net du handicap, voir computeGroupParticipantDisplayAmount())
+  // differe du nombre de repetitions reellement faites.
   const jokerBadges = `${p.immune ? `<span class="friend-status" title="${escapeHtml(t('groups.jokers.immuneBadge'))}">🛡️</span>` : ''}${p.handicap ? `<span class="friend-status" title="${escapeHtml(t('groups.jokers.handicapBadge', { amount: p.handicap }))}">-${p.handicap}</span>` : ''}`;
   return `
     <div class="leaderboard-row${highlight ? ' me' : ''}">
@@ -7018,7 +7051,7 @@ function renderGroupParticipantRow(p, rank, highlight) {
       ${avatar}
       <span class="leaderboard-name">${name}</span>
       ${jokerBadges}
-      <span class="leaderboard-value">${p.totalAmount || 0}</span>
+      <span class="leaderboard-value">${computeGroupParticipantDisplayAmount(p)}</span>
     </div>
   `;
 }
@@ -7423,6 +7456,29 @@ function closeGroupInfoOverlay() {
 // texte libre) ou 'custom' (revele le champ texte). Voir CLAUDE.md.
 let groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', unlimited: false, stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
 
+// Retour utilisateur : le champ "Debut" doit afficher litteralement "Aujourd'hui"
+// (plus lisible/rapide a confirmer d'un coup d'oeil) plutot que la date numerique,
+// tant que c'est la valeur par defaut/choisie - jamais a la place de la valeur
+// REELLEMENT stockee (dateKey brute, inchangee), seulement du libelle affiche.
+function formatGroupChallengeStartDateLabel(dateStr) {
+  const effective = dateStr || dateKey(new Date());
+  return effective === dateKey(new Date()) ? t('nav.today') : formatDateLabel(new Date(effective + 'T00:00:00'));
+}
+
+// Le champ "Debut" reste un VRAI champ date cliquable (retour utilisateur : pouvoir
+// choisir une autre date via le calendrier) - un <input type="date"> natif ne peut
+// pas afficher de texte personnalise a la place de sa valeur (rendu impose par le
+// navigateur), donc le bouton visible delegue au natif CACHE juste en dessous
+// (showPicker() moderne, repli focus()+click() si absent - Safari 16.4+, deja le
+// plancher iOS retenu pour le push, voir CLAUDE.md).
+function openGroupChallengeStartDatePicker() {
+  const input = document.getElementById('groupChallengeStartDateInput');
+  if (!input) return;
+  if (typeof input.showPicker === 'function') { input.showPicker(); return; }
+  input.focus();
+  input.click();
+}
+
 function updateGroupChallengeDraft(field, value) {
   // targetTotal : le champ est en type="text" (pas type="number", voir
   // renderCreateGroupChallengeForm() - un <input type="number"> ne supporte pas
@@ -7498,7 +7554,9 @@ function renderCreateGroupChallengeForm() {
     <div class="group-challenge-form-section">
       <div class="group-challenge-form-section-label">${t('groups.formSections.dates')}</div>
       <div class="group-challenge-field-label">${t('groups.startDateLabel')}</div>
-      <input class="library-search-input" type="date" value="${escapeHtml(d.startDate)}" onchange="updateGroupChallengeDraft('startDate', this.value)">
+      <button type="button" class="library-search-input group-challenge-date-btn" onclick="openGroupChallengeStartDatePicker()">🗓️ ${escapeHtml(formatGroupChallengeStartDateLabel(d.startDate))}</button>
+      <input id="groupChallengeStartDateInput" type="date" class="group-challenge-hidden-date-input"
+             value="${escapeHtml(d.startDate || dateKey(new Date()))}" onchange="updateGroupChallengeDraft('startDate', this.value)">
       <div class="group-challenge-field-label">${t('groups.endDateLabel')}</div>
       <input class="library-search-input" type="date" value="${escapeHtml(d.endDate)}" onchange="updateGroupChallengeDraft('endDate', this.value)">
     </div>

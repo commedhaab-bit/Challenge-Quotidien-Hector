@@ -3397,4 +3397,24 @@
     margin-top: 8px;
   }
 
+  /* 11. Retour utilisateur : le champ "Debut" doit afficher "Aujourd'hui" (texte)
+     plutot que la date numerique par defaut, tout en restant un vrai champ date
+     cliquable - bouton visible stylise comme .library-search-input, qui delegue au
+     natif <input type="date"> ci-dessous, rendu invisible mais jamais display:none
+     (necessaire pour que showPicker()/click() fonctionnent, voir
+     openGroupChallengeStartDatePicker()). */
+  .group-challenge-date-btn {
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+  }
+  .group-challenge-hidden-date-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
   ::-webkit-scrollbar { display: none; }

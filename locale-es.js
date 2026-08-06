@@ -587,6 +587,8 @@ const LOCALE_ES = {
       reminderTitle24h: '¡Quedan 24 horas!',
       reminderTitle3h: '¡Recta final!',
       reminderSubtitle: 'El reto "{{challenge}}" termina pronto — todavía hay tiempo para contribuir.',
+      bouletAttackTitle: '¡Te están atacando!',
+      bouletAttackSubtitle: '{{name}} te ha puesto El Lastre (-{{amount}}) en "{{challenge}}"!',
     },
     removeFriend: {
       title: '¿Eliminar a este amigo?',
