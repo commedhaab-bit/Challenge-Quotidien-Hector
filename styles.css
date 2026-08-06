@@ -3694,4 +3694,74 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* ==== MASCOTTE "KILO" (retour utilisateur "effet waouh") ==== */
+  .kilo-svg { display: block; }
+  .kilo-arm { transform: rotate(var(--kilo-arm-angle, 0deg)); transition: transform 0.3s ease; }
+
+  @keyframes kilo-idle-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  .kilo-idle { animation: kilo-idle-float 2.6s ease-in-out infinite; }
+
+  @keyframes kilo-pop-in {
+    0% { transform: scale(0.7); opacity: 0; }
+    60% { transform: scale(1.08); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .kilo-success { animation: kilo-pop-in 0.4s cubic-bezier(.34, 1.56, .64, 1) both; }
+
+  @keyframes kilo-spark-twinkle {
+    0%, 100% { opacity: 0; transform: scale(0.4); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+  .kilo-spark {
+    transform-origin: center;
+    animation: kilo-spark-twinkle 1.2s ease-in-out infinite;
+    animation-delay: var(--kilo-spark-delay, 0ms);
+  }
+
+  @keyframes kilo-warning-sag {
+    0%, 100% { transform: scaleY(1) translateY(0); }
+    50% { transform: scaleY(0.97) translateY(3px); }
+  }
+  .kilo-warning { animation: kilo-warning-sag 2.4s ease-in-out infinite; transform-origin: bottom center; }
+
+  @keyframes kilo-sweat-drop {
+    0% { opacity: 0; transform: translateY(0); }
+    25% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(16px); }
+  }
+  .kilo-sweat { animation: kilo-sweat-drop 1.8s ease-in infinite; }
+
+  @keyframes kilo-beer-cheers {
+    0%, 100% { transform: rotate(var(--kilo-arm-angle, 0deg)); }
+    50% { transform: rotate(calc(var(--kilo-arm-angle, 0deg) - 10deg)); }
+  }
+  .kilo-beer .kilo-arm-left { animation: kilo-beer-cheers 1.3s ease-in-out infinite; }
+
+  /* Retour tactile au tap (voir kiloTap() dans index.html) - meme famille que le
+     reste des micro-interactions "effet waouh" deja en place. */
+  .kilo-tapped { animation: kilo-tap-bounce 0.4s ease; }
+  @keyframes kilo-tap-bounce {
+    0% { transform: scale(1); }
+    40% { transform: scale(0.85); }
+    70% { transform: scale(1.12); }
+    100% { transform: scale(1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kilo-idle, .kilo-success, .kilo-spark, .kilo-warning, .kilo-sweat,
+    .kilo-beer .kilo-arm-left, .kilo-tapped {
+      animation: none !important;
+    }
+  }
+
+  /* En-tete Aujourd'hui : Kilo entre la date et la pastille de serie (idle en
+     journee, warning des 19h si l'objectif du jour n'est pas encore valide -
+     voir computeKiloHomeState()). align-self:center plutot que de toucher
+     .header (align-items:baseline, partagee par 3 autres ecrans) - Kilo est le
+     seul element de cette ligne qui a besoin d'un centrage vertical propre. */
+  .kilo-home-slot { flex-shrink: 0; align-self: center; }
+
   ::-webkit-scrollbar { display: none; }

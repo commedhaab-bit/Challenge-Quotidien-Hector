@@ -608,6 +608,10 @@ const LOCALE_EN = {
       title: 'Shield activated!',
       subtitle: 'Your rest shield saved your streak! 🛡️ Remember to do your challenge today.',
     },
+    streakLost: {
+      title: 'Streak broken',
+      subtitle: "Kilo had a rough day... Starting over today, he believes in you!",
+    },
     streakPlusOne: {
       title: '+1 Day streak!',
       subtitle: {

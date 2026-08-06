@@ -609,6 +609,10 @@ const LOCALE_ES = {
       title: '¡Escudo activado!',
       subtitle: '¡Tu escudo de pausa salvó tu racha! 🛡️ Recuerda completar tu reto hoy.',
     },
+    streakLost: {
+      title: 'Racha interrumpida',
+      subtitle: 'Kilo ha tenido un mal día... ¡Empieza de cero hoy, él cree en ti!',
+    },
     streakPlusOne: {
       title: '¡+1 Día de racha!',
       subtitle: {

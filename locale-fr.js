@@ -611,6 +611,10 @@ const LOCALE_FR = {
       title: 'Bouclier activé !',
       subtitle: "Ton bouclier de pause t'a sauvé la série ! 🛡️ Pense à réaliser ton défi aujourd'hui.",
     },
+    streakLost: {
+      title: 'Série interrompue',
+      subtitle: "Kilo a eu un coup de mou... Repars à zéro aujourd'hui, il croit en toi !",
+    },
     streakPlusOne: {
       title: '+1 Jour de série !',
       subtitle: {

@@ -1339,8 +1339,9 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(popupOpen, 'une popup immersive doit s afficher immediatement a la validation');
   __assertOk(currentPopupHtml.includes('Défi complété'), 'la popup doit annoncer la completion du defi');
   __assertOk(currentPopupHtml.includes('+' + expectedXp + ' XP'), 'la popup doit afficher la carte XP gagnee');
+  __assertOk(currentPopupHtml.includes('kilo-success'), 'la mascotte Kilo (etat success) doit accompagner la validation d un defi');
   document.getElementById('appPopupCloseBtn').onclick();
-  console.log('OK: XP attribue (+' + expectedXp + ') et popup immersive (carte XP) affichee a la validation d un defi');
+  console.log('OK: XP attribue (+' + expectedXp + ') et popup immersive (carte XP + Kilo) affichee a la validation d un defi');
 
   // Retour utilisateur "effet waouh" : une petite salve de confettis LOCALISEE
   // (pas l ecran plein, reserve aux vrais grands moments) doit accompagner
@@ -1420,8 +1421,15 @@ const cssText = __rawHtml + __cssSource;
   popupQueue = []; popupOpen = false;
   await evaluateStreakOnLoad();
   __assertEq(streakCount, 0, 'sans bouclier, un jour manque doit remettre la serie a 0');
-  __assertOk(!popupOpen, 'aucun popup bouclier ne doit s afficher (deja consomme)');
-  console.log('OK: sans bouclier disponible, la serie retombe a 0 apres un jour manque');
+  // Retour utilisateur "effet waouh" (mascotte Kilo) : bug reel signale - avant ce
+  // correctif, une serie perdue sans bouclier disponible etait totalement
+  // SILENCIEUSE (aucun popup bouclier, MAIS aucun autre signal non plus). Kilo en
+  // etat 'lost' comble ce trou.
+  __assertOk(popupOpen, 'un popup doit desormais signaler la serie perdue (Kilo en etat lost), meme sans bouclier');
+  __assertOk(currentPopupHtml.includes(t('popups.streakLost.title')), 'titre du popup serie perdue');
+  __assertOk(currentPopupHtml.includes('kilo-lost'), 'la mascotte Kilo doit apparaitre en etat "lost" (triste) dans ce popup');
+  document.getElementById('appPopupCloseBtn').onclick();
+  console.log('OK: sans bouclier disponible, la serie retombe a 0 apres un jour manque + Kilo (lost) signale la perte (bug reel corrige : c etait silencieux avant)');
 
   // --- 32. Hier (gap = 1) : la serie est maintenue sans intervention ---
   streakCount = 4;
@@ -1465,27 +1473,68 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(voiceCoachEnabled, true, 'un second toggle doit reactiver');
   console.log('OK: coach vocal (toggle persiste, speak() respecte le toggle)');
 
-  // Retour utilisateur "effet waouh" : chime de reussite optionnel, DESACTIVE
-  // par defaut (contrairement au coach vocal) - a double tranchant, certains
-  // detestent le son.
-  soundEffectsEnabled = false;
+  // Retour utilisateur "effet waouh" : playSuccessSound() (deja existante,
+  // jouait JUSQU'ICI de facon INCONDITIONNELLE a chaque completion, sans aucun
+  // moyen de la couper) devient enfin OPTIONNELLE. Decouverte en cours de route :
+  // la demande initiale supposait qu'aucun son n'existait encore - defaut choisi
+  // en consequence : ACTIVE par defaut (ne coupe rien silencieusement chez les
+  // utilisateurs existants qui l'entendent deja), la vraie nouveaute est de
+  // pouvoir la desactiver.
+  __assertEq(soundEffectsEnabled, true, 'le son de reussite (deja existant) doit rester ACTIVE par defaut - ne pas couper silencieusement un comportement deja en place');
   let audioContextCalls = 0;
   const originalAudioContext = window.AudioContext;
   window.AudioContext = function () { audioContextCalls++; return originalAudioContext(); };
-  playSuccessChime();
-  __assertEq(audioContextCalls, 0, 'aucun son ne doit jamais etre joue tant que soundEffectsEnabled est desactive (defaut)');
+  playSuccessSound();
+  __assertEq(audioContextCalls, 1, 'par defaut (active), playSuccessSound() doit reellement synthetiser un son (Web Audio)');
   await toggleSoundEffects();
-  __assertEq(soundEffectsEnabled, true, 'toggleSoundEffects doit inverser l etat');
-  __assertEq(__appDataStore.data.soundEffectsEnabled, true, 'le nouvel etat doit etre persiste dans le document consolide appData');
-  __assertEq(audioContextCalls, 1, 'activer le reglage doit jouer un aperçu immediat du son');
-  playSuccessChime();
-  __assertEq(audioContextCalls, 2, 'une fois active, playSuccessChime() doit reellement synthetiser un son (Web Audio)');
+  __assertEq(soundEffectsEnabled, false, 'toggleSoundEffects doit inverser l etat');
+  __assertEq(__appDataStore.data.soundEffectsEnabled, false, 'le nouvel etat doit etre persiste dans le document consolide appData');
+  __assertEq(audioContextCalls, 1, 'desactiver le reglage ne doit jouer aucun apercu (rien a previsualiser en le coupant)');
+  playSuccessSound();
+  __assertEq(audioContextCalls, 1, 'une fois desactive, playSuccessSound() ne doit plus jouer aucun son');
   await toggleSoundEffects();
-  __assertEq(soundEffectsEnabled, false, 'un second toggle doit desactiver a nouveau');
+  __assertEq(soundEffectsEnabled, true, 'un second toggle doit reactiver');
+  __assertEq(audioContextCalls, 2, 'reactiver le reglage doit jouer un apercu immediat du son');
   window.AudioContext = originalAudioContext;
   const settingsHtmlSound = renderSettingsSection();
   __assertOk(settingsHtmlSound.includes('onclick="toggleSoundEffects()"'), 'le reglage doit etre visible dans Parametres');
-  console.log('OK: chime de reussite optionnel (desactive par defaut, apercu immediat a l activation, reglage dans Parametres)');
+  console.log('OK: son de reussite (deja existant) rendu optionnel - actif par defaut, desactivable, apercu immediat a la reactivation');
+
+  // Retour utilisateur "effet waouh" : mascotte "Kilo" (halterophile humanise),
+  // composant SVG reutilisable a 5 etats (idle/success/warning/beer/lost).
+  for (const kiloState of ['idle', 'success', 'warning', 'beer', 'lost']) {
+    const svg = renderKilo(kiloState);
+    __assertOk(svg.includes('kilo-' + kiloState), 'renderKilo(\\'' + kiloState + '\\') doit porter la classe kilo-' + kiloState);
+    __assertOk(svg.includes('<svg') && svg.includes('</svg>'), 'renderKilo(\\'' + kiloState + '\\') doit produire un SVG complet');
+  }
+  __assertOk(renderKilo('success').includes('kilo-spark'), 'l etat success doit afficher des etincelles');
+  __assertOk(!renderKilo('idle').includes('kilo-spark'), 'les autres etats ne doivent jamais afficher d etincelles');
+  __assertOk(renderKilo('warning').includes('kilo-sweat'), 'l etat warning doit afficher une goutte de sueur');
+  __assertOk(renderKilo('beer').includes('kilo-arm-left'), 'l etat beer doit avoir un bras leve tenant la choppe (structure de bras presente)');
+  __assertOk(renderKilo('lost').includes(KILO_DULL), 'l etat lost doit utiliser la couleur terne (rouille), pas le cyan neon habituel');
+  __assertOk(!renderKilo('idle').includes(KILO_DULL) && renderKilo('idle').includes(KILO_NEON), 'les autres etats doivent garder le cyan neon habituel');
+  __assertOk(renderKilo('idle', { clickable: true }).includes('onclick="kiloTap(this)"'), 'clickable:true doit poser le gestionnaire de tap');
+  __assertOk(!renderKilo('idle').includes('onclick="kiloTap'), 'sans clickable, aucun gestionnaire de tap ne doit etre pose (ex: dans un popup deja fermable autrement)');
+  console.log('OK: mascotte Kilo (5 etats distincts, etincelles/sueur/couleur ternie selon l etat, tap optionnel)');
+
+  // computeKiloHomeState() : idle en journee, warning des 19h SEULEMENT si au
+  // moins un defi actif du jour n est pas encore valide. Fonction PURE (l heure
+  // est un parametre) pour rester testable de facon deterministe.
+  __assertEq(computeKiloHomeState([], {}, 20), 'idle', 'aucun defi actif -> toujours idle, meme tard le soir (rien a reprocher)');
+  __assertEq(computeKiloHomeState([1], {}, 20), 'warning', 'un defi actif non valide + 19h passees -> warning');
+  __assertEq(computeKiloHomeState([1], {}, 14), 'idle', 'un defi actif non valide mais AVANT 19h -> idle (pas encore urgent)');
+  __assertEq(computeKiloHomeState([1], { 1: { done: true } }, 20), 'idle', 'defi actif mais DEJA valide -> idle, meme apres 19h');
+  __assertEq(computeKiloHomeState([1, 2], { 1: { done: true }, 2: { done: false } }, 20), 'warning', 'plusieurs defis actifs : UN SEUL non valide suffit a declencher warning apres 19h');
+  console.log('OK: computeKiloHomeState() (idle en journee, warning des 19h uniquement si un defi actif n est pas encore valide)');
+
+  // Integration : Kilo doit apparaitre sur l accueil.
+  activeTab = 'today';
+  currentChallengeId = null;
+  activeToday = new Set([pompes.id]);
+  state = emptyDayState();
+  render(false);
+  __assertOk(document.getElementById('app').innerHTML.includes('kilo-home-slot'), 'Kilo doit apparaitre dans l en-tete de l accueil');
+  console.log('OK: Kilo integre dans l en-tete de l accueil (idle/warning selon l heure et l avancement du jour)');
 
   // --- 35. Compte a rebours de preparation : 3, 2, 1, puis "C'est parti !" et demarrage reel du chrono ---
   voiceCoachEnabled = true;
@@ -1760,6 +1809,7 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(popupOpen, 'un changement de titre doit ouvrir une popup');
   __assertOk(currentPopupHtml.includes('NOUVEAU TITRE'), 'popup epique attendue pour un changement de titre');
   __assertOk(currentPopupHtml.includes('Initié 🎖️'), 'la popup doit nommer le nouveau titre debloque');
+  __assertOk(!currentPopupHtml.includes('kilo-success'), 'la popup epique de nouveau titre garde son propre icone (couronne), deja distinctif - pas de Kilo ici');
   document.getElementById('appPopupCloseBtn').onclick();
 
   // Cas explicite : level up SANS changement de titre (niveau 2 -> 3, toujours Recrue)
@@ -1767,8 +1817,9 @@ const cssText = __rawHtml + __cssSource;
   enqueueLevelPopups(2, 3);
   __assertOk(currentPopupHtml.includes('Niveau supérieur'), 'popup simple attendue quand le titre ne change pas');
   __assertOk(!currentPopupHtml.includes('NOUVEAU TITRE'), 'pas de popup epique quand le titre est inchange');
+  __assertOk(currentPopupHtml.includes('kilo-success'), 'la mascotte Kilo (etat success) doit accompagner un simple level up (retour utilisateur "effet waouh")');
   document.getElementById('appPopupCloseBtn').onclick();
-  console.log('OK: popups Level Up (simple) et Nouveau Titre (epique) selon le changement de palier');
+  console.log('OK: popups Level Up (simple, avec Kilo) et Nouveau Titre (epique, sans Kilo) selon le changement de palier');
 
   // --- 41. Refonte UI du chrono : disque double-anneau cliquable, plus de bouton
   // rectangulaire / texte "en cours" / hints / mode plein ecran / ajout manuel ---
@@ -2640,7 +2691,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v74'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v75'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -4254,6 +4305,7 @@ const cssText = __rawHtml + __cssSource;
   startNotificationsListener();
   await new Promise(r => setTimeout(r, 50));
   __assertOk(popupOpen && currentPopupHtml.includes('Bob M.') && currentPopupHtml.includes('100 pompes'), 'la popup de reglement doit nommer le gagnant quand winnerName est fourni');
+  __assertOk(currentPopupHtml.includes('kilo-beer'), 'la mascotte Kilo (etat beer) doit accompagner le bilan/reglement des gages de groupe (retour utilisateur "effet waouh")');
   document.getElementById('appPopupCloseBtn').onclick();
   await new Promise(r => setTimeout(r, 10));
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
@@ -4273,6 +4325,7 @@ const cssText = __rawHtml + __cssSource;
   startNotificationsListener();
   await new Promise(r => setTimeout(r, 50));
   __assertOk(popupOpen && currentPopupHtml.includes('app-popup-card epic') && currentPopupHtml.includes(t('popups.notifications.groupChallengeWonTitle')) && currentPopupHtml.includes('500 squats'), 'un objectif de groupe atteint doit declencher la celebration epique (confettis), pas le bilan neutre');
+  __assertOk(!currentPopupHtml.includes('kilo-beer'), 'la celebration epique (trophee) garde son propre traitement, deja distinctif - pas de Kilo ici, reserve au bilan neutre');
   document.getElementById('appPopupCloseBtn').onclick();
   await new Promise(r => setTimeout(r, 10));
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }

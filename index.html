@@ -467,7 +467,7 @@ async function loadAppData() {
     xpWeekStart = xwd.xpWeekStart || null;
     leaderboardOptOut = d.leaderboardOptOut ?? false;
     voiceCoachEnabled = d.voiceCoachEnabled ?? true;
-    soundEffectsEnabled = d.soundEffectsEnabled ?? false;
+    soundEffectsEnabled = d.soundEffectsEnabled ?? true;
     hasSeenTour = d.hasSeenTour ?? false;
     lastCompleted = d.lastCompleted ?? {};
     stats = d.stats ?? {};
@@ -2523,6 +2523,7 @@ async function processUnreadNotifications(snap) {
       } else {
         enqueuePopup({
           icon: '🏁',
+          kiloState: 'beer', // mascotte Kilo (retour utilisateur "effet waouh") - reglement des gages/dettes de groupe
           title: t('popups.notifications.groupChallengeSettledTitle'),
           subtitle: winnerName
             ? t('popups.notifications.groupChallengeSettledSubtitleWinner', { challenge: challengeName, winner: winnerName })
@@ -3534,6 +3535,7 @@ async function evaluateStreakOnLoad() {
   }
 
   let shieldTriggered = false;
+  let streakLost = false;
   if (streakCount > 0 && lastCompletedDate && lastCompletedDate !== todayKey) {
     const gap = daysBetween(lastCompletedDate, todayKey);
     if (gap >= 2) {
@@ -3542,6 +3544,7 @@ async function evaluateStreakOnLoad() {
         shieldTriggered = true;
       } else {
         streakCount = 0;
+        streakLost = true;
       }
     }
   }
@@ -3553,6 +3556,17 @@ async function evaluateStreakOnLoad() {
       icon: '🛡️',
       title: t('popups.shield.title'),
       subtitle: t('popups.shield.subtitle'),
+    });
+  } else if (streakLost) {
+    // Retour utilisateur "effet waouh" (mascotte Kilo) : avant ce correctif, une
+    // serie perdue sans bouclier disponible etait totalement SILENCIEUSE (aucun
+    // popup, aucun signal) - seul le chiffre de la pastille changeait au prochain
+    // coup d'oeil. Kilo en etat 'lost' comble ce trou.
+    enqueuePopup({
+      icon: '',
+      kiloState: 'lost',
+      title: t('popups.streakLost.title'),
+      subtitle: t('popups.streakLost.subtitle'),
     });
   }
 }
@@ -3663,10 +3677,14 @@ function buildPopupInnerHtml(next) {
     <div class="popup-progress-track"><div class="popup-progress-fill" style="width:${next.progressPct}%"></div></div>
     <div class="popup-progress-label">${next.progressLabel}</div>
   ` : '';
+  // Mascotte Kilo (retour utilisateur "effet waouh") : si next.kiloState est fourni,
+  // remplace l'icone emoji par Kilo dans la pose/expression correspondante -
+  // reutilise le meme composant que partout ailleurs (accueil, etc.).
+  const iconHtml = next.kiloState ? renderKilo(next.kiloState, { size: 84, clickable: true }) : next.icon;
   return `
     <div class="app-popup-card${next.epic ? ' epic' : ''}">
       ${next.closable ? `<button class="app-popup-close-x" id="appPopupCloseX" aria-label="${t('common.close')}">✕</button>` : ''}
-      <div class="app-popup-icon${next.locked ? ' locked' : ''}">${next.icon}</div>
+      <div class="app-popup-icon${next.locked ? ' locked' : ''}${next.kiloState ? ' kilo-icon' : ''}">${iconHtml}</div>
       <div class="app-popup-title">${next.title}</div>
       ${next.big !== undefined ? `<div class="app-popup-big${next.bigHighlight ? ' big-highlight' : ''}">${next.big}</div>` : ''}
       ${next.bigLabel ? `<div class="app-popup-big-label">${next.bigLabel}</div>` : ''}
@@ -3821,6 +3839,7 @@ function enqueueLevelPopups(levelBefore, levelAfter) {
     enqueuePopup({
       variant: 'levelup',
       icon: '⭐',
+      kiloState: 'success', // mascotte Kilo (retour utilisateur "effet waouh") - le nouveau titre (branche ci-dessus) reste epique/couronne, deja distinctif
       title: t('popups.levelUp.title'),
       big: t('profileTab.levelLabel', { n: levelAfter }),
       subtitle: athleteTitle(levelAfter),
@@ -4083,45 +4102,24 @@ async function toggleVoiceCoach() {
   render();
 }
 
-// Retour utilisateur "effet waouh" : petit "chime" de reussite optionnel (a
-// double tranchant - certains detestent le son - donc DESACTIVE par defaut,
-// contrairement au coach vocal). Champ moderne (appData consolide
-// uniquement, voir loadAppData()) : pas de champ legacy a migrer, contrairement
-// a voiceCoachEnabled qui existait avant la consolidation.
-let soundEffectsEnabled = false;
+// Retour utilisateur "effet waouh" : reglage pour rendre playSuccessSound()
+// (deja existante - voir plus bas, jouee JUSQU'ICI de facon INCONDITIONNELLE a
+// chaque completion, sans aucun moyen de la desactiver) enfin OPTIONNELLE.
+// **Decouverte en cours de route** : la demande initiale ("son optionnel,
+// desactive par defaut") supposait qu'aucun son n'existait encore - en realite
+// playSuccessSound() existait deja et jouait TOUJOURS. Defaut choisi ICI en
+// consequence : ACTIVE par defaut (`true`), pour ne rien couper silencieusement
+// chez les utilisateurs existants qui l'entendent deja - la vraie nouveaute
+// utile est de la rendre desactivable, pas de la couper d'office. Champ moderne
+// (appData consolide uniquement, voir loadAppData()) : pas de champ legacy a
+// migrer, contrairement a voiceCoachEnabled qui existait avant la consolidation.
+let soundEffectsEnabled = true;
 async function toggleSoundEffects() {
   soundEffectsEnabled = !soundEffectsEnabled;
   if (navigator.vibrate) navigator.vibrate(10);
   await saveAppField('soundEffectsEnabled', soundEffectsEnabled);
-  if (soundEffectsEnabled) playSuccessChime(); // aperçu immédiat du son qu'on vient d'activer
+  playSuccessSound(); // aperçu immédiat si on vient de reactiver (playSuccessSound() se garde déjà elle-même sinon)
   render();
-}
-
-// 2 notes ascendantes (do -> mi, synthese Web Audio - aucun fichier audio a
-// charger/mettre en cache) : joue uniquement si soundEffectsEnabled ET l'API
-// est disponible (jamais une erreur silencieuse, simple no-op sinon - certains
-// navigateurs/contextes n'exposent pas AudioContext, ex: iframe restreinte).
-function playSuccessChime() {
-  if (!soundEffectsEnabled) return;
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  if (!Ctx) return;
-  try {
-    const ctx = new Ctx();
-    const notes = [523.25, 659.25]; // do5, mi5
-    notes.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = freq;
-      const start = ctx.currentTime + i * 0.11;
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
-      osc.start(start);
-      osc.stop(start + 0.24);
-    });
-  } catch (e) { /* synthese audio indisponible : jamais bloquant */ }
 }
 
 // ==== NOTIFICATIONS PUSH (Firebase Cloud Messaging, Phase B) ====
@@ -4474,7 +4472,12 @@ function fireConfetti(variant) {
   tick();
 }
 
+// Retour utilisateur "effet waouh" : desormais optionnelle (soundEffectsEnabled,
+// reglage Parametres) - jouait auparavant de facon INCONDITIONNELLE, sans aucun
+// moyen de la couper (voir soundEffectsEnabled plus haut pour le detail complet
+// de cette decouverte/correction).
 function playSuccessSound() {
+  if (!soundEffectsEnabled) return;
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     const ctx = new AudioCtx();
@@ -5331,7 +5334,6 @@ async function addSetInner(amount) {
   if (willComplete) {
     s.recordStreak = newRecord ? s.recordStreak + 1 : 0;
     justCompletedDailyObjective = true; // consomme par le prochain render() de la fiche d'exercice (mini confettis)
-    playSuccessChime(); // no-op silencieux si soundEffectsEnabled est desactive (defaut)
   }
   await saveStats();
 
@@ -5363,6 +5365,7 @@ async function addSetInner(amount) {
 
     enqueuePopup({
       icon: newRecord ? '🏆' : '✅',
+      kiloState: 'success', // mascotte Kilo (retour utilisateur "effet waouh") a la validation d'un defi
       title: newRecord ? t('popups.challengeComplete.newRecordTitle') : t('popups.challengeComplete.doneTitle'),
       subtitle: `${challengeDisplayName(completedChallenge)} — ${total} ${completedChallenge.unit === 'sec' ? t('exercise.unitSecLabelLower') : t('exercise.unitRepsLabel')}`,
       xp: xpGained,
@@ -5647,9 +5650,11 @@ function render(animate) {
   let html = '';
 
   if (!currentChallengeId) {
+    const kiloHomeState = computeKiloHomeState([...activeToday], state.challenges, today.getHours());
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
+        <div class="kilo-home-slot">${renderKilo(kiloHomeState, { size: 44, clickable: true })}</div>
         <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>
       <h1 class="title">${t('today.title')}</h1>
@@ -7340,6 +7345,146 @@ function renderConfettiBurst() {
   return `<div class="confetti-burst">${CONFETTI_PRESETS.map((p) =>
     `<span class="confetti-piece" style="--dx:${p.dx}px; --dy:${p.dy}px; --rot:${p.rot}deg; --delay:${p.delay}ms; background:${p.color};"></span>`
   ).join('')}</div>`;
+}
+
+// ==== MASCOTTE "KILO" (halterophile humanise, retour utilisateur "effet waouh") ====
+// Composant SVG reutilisable, 5 etats (idle/success/warning/beer/lost) - construit
+// a partir de FORMES SIMPLES (cercles, rectangle arrondi, clip-path pour le
+// bandeau) plutot que des chemins bezier dessines a la main : fiabilite/
+// maintenabilite avant tout, meme esprit que les pictogrammes d'exercices
+// (exercise-pictograms.js) mais avec une palette PROPRE a Kilo (cyan neon +
+// bandeau orange), volontairement distincte du vert de l'appli - identite de
+// mascotte, pas un simple pictogramme de plus.
+const KILO_NEON = '#33e1ff';
+const KILO_BAND = '#ff7a3d';
+const KILO_DULL = '#5b6b78';
+
+// Reglages par etat : sourcils (chemin SVG par oeil), bouche, angle des 2 bras
+// (degres - negatif = bras gauche se leve vers la gauche/le haut, positif = bras
+// droit se leve vers la droite/le haut, 0 = pend le long du corps), decor
+// supplementaire ('sparks'|'sweat'|'mug'|'cracks'|null).
+const KILO_STATES = {
+  idle: {
+    browL: 'M 32 56 L 44 56', browR: 'M 56 56 L 68 56',
+    mouth: 'M 38 78 Q 50 86 62 78',
+    armL: 18, armR: -18, extra: null,
+  },
+  success: {
+    browL: 'M 32 54 Q 38 50 44 54', browR: 'M 56 54 Q 62 50 68 54',
+    mouth: 'M 36 76 Q 50 90 64 76',
+    armL: -125, armR: 125, extra: 'sparks', glasses: true, fist: true,
+  },
+  warning: {
+    browL: 'M 32 52 Q 38 58 44 55', browR: 'M 56 55 Q 62 58 68 52',
+    mouth: 'M 42 80 Q 50 76 58 80',
+    armL: 55, armR: -55, extra: 'sweat',
+  },
+  beer: {
+    browL: 'M 32 56 L 44 56', browR: 'M 56 54 Q 62 50 68 54',
+    mouth: 'M 38 77 Q 50 85 60 75',
+    armL: -150, armR: 35, extra: 'mug', wink: true,
+  },
+  lost: {
+    browL: 'M 32 55 Q 38 60 44 57', browR: 'M 56 57 Q 62 60 68 55',
+    mouth: 'M 42 82 Q 50 76 58 82',
+    armL: 62, armR: -62, extra: 'cracks', dull: true,
+  },
+};
+
+// Positions FIXES (jamais Math.random() - deterministe/testable, meme principe
+// que CONFETTI_PRESETS ci-dessus) pour les petites etincelles de l'etat 'success'.
+const KILO_SPARK_PRESETS = [
+  { x: 12, y: 22, size: 6, delay: 0 },
+  { x: 86, y: 18, size: 5, delay: 120 },
+  { x: 8, y: 52, size: 5, delay: 220 },
+  { x: 90, y: 56, size: 6, delay: 60 },
+];
+
+function renderKilo(state, options) {
+  const cfg = KILO_STATES[state] || KILO_STATES.idle;
+  const opts = options || {};
+  const size = opts.size || 72;
+  const color = cfg.dull ? KILO_DULL : KILO_NEON;
+  const clipId = 'kiloHeadClip' + Math.random().toString(36).slice(2, 8);
+
+  const eyesHtml = cfg.glasses
+    ? `<rect x="30" y="60" width="40" height="12" rx="6" fill="#0a0d0b" stroke="${color}" stroke-width="1.6"/>`
+    : `
+      <circle cx="40" cy="64" r="9" fill="#fff"/>
+      <circle cx="60" cy="64" r="9" fill="#fff"/>
+      <circle cx="40" cy="64" r="4" fill="#0a0d0b"/>
+      ${cfg.wink
+        ? `<path d="M 55 64 Q 60 68 65 64" stroke="#0a0d0b" stroke-width="2.4" stroke-linecap="round" fill="none"/>`
+        : `<circle cx="60" cy="64" r="4" fill="#0a0d0b"/>`}
+    `;
+
+  const extraHtml = cfg.extra === 'sparks' ? KILO_SPARK_PRESETS.map((s) =>
+    `<path class="kilo-spark" style="--kilo-spark-delay:${s.delay}ms" d="M ${s.x} ${s.y} l ${s.size * 0.3} ${s.size} l ${s.size} ${s.size * 0.3} l -${s.size} ${s.size * 0.3} l -${s.size * 0.3} ${s.size} l -${s.size * 0.3} -${s.size} l -${s.size} -${s.size * 0.3} l ${s.size} -${s.size * 0.3} Z" fill="${color}"/>`
+  ).join('')
+    : cfg.extra === 'sweat' ? `<path class="kilo-sweat" d="M 78 30 Q 82 38 78 44 Q 74 38 78 30 Z" fill="#4fc3f7"/>`
+    : cfg.extra === 'cracks' ? `<path d="M 44 50 L 50 60 L 46 66 L 54 78" stroke="#20262b" stroke-width="2" fill="none" stroke-linecap="round"/>`
+    : '';
+
+  const mugHtml = cfg.extra === 'mug' ? `
+    <g transform="translate(6,4)">
+      <rect x="0" y="6" width="16" height="18" rx="2" fill="${KILO_BAND}" stroke="#0a0d0b" stroke-width="1.6"/>
+      <path d="M 16 10 q 8 0 8 6 q 0 6 -8 6" fill="none" stroke="#0a0d0b" stroke-width="1.8"/>
+      <path d="M 1 6 Q 8 0 15 6" fill="#fff" stroke="none"/>
+    </g>
+  ` : '';
+
+  const fistL = cfg.fist ? `<circle cx="14" cy="52" r="7" fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="2"/>` : '';
+  const fistR = cfg.fist ? `<circle cx="86" cy="52" r="7" fill="${color}" fill-opacity="0.25" stroke="${color}" stroke-width="2"/>` : '';
+
+  return `
+    <svg class="kilo-svg kilo-${state}" viewBox="0 0 100 132" width="${size}" height="${Math.round(size * 1.32)}"
+         ${opts.clickable ? 'onclick="kiloTap(this)"' : ''} role="img" aria-label="Kilo">
+      <defs><clipPath id="${clipId}"><circle cx="50" cy="40" r="27"/></clipPath></defs>
+      <g fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <g class="kilo-arm kilo-arm-left" style="transform-origin:35px 70px; --kilo-arm-angle:${cfg.armL}deg">
+          <rect x="16" y="66" width="14" height="30" rx="7" fill="${color}" fill-opacity="0.18"/>
+          ${fistL}
+          ${mugHtml}
+        </g>
+        <g class="kilo-arm kilo-arm-right" style="transform-origin:65px 70px; --kilo-arm-angle:${cfg.armR}deg">
+          <rect x="70" y="66" width="14" height="30" rx="7" fill="${color}" fill-opacity="0.18"/>
+          ${fistR}
+        </g>
+        <rect x="42" y="58" width="16" height="42" rx="8" fill="#171c18"/>
+        <circle cx="50" cy="106" r="22" fill="#171c18"/>
+        <circle cx="50" cy="40" r="27" fill="#171c18"/>
+        <rect x="20" y="26" width="60" height="11" fill="${KILO_BAND}" clip-path="url(#${clipId})"/>
+      </g>
+      ${eyesHtml}
+      <path d="${cfg.browL}" stroke="#0a0d0b" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+      <path d="${cfg.browR}" stroke="#0a0d0b" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+      <path d="${cfg.mouth}" stroke="#0a0d0b" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+      ${extraHtml}
+    </svg>
+  `;
+}
+
+// Micro-interaction au tap (retour utilisateur) : petit rebond, jouable a
+// repetition (retire puis reajoute la classe pour pouvoir la rejouer meme si
+// l'animation precedente vient tout juste de se terminer - void el.offsetWidth
+// force un reflow entre les deux, sinon le navigateur fusionne les 2 changements
+// de classe et l'animation ne rejoue pas).
+function kiloTap(el) {
+  if (navigator.vibrate) navigator.vibrate(8);
+  el.classList.remove('kilo-tapped');
+  void el.offsetWidth;
+  el.classList.add('kilo-tapped');
+}
+
+// Etat de Kilo sur l'accueil : idle en journee, warning des 19h si au moins un
+// defi actif du jour n'est pas encore valide. Fonction PURE (l'heure est un
+// parametre, jamais new Date()/Date.now() directement dedans) pour rester
+// testable de facon deterministe.
+function computeKiloHomeState(activeIds, stateChallenges, hour) {
+  if (activeIds.length === 0) return 'idle';
+  const allDone = activeIds.every((id) => stateChallenges[id] && stateChallenges[id].done);
+  if (allDone) return 'idle';
+  return hour >= 19 ? 'warning' : 'idle';
 }
 
 function renderGroupsScreen() {

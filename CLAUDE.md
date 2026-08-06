@@ -2979,3 +2979,97 @@ gating, seuils numeriques via des objets synthetiques pour
 `attachSheetBehavior()`) - jamais le rendu visuel reel (glissement de
 feuille, tilt, anneau, sparkline, parallaxe) sur un vrai appareil.
 
+## Mascotte "Kilo" (halterophile humanise) — specifications detaillees de l'utilisateur
+
+**Demande explicite, cahier des charges precis fourni par l'utilisateur** (nom
+universel FR/EN/ES, style visuel, 5 etats, points d'integration exacts) -
+implementee dans la foulee de la 2e passe "effet waouh" ci-dessus.
+
+**Composant SVG reutilisable `renderKilo(state, options)`** - construit a
+partir de FORMES SIMPLES (cercles, rectangle arrondi, `clip-path` pour le
+bandeau) plutot que des chemins bezier dessines a la main : fiabilite/
+maintenabilite avant tout, meme esprit que les pictogrammes d'exercices
+(`exercise-pictograms.js`) mais avec une palette PROPRE a Kilo
+(`KILO_NEON` cyan + `KILO_BAND` bandeau orange), volontairement distincte du
+vert de l'appli - identite de mascotte, pas un simple pictogramme de plus.
+`KILO_STATES` (objet de config par etat : sourcils, bouche, angle des 2 bras,
+decor supplementaire) pilote un seul corps de fonction plutot que 5 SVG
+entierement dupliques. 5 etats : `idle` (flottement doux), `success`
+(bras leves "flex", lunettes de soleil, etincelles `KILO_SPARK_PRESETS` -
+positions FIXES, jamais `Math.random()`, meme principe que
+`CONFETTI_PRESETS`), `warning` (bras affaisses, goutte de sueur, animation de
+"tassement"), `beer` (bras leve tenant une choppe, clin d'oeil), `lost`
+(couleur ternie `KILO_DULL`, fissures, statique - aucune animation en boucle,
+contrairement aux 4 autres etats). `kiloTap(el)` : micro-interaction au clic
+(rebond CSS + vibration), rejouable meme si l'animation precedente vient de se
+terminer (`void el.offsetWidth` force un reflow entre le retrait et l'ajout de
+la classe, sinon le navigateur fusionne les 2 changements et l'animation ne
+rejoue pas).
+
+**Integration `buildPopupInnerHtml()`** : nouveau champ `next.kiloState` -
+quand present, remplace l'icone emoji habituelle (`next.icon`) par
+`renderKilo(next.kiloState, {size:84, clickable:true})` dans `.app-popup-icon`.
+Reutilise le moteur de popup EXISTANT (`enqueuePopup()`) sans le modifier
+autrement - Kilo n'est qu'un nouveau type de contenu pour `.app-popup-icon`,
+pas un nouveau mecanisme de popup.
+
+**4 points d'integration, tous scopes deliberement pour ne jamais entrer en
+concurrence avec les moments DEJA epiques (trophees, nouveau titre, victoire
+de groupe - `epic:true`, deja confettis/traitement distinctif)** :
+- **Accueil** (`computeKiloHomeState(activeIds, stateChallenges, hour)`, PURE -
+  l'heure est un parametre, jamais `new Date()` dedans, pour rester testable
+  de facon deterministe) : `idle` en journee, `warning` a partir de 19h SI au
+  moins un defi actif du jour n'est pas encore valide (`entry.done`). Aucun
+  defi actif -> toujours `idle` (rien a reprocher). Positionne dans `.header`
+  (deja `justify-content:space-between` - Kilo se retrouve naturellement
+  centre entre la date et la pastille de serie, `align-self:center` scope a
+  `.kilo-home-slot` seul plutot que de toucher `.header` elle-meme, partagee
+  par 3 autres ecrans).
+- **Popup de validation d'un defi** (`success`) et **popup de Level Up SIMPLE
+  UNIQUEMENT** (`success`) - le nouveau titre (`variant:'title', epic:true`,
+  couronne) et le Mode Hardcore (`epic:true`, flamme) gardent leur propre
+  traitement deja distinctif, pas de Kilo dessus (eviterait de diluer
+  l'"epique").
+- **Bilan/reglement d'un defi de groupe** (`beer`, `group_challenge_settled`
+  SANS `targetReached`) - la victoire collective (`targetReached:true`,
+  celebration epique deja en place) garde aussi son propre traitement, pas de
+  Kilo.
+- **Serie perdue SANS bouclier disponible** (`lost`) - **bug reel decouvert en
+  implementant cette fonctionnalite** : `evaluateStreakOnLoad()` remettait
+  deja `streakCount` a 0 dans ce cas (voir Phase "bouclier" plus haut), mais
+  **n'affichait absolument RIEN** - contrairement au cas "bouclier active"
+  (popup dediee juste a cote dans le meme `if/else`), une serie perdue passait
+  totalement inapercue jusqu'a ce que l'utilisateur remarque le chiffre a 0
+  par lui-meme. Corrige en ajoutant la branche manquante (`streakLost`),
+  Kilo comble ce trou.
+
+**Decouverte et correction en cours de route : `playSuccessSound()` existait
+DEJA et jouait de facon INCONDITIONNELLE.** La demande initiale de
+l'utilisateur ("son de reussite optionnel, desactive par defaut") a d'abord
+ete implementee comme une fonction entierement NOUVELLE (`playSuccessChime()`)
+sous l'hypothese qu'aucun son n'existait encore. En cablant le point
+d'integration dans `addSetInner()`, decouverte qu'une fonction `playSuccessSound()`
+(meme technique Web Audio, 3 notes au lieu de 2) etait DEJA appelee de facon
+INCONDITIONNELLE a 3 endroits (completion de defi, Mode Hardcore, victoire
+Boss Battle) - sans AUCUN moyen de la desactiver jusqu'ici. **Corrige en
+supprimant le doublon** : `playSuccessChime()` retiree, `soundEffectsEnabled`
+(reglage Parametres, `saveAppField`) gate desormais directement
+`playSuccessSound()` (un seul `if (!soundEffectsEnabled) return;` en tete de
+fonction, jamais duplique par site d'appel). **Defaut choisi en consequence :
+`true` (ACTIVE), pas `false` comme demande initialement** - defaulter a
+`false` aurait coupe SILENCIEUSEMENT un son deja entendu par tous les
+utilisateurs existants des la mise a jour, sans qu'ils aient rien demande ;
+la vraie nouveaute utile ici est de pouvoir le desactiver, pas de le couper
+d'office. **Lecon** : avant d'ajouter un mecanisme visiblement absent d'apres
+une recherche initiale (ici un grep imprecis sur "AudioContext" qui n'a pas
+matche `window.AudioContext || window.webkitAudioContext`), verifier a
+nouveau au moment de cabler le point d'integration reel plutot que de faire
+confiance a la recherche initiale seule - c'est exactement le point de
+cablage qui a revele la fonction existante.
+
+CACHE_NAME -> v75. Aucun changement de regles Firestore/Cloud Functions.
+Meme limite de verification que le reste des chantiers "effet waouh" : valide
+par tests+lint (structure SVG par etat, gating `computeKiloHomeState()`,
+presence/absence de `kilo-success`/`kilo-beer` dans les bons popups) - jamais
+le rendu visuel reel (expressions faciales, animations) sur un vrai appareil.
+
