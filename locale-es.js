@@ -611,7 +611,7 @@ const LOCALE_ES = {
     },
     streakLost: {
       title: 'Racha interrumpida',
-      subtitle: 'Kilo ha tenido un mal día... ¡Empieza de cero hoy, él cree en ti!',
+      subtitle: 'Kilito ha tenido un mal día... ¡Empieza de cero hoy, él cree en ti!',
     },
     streakPlusOne: {
       title: '¡+1 Día de racha!',

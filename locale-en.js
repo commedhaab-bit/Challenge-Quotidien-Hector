@@ -610,7 +610,7 @@ const LOCALE_EN = {
     },
     streakLost: {
       title: 'Streak broken',
-      subtitle: "Kilo had a rough day... Starting over today, he believes in you!",
+      subtitle: "Kilito had a rough day... Starting over today, he believes in you!",
     },
     streakPlusOne: {
       title: '+1 Day streak!',

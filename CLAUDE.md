@@ -3192,3 +3192,30 @@ aux textes de traduction (`t(...)`) existants - uniquement de nouveaux
 emplacements pour `renderKilo()`, deja teste (structure/classes) pour
 chacun des ecrans listes ci-dessus.
 
+## Renommage "Kilo" -> "Kilito" (nom PUBLIC uniquement, pas les identifiants de code)
+
+Demande explicite : un nom plus mignon et comprehensible dans toutes les
+langues comme designant un poids/haltere de musculation. Plusieurs pistes
+proposees (Hilito, Kilou, Halterito, Tonko, Bulko, Buffo...) avant que
+l'utilisateur ne retienne **Kilito** (kilo + diminutif "-ito", reconnu tres
+largement grace a l'espagnol/italien/portugais - garde le lien direct avec
+le poids, contrairement a "Hilito" qui n'evoque rien de lie a la
+musculation - "hilo" = fil en espagnol).
+
+**Choix delibere de perimetre : seul ce qu'un utilisateur voit/entend
+change, pas les identifiants internes.** `renderKilo()`, `kiloState`,
+`KILO_STATE_SVG`, les classes CSS `.kilo-*`, `kiloTap()`,
+`computeKiloHomeState()` etc. restent inchanges - un renommage complet de
+tous ces symboles a travers `index.html`/`styles.css`/`tests/app.test.js`
+(des dizaines d'occurrences, correspondances de chaines exactes dans les
+tests) aurait ete un gros diff a risque pour un changement purement
+cosmetique, sans aucun benefice utilisateur - le nom de code interne
+divergeant du nom public est une pratique courante et sans consequence.
+Seuls 4 emplacements reellement vus/entendus par l'utilisateur ont change :
+- `aria-label="Kilito, humeur ${state}"` dans `renderKilo()` (accessibilite).
+- Les 3 traductions du sous-titre `popups.streakLost.subtitle`
+  (fr/en/es) qui nomment la mascotte dans le texte ("Kilo a eu un coup de
+  mou..." -> "Kilito a eu un coup de mou...").
+
+CACHE_NAME -> v78. Aucune regle Firestore/Cloud Functions touchee.
+

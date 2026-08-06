@@ -613,7 +613,7 @@ const LOCALE_FR = {
     },
     streakLost: {
       title: 'Série interrompue',
-      subtitle: "Kilo a eu un coup de mou... Repars à zéro aujourd'hui, il croit en toi !",
+      subtitle: "Kilito a eu un coup de mou... Repars à zéro aujourd'hui, il croit en toi !",
     },
     streakPlusOne: {
       title: '+1 Jour de série !',
