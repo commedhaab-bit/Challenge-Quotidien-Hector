@@ -2707,3 +2707,67 @@ tests+lint (client ET Cloud Functions) - le nouveau bouton date/picker natif
 cache n'a pas pu etre verifie visuellement dans un vrai navigateur (limite
 deja documentee ailleurs dans ce fichier), a confirmer par l'utilisateur.
 
+## Pont "défi de groupe -> exécution de l'exercice" (friction reelle signalee)
+
+**Demande explicite de l'utilisateur** : avant ce correctif, contribuer a un
+defi de groupe (ex: "100 pompes") exigeait d'aller ACTIVER soi-meme
+l'exercice dans l'onglet Défis, PUIS de retourner sur Aujourd'hui pour
+trouver la carte et enfin logger une serie - beaucoup de friction pour un
+geste cense etre immediat depuis l'ecran du defi lui-meme, ou l'utilisateur
+voit deja le classement/la progression.
+
+**Bouton "S'entrainer : {{exercice}}" sur la carte hero d'un defi actif**
+(`startGroupChallengeExercise(slug)`) : reutilise TELLES QUELLES 2 fonctions
+deja existantes, enchainees - `toggleActiveToday(id)` (appelee UNIQUEMENT si
+`!activeToday.has(id)`, donc jamais un toggle qui desactiverait par erreur un
+exercice deja actif) puis `pickChallenge(id)` (navigation directe vers la
+fiche d'execution). Aucune nouvelle logique d'activation/navigation - juste
+la composition de 2 briques deja solides. `CHALLENGE_LIBRARY.find(x =>
+x.slug === slug)` resout l'id numerique necessaire aux 2 fonctions (fiable :
+`exerciseSlug` d'un defi de groupe pointe TOUJOURS vers une entree
+`CHALLENGE_LIBRARY` canonique, jamais un defi personnalise - le `<select>`
+du formulaire de creation n'en propose pas d'autres).
+
+**Progression du defi de groupe affichee SOUS l'objectif personnel du jour,
+sur la fiche de l'exercice** (retour utilisateur, 2e moitie de la demande) :
+sans ca, cliquer "S'entrainer" emmenait vers un ecran qui ne montre QUE
+l'objectif personnel (ex: 120 pompes), sans aucune trace du defi de groupe -
+impression de 2 mondes separes, aucune garantie visible que la serie
+compte vraiment pour le defi. Nouvel etat `activeExerciseGroupChallenges`
+(`[{groupId, challengeId, groupName, targetTotal, currentTotal}]`,
+generique : gere aussi le cas rare de PLUSIEURS defis de groupe actifs sur
+le meme exercice, dans des groupes differents), rempli par
+`loadActiveExerciseGroupChallenges(slug)` - appelee en fire-and-forget
+depuis `pickChallenge()` (jamais bloquante pour la navigation, le reste de
+l'ecran s'affiche immediatement). **Necessite une lecture Firestore par defi
+lie** (somme des `totalAmount` de tous les participants) : contrairement a
+`myActiveGroupChallenges` (simples metadonnees deja en memoire, alimentees
+par `refreshMyGroupsAndActiveChallenges()`), le total CUMULE du groupe n'est
+jamais mis en cache cote client ailleurs - cout accepte (rare : 0 la plupart
+du temps, 1 le plus souvent). Garde anti-race (navigation rapide entre 2
+exercices pendant le chargement) : le resultat n'est applique que si
+`getChallenge().slug` correspond encore au slug demande au moment ou la
+promesse se resout.
+
+**Mise a jour optimiste a chaque serie loguee** (`addSetInner()`, juste apres
+`registerGroupChallengeContributionsIfNeeded()`) : incremente directement
+`activeExerciseGroupChallenges[].currentTotal` de `amount` (plafonne a
+`targetTotal` si fixe, jamais si Mode infini) - evite une nouvelle lecture
+Firestore a CHAQUE tap +5/+10, deja le hot-path le plus frequent de
+l'application. Approximation assumee (les contributions d'AUTRES membres en
+parallele ne sont pas reflitees en temps reel ici) : resynchronisee avec la
+vraie valeur serveur a la prochaine ouverture de cette fiche
+(`pickChallenge()` relance toujours `loadActiveExerciseGroupChallenges()`).
+
+**Rendu** : reutilise `.bar-track`/`.bar-fill` (memes classes que la barre de
+progression personnelle) pour la coherence visuelle, avec un libelle dedie
+(`.group-challenge-linked-progress`/`.group-challenge-linked-label`) - le
+Mode infini (`targetTotal:0`) affiche le total brut sans barre/pourcentage,
+meme convention que la carte hero du defi de groupe elle-meme.
+
+CACHE_NAME -> v72. Aucun changement de regles Firestore, aucun nouvel index
+(la lecture participants reutilise exactement la meme requete que
+`loadGroupDetail()`). Meme limite de verification que les chantiers
+precedents : valide par tests+lint (client ET Cloud Functions), **pas
+visuellement dans un vrai navigateur**.
+

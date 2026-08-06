@@ -2259,6 +2259,15 @@ let myGroups = []; // [{ groupId, name, emoji, joinedAt }]
 // dont JE fais partie, pour associer chaque serie loguee (n'importe quel onglet) au(x)
 // bon(s) defi(s) de groupe sans avoir a rouvrir l'onglet Groupes.
 let myActiveGroupChallenges = []; // [{ groupId, challengeId, exerciseSlug, targetTotal }]
+// Retour utilisateur : sur la fiche d'un exercice, afficher la progression du/des
+// defi(s) de groupe lie(s) (memes membres, meme exercice) sous l'objectif personnel
+// du jour - evite l'impression de 2 mondes separes ("je fais des pompes ici, mais je
+// ne suis meme pas sur que ca compte pour le defi du groupe"). Rempli par
+// loadActiveExerciseGroupChallenges(), appelee depuis pickChallenge() - contrairement
+// a myActiveGroupChallenges (juste les metadonnees, deja en memoire), necessite une
+// lecture Firestore par defi lie pour le total CUMULE reel du groupe (jamais mis en
+// cache ailleurs cote client). [{ groupId, challengeId, groupName, targetTotal, currentTotal }]
+let activeExerciseGroupChallenges = [];
 let creatingGroupOpen = false; // formulaire "creer un groupe" (racine de l'onglet Groupes)
 let joiningGroupOpen = false; // formulaire "rejoindre avec un code" (racine de l'onglet Groupes)
 let groupCreateNameInput = '';
@@ -5088,8 +5097,53 @@ async function pickChallenge(id) {
   clearTimerState();
   currentChallengeId = id;
   getEntry(id); // s'assure qu'une entrée existe (reprend celle du jour si déjà commencée)
+  activeExerciseGroupChallenges = []; // évite d'afficher la progression du PRÉCÉDENT exercice le temps du chargement
   pushNavState();
   render(true);
+  const c = getChallenge();
+  if (c && c.slug) loadActiveExerciseGroupChallenges(c.slug); // fire-and-forget : re-rend dès que prêt, jamais bloquant pour la navigation
+}
+
+// Retour utilisateur : afficher la progression du/des défi(s) de groupe liés à
+// l'exercice courant (même exerciseSlug) sous l'objectif personnel du jour - évite
+// l'impression de 2 mondes séparés ("je fais des pompes ici, mais je ne suis même
+// pas sûr que ça compte pour le défi du groupe"). Une lecture Firestore par défi lié
+// (rare : 0 la plupart du temps, 1 le plus souvent - plusieurs seulement si
+// l'utilisateur est dans plusieurs groupes ayant chacun un défi actif sur ce même
+// exercice, cas gardé generique plutot que suppose impossible).
+async function loadActiveExerciseGroupChallenges(slug) {
+  const matches = myActiveGroupChallenges.filter((m) => m.exerciseSlug === slug);
+  if (matches.length === 0) { activeExerciseGroupChallenges = []; return; }
+  try {
+    const results = await Promise.all(matches.map(async (m) => {
+      const participantsSnap = await db.collection('groups').doc(m.groupId).collection('challenges').doc(m.challengeId).collection('participants').get();
+      const currentTotal = participantsSnap.docs.reduce((sum, d) => sum + (d.data().totalAmount || 0), 0);
+      const group = myGroups.find((g) => g.groupId === m.groupId);
+      return { groupId: m.groupId, challengeId: m.challengeId, groupName: group ? group.name : '', targetTotal: m.targetTotal || 0, currentTotal };
+    }));
+    // Navigation rapide possible pendant le chargement : n'applique le résultat que
+    // s'il correspond encore à l'exercice actuellement affiché.
+    const c = getChallenge();
+    if (!c || c.slug !== slug) return;
+    activeExerciseGroupChallenges = results;
+    render();
+  } catch (e) {
+    console.error('load active exercise group challenges failed', e);
+  }
+}
+
+// Bouton "Faire {{exercice}}" sur la carte hero d'un défi de groupe (retour
+// utilisateur : avant ce correctif, il fallait aller activer soi-même l'exercice
+// dans l'onglet Défis PUIS retourner sur Aujourd'hui pour enfin logger une série -
+// beaucoup de friction pour un geste qui devrait être immédiat). Réutilise
+// toggleActiveToday() (jamais appelée si déjà active, donc jamais un toggle qui
+// désactiverait par erreur) puis pickChallenge() - aucune nouvelle logique
+// d'activation/navigation, juste les 2 déjà existantes enchaînées.
+async function startGroupChallengeExercise(slug) {
+  const c = CHALLENGE_LIBRARY.find((x) => x.slug === slug);
+  if (!c) return;
+  if (!activeToday.has(c.id)) await toggleActiveToday(c.id);
+  await pickChallenge(c.id);
 }
 
 async function addSet(amount) {
@@ -5110,6 +5164,17 @@ async function addSetInner(amount) {
   entry.sets.push(amount);
   await registerBossBattleContributionIfNeeded(currentChallengeId, amount); // chaque serie compte, pas seulement la complétion du défi
   await registerGroupChallengeContributionsIfNeeded(getChallenge() ? getChallenge().slug : null, amount);
+  // Mise a jour optimiste (affichage uniquement) de la progression du/des defi(s) de
+  // groupe deja affichee sous l'objectif du jour (voir activeExerciseGroupChallenges) -
+  // evite d'attendre une nouvelle lecture Firestore a chaque serie loguee.
+  // Resynchronisee avec la vraie valeur serveur (plafond exact inclus) a la prochaine
+  // ouverture de cette fiche (pickChallenge() -> loadActiveExerciseGroupChallenges()).
+  if (activeExerciseGroupChallenges.length > 0) {
+    activeExerciseGroupChallenges = activeExerciseGroupChallenges.map((g) => ({
+      ...g,
+      currentTotal: g.targetTotal > 0 ? Math.min(g.targetTotal, g.currentTotal + amount) : g.currentTotal + amount,
+    }));
+  }
   const total = getTotal();
   const target = getTarget();
   const willComplete = total >= target && !entry.done;
@@ -5479,6 +5544,21 @@ function render(animate) {
         ` : `
           <div class="normal-objective-recap">${t('exercise.normalObjectiveRecap', { target: formatTargetLabel(target, c.unit) })}</div>
         `}
+
+        ${activeExerciseGroupChallenges.map((g) => {
+          const gPct = g.targetTotal > 0 ? Math.min(100, Math.round((g.currentTotal / g.targetTotal) * 100)) : 0;
+          return `
+            <div class="group-challenge-linked-progress">
+              <div class="group-challenge-linked-label">${t('exercise.linkedGroupChallenge', { group: escapeHtml(g.groupName || '') })}</div>
+              ${g.targetTotal > 0 ? `
+                <div class="bar-track"><div class="bar-fill" style="width:${gPct}%"></div></div>
+                <div class="group-challenge-linked-numbers">${g.currentTotal} / ${g.targetTotal}</div>
+              ` : `
+                <div class="group-challenge-linked-numbers">${t('groups.unlimitedProgress', { total: g.currentTotal })}</div>
+              `}
+            </div>
+          `;
+        }).join('')}
 
         ${(() => {
           const hcTarget = getHardcoreTarget(c);
@@ -7349,6 +7429,7 @@ function renderGroupDetailScreen() {
         ${isUnlimited ? '' : `<div class="group-challenge-hero-track"><div class="group-challenge-hero-fill athlete-xp-fill" style="width:${pct}%"></div></div>`}
         <div class="group-challenge-hero-progress">${isUnlimited ? t('groups.unlimitedProgress', { total }) : t('groups.challengeProgress', { current: total, target })}</div>
         ${targetReachedHtml}
+        ${groupDetailChallenge.exerciseSlug ? `<button class="friend-search-submit-btn" onclick="startGroupChallengeExercise('${escapeJsAttr(groupDetailChallenge.exerciseSlug)}')">${escapeHtml(t('groups.doExerciseBtn', { exercise: exerciseName }))}</button>` : ''}
       </div>
       <div class="leaderboard-list">
         ${groupDetailChallenge.participants.map((p, i) => renderGroupParticipantRow(p, i + 1, p.uid === currentUser.uid)).join('')}

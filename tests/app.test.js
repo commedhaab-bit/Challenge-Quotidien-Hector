@@ -2481,7 +2481,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v71'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v72'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -5667,6 +5667,37 @@ const cssText = __rawHtml + __cssSource;
   closeGroupInfoOverlay();
   __assertOk(!groupInfoOverlayOpen, 'fermer le panneau info doit le marquer comme referme');
   console.log('OK: carte "hero" du defi actif (progression + temps restant en avant) + panneau info groupe accessoire derriere le bouton "⋯" (passe UX premium)');
+
+  // Retour utilisateur : un bouton "Faire {{exercice}}" sur la carte hero doit
+  // permettre de rejoindre directement la fiche d execution de l exercice cible du
+  // defi de groupe, sans avoir a l activer soi-meme au prealable dans l onglet Défis
+  // (friction reelle signalee : activer + changer d onglet + retrouver la carte).
+  __assertOk(groupDetailHtml.includes('onclick="startGroupChallengeExercise(\\'' + pompes.slug + '\\')"'), 'la carte hero doit proposer un bouton qui cible directement l exercice du defi');
+  __assertOk(groupDetailHtml.includes(escapeHtml(t('groups.doExerciseBtn', { exercise: t('exercises.' + pompes.slug + '.name') }))), 'le bouton doit nommer l exercice concerne, pas juste "Activer"');
+  activeToday = new Set();
+  currentChallengeId = null;
+  await startGroupChallengeExercise(pompes.slug);
+  __assertOk(activeToday.has(pompes.id), 'startGroupChallengeExercise() doit activer l exercice s il ne l etait pas deja (jamais le desactiver si deja actif - toggleActiveToday() n est appelee QUE si absent)');
+  __assertEq(currentChallengeId, pompes.id, 'startGroupChallengeExercise() doit naviguer directement vers la fiche de l exercice cible');
+  console.log('OK: bouton "Faire {{exercice}}" sur la carte hero (active + navigue directement, plus besoin d activer soi-meme au prealable)');
+
+  // Progression du defi de groupe affichee SOUS l objectif personnel du jour, sur la
+  // fiche de l exercice lui-meme - evite l impression de 2 mondes separes ("je fais
+  // des pompes ici, mais je ne suis meme pas sur que ca compte pour le defi").
+  await new Promise(r => setTimeout(r, 20)); // laisse loadActiveExerciseGroupChallenges() (fire-and-forget) se resoudre
+  __assertEq(activeExerciseGroupChallenges.length, 1, 'le defi de groupe actif sur ce meme exercice doit etre detecte automatiquement');
+  __assertEq(activeExerciseGroupChallenges[0].groupName, 'Les Costauds');
+  render(false);
+  let exerciseScreenHtml = document.getElementById('app').innerHTML;
+  __assertOk(exerciseScreenHtml.includes(t('exercise.linkedGroupChallenge', { group: 'Les Costauds' })), 'le nom du groupe doit etre affiche sous l objectif personnel');
+  __assertOk(exerciseScreenHtml.includes('40 / 500'), 'la progression CUMULEE du defi de groupe (tous membres confondus) doit etre affichee, pas seulement ma propre contribution');
+  console.log('OK: progression du defi de groupe affichee sous l objectif personnel sur la fiche de l exercice (activeExerciseGroupChallenges)');
+
+  // Mise a jour optimiste : chaque serie loguee doit incrementer IMMEDIATEMENT la
+  // progression affichee, sans attendre une nouvelle lecture Firestore.
+  await addSet(5);
+  __assertEq(activeExerciseGroupChallenges[0].currentTotal, 45, 'chaque serie loguee doit incrementer OPTIMISTEMENT la progression affichee du defi de groupe');
+  console.log('OK: mise a jour optimiste de la progression du defi de groupe a chaque serie loguee (addSetInner())');
 
   // Regression du bug reel signale en prod : un defi a 125/100 (objectif depasse)
   // restait affiche "actif" indefiniment sans aucune Ardoise/Palmares, car seule
