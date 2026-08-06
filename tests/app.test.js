@@ -346,6 +346,13 @@ let mockLogGroupChallengeContributionResult = { credited: 0, reachedTarget: fals
 // badges) independamment de la logique serveur elle-meme.
 let mockApplyGroupJokerCalls = [];
 
+// Mock du Cloud Function Callable deleteGroup() (retour utilisateur) : meme
+// principe - la suppression recursive/le nettoyage des index myGroups des
+// AUTRES membres n est testable qu avec un emulateur Firestore (voir
+// functions/index.js), le mock enregistre juste l appel.
+let mockDeleteGroupCalls = [];
+let mockDeleteGroupShouldFail = false;
+
 const sandbox = {
   console,
   Math, Date, JSON, Set, Map, Array, Object, Number, String, Promise,
@@ -444,6 +451,11 @@ const sandbox = {
                 }
                 if (name === 'applyGroupJoker') {
                   mockApplyGroupJokerCalls.push(data);
+                  return { data: { ok: true } };
+                }
+                if (name === 'deleteGroup') {
+                  mockDeleteGroupCalls.push(data);
+                  if (mockDeleteGroupShouldFail) throw new Error('deleteGroup : echec simule par le test');
                   return { data: { ok: true } };
                 }
                 throw new Error('Callable non mockee dans les tests : ' + name);
@@ -592,6 +604,8 @@ const sandbox = {
     mockLogGroupChallengeContributionResult = { credited: 0, reachedTarget: false };
   },
   get __mockApplyGroupJokerCalls() { return mockApplyGroupJokerCalls; },
+  get __mockDeleteGroupCalls() { return mockDeleteGroupCalls; },
+  __setMockDeleteGroupShouldFail(v) { mockDeleteGroupShouldFail = v; },
   __resetMockApplyGroupJoker() { mockApplyGroupJokerCalls = []; },
   __mockCacheKeys: mockCacheKeys, // Cache Storage simule (forceAppUpdate)
   __mockSwRegistrations: mockSwRegistrations, // ServiceWorkerRegistration simulees (forceAppUpdate)
@@ -2467,7 +2481,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v69'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v70'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2684,13 +2698,14 @@ const cssText = __rawHtml + __cssSource;
   // par simple recherche de texte — la preuve la plus fiable est le comptage positif
   // exact des 4 remplacements, deja verifie fonctionnellement pour deleteChallenge au
   // test 11 plus haut). ---
-  // 12 depuis l ajout des Jokers tactiques (Phase 4, applyGroupJokerConfirm() +
-  // applyBouletOnTarget()) : compte x2, defi, suggestion d objectif, import de
+  // 13 depuis l ajout de la suppression de groupe (retour utilisateur,
+  // deleteGroupConfirm()) : compte x2, defi, suggestion d objectif, import de
   // donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami
   // depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un
-  // defi de groupe, + les 2 confirmations de joker (Doublon/Immunite et Boulet).
+  // defi de groupe, 2x confirmation de joker (Doublon/Immunite et Boulet),
+  // + supprimer un groupe.
   const confirmModalCallCount = (__rawHtml.match(/await confirmModal\\(\\{/g) || []).length;
-  __assertEq(confirmModalCallCount, 12, 'les 12 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un defi de groupe, 2x confirmation de joker) doivent utiliser confirmModal');
+  __assertEq(confirmModalCallCount, 13, 'les 13 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un defi de groupe, 2x confirmation de joker, supprimer un groupe) doivent utiliser confirmModal');
   console.log('OK: les 4 anciens confirm() natifs (compte x2, defi, suggestion objectif) passent par confirmModal');
 
   // --- 99. Ecran Parametres dedie : navigation (ouverture/fermeture) + regroupe le
@@ -5562,7 +5577,7 @@ const cssText = __rawHtml + __cssSource;
   const challengeCountAfterEmpty = (await db.collection('groups').doc(createdGroupId).collection('challenges').get()).size;
   __assertEq(challengeCountAfterEmpty, challengeCountBefore, '"Autre" sans texte saisi ne doit PAS creer de defi (gage vide refuse)');
   creatingGroupChallenge = false;
-  groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
+  groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', unlimited: false, stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
   console.log('OK: gage structure "beer" par defaut + "Autre" revele le champ texte + validation (gage custom vide refuse)');
 
   // Contribution via addSet() (comme registerBossBattleContributionIfNeeded()) : chaque
@@ -5663,6 +5678,30 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(cancelledDoc.data().status, 'cancelled', 'cancelGroupChallenge() doit marquer le defi cancelled');
   __assertEq(groupDetailChallenge.challengeId, groupChallengeId, 'apres annulation, le defi actif restant (le tout premier) doit redevenir celui affiche');
   console.log('OK: cancelGroupChallenge() (annulation par le createur uniquement, libere le groupe d un defi bloquant)');
+
+  // Suppression d'un groupe (retour utilisateur) : reservee au createur (verifie
+  // cote rendu ET cote appel), confirmation requise, delegue integralement a
+  // deleteGroup() (Cloud Function - seule capable de nettoyer recursivement le
+  // groupe ET l index myGroups des AUTRES membres, voir functions/index.js).
+  const infoSheetAsCreator = renderGroupInfoSheet();
+  __assertOk(infoSheetAsCreator.includes(t('groups.deleteGroupBtn')), 'le createur doit voir le bouton de suppression du groupe');
+
+  currentUser = { uid: 'bob-uid', displayName: 'Bob Martin', email: 'b@test.com', photoURL: '' };
+  await loadGroupDetail(createdGroupId);
+  const infoSheetAsMember = renderGroupInfoSheet();
+  __assertOk(!infoSheetAsMember.includes(t('groups.deleteGroupBtn')), 'un membre qui n est pas le createur ne doit jamais voir le bouton de suppression');
+
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  await loadGroupDetail(createdGroupId);
+  const originalConfirmModalDelete = confirmModal;
+  confirmModal = async () => true;
+  await deleteGroupConfirm(createdGroupId, 'Les Costauds');
+  confirmModal = originalConfirmModalDelete;
+  __assertEq(__mockDeleteGroupCalls.length, 1, 'confirmer la suppression doit appeler la Cloud Function deleteGroup()');
+  __assertEq(__mockDeleteGroupCalls[0].groupId, createdGroupId);
+  __assertOk(!myGroups.some(g => g.groupId === createdGroupId), 'le groupe supprime ne doit plus apparaitre dans myGroups localement');
+  __assertOk(!myActiveGroupChallenges.some(c => c.groupId === createdGroupId), 'le groupe supprime ne doit plus apparaitre dans myActiveGroupChallenges localement');
+  console.log('OK: deleteGroup() (reserve au createur, confirmation requise, nettoyage local de myGroups/myActiveGroupChallenges)');
 
   // Jokers tactiques (Phase 4) : UN SEUL joker par participant et par defi
   // (Doublon/Boulet/Immunite Swiss), applique server-side via applyGroupJoker
@@ -5828,7 +5867,20 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(hallOfFameHtml.includes(t('groups.hallOfFameTitles.mecene')) && hallOfFameHtml.includes('Moi'), 'Le Mecene (Moi, 2 dettes) doit apparaitre dans le palmares');
   __assertOk(hallOfFameHtml.includes(t('groups.hallOfFameTitles.roiDesRepets')) && hallOfFameHtml.includes('Bob'), 'Le Roi des Repets (Bob, 300 de volume) doit apparaitre');
   __assertOk(hallOfFameHtml.includes('groups-subtab-content'), 'le contenu du sous-onglet doit etre encapsule pour l animation de transition (passe UX premium)');
+  __assertOk(hallOfFameHtml.includes("showGroupHallOfFameTitleModal('mecene'"), 'chaque ligne du palmares doit etre cliquable et ouvrir sa propre modal d explication');
   console.log('OK: rendu Hall of Fame (sous-onglet Palmares, zero lecture supplementaire - deja dans le roster charge)');
+
+  // Retour utilisateur : chaque titre du Palmares doit expliquer concretement ce qu il
+  // represente (ex: "Metronome", pas evident au premier coup d oeil) - reutilise le meme
+  // moteur de popup que showTrophyDetailModal() (trophees individuels).
+  popupQueue = []; popupOpen = false;
+  showGroupHallOfFameTitleModal('metronome', '⏱️', 'Bob Martin');
+  __assertOk(popupOpen, 'cliquer un titre du palmares doit ouvrir la modal d explication');
+  __assertOk(currentPopupHtml.includes(t('groups.hallOfFameTitles.metronome')), 'la modal doit afficher le nom du titre');
+  __assertOk(currentPopupHtml.includes('Bob Martin'), 'la modal doit afficher le nom du membre titulaire');
+  __assertOk(currentPopupHtml.includes(t('groups.hallOfFameExplain.metronome')), 'la modal doit expliquer concretement ce que represente le titre');
+  document.getElementById('appPopupCloseBtn').onclick();
+  console.log('OK: showGroupHallOfFameTitleModal() (popup d explication par titre du palmares)');
 
   // Etat vide "premium" (passe UX premium) : verifie via le Palmares (aucun membre
   // n a de statistique positive) que le composant partage renderGroupsEmptyState()
@@ -5934,6 +5986,41 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(__mockLogGroupChallengeContributionCalls.length, callsBefore + 1, 'chaque contribution doit appeler la Cloud Function une fois de plus');
   __assertEq(__mockLogGroupChallengeContributionCalls[__mockLogGroupChallengeContributionCalls.length - 1].amount, 5);
   console.log('OK: chaque contribution delegue integralement a logGroupChallengeContribution (plafond + historique horodate + reglement, server-side)');
+
+  // "Mode infini" (targetTotal:0, retour utilisateur : classer par le volume total
+  // cumule plutot que par une cible chiffree) - nouveau groupe dedie pour ne pas
+  // perturber l invariant "un seul defi actif a la fois" du groupe utilise par le
+  // reste du scenario ci-dessus (createdGroupId a deja un defi actif/regle).
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  await createGroup('Solo Infini', '♾️');
+  const infiniGroupId = openGroupId;
+  creatingGroupChallenge = true;
+  groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', unlimited: false, stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
+  let infiniFormHtml = renderCreateGroupChallengeForm();
+  __assertOk(infiniFormHtml.includes('id="groupChallengeTargetInput"'), 'le champ objectif doit rester visible tant que le Mode infini n est pas coche');
+  updateGroupChallengeDraft('unlimited', true);
+  infiniFormHtml = renderCreateGroupChallengeForm();
+  __assertOk(!infiniFormHtml.includes('id="groupChallengeTargetInput"'), 'le champ objectif doit disparaitre des que le Mode infini est coche (aucune cible a saisir)');
+  __assertOk(infiniFormHtml.includes(t('groups.unlimitedModeHint')), 'un texte explicatif doit accompagner le Mode infini');
+
+  groupChallengeFormDraft.name = 'Defi infini'; groupChallengeFormDraft.exerciseSlug = pompes.slug;
+  groupChallengeFormDraft.endDate = dateKey(new Date());
+  await submitGroupChallengeForm();
+  const infiniChallengesSnap = await db.collection('groups').doc(infiniGroupId).collection('challenges').where('name', '==', 'Defi infini').get();
+  __assertEq(infiniChallengesSnap.size, 1, 'le Mode infini doit permettre de creer un defi sans objectif chiffre renseigne (targetTotal vide n est plus bloquant)');
+  __assertEq(infiniChallengesSnap.docs[0].data().targetTotal, 0, 'targetTotal doit etre explicitement 0 - deja interprete comme "aucun plafond, reglement uniquement a l echeance" cote Cloud Function (shouldSettleChallenge/computeCreditedAmount)');
+  const infiniChallengeId = infiniChallengesSnap.docs[0].id;
+  creatingGroupChallenge = false;
+
+  await loadGroupDetail(infiniGroupId);
+  await db.collection('groups').doc(infiniGroupId).collection('challenges').doc(infiniChallengeId).collection('participants').doc('me-uid').set({ totalAmount: 42 }, { merge: true });
+  await loadGroupDetail(infiniGroupId);
+  groupDetailView = 'challenge'; // reste sur 'ledger' d un test precedent (meme groupe non concerne), sinon renderGroupDetailScreen() n affiche pas le hero du defi actif
+  const infiniDetailHtml = renderGroupDetailScreen();
+  __assertOk(infiniDetailHtml.includes(t('groups.unlimitedProgress', { total: 42 })), 'le Mode infini doit afficher le volume total cumule au lieu d un "X / Y"');
+  __assertOk(!infiniDetailHtml.includes('group-challenge-hero-track'), 'aucune barre de progression n a de sens sans cible chiffree en Mode infini');
+  __assertOk(!infiniDetailHtml.includes(t('groups.targetReachedAwaitingSettlement')), 'le Mode infini ne peut jamais afficher "objectif atteint" (seule l echeance declenche le reglement, voir shouldSettleChallenge cote Cloud Function)');
+  console.log('OK: defi de groupe "Mode infini" (targetTotal:0, classement par volume total cumule, aucune barre/pourcentage, reglement uniquement a l echeance)');
 
   activeTab = 'today';
 

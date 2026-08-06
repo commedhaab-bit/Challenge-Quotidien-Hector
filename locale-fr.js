@@ -251,6 +251,10 @@ const LOCALE_FR = {
     createSubmitBtn: 'Créer',
     loading: 'Chargement…',
     infoAria: 'Infos du groupe (membres, invitations)',
+    deleteGroupBtn: '🗑️ Supprimer le groupe',
+    deleteConfirmTitle: 'Supprimer ce groupe ?',
+    deleteConfirmSubtitle: 'Action irréversible : "{{name}}" et tout son contenu (défis, ardoise, membres) seront définitivement supprimés, pour tout le monde.',
+    deleteConfirmLabel: 'Oui, supprimer',
     codeLabel: 'Code : {{code}}',
     membersLabel: {
       one: '{{n}} membre',
@@ -284,6 +288,9 @@ const LOCALE_FR = {
     exercisePlaceholder: 'Choisir un exercice',
     targetPlaceholder: 'Objectif global',
     perPersonHint: 'Soit ~{{n}} par personne',
+    unlimitedModeLabel: '♾️ Mode infini (pas d\'objectif chiffré)',
+    unlimitedModeHint: 'Aucune cible à atteindre : le classement se fait au nombre total de répétitions réalisées avant l\'échéance.',
+    unlimitedProgress: '{{total}} au total',
     startDateLabel: 'Début',
     endDateLabel: 'Fin',
     stakeMode: {
@@ -325,6 +332,13 @@ const LOCALE_FR = {
       clutchPlayer: 'Le Clutch Player',
       fantome: 'Le Fantôme',
       metronome: 'Le Métronome',
+    },
+    hallOfFameExplain: {
+      mecene: 'Celui ou celle qui a le plus souvent perdu et dû payer un gage dans ce groupe.',
+      roiDesRepets: 'Celui ou celle qui a cumulé le plus de répétitions, tous défis confondus.',
+      clutchPlayer: 'Un vrai comeback : encore derrière avant les derniers 25% d\'un défi, mais fini premier à l\'arrivée.',
+      fantome: 'Celui ou celle qui a le moins contribué, parmi les membres ayant participé à au moins un défi.',
+      metronome: 'Celui ou celle qui a participé au plus grand nombre de défis différents — la régularité avant tout.',
     },
     jokers: {
       title: 'Jokers tactiques',

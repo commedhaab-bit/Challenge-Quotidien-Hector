@@ -2850,7 +2850,11 @@ async function createGroupChallenge(groupId, { name, exerciseSlug, startDate, en
   try {
     await challengeRef.set({
       name: challengeName, exerciseSlug, startDate, endDate,
-      targetTotal: Math.max(1, Math.round(targetTotal) || 0),
+      // 0 = defi "Mode infini" (voir renderCreateGroupChallengeForm()/submitGroupChallengeForm()) :
+      // aucun plancher a 1 ici, targetTotal:0 est une valeur legitime, deja
+      // interpretee comme "aucun plafond, reglement uniquement a l'echeance" par
+      // toute la logique serveur (shouldSettleChallenge/computeCreditedAmount).
+      targetTotal: Math.max(0, Math.round(targetTotal) || 0),
       stakeMode,
       // stakeType structure le gage ('beer' ou 'custom') au lieu de texte libre non
       // contraint - permet a l'Ardoise de regrouper/sommer proprement des gages
@@ -2927,6 +2931,43 @@ async function cancelGroupChallengeConfirm(groupId, challengeId) {
   });
   if (!accepted) return;
   await cancelGroupChallenge(groupId, challengeId);
+}
+
+// Suppression d'un groupe (retour utilisateur) : delegue integralement a
+// deleteGroup() (Cloud Function, Admin SDK) - un client ne peut de toute facon
+// jamais nettoyer l'index myGroups des AUTRES membres (voir firestore.rules).
+async function deleteGroup(groupId) {
+  try {
+    await functionsClient.httpsCallable('deleteGroup')({ groupId });
+  } catch (e) {
+    reportSaveError('delete group failed', e);
+    return;
+  }
+  myGroups = myGroups.filter((g) => g.groupId !== groupId);
+  myActiveGroupChallenges = myActiveGroupChallenges.filter((c) => c.groupId !== groupId);
+  closeGroupInfoOverlay();
+  // history.back() (pas une simple reinitialisation directe de openGroupId) :
+  // consomme proprement l'entree pushNavState() poussee a l'ouverture du detail
+  // (voir openGroupDetail()) - popstate declenche goBackOneLevel(), qui appelle
+  // deja closeGroupDetail() dans ce cas (openGroupId !== null), meme chemin que
+  // le bouton retour physique.
+  history.back();
+}
+
+// Seul le createur voit ce bouton (verifie aussi cote serveur - voir deleteGroup()
+// Cloud Function, jamais fait confiance a la seule UI). Action IRREVERSIBLE :
+// supprime le groupe et TOUT son contenu (membres, defis, ardoise) pour tout le
+// monde, pas seulement pour soi.
+async function deleteGroupConfirm(groupId, groupName) {
+  const accepted = await confirmModal({
+    icon: '🗑️',
+    title: t('groups.deleteConfirmTitle'),
+    subtitle: t('groups.deleteConfirmSubtitle', { name: groupName }),
+    confirmLabel: t('groups.deleteConfirmLabel'),
+    danger: true,
+  });
+  if (!accepted) return;
+  await deleteGroup(groupId);
 }
 
 // Phase 4 : Jokers tactiques (Le Doublon / Le Boulet / L'Immunite Swiss) - voir
@@ -7200,13 +7241,25 @@ function renderGroupHallOfFameSection() {
     <div class="section-label">${t('groups.hallOfFameTitle')}</div>
     <div class="leaderboard-list">
       ${titles.map((entry) => `
-        <div class="leaderboard-row">
+        <div class="leaderboard-row clickable" onclick="showGroupHallOfFameTitleModal('${escapeJsAttr(entry.id)}', '${escapeJsAttr(entry.icon)}', '${escapeJsAttr(entry.member.displayName || '?')}')">
           <div class="leaderboard-avatar-fallback">${entry.icon}</div>
           <span class="leaderboard-name">${t('groups.hallOfFameTitles.' + entry.id)} — ${escapeHtml(entry.member.displayName || '?')}</span>
         </div>
       `).join('')}
     </div>
   `;
+}
+
+// Retour utilisateur : chaque titre du Palmares doit expliquer concretement ce
+// qu'il represente (ex: "Metronome", pas evident au premier coup d'oeil) - reutilise
+// le meme moteur de popup que showTrophyDetailModal() (trophees individuels).
+function showGroupHallOfFameTitleModal(titleId, icon, memberName) {
+  enqueuePopup({
+    icon,
+    title: t('groups.hallOfFameTitles.' + titleId),
+    big: escapeHtml(memberName),
+    subtitle: t('groups.hallOfFameExplain.' + titleId),
+  });
 }
 
 function renderGroupDetailScreen() {
@@ -7229,12 +7282,18 @@ function renderGroupDetailScreen() {
   } else if (groupDetailChallenge.status === 'active') {
     const total = groupDetailChallenge.participants.reduce((s, p) => s + (p.totalAmount || 0), 0);
     const target = groupDetailChallenge.targetTotal || 0;
-    const pct = target > 0 ? Math.min(100, Math.round((total / target) * 100)) : 0;
+    // Defi "Mode infini" (targetTotal:0) : aucune cible chiffree, donc ni
+    // pourcentage ni barre de progression n'ont de sens - le classement se fait
+    // au volume total cumule, affiche en gros a la place du pourcentage.
+    const isUnlimited = !(target > 0);
+    const pct = isUnlimited ? 0 : Math.min(100, Math.round((total / target) * 100));
     const exerciseName = groupDetailChallenge.exerciseSlug ? t('exercises.' + groupDetailChallenge.exerciseSlug + '.name') : '';
     // L'objectif peut etre atteint avant l'echeance choisie a la creation : le
     // reglement (Ardoise + Palmares) n'est ecrit que par closeExpiredGroupChallenges
     // (Cloud Function planifiee, passage toutes les 15 min) - ce message evite que
-    // l'utilisateur croie a un bug pendant ce court delai d'attente.
+    // l'utilisateur croie a un bug pendant ce court delai d'attente. Jamais affiche
+    // en Mode infini (target=0), qui ne se regle qu'a l'echeance - voir
+    // shouldSettleChallenge() cote Cloud Function.
     const targetReachedHtml = target > 0 && total >= target
       ? `<div class="history-empty groups-celebrate">${renderConfettiBurst()}${t('groups.targetReachedAwaitingSettlement')}</div>`
       : '';
@@ -7253,9 +7312,9 @@ function renderGroupDetailScreen() {
           <span class="group-challenge-hero-time">${formatGroupChallengeTimeRemaining(groupDetailChallenge.endDate)}</span>
         </div>
         <div class="group-challenge-hero-name">${escapeHtml(groupDetailChallenge.name)}${exerciseName ? ' — ' + escapeHtml(exerciseName) : ''}</div>
-        <div class="group-challenge-hero-pct">${pct}%</div>
-        <div class="group-challenge-hero-track"><div class="group-challenge-hero-fill athlete-xp-fill" style="width:${pct}%"></div></div>
-        <div class="group-challenge-hero-progress">${t('groups.challengeProgress', { current: total, target })}</div>
+        <div class="group-challenge-hero-pct">${isUnlimited ? total : pct + '%'}</div>
+        ${isUnlimited ? '' : `<div class="group-challenge-hero-track"><div class="group-challenge-hero-fill athlete-xp-fill" style="width:${pct}%"></div></div>`}
+        <div class="group-challenge-hero-progress">${isUnlimited ? t('groups.unlimitedProgress', { total }) : t('groups.challengeProgress', { current: total, target })}</div>
         ${targetReachedHtml}
       </div>
       <div class="leaderboard-list">
@@ -7338,6 +7397,9 @@ function renderGroupInfoSheet() {
       <div class="section-label">${tn('groups.membersLabel', groupDetailMembers.length)}</div>
       <div class="leaderboard-list">${membersHtml}</div>
       ${inviteHtml}
+      ${groupDetailGroup.createdBy === currentUser.uid ? `
+      <button class="delete-account-btn" onclick="deleteGroupConfirm('${escapeJsAttr(groupDetailGroup.groupId)}', '${escapeJsAttr(groupDetailGroup.name)}')">${t('groups.deleteGroupBtn')}</button>
+      ` : ''}
     </div>
   `;
 }
@@ -7359,7 +7421,7 @@ function closeGroupInfoOverlay() {
 
 // stakeType: 'beer' (defaut - le cas le plus courant, evite la fragmentation de
 // texte libre) ou 'custom' (revele le champ texte). Voir CLAUDE.md.
-let groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
+let groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', unlimited: false, stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
 
 function updateGroupChallengeDraft(field, value) {
   // targetTotal : le champ est en type="text" (pas type="number", voir
@@ -7373,19 +7435,24 @@ function updateGroupChallengeDraft(field, value) {
 
 async function submitGroupChallengeForm() {
   const d = groupChallengeFormDraft;
-  if (!d.name.trim() || !d.exerciseSlug || !d.endDate || !d.targetTotal) return;
+  // Mode infini (d.unlimited) : aucune cible chiffree requise - targetTotal 0 est
+  // deja traite comme "pas de plafond, reglement uniquement a l'echeance" par
+  // toute la logique de reglement cote Cloud Function (shouldSettleChallenge/
+  // computeCreditedAmount, voir functions/index.js) - aucun changement necessaire
+  // la-bas, seule la validation/le rendu client different ici.
+  if (!d.name.trim() || !d.exerciseSlug || !d.endDate || (!d.unlimited && !d.targetTotal)) return;
   if (d.stakeType === 'custom' && !d.stakeDescription.trim()) return;
   await createGroupChallenge(openGroupId, {
     name: d.name,
     exerciseSlug: d.exerciseSlug,
     startDate: d.startDate || dateKey(new Date()),
     endDate: new Date(d.endDate + 'T23:59:59').getTime(),
-    targetTotal: parseInt(d.targetTotal, 10),
+    targetTotal: d.unlimited ? 0 : parseInt(d.targetTotal, 10),
     stakeMode: d.stakeMode,
     stakeType: d.stakeType,
     stakeDescription: d.stakeDescription,
   });
-  groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
+  groupChallengeFormDraft = { name: '', exerciseSlug: '', startDate: '', endDate: '', targetTotal: '', unlimited: false, stakeMode: '5050', stakeType: 'beer', stakeDescription: '' };
 }
 
 // Helper UX demande explicitement : calcul EN DIRECT de "~X par personne" pendant la
@@ -7416,9 +7483,16 @@ function renderCreateGroupChallengeForm() {
         <option value="">${t('groups.exercisePlaceholder')}</option>
         ${exerciseOptions}
       </select>
+      ${d.unlimited ? '' : `
       <input id="groupChallengeTargetInput" class="library-search-input" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="${t('groups.targetPlaceholder')}"
              value="${escapeHtml(String(d.targetTotal))}" oninput="updateGroupChallengeDraft('targetTotal', this.value)">
       ${target > 0 ? `<div class="rank-bar-hint">${t('groups.perPersonHint', { n: perPerson })}</div>` : ''}
+      `}
+      <label class="groups-checkbox-row">
+        <input type="checkbox"${d.unlimited ? ' checked' : ''} onchange="updateGroupChallengeDraft('unlimited', this.checked)">
+        ${t('groups.unlimitedModeLabel')}
+      </label>
+      ${d.unlimited ? `<div class="rank-bar-hint">${t('groups.unlimitedModeHint')}</div>` : ''}
     </div>
 
     <div class="group-challenge-form-section">

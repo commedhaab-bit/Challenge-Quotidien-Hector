@@ -248,6 +248,10 @@ const LOCALE_EN = {
     createSubmitBtn: 'Create',
     loading: 'Loading…',
     infoAria: 'Group info (members, invitations)',
+    deleteGroupBtn: '🗑️ Delete group',
+    deleteConfirmTitle: 'Delete this group?',
+    deleteConfirmSubtitle: 'This is irreversible: "{{name}}" and everything in it (challenges, ledger, members) will be permanently deleted, for everyone.',
+    deleteConfirmLabel: 'Yes, delete',
     codeLabel: 'Code: {{code}}',
     membersLabel: {
       one: '{{n}} member',
@@ -281,6 +285,9 @@ const LOCALE_EN = {
     exercisePlaceholder: 'Choose an exercise',
     targetPlaceholder: 'Overall target',
     perPersonHint: 'That\'s ~{{n}} per person',
+    unlimitedModeLabel: '♾️ Unlimited mode (no numeric target)',
+    unlimitedModeHint: 'No target to reach: ranking is based on the total number of reps done before the deadline.',
+    unlimitedProgress: '{{total}} total',
     startDateLabel: 'Start',
     endDateLabel: 'End',
     stakeMode: {
@@ -322,6 +329,13 @@ const LOCALE_EN = {
       clutchPlayer: 'The Clutch Player',
       fantome: 'The Ghost',
       metronome: 'The Metronome',
+    },
+    hallOfFameExplain: {
+      mecene: 'Whoever has lost and paid a forfeit the most often in this group.',
+      roiDesRepets: 'Whoever has piled up the most reps, across every challenge.',
+      clutchPlayer: 'A true comeback: still behind before the final 25% of a challenge, but finished first at the line.',
+      fantome: 'Whoever has contributed the least, among members who took part in at least one challenge.',
+      metronome: 'Whoever has taken part in the most different challenges — consistency above all.',
     },
     jokers: {
       title: 'Tactical jokers',

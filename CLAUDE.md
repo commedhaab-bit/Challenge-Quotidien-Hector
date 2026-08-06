@@ -2583,3 +2583,61 @@ et `.group-info-btn` (bordure accent, fond plus contraste, glyphe plus grand).
 
 CACHE_NAME -> v69.
 
+## Lot de retours utilisateur (nouvelles fonctionnalites) - 1ere vague
+
+**Suppression de groupe** (`deleteGroup`, Callable Admin SDK) - reservee au
+createur (`groupSnap.data().createdBy !== uid` -> `permission-denied`), bouton
+dans le panneau "info groupe" (`renderGroupInfoSheet()`) avec confirmation
+dangereuse (`confirmModal({danger:true})`). Un client ne peut ni supprimer
+recursivement les sous-collections d'un document Firestore, ni ecrire dans le
+`myGroups` d'un AUTRE membre (regle `users/{userId}/{document=**}`
+owner-only) - la fonction lit les membres AVANT de les supprimer (batch sur
+chaque `users/{uid}/myGroups/{groupId}` + `groups_by_code/{code}`), puis
+`db.recursiveDelete(groupRef)` (Admin SDK) purge le groupe et TOUTES ses
+sous-collections (membres, defis + leurs participants/contributions,
+ardoise). Cote client, `deleteGroup(groupId)` nettoie `myGroups`/
+`myActiveGroupChallenges` localement puis `closeGroupInfoOverlay()` +
+`history.back()` (jamais un reset direct de `openGroupId` - garde la pile
+`pushNavState()`/`popstate` coherente, meme discipline que partout ailleurs).
+
+**Palmares (Hall of Fame) explicatif** : chaque ligne de titre est desormais
+cliquable (`showGroupHallOfFameTitleModal()`, reutilise le meme moteur de
+popup plein ecran que `showTrophyDetailModal()` - `enqueuePopup()`) et ouvre
+une explication concrete de ce que represente le titre (ex: "Le Metronome"
+n'est pas evident au premier coup d'oeil). Reutilise directement la classe
+CSS `.leaderboard-row.clickable` deja existante (curseur pointeur) plutot que
+d'en creer une nouvelle - aucun CSS ajoute pour cette fonctionnalite.
+
+**Defi de groupe "Mode infini"** (`targetTotal:0`) : case a cocher a la
+creation d'un defi collectif - dans ce mode, aucune cible chiffree, le
+classement se fait uniquement sur le volume total cumule avant l'echeance (le
+1er est celui qui en a fait le plus). **Decouverte cle en l'implementant** :
+toute la logique de reglement cote Cloud Function traitait DEJA `targetTotal`
+absent/0 comme "aucun plafond, reglement uniquement a l'echeance" -
+`shouldSettleChallenge()` (`targetReached` toujours faux si `targetTotal<=0`,
+seule `deadlinePassed` compte), `computeCreditedAmount()` (`!(targetTotal>0)`
+-> credite le montant complet, jamais de plafond), `rankForSettlement()`/
+`computeSettlementPairs()` (classement par ordre relatif de `totalAmount`,
+independant de toute cible) - **aucun changement cote `functions/index.js`
+n'a ete necessaire**, uniquement de la validation/du rendu cote client :
+- `renderCreateGroupChallengeForm()` : case `groups.unlimitedModeLabel`
+  masque le champ objectif chiffre et affiche un texte explicatif
+  (`groups.unlimitedModeHint`) a la place.
+- `submitGroupChallengeForm()` : bypass la validation "objectif requis"
+  quand `unlimited` est coche, transmet `targetTotal: 0` explicitement.
+- `createGroupChallenge()` : le plancher `Math.max(1, ...)` devient
+  `Math.max(0, ...)` - 0 est desormais une valeur legitime (Mode infini),
+  plus seulement le resultat d'un champ vide non valide.
+- `renderGroupDetailScreen()` (carte hero du defi actif) : `isUnlimited =
+  !(target > 0)` bascule l'affichage - volume total cumule en gros a la
+  place du pourcentage, aucune barre de progression (n'aurait aucun sens
+  sans cible), libelle `groups.unlimitedProgress` ("{{total}} au total") a
+  la place de "X / Y". Le message "objectif atteint, reglement en cours"
+  reste naturellement gate sur `target > 0`, donc jamais affiche en Mode
+  infini (coherent : ce mode ne se regle qu'a l'echeance).
+
+CACHE_NAME -> v70. Aucun changement de regles Firestore, aucun nouvel index.
+Meme limite de verification que les chantiers precedents : valide par
+tests+lint (client ET Cloud Functions), **pas visuellement dans un vrai
+navigateur**.
+

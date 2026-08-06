@@ -249,6 +249,10 @@ const LOCALE_ES = {
     createSubmitBtn: 'Crear',
     loading: 'Cargando…',
     infoAria: 'Información del grupo (miembros, invitaciones)',
+    deleteGroupBtn: '🗑️ Eliminar el grupo',
+    deleteConfirmTitle: '¿Eliminar este grupo?',
+    deleteConfirmSubtitle: 'Acción irreversible: "{{name}}" y todo su contenido (retos, cuenta, miembros) se eliminarán definitivamente, para todos.',
+    deleteConfirmLabel: 'Sí, eliminar',
     codeLabel: 'Código: {{code}}',
     membersLabel: {
       one: '{{n}} miembro',
@@ -282,6 +286,9 @@ const LOCALE_ES = {
     exercisePlaceholder: 'Elegir un ejercicio',
     targetPlaceholder: 'Objetivo global',
     perPersonHint: 'Es decir, ~{{n}} por persona',
+    unlimitedModeLabel: '♾️ Modo infinito (sin objetivo numérico)',
+    unlimitedModeHint: 'Sin meta que alcanzar: la clasificación se basa en el número total de repeticiones realizadas antes del plazo.',
+    unlimitedProgress: '{{total}} en total',
     startDateLabel: 'Inicio',
     endDateLabel: 'Fin',
     stakeMode: {
@@ -323,6 +330,13 @@ const LOCALE_ES = {
       clutchPlayer: 'El Clutch Player',
       fantome: 'El Fantasma',
       metronome: 'El Metrónomo',
+    },
+    hallOfFameExplain: {
+      mecene: 'Quien más veces ha perdido y ha tenido que pagar una prenda en este grupo.',
+      roiDesRepets: 'Quien ha acumulado más repeticiones, sumando todos los retos.',
+      clutchPlayer: 'Una remontada de verdad: todavía por detrás antes del último 25% de un reto, pero terminó primero en la meta.',
+      fantome: 'Quien menos ha contribuido, entre los miembros que participaron en al menos un reto.',
+      metronome: 'Quien ha participado en el mayor número de retos distintos — la constancia por encima de todo.',
     },
     jokers: {
       title: 'Comodines tácticos',

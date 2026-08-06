@@ -579,6 +579,49 @@ exports.applyGroupJoker = onCall(async (request) => {
   return { ok: true };
 });
 
+// Suppression d'un groupe (retour utilisateur) : action IRREVERSIBLE, reservee au
+// createur (verifie ici, jamais fait confiance a la seule UI cliente - voir aussi
+// firestore.rules qui, de toute facon, n'autorise deja aucun client a supprimer
+// le doc groupe ou les docs myGroups d'AUTRUI). Passe necessairement par une
+// Cloud Function (Admin SDK) pour 2 raisons : (1) recursiveDelete() du groupe et
+// de TOUTES ses sous-collections (membres, defis + leurs propres participants/
+// contributions, ardoise) n'a pas d'equivalent cote SDK client ; (2) nettoyer
+// l'index personnel users/{uid}/myGroups/{groupId} de CHAQUE membre necessite
+// d'ecrire dans le document d'autrui, strictement interdit a un client (voir
+// firestore.rules: users/{userId}/{document=**}).
+exports.deleteGroup = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError('unauthenticated', 'Connexion requise.');
+  const { groupId } = request.data || {};
+  if (!groupId) throw new HttpsError('invalid-argument', 'groupId manquant.');
+
+  const db = admin.firestore();
+  const groupRef = db.collection('groups').doc(groupId);
+  const groupSnap = await groupRef.get();
+  if (!groupSnap.exists) throw new HttpsError('not-found', 'Groupe introuvable.');
+  if (groupSnap.data().createdBy !== uid) {
+    throw new HttpsError('permission-denied', 'Seul le createur du groupe peut le supprimer.');
+  }
+
+  const code = groupSnap.data().code;
+  const membersSnap = await groupRef.collection('members').get();
+  const memberUids = membersSnap.docs.map((d) => d.id);
+
+  const batch = db.batch();
+  for (const memberUid of memberUids) {
+    batch.delete(db.collection('users').doc(memberUid).collection('myGroups').doc(groupId));
+  }
+  if (code) batch.delete(db.collection('groups_by_code').doc(code));
+  await batch.commit();
+
+  // Supprime le groupe ET tout ce qu'il contient (membres, defis, participants,
+  // contributions, ardoise) en une seule operation recursive - fait APRES le batch
+  // ci-dessus, qui a encore besoin de lire members/ pendant qu'il existe.
+  await db.recursiveDelete(groupRef);
+
+  return { ok: true };
+});
+
 // =============================================================================
 // Notifications PUSH (Firebase Cloud Messaging)
 // =============================================================================

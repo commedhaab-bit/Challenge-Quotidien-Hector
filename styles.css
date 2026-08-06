@@ -3384,4 +3384,17 @@
     padding: 6px 12px;
   }
 
+  /* 10. Defi de groupe "Mode infini" : case a cocher (revele/masque le champ
+     objectif chiffre) - meme espacement/police que .group-challenge-field-label,
+     volontairement pas un nouveau composant de checkbox reutilisable ailleurs. */
+  .groups-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--chalk);
+    margin-top: 8px;
+  }
+
   ::-webkit-scrollbar { display: none; }
