@@ -1501,8 +1501,13 @@ const cssText = __rawHtml + __cssSource;
   console.log('OK: son de reussite (deja existant) rendu optionnel - actif par defaut, desactivable, apercu immediat a la reactivation');
 
   // Retour utilisateur "effet waouh" : mascotte "Kilo" (halterophile humanise),
-  // composant SVG reutilisable a 5 etats (idle/success/warning/beer/lost).
-  for (const kiloState of ['idle', 'success', 'warning', 'beer', 'lost']) {
+  // composant SVG reutilisable a 6 etats (idle/success/warning/beer/lost/level_up).
+  // Refonte visuelle (2e ronde) : traces repris directement d'une reference
+  // validee par l'utilisateur plutot que d'une geometrie unique parametree par
+  // angle - donc plus de couleur/etat partages via une constante commune
+  // (KILO_NEON/KILO_DULL n'existent plus), chaque etat porte ses propres
+  // couleurs litterales.
+  for (const kiloState of ['idle', 'success', 'warning', 'beer', 'lost', 'level_up']) {
     const svg = renderKilo(kiloState);
     __assertOk(svg.includes('kilo-' + kiloState), 'renderKilo(\\'' + kiloState + '\\') doit porter la classe kilo-' + kiloState);
     __assertOk(svg.includes('<svg') && svg.includes('</svg>'), 'renderKilo(\\'' + kiloState + '\\') doit produire un SVG complet');
@@ -1510,12 +1515,14 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(renderKilo('success').includes('kilo-spark'), 'l etat success doit afficher des etincelles');
   __assertOk(!renderKilo('idle').includes('kilo-spark'), 'les autres etats ne doivent jamais afficher d etincelles');
   __assertOk(renderKilo('warning').includes('kilo-sweat'), 'l etat warning doit afficher une goutte de sueur');
-  __assertOk(renderKilo('beer').includes('kilo-arm-left'), 'l etat beer doit avoir un bras leve tenant la choppe (structure de bras presente)');
-  __assertOk(renderKilo('lost').includes(KILO_DULL), 'l etat lost doit utiliser la couleur terne (rouille), pas le cyan neon habituel');
-  __assertOk(!renderKilo('idle').includes(KILO_DULL) && renderKilo('idle').includes(KILO_NEON), 'les autres etats doivent garder le cyan neon habituel');
+  __assertOk(renderKilo('beer').includes('kilo-arm-cheers'), 'l etat beer doit avoir un bras qui trinque (groupe anime bras+choppe)');
+  __assertOk(renderKilo('beer').includes('kilo-mug-clink'), 'l etat beer doit avoir une choppe (groupe anime dedie)');
+  __assertOk(renderKilo('lost').includes('#64748b'), 'l etat lost doit utiliser la couleur terne (gris rouille), pas le cyan neon habituel');
+  __assertOk(!renderKilo('idle').includes('#64748b') && renderKilo('idle').includes('#06b6d4'), 'les autres etats doivent garder le cyan neon habituel');
+  __assertOk(renderKilo('level_up').includes('kilo-trophy') && renderKilo('level_up').includes('kilo-trophy-pump'), 'l etat level_up doit brandir un trophee (avec sa propre boucle d animation)');
   __assertOk(renderKilo('idle', { clickable: true }).includes('onclick="kiloTap(this)"'), 'clickable:true doit poser le gestionnaire de tap');
   __assertOk(!renderKilo('idle').includes('onclick="kiloTap'), 'sans clickable, aucun gestionnaire de tap ne doit etre pose (ex: dans un popup deja fermable autrement)');
-  console.log('OK: mascotte Kilo (5 etats distincts, etincelles/sueur/couleur ternie selon l etat, tap optionnel)');
+  console.log('OK: mascotte Kilo (6 etats distincts, etincelles/sueur/couleur ternie/trophee selon l etat, tap optionnel)');
 
   // computeKiloHomeState() : idle en journee, warning des 19h SEULEMENT si au
   // moins un defi actif du jour n est pas encore valide. Fonction PURE (l heure
@@ -1809,7 +1816,8 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(popupOpen, 'un changement de titre doit ouvrir une popup');
   __assertOk(currentPopupHtml.includes('NOUVEAU TITRE'), 'popup epique attendue pour un changement de titre');
   __assertOk(currentPopupHtml.includes('Initié 🎖️'), 'la popup doit nommer le nouveau titre debloque');
-  __assertOk(!currentPopupHtml.includes('kilo-success'), 'la popup epique de nouveau titre garde son propre icone (couronne), deja distinctif - pas de Kilo ici');
+  __assertOk(currentPopupHtml.includes('kilo-level_up'), 'la popup epique de nouveau titre affiche desormais Kilo dans son etat dedie (couronne + trophee), pas l etat success generique');
+  __assertOk(!currentPopupHtml.includes('kilo-success'), 'ce n est pas l etat success generique qui s affiche ici, mais level_up (etat dedie a ce moment epique)');
   document.getElementById('appPopupCloseBtn').onclick();
 
   // Cas explicite : level up SANS changement de titre (niveau 2 -> 3, toujours Recrue)
@@ -1819,7 +1827,7 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!currentPopupHtml.includes('NOUVEAU TITRE'), 'pas de popup epique quand le titre est inchange');
   __assertOk(currentPopupHtml.includes('kilo-success'), 'la mascotte Kilo (etat success) doit accompagner un simple level up (retour utilisateur "effet waouh")');
   document.getElementById('appPopupCloseBtn').onclick();
-  console.log('OK: popups Level Up (simple, avec Kilo) et Nouveau Titre (epique, sans Kilo) selon le changement de palier');
+  console.log('OK: popups Level Up (simple, Kilo etat success) et Nouveau Titre (epique, Kilo etat dedie level_up) selon le changement de palier');
 
   // --- 41. Refonte UI du chrono : disque double-anneau cliquable, plus de bouton
   // rectangulaire / texte "en cours" / hints / mode plein ecran / ajout manuel ---
@@ -2691,7 +2699,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v75'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v76'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');

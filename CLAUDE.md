@@ -3073,3 +3073,80 @@ par tests+lint (structure SVG par etat, gating `computeKiloHomeState()`,
 presence/absence de `kilo-success`/`kilo-beer` dans les bons popups) - jamais
 le rendu visuel reel (expressions faciales, animations) sur un vrai appareil.
 
+## Refonte visuelle de Kilo (2e ronde) — nouveau cahier des charges, reference validee, 6e etat
+
+**L'utilisateur n'a pas aime le premier rendu.** Un cahier des charges tres
+precis (anatomie "au millimetre" sur un canevas 200x200, palette
+`--kilo-cyan`/`--kilo-gold`/`--kilo-pink`/etc., 6e etat `level_up`, style
+"React/TypeScript") a suivi, accompagne d'une image de reference generee par
+une autre IA. **Aucune previsualisation visuelle n'existe dans cet
+environnement** (pas de navigateur) - plutot que d'implementer directement
+dans l'app une 3e fois de suite a l'aveugle, la refonte a ete construite et
+iteree dans un **artifact HTML autonome** (composant JS + CSS copies-colles,
+zero dependance) que l'utilisateur a pu voir et valider AVANT integration
+ici. Ce detour a permis de reperer par capture d'ecran que la version
+"au millimetre" (bras = un seul rectangle tourne par angle CSS autour d'un
+pivot) etait visuellement rigide compare a l'image de reference (bras =
+courbes de Bezier dessinees a la main, differentes par etat) - la version
+finalement portee ici **abandonne le parametrage par angle unique** au
+profit de traces litteralement repris de la reference, un par etat
+(`KILO_STATE_SVG`, plus de `KILO_STATES`/`KILO_NEON`/`KILO_BAND`/`KILO_DULL`
+partages : chaque etat porte ses propres couleurs en dur, exactement comme
+la reference les fait volontairement varier d'un etat a l'autre - ex. la
+sueur en `#38bdf8`, pas une teinte de la palette officielle).
+
+**Hierarchie SVG reelle** (demande explicite, apres un retour "trop rigide,
+pas assez de vie") : visage/bras/accessoires vivent tous **dans**
+`<g class="kilo-body">`, jamais comme des elements freres du SVG racine -
+un seul groupe (la racine, via la classe `kilo-<etat>`) porte l'animation
+d'ensemble (`kilo-idle-bounce`, `kilo-panic-shiver`), donc aucun risque que
+le visage ou un bras se desynchronise du reste pendant le mouvement.
+
+**Glow en 2 `drop-shadow` empiles** (halo serre tres sature + halo large
+plus diffus) plutot qu'un flou unique, pour un rendu "tube neon" plus
+agressif - toujours en CSS, jamais en filtre SVG `<feDropShadow>` par
+instance (evite de dupliquer un bloc `<defs>` a chaque affichage de Kilo,
+qui peut apparaitre plusieurs fois simultanement a l'ecran).
+
+**"Clin d'oeil a droite" = l'oeil a droite pour qui regarde l'ecran**,
+tranche explicitement par l'utilisateur au-dessus de la coordonnee brute de
+l'image de reference (qui plagait le clin d'oeil a gauche-ecran) - a
+retenir comme principe general : le langage naturel de l'utilisateur prime
+toujours sur une coordonnee litterale quand les deux se contredisent.
+
+**3 etats gagnent une boucle continue** (2e retour, "garde exactement le
+design mais ajoute de l'animation") - **aucun trace modifie**, uniquement
+de nouvelles classes/keyframes appliquees a des groupes existants ou
+nouvellement introduits pour cibler juste la bonne partie :
+- `lost` : le corps entier respire lentement (`kilo-lost-breathe`, 3.2s, tres
+  leger affaissement) et le petit trait en pointilles derive en fondu
+  (`kilo-lost-mark-drift`) - lecture "sommeil/chagrin discret" demandee
+  explicitement, sans ajouter un seul element visuel.
+- `level_up` : `kilo-trophy-hoist` (entree unique, la coupe vole jusqu'a sa
+  place) est relaye par `kilo-trophy-pump`, un groupe **enfant** en boucle
+  infinie - **2 animations ne peuvent pas composer un seul `transform` sur
+  le meme element** (la 2e ecrase la 1ere), d'ou l'imbrication plutot qu'un
+  simple ajout de classe. Bras (`kilo-arms-raise`) et halo dore
+  (`kilo-aura-pulse`) suivent le meme rythme, legerement decale
+  (`animation-delay`), pour que tout semble porte par le meme geste de joie.
+- `beer` : le toast (`kilo-toast-cheers`) va beaucoup plus haut (jusqu'a
+  -60deg, hauteur d'epaule, contre -25deg avant) et marque un vrai temps
+  d'arret en haut plutot qu'un simple va-et-vient - lit comme un "sante !"
+  adresse a l'utilisateur. La choppe (groupe enfant `kilo-mug-clink`) tinte
+  au sommet du geste.
+
+**6e etat `level_up` cable dans la popup epique de nouveau titre**
+(`enqueueLevelPopups()`, branche `variant:'title', epic:true`) - jusqu'ici
+seule popup a n'avoir JAMAIS montre Kilo (couronne emoji `👑` reservee, pour
+ne pas diluer son caractere "epique"). Avec un etat dedie couronne+trophee+
+halo dore, cette reserve n'a plus lieu d'etre : `kiloState:'level_up'`
+remplace l'icone couronne. Le level up SIMPLE (meme palier de titre) garde
+`kiloState:'success'`, inchange.
+
+CACHE_NAME -> v76. Aucun changement de regles Firestore/Cloud Functions.
+Meme limite de verification qu'avant : tests+lint valident la structure
+(classes par etat, presence des groupes d'animation, gating `level_up` sur
+la bonne popup) - jamais le rendu visuel/anime reel, verifie uniquement via
+l'aller-retour artifact <-> utilisateur avant integration, pas dans ce
+harnais.
+
