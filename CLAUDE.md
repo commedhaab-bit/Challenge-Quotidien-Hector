@@ -2518,3 +2518,17 @@ optimise/court-circuite meme si le token local n'a pas change, car c'est
 justement ce cas precis (token local inchange mais doc serveur supprime) qui
 causait le bug.
 
+## Incident deploiement GitHub Pages (infrastructure, pas notre code)
+
+Le commit du correctif ci-dessus (`8f5241a`) a echoue a se deployer sur
+GitHub Pages a 3 reprises consecutives (timeout de file d'attente, puis 2x
+"Deployment cancelled" quasi instantane, y compris apres "Re-run all jobs") -
+toujours pour le MEME `artifact_id`/`pages_build_version`. `Deploy Cloud
+Functions` (workflow distinct, meme commit) et `CI` ont toujours reussi sans
+probleme sur ce meme commit, ce qui pointe vers un souci cote infrastructure
+GitHub Pages specifique a ce deploiement precis, pas vers le code ou la
+config du depot. Resolu en poussant un nouveau commit (celui-ci) : un nouvel
+`artifact_id` genere un nouveau deploiement, contournant le blocage. A garder
+en tete si ca se reproduit : re-run ne suffit pas toujours, un nouveau commit
+peut etre necessaire.
+
