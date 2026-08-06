@@ -2455,3 +2455,29 @@ support n'etait pas encore determine au moment du 1er demarrage).
 
 CACHE_NAME -> v66.
 
+## Notifications push — 2 bugs reels signales par l'utilisateur, corriges
+
+1. **`service-worker.js` : initialisation Firebase Messaging isolee dans un
+   try/catch** (v67). Non protegee auparavant, un echec (reseau bloquant
+   gstatic.com, contexte sans support Push API) aurait pu faire planter
+   l'evaluation du script entier - `install`/`activate`/`fetch` ne se
+   seraient alors plus jamais enregistres non plus (tout le cache/offline de
+   l'app avec). Symptome observe cote utilisateur avant ce correctif : le
+   toggle Parametres restait bloque sur "desactive" quel que soit le nombre
+   de clics (`enablePushNotifications()` restait bloquee indefiniment sur
+   `await navigator.serviceWorker.ready`, qui ne resout jamais si aucun
+   service worker n'a pu s'activer).
+2. **`kudo` totalement absent de `PUSH_MESSAGES`** (`functions/index.js`) -
+   oubli reel lors de la mise en place initiale des notifications push :
+   `sendPushToUser()` abandonnait SILENCIEUSEMENT (`if (!buildMessage)
+   return;`, aucune erreur visible) des qu'un kudos etait donne, alors que la
+   notification IN-APP fonctionnait normalement (systeme distinct, deja
+   existant avant ce chantier). Corrige dans les 3 langues.
+   **Regression ajoutee** (`functions/test/notifications.test.js`, nouveau
+   fichier) : verifie que `PUSH_MESSAGES.fr` couvre TOUS les types de
+   notification reellement ecrits dans le code (liste explicite
+   `KNOWN_NOTIFICATION_TYPES`, a mettre a jour a chaque nouveau type), que
+   les 3 langues couvrent exactement le meme jeu de types, et que chaque
+   constructeur produit bien un `{title, body}` non-vide - ce test aurait
+   immediatement attrape ce bug precis avant deploiement.
+

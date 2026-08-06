@@ -590,6 +590,7 @@ exports.applyGroupJoker = onCall(async (request) => {
 // script navigateur et ce module Node, a maintenir a la main (voir CLAUDE.md).
 const PUSH_MESSAGES = {
   fr: {
+    kudo: (d) => ({ title: 'Nouveau kudos !', body: `${d.fromName} vient de t'encourager.` }),
     friend_request: (d) => ({ title: 'Nouvelle demande d\'ami', body: `${d.fromName} veut devenir ton ami.` }),
     friend_request_accepted: (d) => ({ title: 'Demande acceptée !', body: `${d.fromName} a accepté ta demande d'ami.` }),
     group_invite: (d) => ({ title: 'Invitation à un groupe', body: `${d.fromName} t'invite à rejoindre "${d.groupName}".` }),
@@ -607,6 +608,7 @@ const PUSH_MESSAGES = {
     }),
   },
   en: {
+    kudo: (d) => ({ title: 'New kudos!', body: `${d.fromName} just cheered you on.` }),
     friend_request: (d) => ({ title: 'New friend request', body: `${d.fromName} wants to be your friend.` }),
     friend_request_accepted: (d) => ({ title: 'Request accepted!', body: `${d.fromName} accepted your friend request.` }),
     group_invite: (d) => ({ title: 'Group invitation', body: `${d.fromName} invites you to join "${d.groupName}".` }),
@@ -624,6 +626,7 @@ const PUSH_MESSAGES = {
     }),
   },
   es: {
+    kudo: (d) => ({ title: '¡Nuevo kudo!', body: `${d.fromName} acaba de animarte.` }),
     friend_request: (d) => ({ title: 'Nueva solicitud de amistad', body: `${d.fromName} quiere ser tu amigo.` }),
     friend_request_accepted: (d) => ({ title: '¡Solicitud aceptada!', body: `${d.fromName} aceptó tu solicitud de amistad.` }),
     group_invite: (d) => ({ title: 'Invitación a un grupo', body: `${d.fromName} te invita a unirte a "${d.groupName}".` }),
@@ -705,4 +708,5 @@ module.exports.__testables = {
   rankForSettlement,
   applyDoublonMultiplier,
   computeDueReminderThresholds,
+  PUSH_MESSAGES,
 };
