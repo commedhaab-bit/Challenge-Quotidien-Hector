@@ -1,4 +1,4 @@
-const CACHE_NAME = 'defi-du-jour-v66';
+const CACHE_NAME = 'defi-du-jour-v67';
 const ASSETS = [
   './',
   './index.html',
@@ -15,17 +15,27 @@ const ASSETS = [
 // "notification" (voir sendPushToUser() dans functions/index.js) quand l'app
 // n'est pas au premier plan - aucun handler onBackgroundMessage supplementaire
 // necessaire pour ce cas simple (titre/corps fixes, pas d'action personnalisee).
-importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js');
-firebase.initializeApp({
-  apiKey: 'AIzaSyBE0DL8Q6y8Md4R2aM0D1imx_cTUlHP5c4',
-  authDomain: 'challenge-quotidien-hector.firebaseapp.com',
-  projectId: 'challenge-quotidien-hector',
-  storageBucket: 'challenge-quotidien-hector.firebasestorage.app',
-  messagingSenderId: '613473786890',
-  appId: '1:613473786890:web:c77ccf3c2d99857df9d3f3',
-});
-firebase.messaging();
+// Volontairement dans un try/catch : un souci d'initialisation FCM (reseau qui
+// bloque gstatic.com, navigateur/contexte sans support Push API, etc.) ne doit
+// JAMAIS faire planter l'evaluation de CE script entier - sinon install/
+// activate/fetch plus bas (le coeur du cache/offline de l'app) ne seraient
+// plus jamais enregistres non plus. Le push resterait simplement indisponible
+// dans ce cas, sans rien casser d'autre.
+try {
+  importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js');
+  importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js');
+  firebase.initializeApp({
+    apiKey: 'AIzaSyBE0DL8Q6y8Md4R2aM0D1imx_cTUlHP5c4',
+    authDomain: 'challenge-quotidien-hector.firebaseapp.com',
+    projectId: 'challenge-quotidien-hector',
+    storageBucket: 'challenge-quotidien-hector.firebasestorage.app',
+    messagingSenderId: '613473786890',
+    appId: '1:613473786890:web:c77ccf3c2d99857df9d3f3',
+  });
+  firebase.messaging();
+} catch (e) {
+  console.error('push notifications init failed in service worker', e);
+}
 
 // Focus l'onglet deja ouvert s'il y en a un, sinon en ouvre un nouveau - pas de
 // deep-link precis vers le bon groupe/defi dans cette 1ere version (garder
