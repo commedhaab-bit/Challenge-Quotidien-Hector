@@ -1065,8 +1065,13 @@ function renderGuidedTourOverlay() {
   return `
     <div class="tour-overlay${isIntro ? ' intro' : ''}">
       <div class="tour-bubble">
-        <div class="tour-bubble-title">${step.emoji} ${t('tour.' + step.key + '.title')}</div>
-        <div class="tour-bubble-text">${t('tour.' + step.key + '.text')}</div>
+        <div class="tour-bubble-head">
+          <div class="tour-bubble-avatar">${renderKilo('idle', { size: 44, clickable: true })}</div>
+          <div class="tour-bubble-head-text">
+            <div class="tour-bubble-title">${step.emoji} ${t('tour.' + step.key + '.title')}</div>
+            <div class="tour-bubble-text">${t('tour.' + step.key + '.text')}</div>
+          </div>
+        </div>
         <div class="tour-bubble-footer">
           <div class="tour-dots">
             ${GUIDED_TOUR_STEPS.map((_, i) => `<span class="tour-dot${i === guidedTourStep ? ' active' : ''}"></span>`).join('')}
@@ -1098,6 +1103,7 @@ function renderOnboardingTransitionScreen() {
     return `
       <div class="profile-onboarding onboarding-screen">
         <div class="onboarding-content">
+          <div class="onboarding-kilo-hero">${renderKilo('idle', { size: 90 })}</div>
           <div class="tour-spinner"></div>
           <div class="pf-welcome-desc" style="margin-top:22px;">${t('onboarding.transition.loadingText')}</div>
         </div>
@@ -1115,7 +1121,7 @@ function renderOnboardingTransitionScreen() {
   return `
     <div class="profile-onboarding onboarding-screen">
       <div class="onboarding-content">
-        <div class="pf-welcome-badge">✅</div>
+        <div class="onboarding-kilo-hero">${renderKilo('success', { size: 110, clickable: true })}</div>
         <h1 class="pf-welcome-title">${t('onboarding.transition.doneTitle')}</h1>
         <p class="pf-welcome-desc pf-welcome-desc-short">${t('onboarding.transition.doneSubtitle')}</p>
         <div class="preview-container">
@@ -6059,9 +6065,15 @@ function renderProfileOnboardingScreen() {
   // automatiquement au clic sur une carte (selectProfileSex/Level), sans bouton.
   let ctaHtml = '';
 
+  // Kilo EST le "coach virtuel" (retour utilisateur : la mascotte doit accompagner
+  // tout l'onboarding, pas seulement l'ecran d'age comme avant) - remplace le
+  // cerveau 🧠 generique. Affiche sur CHAQUE etape du questionnaire (1 a 4), pas
+  // seulement l'age.
+  const coachBadgeHtml = `<div class="coach-badge">${renderKilo('idle', { size: 28 })} ${t('onboarding.age.coachBadge')}</div>`;
+
   if (isWelcome) {
     stepHtml = `
-      <div class="pf-welcome-badge">⚡</div>
+      <div class="onboarding-kilo-hero">${renderKilo('idle', { size: 110, clickable: true })}</div>
       <h1 class="pf-welcome-title">${t('onboarding.welcome.titleHtml')}</h1>
       <div class="features-list">
         <div class="feature-item">
@@ -6081,7 +6093,7 @@ function renderProfileOnboardingScreen() {
     ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">${t('onboarding.welcome.startBtn')}</button>`;
   } else if (profileStep === 1) {
     stepHtml = `
-      <div class="coach-badge"><span>🧠</span> ${t('onboarding.age.coachBadge')}</div>
+      ${coachBadgeHtml}
       <div class="pf-emoji">🎂</div>
       <h1 class="pf-question">${t('onboarding.age.question')}</h1>
       ${renderWheelPicker('pfAge', 12, 100, 1, t('onboarding.age.unitSuffix'))}
@@ -6089,6 +6101,7 @@ function renderProfileOnboardingScreen() {
     ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">${t('onboarding.age.nextBtn')}</button>`;
   } else if (profileStep === 2) {
     stepHtml = `
+      ${coachBadgeHtml}
       <div class="pf-emoji">🚻</div>
       <h1 class="pf-question">${t('onboarding.sex.question')}</h1>
       <div class="pf-choice-grid">
@@ -6108,6 +6121,7 @@ function renderProfileOnboardingScreen() {
     `;
   } else if (profileStep === 3) {
     stepHtml = `
+      ${coachBadgeHtml}
       <div class="pf-emoji">📏</div>
       <h1 class="pf-question">${t('onboarding.bodyMetrics.question')}</h1>
       <div class="pf-subtitle">${t('onboarding.bodyMetrics.subtitle')}</div>
@@ -6125,6 +6139,7 @@ function renderProfileOnboardingScreen() {
     ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">${t('onboarding.bodyMetrics.nextBtn')}</button>`;
   } else if (profileStep === 4) {
     stepHtml = `
+      ${coachBadgeHtml}
       <div class="pf-emoji">💪</div>
       <h1 class="pf-question">${t('onboarding.level.question')}</h1>
       <div class="pf-level-list">

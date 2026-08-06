@@ -225,6 +225,12 @@
     from { transform: translateY(14px) scale(0.94); opacity: 0; }
     to { transform: translateY(0) scale(1); opacity: 1; }
   }
+  /* Kilo "presente" chaque carte du tour (retour utilisateur : la mascotte doit
+     accompagner aussi cette phase, pas seulement le questionnaire de profil) -
+     avatar a gauche, titre/texte a droite, meme lecture qu'une bulle de chat. */
+  .tour-bubble-head { display: flex; align-items: flex-start; gap: 12px; }
+  .tour-bubble-avatar { flex-shrink: 0; margin-top: -4px; }
+  .tour-bubble-head-text { flex: 1; min-width: 0; }
   .tour-bubble-title {
     font-size: 15px;
     font-weight: 800;
@@ -1829,6 +1835,11 @@
     margin: 0 auto 22px;
     box-shadow: 0 10px 30px rgba(242, 193, 78, 0.25);
   }
+  /* Kilo EST le coach virtuel : remplace .pf-welcome-badge (bienvenue) et le
+     badge ✅ (ecran de confirmation) sur les ecrans d'onboarding ou la mascotte
+     est LE point focal plutot qu'un simple accessoire (retour utilisateur :
+     Kilo doit accompagner toute la phase d'initiation). */
+  .onboarding-kilo-hero { display: flex; justify-content: center; margin: 0 auto 22px; }
   .pf-welcome-title {
     font-size: 28px;
     font-weight: 900;
@@ -1886,8 +1897,9 @@
     font-weight: 600;
   }
 
-  /* Pilule discrète "Coach Virtuel IA" (écran Âge), à la place du gros bloc vert qui
-     compressait le reste de l'écran — un simple repère contextuel, pas une notice. */
+  /* Pilule discrète "Coach Virtuel IA", desormais affichee sur CHAQUE etape du
+     questionnaire de profil (pas seulement Âge) : Kilo (mascotte) y remplace le
+     cerveau 🧠 generique — c'est LUI le coach virtuel. */
   .coach-badge {
     display: inline-flex;
     align-items: center;
@@ -1901,6 +1913,7 @@
     font-weight: 600;
     margin-bottom: 20px;
   }
+  .coach-badge .kilo-svg { flex-shrink: 0; }
 
   /* Vraie carte de preview (écran de confirmation "Objectifs calculés !") : nom de
      l'exercice à gauche, badge néon avec l'objectif calculé à droite — à la place d'un

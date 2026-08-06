@@ -1247,6 +1247,7 @@ const cssText = __rawHtml + __cssSource;
   let overlay = renderGuidedTourOverlay();
   __assertOk(overlay.includes('Bienvenue dans Défi du Jour !'), 'la carte 0 doit etre une bienvenue neutre dediee');
   __assertOk(overlay.includes('tour-overlay intro'), 'la carte 0 doit avoir le fond assombri/floute (intro)');
+  __assertOk(overlay.includes('tour-bubble-avatar') && overlay.includes('kilo-idle'), 'Kilo doit presenter chaque carte du tour guide (retour utilisateur : mascotte tout au long de l onboarding)');
   guidedTourNext(); // carte 0 -> carte 1 : MEME onglet ('today') -> teste le correctif du bug de re-render
   __assertEq(guidedTourStep, 1);
   __assertEq(activeTab, 'today', "la carte 1 (explication de l'accueil) reste sur l onglet Aujourd hui");
@@ -2699,7 +2700,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v76'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v77'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3540,10 +3541,29 @@ const cssText = __rawHtml + __cssSource;
 
   profileStep = 1;
   const ageHtml = renderProfileOnboardingScreen();
-  __assertOk(ageHtml.includes('coach-badge') && ageHtml.includes('Coach Virtuel IA') && ageHtml.includes('🧠'), 'le badge coach virtuel (icone cerveau) doit desormais apparaitre sur l ecran age');
+  __assertOk(ageHtml.includes('coach-badge') && ageHtml.includes('Coach Virtuel IA') && ageHtml.includes('kilo-idle'), 'le badge coach virtuel (mascotte Kilo) doit desormais apparaitre sur l ecran age');
   __assertOk(ageHtml.includes('id="pfAge"'), 'le rouleau d age doit toujours etre present sur cet ecran');
   profileStep = 0;
-  console.log('OK: onboarding - ecran de bienvenue condense (3 points cles), coach virtuel explique sur l ecran age');
+  console.log('OK: onboarding - ecran de bienvenue condense (3 points cles), coach virtuel (Kilo) explique sur l ecran age');
+
+  // Retour utilisateur (mascotte doit accompagner TOUTE la phase d initiation, pas
+  // seulement l ecran age) : Kilo apparait aussi en grand sur l ecran de bienvenue
+  // et de confirmation, et dans le badge coach virtuel de CHAQUE etape du
+  // questionnaire (sexe/mensurations/niveau, pas seulement age).
+  profileStep = 0;
+  const kiloWelcomeHtml = renderProfileOnboardingScreen();
+  __assertOk(kiloWelcomeHtml.includes('onboarding-kilo-hero') && kiloWelcomeHtml.includes('kilo-idle'), 'Kilo (idle, en grand) doit accueillir l ecran de bienvenue');
+  profileStep = 2;
+  const kiloSexHtml = renderProfileOnboardingScreen();
+  __assertOk(kiloSexHtml.includes('coach-badge') && kiloSexHtml.includes('kilo-idle'), 'Kilo doit aussi accompagner l ecran sexe');
+  profileStep = 3;
+  const kiloMetricsHtml = renderProfileOnboardingScreen();
+  __assertOk(kiloMetricsHtml.includes('coach-badge') && kiloMetricsHtml.includes('kilo-idle'), 'Kilo doit aussi accompagner l ecran taille/poids');
+  profileStep = 4;
+  const kiloLevelHtml = renderProfileOnboardingScreen();
+  __assertOk(kiloLevelHtml.includes('coach-badge') && kiloLevelHtml.includes('kilo-idle'), 'Kilo doit aussi accompagner l ecran niveau');
+  profileStep = 0;
+  console.log('OK: Kilo accompagne desormais TOUTES les etapes du questionnaire de profil (bienvenue + age/sexe/mensurations/niveau)');
 
   // --- 131. Finitions UI onboarding : bouton CTA present uniquement sur les etapes qui
   // en ont besoin (0, 1, 3, ecran de confirmation), badge coach virtuel repositionne
@@ -3585,8 +3605,12 @@ const cssText = __rawHtml + __cssSource;
   const pompesForPreview = CHALLENGE_LIBRARY.find(c => c.name === 'Pompes');
   const expectedPreviewTarget = computeStandardTarget(pompesForPreview, userProfile);
   __assertOk(previewHtml.includes(expectedPreviewTarget + ' REPS'), 'la mini-carte de preview doit afficher l objectif REELLEMENT calcule pour Pompes selon le profil (pas une valeur fictive)');
+  __assertOk(previewHtml.includes('onboarding-kilo-hero') && previewHtml.includes('kilo-success'), 'Kilo (etat success) doit celebrer l ecran de confirmation, a la place de l ancien badge coche');
+  onboardingTransitionPhase = 'loading';
+  const kiloLoadingHtml = renderOnboardingTransitionScreen();
+  __assertOk(kiloLoadingHtml.includes('onboarding-kilo-hero') && kiloLoadingHtml.includes('kilo-idle'), 'Kilo doit aussi accompagner l ecran de chargement (calcul des objectifs)');
   onboardingTransitionPhase = null;
-  console.log('OK: la mini-carte de preview affiche un objectif reellement calcule (pas une valeur fictive codee en dur)');
+  console.log('OK: la mini-carte de preview affiche un objectif reellement calcule (pas une valeur fictive codee en dur), Kilo accompagne chargement + confirmation');
 
   // --- 133. Refonte visuelle premium de l onboarding (design system precis, remplace
   // integralement le HTML/CSS des 3 ecrans) : icone teinte accent sur les cartes de

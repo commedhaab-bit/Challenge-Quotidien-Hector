@@ -3150,3 +3150,45 @@ la bonne popup) - jamais le rendu visuel/anime reel, verifie uniquement via
 l'aller-retour artifact <-> utilisateur avant integration, pas dans ce
 harnais.
 
+## Kilo comme guide de l'onboarding complet
+
+Demande explicite : Kilo doit accompagner TOUTE la phase d'initiation (pas
+seulement les popups/l'accueil deja cables), "comme si c'est elle qui te
+guidait" - du questionnaire de profil (age/sexe/mensurations/niveau, y
+compris l'ecran ou l'utilisateur donne son poids) jusqu'au mini-tour guide
+qui presente les onglets.
+
+**Principe retenu : Kilo REMPLACE les icones generiques du "coach virtuel"
+existant plutot que de s'y ajouter en plus.** Le concept "coach virtuel IA"
+etait deja present (badge 🧠 "Coach Virtuel IA" sur l'ecran age uniquement,
+badge ⚡ sur l'ecran de bienvenue, ✅ sur l'ecran de confirmation) - Kilo EST
+ce coach, donc ces emojis generiques deviennent litteralement Kilo plutot
+que de coexister avec lui separement :
+- Ecran de bienvenue + ecran de confirmation (`renderOnboardingTransitionScreen()`,
+  phase `confirm`) : nouvelle classe `.onboarding-kilo-hero` remplace
+  `.pf-welcome-badge` (⚡ puis ✅) - `renderKilo('idle', {size:110})` sur la
+  bienvenue, `renderKilo('success', {size:110})` sur la confirmation (l'etat
+  success est deja le vocabulaire etabli ailleurs dans l'app pour "moment
+  valide").
+- Ecran de chargement (phase `loading`, calcul des objectifs) : meme
+  `.onboarding-kilo-hero` en idle, au-dessus du spinner existant (inchange).
+- **Les 4 etapes du questionnaire** (age/sexe/mensurations-poids/niveau) :
+  le badge `.coach-badge` ("Coach Virtuel IA"), qui n'existait QUE sur
+  l'ecran age avant ce chantier, s'affiche desormais identiquement sur les 4
+  - `renderKilo('idle', {size:28})` y remplace le 🧠. Calcule UNE seule fois
+  (`coachBadgeHtml`) et reutilise sur les 4 branches plutot que duplique.
+  Les emojis specifiques a chaque question (🎂/🚻/📏/💪) restent inchanges
+  (`.pf-emoji`) - ils portent une info utile (quelle question), Kilo n'est
+  pas cense les remplacer, juste etre presente en plus sur chaque etape.
+- **Mini-tour guide** (`renderGuidedTourOverlay()`, presentation des
+  onglets) : restructuration de `.tour-bubble-title` en `.tour-bubble-head`
+  (flex row) avec un nouvel avatar `.tour-bubble-avatar`
+  (`renderKilo('idle', {size:44, clickable:true})`) a gauche du titre/texte
+  - lecture "bulle de chat", Kilo presente chaque carte plutot que
+  simplement l'emoji de titre existant (conserve, `step.emoji`).
+
+CACHE_NAME -> v77. Aucun changement de regles Firestore/Cloud Functions, ni
+aux textes de traduction (`t(...)`) existants - uniquement de nouveaux
+emplacements pour `renderKilo()`, deja teste (structure/classes) pour
+chacun des ecrans listes ci-dessus.
+
