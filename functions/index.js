@@ -12,7 +12,12 @@ setGlobalOptions({ region: 'europe-west1' });
 // Note deploiement : le premier trigger Firestore (onDocumentCreated, voir
 // sendPushOnNotificationCreate plus bas) a necessite 3 bindings IAM
 // supplementaires accordes manuellement par le proprietaire du projet - voir
-// CLAUDE.md pour le detail exact (roles + comptes de service concernes).
+// CLAUDE.md pour le detail exact (roles + comptes de service concernes). Une
+// fois ces bindings accordes, le tout premier deploiement peut encore echouer
+// une fois de plus avec "Permission denied while using the Eventarc Service
+// Agent" (propagation du role, message Firebase explicite : "retry in a few
+// minutes") - un simple redeploiement quelques minutes plus tard suffit,
+// aucune action supplementaire requise.
 
 // Phase 0 : valide la chaine complete outillage -> CI -> deploiement Blaze avant
 // d'ecrire la moindre logique metier (aggregateLeaderboard, closeExpiredGroupChallenges,
