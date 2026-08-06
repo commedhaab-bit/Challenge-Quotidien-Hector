@@ -1,4 +1,4 @@
-const CACHE_NAME = 'defi-du-jour-v64';
+const CACHE_NAME = 'defi-du-jour-v65';
 const ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,41 @@ const ASSETS = [
   './icon-192.png',
   './icon-512.png'
 ];
+
+// Notifications push (Phase B) : un service worker a son propre scope global,
+// aucun partage de code possible avec index.html - config dupliquee (valeurs
+// PUBLIQUES par construction, comme apiKey partout ailleurs dans l'app, rien a
+// proteger). Une fois la messagerie initialisee, la SDK compat affiche
+// AUTOMATIQUEMENT la notification OS pour tout message recu avec un champ
+// "notification" (voir sendPushToUser() dans functions/index.js) quand l'app
+// n'est pas au premier plan - aucun handler onBackgroundMessage supplementaire
+// necessaire pour ce cas simple (titre/corps fixes, pas d'action personnalisee).
+importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js');
+firebase.initializeApp({
+  apiKey: 'AIzaSyBE0DL8Q6y8Md4R2aM0D1imx_cTUlHP5c4',
+  authDomain: 'challenge-quotidien-hector.firebaseapp.com',
+  projectId: 'challenge-quotidien-hector',
+  storageBucket: 'challenge-quotidien-hector.firebasestorage.app',
+  messagingSenderId: '613473786890',
+  appId: '1:613473786890:web:c77ccf3c2d99857df9d3f3',
+});
+firebase.messaging();
+
+// Focus l'onglet deja ouvert s'il y en a un, sinon en ouvre un nouveau - pas de
+// deep-link precis vers le bon groupe/defi dans cette 1ere version (garder
+// simple, ameliorable plus tard si demande).
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientsList) => {
+      for (const client of clientsList) {
+        if ('focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow('./');
+    })
+  );
+});
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

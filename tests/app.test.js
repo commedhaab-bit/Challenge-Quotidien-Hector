@@ -1500,6 +1500,27 @@ const cssText = __rawHtml + __cssSource;
   voiceRowHtml = extractVoiceRow(settingsHtml);
   __assertOk(!voiceRowHtml.includes('switch on'), 'le switch ne doit pas apparaitre actif quand voiceCoachEnabled=false');
   voiceCoachEnabled = true;
+
+  // Reglage "Notifications push" (Phase B) : masque tant que le support n est
+  // pas determine (evite un toggle potentiellement casse), texte explicatif
+  // (pas de toggle) si non supporte, toggle normal sinon.
+  const pushSupportedBefore = pushNotificationsSupported;
+  pushNotificationsSupported = null;
+  __assertOk(!renderSettingsSection().includes(t('settings.pushNotifications.label')), 'le reglage push ne doit rien afficher tant que le support n est pas determine');
+  pushNotificationsSupported = false;
+  const unsupportedHtml = renderSettingsSection();
+  __assertOk(unsupportedHtml.includes(t('settings.pushNotifications.label')) && unsupportedHtml.includes(t('settings.pushNotifications.unsupportedDesc')), 'navigateur non supporte -> texte explicatif, sans toggle');
+  __assertOk(!unsupportedHtml.includes('onclick="togglePushNotifications()"'), 'aucun toggle ne doit etre propose si le navigateur ne supporte pas le Web Push');
+  pushNotificationsSupported = true;
+  const supportedHtml = renderSettingsSection();
+  __assertOk(supportedHtml.includes(t('settings.pushNotifications.label')) && supportedHtml.includes('onclick="togglePushNotifications()"'), 'navigateur supporte -> toggle normal propose');
+  pushNotificationsSupported = pushSupportedBefore;
+  // Notification n est pas defini dans ce bac a sable de test (aucun vrai
+  // navigateur) - isPushNotificationsEnabledOnThisDevice() doit rester
+  // defensif (jamais de throw), pas juste "marcher par chance" en environnement reel.
+  __assertEq(isPushNotificationsEnabledOnThisDevice(), false, 'sans Notification/permission connue, le reglage doit se comporter comme desactive, jamais planter');
+  console.log('OK: reglage "Notifications push" (masque tant que non determine, texte explicatif si non supporte, toggle normal sinon)');
+
   currentUser = { displayName: 'Test', email: 't@test.com', photoURL: '' };
   settingsScreenOpen = false;
   const fullAccountHtml = renderAccountTabScreen();
@@ -2408,7 +2429,7 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!inlineAppScriptTag.includes('defer'), 'le script inline de l appli ne doit jamais porter defer (no-op sur un script sans src, casse l ordre avec les SDK Firebase differes)');
   __assertOk(!inlineAppScriptTag.includes('async'), 'le script inline de l appli ne doit jamais porter async, pour la meme raison');
   const firebaseScriptTags = scriptTagsFound.filter(t => t.includes('gstatic.com/firebasejs'));
-  __assertEq(firebaseScriptTags.length, 4, 'les 4 SDK Firebase doivent etre presents (app/auth/firestore + functions depuis la Phase 1 Cloud Functions)');
+  __assertEq(firebaseScriptTags.length, 5, 'les 5 SDK Firebase doivent etre presents (app/auth/firestore/functions + messaging depuis les notifications push Phase B)');
   __assertOk(firebaseScriptTags.every(t => !t.includes('defer') && !t.includes('async')), 'les SDK Firebase doivent rester charges de maniere synchrone (coherent avec le script inline non differe)');
   console.log('OK: SDK Firebase + script inline charges de maniere synchrone (pas de defer/async, ordre garanti)');
 
@@ -2420,7 +2441,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v64'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v65'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');

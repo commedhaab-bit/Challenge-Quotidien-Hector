@@ -33,6 +33,12 @@ const LOCALE_FR = {
       label: 'Classement communautaire',
       desc: 'Affiche ton nom, ta série et ton XP dans le classement partagé avec les autres utilisateurs.',
     },
+    pushNotifications: {
+      label: 'Notifications push',
+      desc: "Reçois une alerte même quand l'app est fermée (défis de groupe, amis, rappels).",
+      deniedDesc: 'Bloquées dans les réglages de ton navigateur — réactive-les depuis là pour les recevoir à nouveau.',
+      unsupportedDesc: "Non disponible sur ce navigateur — sur iPhone, installe l'app sur l'écran d'accueil (iOS 16.4+) pour y avoir accès.",
+    },
     language: {
       label: 'Langue',
       desc: "Change la langue de l'application sur cet appareil.",

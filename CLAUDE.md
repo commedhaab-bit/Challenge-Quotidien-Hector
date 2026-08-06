@@ -2362,3 +2362,69 @@ emulateur Firestore/FCM n'est en place ici. `npm test` (client + Cloud
 Functions) valide toute la logique metier (qui est notifie, quel texte, quels
 paliers, pas de doublon/auto-notification), jamais la livraison OS elle-meme.
 
+**Deploiement reel effectue** : le premier `sendPushOnNotificationCreate` a
+echoue 2 fois avant de reussir - d'abord bindings IAM manquants (voir
+ci-dessus), puis "Permission denied while using the Eventarc Service Agent"
+(propagation du role fraichement accorde, message Firebase explicite invitant
+a reessayer quelques minutes plus tard) - un simple redeploiement a suffi la
+2e fois. Ces 2 echecs sont specifiques au TOUT PREMIER trigger Firestore de ce
+projet, ne devraient plus jamais se reproduire pour les triggers suivants.
+
+## Notifications push OS — Phase B (activation reelle)
+
+Cle VAPID fournie par l'utilisateur (Console Firebase > Parametres du projet >
+Cloud Messaging > Configuration web > "Generer une paire de cles"), en dur
+dans `index.html` (`VAPID_PUBLIC_KEY`) - **cle PUBLIQUE par construction**
+(comme `apiKey` juste au-dessus, deja en dur depuis le debut du projet), rien
+a proteger.
+
+- **`firebase-messaging-compat.js`** ajoute a la fois dans `index.html` (page
+  principale) ET `service-worker.js` (`importScripts`, config Firebase
+  dupliquee - un service worker a son propre scope global, aucun partage de
+  code possible avec le script principal).
+- **Etat du reglage volontairement JAMAIS mis en cache dans une variable
+  globale persistante** (`isPushNotificationsEnabledOnThisDevice()`, calculee
+  a la demande a chaque rendu) : contrairement a `voiceCoachEnabled` (synchronise
+  via `saveAppField`/le document `appData` consolide, partage entre tous les
+  appareils du compte), l'activation du push est **intrinsequement par
+  appareil** (chaque appareil a son propre token FCM, stocke dans
+  `users/{uid}/pushTokens/{token}`) - synchroniser un simple booleen entre
+  appareils aurait donne une fausse impression qu'activer sur son telephone
+  active aussi sur son ordinateur. Le token de CET appareil est mis en cache
+  dans `localStorage` (`fcmPushToken`), jamais dans Firestore appData.
+- **Support detecte une seule fois, en tache de fond, au demarrage**
+  (`detectPushNotificationsSupport()`, appelee sans `await` dans
+  `continueStartApp()`) : `firebase.messaging.isSupported()` est **asynchrone
+  depuis la SDK v9+** (contrairement aux versions precedentes) et couvre deja
+  precisement le cas iOS Safari (false hors PWA installee sur l'ecran
+  d'accueil, iOS <16.4) - aucune detection manuelle supplementaire necessaire.
+  Le reglage Parametres reste **masque** (pas juste desactive) tant que ce
+  resultat n'est pas connu, pour ne jamais afficher un toggle qui pourrait ne
+  rien faire.
+- **Permission demandee UNIQUEMENT sur le tap explicite** du reglage, jamais
+  au chargement de l'app - une demande de permission non sollicitee est le
+  plus sur moyen de se faire refuser definitivement (la plupart des
+  navigateurs ne re-proposent plus la question apres un refus). Si refusee,
+  le reglage bascule sur un texte explicatif ("bloquees dans les reglages de
+  ton navigateur") plutot qu'un toggle inerte.
+- **`messaging.onMessage(() => {})` deliberement no-op** : le premier plan
+  (app deja ouverte) est deja couvert par le listener Firestore existant
+  (`startNotificationsListener()`, popup in-app en temps reel) - ce handler
+  existe uniquement pour eviter un avertissement console de la SDK, jamais
+  pour afficher quoi que ce soit lui-meme.
+- **`service-worker.js`** : `firebase.messaging()` suffit a afficher
+  automatiquement la notification OS en arriere-plan (le payload envoye par
+  `sendPushToUser()` contient un champ `notification`) - aucun handler
+  `onBackgroundMessage` explicite necessaire pour ce cas simple (titre/corps
+  fixes, pas d'action personnalisee). Nouveau `notificationclick` : focus
+  l'onglet deja ouvert s'il y en a un, sinon en ouvre un nouveau - pas de
+  deep-link precis vers le bon groupe/defi dans cette 1ere version (garder
+  simple, ameliorable plus tard si demande).
+
+CACHE_NAME -> v65 (5 SDK Firebase desormais charges au lieu de 4). Meme limite
+de verification que la Phase A : l'activation reelle (permission navigateur,
+obtention d'un token, reception effective) ne peut etre testee que par
+l'utilisateur, sur un vrai appareil - `npm test` valide uniquement le rendu du
+reglage (masque/explicatif/toggle selon le support) et le comportement
+defensif en l'absence des APIs navigateur (jamais de throw).
+

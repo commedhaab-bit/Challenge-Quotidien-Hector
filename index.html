@@ -36,6 +36,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-messaging-compat.js"></script>
 
 <!-- Catalogue d'exercices + pictogrammes, extraits dans des fichiers séparés pour un
      script principal moins volumineux (voir CLAUDE.md). Scripts CLASSIQUES à dessein
@@ -130,6 +131,11 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+// Notifications push (Phase B) : cle VAPID PUBLIQUE (comme apiKey ci-dessus,
+// rien a proteger - elle identifie juste ce projet aupres de FCM), generee une
+// fois dans la Console Firebase (Parametres du projet > Cloud Messaging >
+// Configuration web) et necessaire a messaging.getToken() plus bas.
+const VAPID_PUBLIC_KEY = 'BFq_mtuvKDwu-hTbCbKnRkQyfqxpLFBytmD2hTVlqpDvGlMwvElN61-KV0l4tC1K8_jtVQBq5wEADhsxGoOfc3s';
 // Region europe-west1 : DOIT correspondre exactement a setGlobalOptions({region:...})
 // dans functions/index.js, sinon httpsCallable() cible une URL de fonction qui
 // n'existe pas (region par defaut us-central1 sinon).
@@ -4005,6 +4011,99 @@ async function toggleVoiceCoach() {
   render();
 }
 
+// ==== NOTIFICATIONS PUSH (Firebase Cloud Messaging, Phase B) ====
+// Le token FCM de CET appareil est mis en cache dans localStorage (jamais dans
+// le document consolide appData, contrairement a voiceCoachEnabled ci-dessus) :
+// contrairement aux autres reglages, l'activation du push est INTRINSEQUEMENT
+// par appareil (chaque appareil a son propre token, voir users/{uid}/pushTokens/
+// {token}) - synchroniser un simple booleen entre appareils donnerait une fausse
+// impression qu'activer sur son telephone active aussi sur son ordinateur.
+const FCM_TOKEN_STORAGE_KEY = 'fcmPushToken';
+
+// null tant que pas encore determine (verifie une fois, en tache de fond, voir
+// continueStartApp()) - le reglage reste discret/masque en attendant plutot que
+// d'afficher un toggle qui pourrait ne rien faire. firebase.messaging.isSupported()
+// est asynchrone depuis la SDK v9+ (contrairement aux versions precedentes) et
+// couvre deja precisement le cas iOS Safari (false hors PWA installee, iOS <16.4) -
+// aucune detection manuelle supplementaire necessaire.
+let pushNotificationsSupported = null;
+async function detectPushNotificationsSupport() {
+  try {
+    pushNotificationsSupported = 'serviceWorker' in navigator && typeof Notification !== 'undefined' && await firebase.messaging.isSupported();
+  } catch (e) {
+    pushNotificationsSupported = false;
+  }
+  render();
+}
+
+// Calcule a la demande (jamais mis en cache dans une variable globale) : reflete
+// toujours l'etat REEL du navigateur (permission) + de cet appareil precis
+// (token deja obtenu), jamais un etat suppose apres un rechargement de page.
+function isPushNotificationsEnabledOnThisDevice() {
+  try {
+    return typeof Notification !== 'undefined' && Notification.permission === 'granted' && !!localStorage.getItem(FCM_TOKEN_STORAGE_KEY);
+  } catch (e) {
+    return false;
+  }
+}
+
+// Demande la permission UNIQUEMENT sur ce tap explicite (jamais au chargement -
+// une demande de permission non sollicitee est le plus sur moyen de se faire
+// refuser definitivement, la plupart des navigateurs ne re-proposant plus la
+// question apres un refus). Si l'utilisateur refuse, on ne force rien : le
+// reglage reste simplement "desactive" (Notification.permission === 'denied'),
+// avec un texte explicatif cote rendu plutot qu'une erreur.
+async function enablePushNotifications() {
+  if (!pushNotificationsSupported) return;
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') { render(); return; }
+    const registration = await navigator.serviceWorker.ready;
+    const messaging = firebase.messaging();
+    // onMessage : premier plan (app deja ouverte) - deliberement un no-op. Le
+    // listener Firestore existant (startNotificationsListener()) affiche deja la
+    // popup in-app correspondante en temps reel ; sans ce handler explicite, la
+    // SDK Firebase peut logguer un avertissement "no onMessage handler" en console.
+    messaging.onMessage(() => {});
+    const token = await messaging.getToken({ vapidKey: VAPID_PUBLIC_KEY, serviceWorkerRegistration: registration });
+    if (!token) { render(); return; }
+    await db.collection('users').doc(currentUser.uid).collection('pushTokens').doc(token).set({
+      token, createdAt: Date.now(), userAgent: navigator.userAgent,
+    });
+    try { localStorage.setItem(FCM_TOKEN_STORAGE_KEY, token); } catch (e) { /* navigation privee : tant pis, le reglage semblera "off" au prochain chargement */ }
+    if (navigator.vibrate) navigator.vibrate(10);
+    render();
+  } catch (e) {
+    reportSaveError('enable push notifications failed', e);
+    render();
+  }
+}
+
+// Supprime le doc token de CET appareil (jamais celui des autres appareils du
+// meme compte, chacun garde le sien) + revoque le token cote FCM.
+async function disablePushNotifications() {
+  let token = null;
+  try { token = localStorage.getItem(FCM_TOKEN_STORAGE_KEY); } catch (e) { /* tant pis */ }
+  try {
+    if (token && currentUser) {
+      await db.collection('users').doc(currentUser.uid).collection('pushTokens').doc(token).delete();
+    }
+    if (pushNotificationsSupported) {
+      await firebase.messaging().deleteToken();
+    }
+  } catch (e) {
+    reportSaveError('disable push notifications failed', e);
+  } finally {
+    try { localStorage.removeItem(FCM_TOKEN_STORAGE_KEY); } catch (e) { /* tant pis */ }
+    render();
+  }
+}
+
+function togglePushNotifications() {
+  if (isPushNotificationsEnabledOnThisDevice()) disablePushNotifications();
+  else enablePushNotifications();
+}
+
 // cancel() avant chaque prise de parole pour éviter les retards/empilements audio ;
 // tolère l'absence de synthèse vocale (navigateur non compatible ou bloquée).
 // `onEnd`, si fourni, se déclenche une fois la phrase RÉELLEMENT terminée (callback
@@ -6142,6 +6241,32 @@ function closeFriendProfile() {
   friendProfileOpenUid = null;
 }
 
+// Ligne "Notifications push" de Parametres : masquee tant que le support n'est
+// pas encore determine (evite un toggle qui pourrait ne rien faire), texte
+// explicatif au lieu d'un toggle si non supporte ou bloque par le navigateur
+// (jamais une erreur silencieuse).
+function renderPushNotificationsSettingsRow() {
+  if (pushNotificationsSupported === null) return '';
+  if (!pushNotificationsSupported) {
+    return `
+      <div class="settings-row">
+        <div class="settings-row-label">🔔 ${t('settings.pushNotifications.label')}
+          <div class="settings-row-desc">${t('settings.pushNotifications.unsupportedDesc')}</div>
+        </div>
+      </div>
+    `;
+  }
+  const denied = typeof Notification !== 'undefined' && Notification.permission === 'denied';
+  return `
+    <div class="settings-row">
+      <div class="settings-row-label">🔔 ${t('settings.pushNotifications.label')}
+        <div class="settings-row-desc">${denied ? t('settings.pushNotifications.deniedDesc') : t('settings.pushNotifications.desc')}</div>
+      </div>
+      ${denied ? '' : `<button class="switch${isPushNotificationsEnabledOnThisDevice() ? ' on' : ''}" onclick="togglePushNotifications()"><span class="switch-knob"></span></button>`}
+    </div>
+  `;
+}
+
 function renderSettingsSection() {
   return `
     <div class="section-label">${t('settings.screenTitle')}</div>
@@ -6164,6 +6289,7 @@ function renderSettingsSection() {
         </div>
         <button class="switch${leaderboardOptOut ? '' : ' on'}" onclick="toggleLeaderboardOptOut()"><span class="switch-knob"></span></button>
       </div>
+      ${renderPushNotificationsSettingsRow()}
       <div class="settings-row">
         <div class="settings-row-label">🌐 ${t('settings.language.label')}
           <div class="settings-row-desc">${t('settings.language.desc')}</div>
@@ -7539,6 +7665,10 @@ async function continueStartApp() {
   // pour qu'une série loguée depuis N'IMPORTE QUEL onglet contribue aux défis de
   // groupe actifs, sans attendre une visite de l'onglet Groupes — pas bloquant.
   refreshMyGroupsAndActiveChallenges();
+  // Idem : détermine si CE navigateur supporte le Web Push (async depuis la SDK
+  // v9+) — pas bloquant, le réglage Notifications push reste discret tant que
+  // le résultat n'est pas connu (voir renderSettingsSection()).
+  detectPushNotificationsSupport();
   // Rattrapage natif inclus : les notifications non lues reçues hors ligne se
   // déclenchent exactement comme celles reçues en direct, dès ce premier instantané.
   startNotificationsListener();
