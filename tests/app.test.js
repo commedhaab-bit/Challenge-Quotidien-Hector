@@ -1521,6 +1521,18 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(isPushNotificationsEnabledOnThisDevice(), false, 'sans Notification/permission connue, le reglage doit se comporter comme desactive, jamais planter');
   console.log('OK: reglage "Notifications push" (masque tant que non determine, texte explicatif si non supporte, toggle normal sinon)');
 
+  // Retour utilisateur explicite : redemander la permission a CHAQUE demarrage
+  // tant que l utilisateur n a pas encore tranche (comme la plupart des grandes
+  // apps), jamais si deja acceptee (inutile) ni si deja refusee (le navigateur
+  // ignore silencieusement toute nouvelle demande une fois 'denied' - aucun
+  // moyen cote code de re-afficher le prompt natif dans ce cas).
+  __assertEq(shouldAutoPromptPushNotifications(true, 'default'), true, 'support confirme + aucune decision prise -> redemander');
+  __assertEq(shouldAutoPromptPushNotifications(true, 'granted'), false, 'deja accepte -> ne rien redemander');
+  __assertEq(shouldAutoPromptPushNotifications(true, 'denied'), false, 'deja refuse -> ne jamais retenter (le navigateur l ignorerait de toute facon)');
+  __assertEq(shouldAutoPromptPushNotifications(false, 'default'), false, 'navigateur non supporte -> ne jamais demander, quelle que soit la permission');
+  __assertEq(shouldAutoPromptPushNotifications(null, 'default'), false, 'support pas encore determine -> ne pas demander avant de savoir');
+  console.log('OK: shouldAutoPromptPushNotifications() (redemande a chaque demarrage tant qu aucune decision n a ete prise, jamais si deja tranche)');
+
   currentUser = { displayName: 'Test', email: 't@test.com', photoURL: '' };
   settingsScreenOpen = false;
   const fullAccountHtml = renderAccountTabScreen();
@@ -2441,7 +2453,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v65'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v66'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');

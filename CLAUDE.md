@@ -2428,3 +2428,30 @@ l'utilisateur, sur un vrai appareil - `npm test` valide uniquement le rendu du
 reglage (masque/explicatif/toggle selon le support) et le comportement
 defensif en l'absence des APIs navigateur (jamais de throw).
 
+## Notifications push OS — demande automatique au demarrage
+
+**Demande explicite de l'utilisateur** apres test reel (reinstallation de
+l'app) : le toggle Parametres seul ne suffisait pas - la plupart des grandes
+apps redemandent la permission a chaque ouverture tant que l'utilisateur n'a
+pas encore tranche, au lieu d'attendre un tap manuel dans un ecran de reglages
+que personne ne visite spontanement.
+
+`maybePromptPushNotificationsOnStartup()` (appelee automatiquement a la fin de
+`detectPushNotificationsSupport()`, elle-meme deja declenchee sans `await`
+dans `continueStartApp()` - donc a CHAQUE demarrage de l'app, pas seulement le
+tout premier) declenche `enablePushNotifications()` (meme fonction que le
+toggle manuel, reutilisee telle quelle) uniquement quand
+`shouldAutoPromptPushNotifications(supported, permission)` (pure, testee)
+renvoie vrai - c'est-a-dire : support confirme ET `Notification.permission
+=== 'default'` (aucune decision prise). Jamais si deja `'granted'` (inutile)
+ni si deja `'denied'` : **restriction navigateur non contournable** - une fois
+la permission refusee, `Notification.requestPermission()` resout
+immediatement `'denied'` sans jamais reafficher le prompt natif, quel que soit
+le nombre de tentatives cote code ; seul l'utilisateur peut la reactiver
+lui-meme depuis les reglages de son navigateur (le texte explicatif du
+reglage Parametres, deja en place, couvre ce cas). Le toggle manuel dans
+Parametres reste disponible en plus (desactivation, ou reactivation si le
+support n'etait pas encore determine au moment du 1er demarrage).
+
+CACHE_NAME -> v66.
+

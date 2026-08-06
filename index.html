@@ -4034,6 +4034,29 @@ async function detectPushNotificationsSupport() {
     pushNotificationsSupported = false;
   }
   render();
+  maybePromptPushNotificationsOnStartup();
+}
+
+// Pure (aucun acces navigateur) : faut-il declencher automatiquement la
+// demande de permission a CE demarrage ? Retour utilisateur explicite : la
+// plupart des grandes apps redemandent a chaque ouverture tant que
+// l'utilisateur n'a pas encore tranche, plutot que d'attendre un tap manuel
+// dans les reglages. Uniquement si le support est confirme ET qu'aucune
+// decision n'a encore ete prise ('default') - jamais si deja 'granted'
+// (inutile) ni si deja 'denied' (le navigateur ignore silencieusement toute
+// nouvelle demande une fois refusee : AUCUN moyen cote code de re-afficher le
+// prompt natif, seul l'utilisateur peut le reactiver depuis ses reglages
+// navigateur - autant ne pas tenter et laisser le texte explicatif du reglage
+// Parametres faire le travail dans ce cas).
+function shouldAutoPromptPushNotifications(supported, permission) {
+  return supported === true && permission === 'default';
+}
+
+async function maybePromptPushNotificationsOnStartup() {
+  let permission = null;
+  try { permission = typeof Notification !== 'undefined' ? Notification.permission : null; } catch (e) { permission = null; }
+  if (!shouldAutoPromptPushNotifications(pushNotificationsSupported, permission)) return;
+  await enablePushNotifications();
 }
 
 // Calcule a la demande (jamais mis en cache dans une variable globale) : reflete
@@ -4047,12 +4070,14 @@ function isPushNotificationsEnabledOnThisDevice() {
   }
 }
 
-// Demande la permission UNIQUEMENT sur ce tap explicite (jamais au chargement -
-// une demande de permission non sollicitee est le plus sur moyen de se faire
-// refuser definitivement, la plupart des navigateurs ne re-proposant plus la
-// question apres un refus). Si l'utilisateur refuse, on ne force rien : le
-// reglage reste simplement "desactive" (Notification.permission === 'denied'),
-// avec un texte explicatif cote rendu plutot qu'une erreur.
+// Appelee soit automatiquement au demarrage (maybePromptPushNotificationsOnStartup(),
+// tant qu'aucune decision n'a encore ete prise), soit sur un tap explicite du
+// reglage Parametres - dans les 2 cas, Notification.requestPermission() ne
+// declenche reellement le prompt natif du navigateur que si la permission est
+// encore 'default' (sinon elle resout immediatement sans rien afficher). Si
+// l'utilisateur refuse, on ne force rien : le reglage reste simplement
+// "desactive" (Notification.permission === 'denied'), avec un texte
+// explicatif cote rendu plutot qu'une erreur.
 async function enablePushNotifications() {
   if (!pushNotificationsSupported) return;
   try {
@@ -7667,7 +7692,10 @@ async function continueStartApp() {
   refreshMyGroupsAndActiveChallenges();
   // Idem : détermine si CE navigateur supporte le Web Push (async depuis la SDK
   // v9+) — pas bloquant, le réglage Notifications push reste discret tant que
-  // le résultat n'est pas connu (voir renderSettingsSection()).
+  // le résultat n'est pas connu (voir renderSettingsSection()). Enchaîne
+  // ensuite avec une demande de permission automatique tant qu'aucune décision
+  // n'a encore été prise (voir maybePromptPushNotificationsOnStartup()) — donc
+  // à CHAQUE démarrage de l'app, pas seulement le tout premier.
   detectPushNotificationsSupport();
   // Rattrapage natif inclus : les notifications non lues reçues hors ligne se
   // déclenchent exactement comme celles reçues en direct, dès ce premier instantané.
