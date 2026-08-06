@@ -1,6 +1,7 @@
 const { setGlobalOptions } = require('firebase-functions/v2');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const admin = require('firebase-admin');
 
 admin.initializeApp();
@@ -221,9 +222,13 @@ function rankForSettlement(ranked) {
 // fonction est appelee 2 fois presque en meme temps (le sweep planifie ET une
 // contribution qui atteint la cible au meme moment, ou 2 contributions
 // quasi-simultanees).
+// Renvoie true si un reglement a reellement eu lieu lors de CET appel (false
+// si le defi n'est pas eligible, ou si une transaction concurrente l'a deja
+// regle entre-temps) - utilise par closeExpiredGroupChallenges() pour savoir
+// si un rappel d'echeance a encore un sens juste apres (voir plus bas).
 async function settleChallengeIfNeeded(db, challengeRef) {
   const challengeSnap = await challengeRef.get();
-  if (!challengeSnap.exists || challengeSnap.data().status !== 'active') return;
+  if (!challengeSnap.exists || challengeSnap.data().status !== 'active') return false;
   const challenge = challengeSnap.data();
   const groupRef = challengeRef.parent.parent; // groups/{groupId}/challenges/{id} -> groups/{groupId}
   const now = Date.now();
@@ -233,7 +238,7 @@ async function settleChallengeIfNeeded(db, challengeRef) {
     .map((d) => ({ uid: d.id, ...d.data() }))
     .sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
   const totalProgress = ranked.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
-  if (!shouldSettleChallenge(totalProgress, challenge.targetTotal, challenge.endDate, now)) return;
+  if (!shouldSettleChallenge(totalProgress, challenge.targetTotal, challenge.endDate, now)) return false;
   // Distingue une VRAIE victoire collective (objectif chiffre atteint) d'un simple
   // reglement par expiration d'echeance sans objectif atteint - embarque dans la
   // notification pour que le client sache quand declencher la celebration plein
@@ -259,9 +264,11 @@ async function settleChallengeIfNeeded(db, challengeRef) {
   // felicitations immediat cote client, sans lecture supplementaire.
   const winnerName = (ranked[0] && ranked[0].displayName) || '';
 
+  let settled = false;
   await db.runTransaction(async (tx) => {
     const freshChallenge = await tx.get(challengeRef);
     if (!freshChallenge.exists || freshChallenge.data().status !== 'active') return;
+    settled = true;
 
     for (const pair of pairs) {
       const entryId = `${challengeRef.id}_${pair.fromUid}_${pair.toUid}`;
@@ -301,8 +308,9 @@ async function settleChallengeIfNeeded(db, challengeRef) {
       tx.set(groupRef.collection('members').doc(clutchWinnerUid), { clutchWins: admin.firestore.FieldValue.increment(1) }, { merge: true });
     }
 
-    // Notification "Bilan disponible" a chaque participant (canal in-app existant,
-    // toujours pas de push OS - voir CLAUDE.md).
+    // Notification "Bilan disponible" a chaque participant - declenche AUSSI un
+    // push OS via sendPushOnNotificationCreate (trigger generique sur toute
+    // ecriture dans cette sous-collection, voir plus bas).
     for (const participant of ranked) {
       const notifRef = db.collection('users').doc(participant.uid).collection('notifications').doc();
       tx.set(notifRef, {
@@ -318,6 +326,7 @@ async function settleChallengeIfNeeded(db, challengeRef) {
       });
     }
   });
+  return settled;
 }
 
 // Scheduled Function (15 min) : FILET DE SECURITE uniquement - le reglement lui-meme
@@ -328,11 +337,66 @@ async function settleChallengeIfNeeded(db, challengeRef) {
 // GROUPES CONFONDUS (collectionGroup), TOUS les defis encore actifs (un seul filtre
 // d'egalite, servi par le prefixe de l'index composite existant status+endDate -
 // aucun nouvel index requis) et delegue a settleChallengeIfNeeded() pour chacun.
+// Paliers de rappel avant l'echeance d'un defi de groupe, du plus large au
+// plus urgent - un defi qui saute directement sous 3h (ex: cree tres tard)
+// doit quand meme recevoir les 2 rappels au meme passage, pas seulement le
+// plus urgent.
+const REMINDER_THRESHOLDS = [
+  { label: '24h', ms: 24 * 3600 * 1000 },
+  { label: '3h', ms: 3 * 3600 * 1000 },
+];
+
+// Pure (aucun acces Firestore) : quels paliers de rappel viennent d'etre
+// franchis et n'ont pas encore ete notifies (remindersSent, tableau ecrit sur
+// le doc defi) ? Ne renvoie jamais un palier deja notifie, meme si l'appel se
+// repete au passage planifie suivant.
+function computeDueReminderThresholds(remainingMs, remindersSent) {
+  if (!(remainingMs > 0)) return [];
+  const sent = new Set(remindersSent || []);
+  return REMINDER_THRESHOLDS.filter((t) => remainingMs <= t.ms && !sent.has(t.label)).map((t) => t.label);
+}
+
+// Rappels d'echeance (24h/3h) : reutilise TEL QUEL le doc deja lu par
+// activeSnap ci-dessous (aucune lecture/index supplementaire) - un leger
+// risque de donnee legerement perimee en cas de contribution concurrente est
+// accepte (au pire un rappel ecrit un peu en retard, jamais de doublon grace
+// a remindersSent). Notifie TOUS les membres du groupe (pas seulement les
+// participants ayant deja contribue) - un rappel doit aussi pouvoir relancer
+// quelqu'un qui n'a encore rien logue.
+async function maybeRemindChallengeDeadline(db, challengeDoc, now) {
+  const challenge = challengeDoc.data();
+  const due = computeDueReminderThresholds((challenge.endDate || 0) - now, challenge.remindersSent);
+  if (due.length === 0) return;
+  const groupRef = challengeDoc.ref.parent.parent;
+  const membersSnap = await groupRef.collection('members').get();
+  const batch = db.batch();
+  for (const memberDoc of membersSnap.docs) {
+    for (const label of due) {
+      const notifRef = db.collection('users').doc(memberDoc.id).collection('notifications').doc();
+      batch.set(notifRef, {
+        type: 'group_challenge_reminder',
+        fromUid: 'system',
+        groupId: groupRef.id,
+        challengeId: challengeDoc.id,
+        challengeName: challenge.name || '',
+        thresholdLabel: label,
+        read: false,
+        createdAt: now,
+      });
+    }
+  }
+  batch.set(challengeDoc.ref, { remindersSent: admin.firestore.FieldValue.arrayUnion(...due) }, { merge: true });
+  await batch.commit();
+}
+
 exports.closeExpiredGroupChallenges = onSchedule('every 15 minutes', async () => {
   const db = admin.firestore();
+  const now = Date.now();
   const activeSnap = await db.collectionGroup('challenges').where('status', '==', 'active').get();
   for (const challengeDoc of activeSnap.docs) {
-    await settleChallengeIfNeeded(db, challengeDoc.ref);
+    const justSettled = await settleChallengeIfNeeded(db, challengeDoc.ref);
+    if (justSettled) continue; // vient d'etre regle - un rappel n'a plus de sens
+    await maybeRemindChallengeDeadline(db, challengeDoc, now);
   }
 });
 
@@ -501,6 +565,122 @@ exports.applyGroupJoker = onCall(async (request) => {
   return { ok: true };
 });
 
+// =============================================================================
+// Notifications PUSH (Firebase Cloud Messaging)
+// =============================================================================
+// Principe central : UN SEUL point d'envoi pour tous les push, quel que soit
+// l'endroit qui ecrit la notification (client ou une autre Cloud Function) -
+// voir sendPushOnNotificationCreate ci-dessous, qui intercepte TOUTE ecriture
+// dans users/{uid}/notifications. Ajouter un futur type de notification
+// n'importe donc qu'une entree dans PUSH_MESSAGES, jamais un nouveau point
+// d'envoi a cabler manuellement a la main a chaque endroit qui notifie.
+
+// Miroir volontairement simplifie des textes deja utilises cote client dans
+// locale-*.js (popups.notifications.*) - pas d'import possible entre un
+// script navigateur et ce module Node, a maintenir a la main (voir CLAUDE.md).
+const PUSH_MESSAGES = {
+  fr: {
+    friend_request: (d) => ({ title: 'Nouvelle demande d\'ami', body: `${d.fromName} veut devenir ton ami.` }),
+    friend_request_accepted: (d) => ({ title: 'Demande acceptée !', body: `${d.fromName} a accepté ta demande d'ami.` }),
+    group_invite: (d) => ({ title: 'Invitation à un groupe', body: `${d.fromName} t'invite à rejoindre "${d.groupName}".` }),
+    group_member_joined: (d) => ({ title: 'Nouveau membre', body: `${d.fromName} a rejoint "${d.groupName}".` }),
+    group_challenge_created: (d) => ({ title: 'Nouveau défi collectif', body: `${d.fromName} a lancé "${d.challengeName}" dans "${d.groupName}".` }),
+    group_challenge_settled: (d) => ({
+      title: d.targetReached ? 'Objectif atteint !' : 'Bilan disponible !',
+      body: d.targetReached
+        ? (d.winnerName ? `Bravo à toute l'équipe, portée par ${d.winnerName} !` : 'Le groupe a relevé le défi ensemble - bravo à toute l\'équipe !')
+        : `Le défi "${d.challengeName}" est terminé - découvre le classement.`,
+    }),
+    group_challenge_reminder: (d) => ({
+      title: d.thresholdLabel === '3h' ? 'Dernière ligne droite !' : 'Plus que 24h !',
+      body: `Le défi "${d.challengeName}" se termine bientôt - encore le temps de contribuer.`,
+    }),
+  },
+  en: {
+    friend_request: (d) => ({ title: 'New friend request', body: `${d.fromName} wants to be your friend.` }),
+    friend_request_accepted: (d) => ({ title: 'Request accepted!', body: `${d.fromName} accepted your friend request.` }),
+    group_invite: (d) => ({ title: 'Group invitation', body: `${d.fromName} invites you to join "${d.groupName}".` }),
+    group_member_joined: (d) => ({ title: 'New member', body: `${d.fromName} joined "${d.groupName}".` }),
+    group_challenge_created: (d) => ({ title: 'New collective challenge', body: `${d.fromName} started "${d.challengeName}" in "${d.groupName}".` }),
+    group_challenge_settled: (d) => ({
+      title: d.targetReached ? 'Target reached!' : 'Report available!',
+      body: d.targetReached
+        ? (d.winnerName ? `Great job, team - carried by ${d.winnerName}!` : 'The group pulled it off together - great job, team!')
+        : `The "${d.challengeName}" challenge is over - check the ranking.`,
+    }),
+    group_challenge_reminder: (d) => ({
+      title: d.thresholdLabel === '3h' ? 'Final stretch!' : '24 hours left!',
+      body: `The "${d.challengeName}" challenge ends soon - there's still time to contribute.`,
+    }),
+  },
+  es: {
+    friend_request: (d) => ({ title: 'Nueva solicitud de amistad', body: `${d.fromName} quiere ser tu amigo.` }),
+    friend_request_accepted: (d) => ({ title: '¡Solicitud aceptada!', body: `${d.fromName} aceptó tu solicitud de amistad.` }),
+    group_invite: (d) => ({ title: 'Invitación a un grupo', body: `${d.fromName} te invita a unirte a "${d.groupName}".` }),
+    group_member_joined: (d) => ({ title: 'Nuevo miembro', body: `${d.fromName} se unió a "${d.groupName}".` }),
+    group_challenge_created: (d) => ({ title: 'Nuevo reto colectivo', body: `${d.fromName} lanzó "${d.challengeName}" en "${d.groupName}".` }),
+    group_challenge_settled: (d) => ({
+      title: d.targetReached ? '¡Objetivo alcanzado!' : '¡Balance disponible!',
+      body: d.targetReached
+        ? (d.winnerName ? `¡Enhorabuena al equipo, liderado por ${d.winnerName}!` : 'El grupo lo ha logrado junto - ¡enhorabuena al equipo!')
+        : `El reto "${d.challengeName}" ha terminado - descubre la clasificación.`,
+    }),
+    group_challenge_reminder: (d) => ({
+      title: d.thresholdLabel === '3h' ? '¡Recta final!' : '¡Quedan 24 horas!',
+      body: `El reto "${d.challengeName}" termina pronto - todavía hay tiempo para contribuir.`,
+    }),
+  },
+};
+
+// Envoie un push a TOUS les appareils d'un utilisateur (users/{uid}/pushTokens,
+// un doc par token) pour un type de notification donne, dans sa langue
+// preferee (users/{uid}/kv/appData.preferredLanguage, repli 'fr' si absent -
+// voir setPreferredLanguage() cote client). Nettoie les tokens invalides
+// (appareil desinstalle/permission revoquee) retournes par la reponse FCM -
+// evite l'accumulation silencieuse de tokens morts.
+async function sendPushToUser(db, uid, type, data) {
+  const tokensSnap = await db.collection('users').doc(uid).collection('pushTokens').get();
+  if (tokensSnap.empty) return;
+
+  let locale = 'fr';
+  const appDataDoc = await db.collection('users').doc(uid).collection('kv').doc('appData').get();
+  if (appDataDoc.exists && PUSH_MESSAGES[appDataDoc.data().preferredLanguage]) {
+    locale = appDataDoc.data().preferredLanguage;
+  }
+  const buildMessage = PUSH_MESSAGES[locale][type] || PUSH_MESSAGES.fr[type];
+  if (!buildMessage) return; // type de notification sans equivalent push (ne devrait pas arriver)
+  const { title, body } = buildMessage(data);
+
+  const tokens = tokensSnap.docs.map((d) => d.id);
+  const response = await admin.messaging().sendEachForMulticast({
+    tokens,
+    notification: { title, body },
+    webpush: { fcmOptions: { link: '/' } },
+  });
+
+  const staleCodes = new Set(['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']);
+  const batch = db.batch();
+  let hasStale = false;
+  response.responses.forEach((r, i) => {
+    if (!r.success && r.error && staleCodes.has(r.error.code)) {
+      hasStale = true;
+      batch.delete(db.collection('users').doc(uid).collection('pushTokens').doc(tokens[i]));
+    }
+  });
+  if (hasStale) await batch.commit();
+}
+
+// Trigger generique : TOUTE notification in-app deja ecrite aujourd'hui (par
+// le client ou par une autre Cloud Function - friend_request, group_invite,
+// group_challenge_settled, group_challenge_reminder, ...) declenche
+// automatiquement l'envoi push correspondant, sans avoir a cabler un appel
+// FCM a chaque endroit du code qui ecrit une notification.
+exports.sendPushOnNotificationCreate = onDocumentCreated('users/{uid}/notifications/{notifId}', async (event) => {
+  const snap = event.data;
+  if (!snap) return;
+  await sendPushToUser(admin.firestore(), event.params.uid, snap.data().type, snap.data());
+});
+
 // Exposees uniquement pour les tests unitaires (logique pure, sans Firestore) -
 // voir functions/test/leaderboard.test.js et functions/test/groups.test.js.
 module.exports.__testables = {
@@ -514,4 +694,5 @@ module.exports.__testables = {
   computeCreditedAmount,
   rankForSettlement,
   applyDoublonMultiplier,
+  computeDueReminderThresholds,
 };

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { __testables } = require('../index.js');
 const {
   computeSettlementPairs, detectClutchWin, shouldSettleChallenge, computeCreditedAmount,
-  rankForSettlement, applyDoublonMultiplier,
+  rankForSettlement, applyDoublonMultiplier, computeDueReminderThresholds,
 } = __testables;
 
 // Ces tests couvrent uniquement la logique PURE de reglement (aucun acces
@@ -213,4 +213,30 @@ test('applyDoublonMultiplier() : fenetre expiree ou absente -> montant inchange'
   assert.equal(applyDoublonMultiplier(10, Date.now() - 1000, Date.now()), 10);
   assert.equal(applyDoublonMultiplier(10, undefined, Date.now()), 10);
   assert.equal(applyDoublonMultiplier(10, null, Date.now()), 10);
+});
+
+// computeDueReminderThresholds() : rappels d'echeance (24h/3h) pour les notifications
+// push - purement une question de seuils franchis, aucun acces Firestore.
+const H = 3600 * 1000;
+
+test('computeDueReminderThresholds() : bien avant l echeance -> aucun rappel du', () => {
+  assert.deepEqual(computeDueReminderThresholds(48 * H, []), []);
+});
+
+test('computeDueReminderThresholds() : sous 24h mais au-dessus de 3h -> seul le palier 24h est du', () => {
+  assert.deepEqual(computeDueReminderThresholds(20 * H, []), ['24h']);
+});
+
+test('computeDueReminderThresholds() : sous 3h -> les 2 paliers sont dus s ils n ont jamais ete envoyes', () => {
+  assert.deepEqual(computeDueReminderThresholds(2 * H, []), ['24h', '3h'], 'un defi qui saute directement sous 3h (cree tres tard) doit recevoir les 2 rappels au meme passage');
+});
+
+test('computeDueReminderThresholds() : un palier deja envoye ne doit jamais etre re-notifie', () => {
+  assert.deepEqual(computeDueReminderThresholds(2 * H, ['24h']), ['3h'], 'le palier 24h deja envoye ne doit pas reapparaitre, seul le nouveau palier 3h est du');
+  assert.deepEqual(computeDueReminderThresholds(2 * H, ['24h', '3h']), [], 'les 2 paliers deja envoyes -> plus aucun rappel, meme si toujours sous les 2 seuils');
+});
+
+test('computeDueReminderThresholds() : echeance deja depassee -> aucun rappel (le reglement prend le relais, pas un rappel)', () => {
+  assert.deepEqual(computeDueReminderThresholds(-1000, []), []);
+  assert.deepEqual(computeDueReminderThresholds(0, []), []);
 });

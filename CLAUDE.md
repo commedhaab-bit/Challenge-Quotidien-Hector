@@ -2271,3 +2271,82 @@ CACHE_NAME -> v63. Aucun changement de regles Firestore. Meme limite de
 verification que les chantiers precedents : valide par tests+lint (client ET
 Cloud Functions), **pas visuellement dans un vrai navigateur**.
 
+## Notifications push OS (Firebase Cloud Messaging) — Phase A
+
+**Demande explicite de l'utilisateur** : un systeme de notifications **push OS**
+(recues meme app fermee), au minimum pour un defi de groupe cree, une demande
+d'ami, un defi de groupe reussi, et un rappel avant echeance. Plan complet
+ecrit et valide avant implementation - voir historique de conversation. Cette
+Phase A couvre toute la plomberie qui ne depend PAS de la cle VAPID (Phase B,
+separee, activera reellement l'envoi - voir plus bas).
+
+**Principe central : un seul point d'envoi pour tous les push.** Plutot que
+d'ajouter un appel FCM a chaque endroit du code qui ecrit une notification
+in-app (fragile, facile a oublier), un unique trigger Firestore
+`sendPushOnNotificationCreate` (`onDocumentCreated` sur
+`users/{uid}/notifications/{notifId}`) intercepte TOUTE notification deja
+ecrite - par le client ou par une autre Cloud Function - et delegue a
+`sendPushToUser()`. Ajouter un futur type de notification n'importera donc
+qu'une entree dans `PUSH_MESSAGES` (table `{fr,en,es} -> type -> (data) =>
+{title,body}`, miroir simplifie et maintenu a la main des textes deja utilises
+cote client dans `locale-*.js` - aucun import possible entre un script
+navigateur et ce module Node), jamais un nouveau point d'envoi.
+
+`sendPushToUser(db, uid, type, data)` lit `users/{uid}/kv/appData.preferredLanguage`
+(repli 'fr' si absent) pour choisir la langue, lit `users/{uid}/pushTokens`
+(un doc par appareil, alimente en Phase B), envoie via
+`admin.messaging().sendEachForMulticast()`, et **supprime les tokens invalides**
+retournes par la reponse (appareil desinstalle/permission revoquee) - evite
+l'accumulation silencieuse de tokens morts.
+
+**Rappels d'echeance (24h/3h)** : integres directement dans la boucle deja
+existante de `closeExpiredGroupChallenges` (meme balayage planifie 15 min,
+meme requete - aucun nouvel index). `computeDueReminderThresholds(remainingMs,
+remindersSent)` (pure, testee) determine quels paliers viennent d'etre
+franchis et pas encore notifies ; `remindersSent` (tableau sur le doc defi,
+`arrayUnion`) evite toute re-notification. `settleChallengeIfNeeded()` renvoie
+desormais `true`/`false` (a-t-il reellement regle le defi a CET appel ?) pour
+que `closeExpiredGroupChallenges` sache si un rappel a encore un sens juste
+apres (jamais de rappel sur un defi qui vient d'etre regle).
+
+**3 trous reels combles** (aucune notification n'etait ecrite du tout avant,
+ni in-app ni push - reperes en explorant le code avant d'ecrire le plan) :
+- `createGroupChallenge()` : previent desormais les AUTRES membres du groupe
+  (`group_challenge_created`) - hors du try/catch critique de creation (un
+  echec de notification ne doit jamais faire croire que le defi n'a pas ete
+  cree, alors qu'il l'a ete).
+- `acceptFriendRequest()` : previent desormais le demandeur original
+  (`friend_request_accepted`) - integre au meme batch atomique que le reste
+  (rien n'est encore ecrit a ce stade, contrairement au cas ci-dessus).
+- `performJoinGroup()` : previent desormais les membres DEJA presents
+  (`group_member_joined`) - une lecture du roster existant AVANT le batch
+  (le nouveau membre n'y figure pas encore), meme batch atomique.
+
+**i18n des push** : `setPreferredLanguage()` appelle desormais aussi
+`saveAppField('preferredLanguage', code)` en plus de `localStorage` (source de
+verite UI, inchangee) - pure synchronisation pour que le serveur puisse lire
+cette preference (localStorage n'est jamais lisible cote Cloud Function).
+
+**Explicitement exclu de cette version** (decision actee avec l'utilisateur) :
+rappel quotidien "defi pas encore fait" - chantier bien plus lourd (fonction
+planifiee visitant TOUS les utilisateurs chaque jour, risque reel de lassitude/
+desinstallation si mal calibre) - a rediscuter separement si voulu apres avoir
+vu le reste tourner en conditions reelles.
+
+**Phase B (a venir, bloquee par la cle VAPID que l'utilisateur doit generer
+dans la Console Firebase)** : scripts `firebase-messaging-compat.js` (page +
+service worker), reglage Settings "Notifications push",
+`enablePushNotifications()`/`disablePushNotifications()`, gestion
+`notificationclick`, repli iOS Safari (Web Push uniquement en PWA installee,
+16.4+).
+
+CACHE_NAME -> v64. Aucune regle Firestore modifiee (`users/{userId}/{document=**}`
+couvre deja la nouvelle sous-collection `pushTokens`, et les 3 nouvelles
+ecritures de notification respectent deja `fromUid == request.auth.uid`).
+**Limite de verification non contournable** : l'envoi reel d'un push (FCM ->
+navigateur -> notification OS) ne peut etre verifie que par l'utilisateur, sur
+un vrai deploiement avec sa vraie cle VAPID, sur un vrai appareil - aucun
+emulateur Firestore/FCM n'est en place ici. `npm test` (client + Cloud
+Functions) valide toute la logique metier (qui est notifie, quel texte, quels
+paliers, pas de doublon/auto-notification), jamais la livraison OS elle-meme.
+

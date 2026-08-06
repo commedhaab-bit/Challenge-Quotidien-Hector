@@ -704,6 +704,13 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(currentLocale, 'en', 'setPreferredLanguage doit mettre a jour currentLocale');
   __assertEq(__mockLocalStorageStore.get('preferredLanguage'), 'en', 'doit persister la preference sur cet appareil');
   __assertEq(document.documentElement.lang, 'en', "doit mettre a jour l'attribut lang du document (accessibilite)");
+  // Synchronisation Firestore (Phase A notifications push) : localStorage reste
+  // la source de verite pour l UI (inchange), mais la preference est AUSSI
+  // ecrite cote serveur - c est la seule facon pour une Cloud Function de
+  // localiser le texte d une notification push (voir sendPushToUser()).
+  await new Promise(r => setTimeout(r, 10));
+  const appDataAfterLangChange = await appDataDocRef().get();
+  __assertEq(appDataAfterLangChange.data().preferredLanguage, 'en', 'la langue preferee doit aussi etre synchronisee sur le document appData consolide (lisible cote serveur)');
   setPreferredLanguage('xx'); // langue non supportee
   __assertEq(currentLocale, 'en', 'une langue non supportee ne doit rien changer a la langue active');
   setPreferredLanguage('fr'); // restaure avant la suite des tests
@@ -2413,7 +2420,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v63'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v64'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3685,8 +3692,10 @@ const cssText = __rawHtml + __cssSource;
   const communityHeaderHtml = renderCommunityScreen();
   __assertOk(communityHeaderHtml.includes('friends-badge') && communityHeaderHtml.includes('>1<'), 'le bouton Amis doit afficher un badge avec le nombre de demandes en attente');
 
-  // Acceptation : cree friendships/{paire triee}, supprime la demande, jamais d ecriture
-  // dans le document personnel de l autre (aucune collection users/{uid}/... touchee ici).
+  // Acceptation : cree friendships/{paire triee}, supprime la demande, ET
+  // previent desormais le demandeur original (Phase A notifications push -
+  // trou reel comble : avant ce correctif, Alice n etait jamais prevenue que
+  // sa demande avait ete acceptee).
   await acceptFriendRequest('me-uid');
   const friendshipDoc = await db.collection('friendships').doc(friendshipPairId('me-uid', 'alice-uid')).get();
   __assertOk(friendshipDoc.exists, 'accepter doit creer le document friendships partage');
@@ -3695,6 +3704,10 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!reqAfterAccept.exists, 'la demande doit etre supprimee une fois acceptee (pas juste marquee)');
   __assertEq(incomingFriendRequests.length, 0, 'la demande acceptee ne doit plus apparaitre en attente');
   __assertOk(myFriends.some(f => f.uid === 'me-uid'), 'Alice doit maintenant voir "moi" dans sa liste d amis');
+  const meAcceptedNotifs = await notificationsCollRef('me-uid').where('type', '==', 'friend_request_accepted').get();
+  __assertEq(meAcceptedNotifs.size, 1, 'moi-uid (demandeur original) doit recevoir une notification friend_request_accepted');
+  __assertEq(meAcceptedNotifs.docs[0].data().fromUid, 'alice-uid', 'fromUid doit etre la personne qui a accepte (Alice)');
+  console.log('OK: acceptFriendRequest() previent le demandeur original (friend_request_accepted, trou reel comble)');
 
   // Cote "moi" : doit aussi voir Alice comme amie (meme document partage, requete
   // symetrique uidA/uidB).
@@ -4028,6 +4041,76 @@ const cssText = __rawHtml + __cssSource;
   await new Promise(r => setTimeout(r, 10));
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
   console.log('OK: victoire collective de groupe (targetReached) declenche la celebration plein ecran epique, distincte du bilan neutre par expiration');
+
+  // F. Notifications push (Phase A) : les 4 nouveaux types de notification
+  // declenchent chacun leur propre popup in-app (meme mecanisme que les types
+  // existants - c est aussi ce qui s affiche au rattrapage, que l on ait tape
+  // sur un push OS ou simplement rouvert l app).
+  __resetCommunityMocks();
+  popupQueue = []; popupOpen = false;
+  await notificationsCollRef('me-uid').doc().set({
+    type: 'friend_request_accepted', fromUid: 'alice-uid', fromName: 'Alice D.', read: false, createdAt: Date.now(),
+  });
+  startNotificationsListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(popupOpen && currentPopupHtml.includes(t('popups.notifications.friendAcceptedTitle')) && currentPopupHtml.includes('Alice D.'), 'friend_request_accepted doit afficher une popup nommant qui a accepte');
+  document.getElementById('appPopupCloseBtn').onclick();
+  await new Promise(r => setTimeout(r, 10));
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+
+  __resetCommunityMocks();
+  popupQueue = []; popupOpen = false;
+  await notificationsCollRef('me-uid').doc().set({
+    type: 'group_challenge_created', fromUid: 'bob-uid', fromName: 'Bob M.', groupId: 'g1', groupName: 'Les Costauds',
+    challengeId: 'c3', challengeName: 'Squats du jour', read: false, createdAt: Date.now(),
+  });
+  startNotificationsListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(popupOpen && currentPopupHtml.includes(t('popups.notifications.groupChallengeCreatedTitle')) && currentPopupHtml.includes('Squats du jour') && currentPopupHtml.includes('Les Costauds'), 'group_challenge_created doit nommer le defi et le groupe');
+  document.getElementById('appPopupCloseBtn').onclick();
+  await new Promise(r => setTimeout(r, 10));
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+
+  __resetCommunityMocks();
+  popupQueue = []; popupOpen = false;
+  await notificationsCollRef('me-uid').doc().set({
+    type: 'group_member_joined', fromUid: 'chloe-uid', fromName: 'Chloe D.', groupId: 'g1', groupName: 'Les Costauds', read: false, createdAt: Date.now(),
+  });
+  startNotificationsListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(popupOpen && currentPopupHtml.includes(t('popups.notifications.groupMemberJoinedTitle')) && currentPopupHtml.includes('Chloe D.'), 'group_member_joined doit nommer le nouveau membre');
+  document.getElementById('appPopupCloseBtn').onclick();
+  await new Promise(r => setTimeout(r, 10));
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+
+  // thresholdLabel distingue 2 titres differents (urgence croissante), meme
+  // sous-titre - voir maybeRemindChallengeDeadline() cote Cloud Function.
+  __resetCommunityMocks();
+  popupQueue = []; popupOpen = false;
+  await notificationsCollRef('me-uid').doc().set({
+    type: 'group_challenge_reminder', fromUid: 'system', groupId: 'g1', challengeId: 'c1',
+    challengeName: '500 squats', thresholdLabel: '24h', read: false, createdAt: Date.now(),
+  });
+  startNotificationsListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(popupOpen && currentPopupHtml.includes(t('popups.notifications.reminderTitle24h')) && currentPopupHtml.includes('500 squats'), 'group_challenge_reminder (24h) doit afficher le bon titre et nommer le defi');
+  document.getElementById('appPopupCloseBtn').onclick();
+  await new Promise(r => setTimeout(r, 10));
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+
+  __resetCommunityMocks();
+  popupQueue = []; popupOpen = false;
+  await notificationsCollRef('me-uid').doc().set({
+    type: 'group_challenge_reminder', fromUid: 'system', groupId: 'g1', challengeId: 'c1',
+    challengeName: '500 squats', thresholdLabel: '3h', read: false, createdAt: Date.now(),
+  });
+  startNotificationsListener();
+  await new Promise(r => setTimeout(r, 50));
+  __assertOk(popupOpen && currentPopupHtml.includes(t('popups.notifications.reminderTitle3h')), 'group_challenge_reminder (3h) doit afficher un titre plus urgent que le rappel 24h');
+  document.getElementById('appPopupCloseBtn').onclick();
+  await new Promise(r => setTimeout(r, 10));
+  if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+  console.log('OK: 4 nouveaux types de notification (friend_request_accepted, group_challenge_created, group_member_joined, group_challenge_reminder) affichent chacun leur popup dediee');
 
   __resetCommunityMocks();
   popupQueue = []; popupOpen = false;
@@ -5288,6 +5371,16 @@ const cssText = __rawHtml + __cssSource;
   const groupAfterJoin = await db.collection('groups').doc(createdGroupId).get();
   __assertEq(groupAfterJoin.data().memberCount, 2, 'memberCount doit s incrementer a l adhesion');
 
+  // Notifications push (Phase A) - trou reel comble : rejoindre un groupe doit
+  // previent les membres DEJA presents (ici moi-uid, le createur), jamais le
+  // nouveau membre lui-meme.
+  const meNotifsAfterJoin = await notificationsCollRef('me-uid').where('type', '==', 'group_member_joined').get();
+  __assertEq(meNotifsAfterJoin.size, 1, 'le createur (deja membre) doit etre previenu de l arrivee de Bob');
+  __assertEq(meNotifsAfterJoin.docs[0].data().fromUid, 'bob-uid', 'fromUid doit etre le nouveau membre');
+  const bobNotifsAfterJoin = await notificationsCollRef('bob-uid').where('type', '==', 'group_member_joined').get();
+  __assertEq(bobNotifsAfterJoin.size, 0, 'le nouveau membre ne doit jamais se notifier lui-meme');
+  console.log('OK: performJoinGroup() previent les membres deja presents (group_member_joined, trou reel comble)');
+
   // Code invalide.
   groupJoinError = null;
   await joinGroupByCode('ZZZZZZ');
@@ -5361,6 +5454,19 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(myActiveGroupChallenges.length, 1, 'le nouveau defi actif doit apparaitre dans myActiveGroupChallenges');
   __assertEq(myActiveGroupChallenges[0].exerciseSlug, pompes.slug, 'le bon exerciseSlug doit etre associe');
   console.log('OK: createGroupChallenge() (doc defi + mon propre doc participant, repris par refreshMyGroupsAndActiveChallenges())');
+
+  // Notifications push (Phase A) - trou reel comble : creer un defi de groupe
+  // doit desormais prevenir les AUTRES membres (jamais moi-meme), pas le
+  // createur - meme canal que le reste (declenche aussi sendPushOnNotificationCreate
+  // cote Cloud Function, non testable ici sans emulateur FCM).
+  const bobNotifsAfterChallenge = await notificationsCollRef('bob-uid').where('type', '==', 'group_challenge_created').get();
+  __assertEq(bobNotifsAfterChallenge.size, 1, 'Bob (autre membre) doit recevoir une notification group_challenge_created');
+  __assertEq(bobNotifsAfterChallenge.docs[0].data().fromUid, 'me-uid', 'fromUid doit etre le createur du defi');
+  __assertEq(bobNotifsAfterChallenge.docs[0].data().challengeName, 'Pompes de la semaine');
+  __assertEq(bobNotifsAfterChallenge.docs[0].data().groupName, 'Les Costauds');
+  const meNotifsAfterChallenge = await notificationsCollRef('me-uid').where('type', '==', 'group_challenge_created').get();
+  __assertEq(meNotifsAfterChallenge.size, 0, 'le createur du defi ne doit jamais se notifier lui-meme');
+  console.log('OK: createGroupChallenge() previent les AUTRES membres du groupe (group_challenge_created, jamais le createur lui-meme)');
 
   // stakeType structure ('beer' par defaut, evite la fragmentation de texte libre) :
   // createGroupChallenge() force stakeDescription a vide pour 'beer' (rien a saisir),

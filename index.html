@@ -244,6 +244,13 @@ function setPreferredLanguage(code) {
   currentLocale = code;
   try { localStorage.setItem(PREFERRED_LANGUAGE_KEY, code); } catch (e) { /* navigation privee : tant pis, retombera sur la detection navigateur au prochain chargement */ }
   document.documentElement.lang = code;
+  // Synchronise vers Firestore (en plus de localStorage, source de verite pour
+  // l'UI elle-meme, inchangee) : permet aux Cloud Functions de localiser le
+  // texte des notifications push (voir sendPushToUser() dans functions/index.js) -
+  // localStorage n'est jamais lisible cote serveur. currentUser peut etre absent
+  // si jamais appelee avant connexion (aucun appelant actuel dans ce cas, mais
+  // defensif).
+  if (currentUser) saveAppField('preferredLanguage', code);
   render();
 }
 
@@ -2506,6 +2513,43 @@ async function processUnreadNotifications(snap) {
           btnLabel: t('popups.notifications.groupChallengeSettledBtn'),
         });
       }
+    } else if (data.type === 'friend_request_accepted') {
+      // Trou reel comble : avant ce correctif, la personne dont la demande
+      // etait acceptee n'etait jamais prevenue (voir acceptFriendRequest()).
+      enqueuePopup({
+        icon: '🤝',
+        title: t('popups.notifications.friendAcceptedTitle'),
+        subtitle: t('popups.notifications.friendAcceptedSubtitle', { name: escapeHtml(data.fromName || '') }),
+        btnLabel: t('common.close'),
+      });
+    } else if (data.type === 'group_challenge_created') {
+      // Trou reel comble : avant ce correctif, les autres membres du groupe
+      // n'etaient jamais prevenus qu'un nouveau defi collectif venait d'etre
+      // lance (voir createGroupChallenge()).
+      enqueuePopup({
+        icon: '🏆',
+        title: t('popups.notifications.groupChallengeCreatedTitle'),
+        subtitle: t('popups.notifications.groupChallengeCreatedSubtitle', {
+          name: escapeHtml(data.fromName || ''), challenge: escapeHtml(data.challengeName || ''), group: escapeHtml(data.groupName || ''),
+        }),
+        btnLabel: t('popups.notifications.groupChallengeSettledBtn'),
+      });
+    } else if (data.type === 'group_member_joined') {
+      enqueuePopup({
+        icon: '👋',
+        title: t('popups.notifications.groupMemberJoinedTitle'),
+        subtitle: t('popups.notifications.groupMemberJoinedSubtitle', { name: escapeHtml(data.fromName || ''), group: escapeHtml(data.groupName || '') }),
+        btnLabel: t('common.close'),
+      });
+    } else if (data.type === 'group_challenge_reminder') {
+      // thresholdLabel : '24h' ou '3h' (voir maybeRemindChallengeDeadline() cote
+      // Cloud Function) - meme evenement, urgence croissante.
+      enqueuePopup({
+        icon: '⏳',
+        title: data.thresholdLabel === '3h' ? t('popups.notifications.reminderTitle3h') : t('popups.notifications.reminderTitle24h'),
+        subtitle: t('popups.notifications.reminderSubtitle', { challenge: escapeHtml(data.challengeName || '') }),
+        btnLabel: t('common.close'),
+      });
     }
   }
 }
@@ -2565,6 +2609,11 @@ async function performJoinGroup(groupId, groupMeta) {
   const groupRef = db.collection('groups').doc(groupId);
   const already = await groupRef.collection('members').doc(currentUser.uid).get();
   if (already.exists) { openGroupDetail(groupId); return; }
+  // Membres existants a notifier de l'arrivee du nouveau membre (trou reel
+  // comble : avant ce correctif, personne n'etait jamais prevenu) - lu AVANT
+  // le batch ci-dessous, le nouveau membre lui-meme n'y figure pas encore.
+  // Borne par GROUP_MEMBER_CAP (20 max), meme discipline que le reste.
+  const existingMembersSnap = await groupRef.collection('members').get();
   const batch = db.batch();
   batch.set(groupRef.collection('members').doc(currentUser.uid), {
     uid: currentUser.uid, displayName: formatDisplayName(currentUser.displayName),
@@ -2574,6 +2623,15 @@ async function performJoinGroup(groupId, groupMeta) {
   batch.set(db.collection('users').doc(currentUser.uid).collection('myGroups').doc(groupId), {
     groupId, name: groupMeta.name, emoji: groupMeta.emoji, joinedAt: Date.now(),
   });
+  for (const memberDoc of existingMembersSnap.docs) {
+    batch.set(db.collection('users').doc(memberDoc.id).collection('notifications').doc(), {
+      type: 'group_member_joined',
+      fromUid: currentUser.uid,
+      fromName: formatDisplayName(currentUser.displayName),
+      groupId, groupName: groupMeta.name,
+      read: false, createdAt: Date.now(),
+    });
+  }
   await batch.commit();
   await refreshMyGroupsAndActiveChallenges();
   openGroupDetail(groupId);
@@ -2782,9 +2840,10 @@ async function ensureMyParticipantDoc(groupId, challengeId) {
 
 async function createGroupChallenge(groupId, { name, exerciseSlug, startDate, endDate, targetTotal, stakeMode, stakeType, stakeDescription }) {
   const challengeRef = db.collection('groups').doc(groupId).collection('challenges').doc();
+  const challengeName = (name || '').trim();
   try {
     await challengeRef.set({
-      name: (name || '').trim(), exerciseSlug, startDate, endDate,
+      name: challengeName, exerciseSlug, startDate, endDate,
       targetTotal: Math.max(1, Math.round(targetTotal) || 0),
       stakeMode,
       // stakeType structure le gage ('beer' ou 'custom') au lieu de texte libre non
@@ -2799,6 +2858,32 @@ async function createGroupChallenge(groupId, { name, exerciseSlug, startDate, en
   } catch (e) {
     reportSaveError('create group challenge failed', e);
     return;
+  }
+  // Previens les AUTRES membres du groupe qu'un nouveau defi collectif vient
+  // d'etre lance (trou reel comble : avant ce correctif, personne d'autre
+  // n'etait jamais notifie) - meme canal que le reste (in-app + push OS via
+  // sendPushOnNotificationCreate cote Cloud Function). Volontairement HORS du
+  // try/catch critique ci-dessus : un echec ici ne doit jamais faire croire a
+  // l'utilisateur que la creation du defi elle-meme a echoue (elle a reussi).
+  const otherMembers = groupDetailMembers.filter((m) => m.uid !== currentUser.uid);
+  if (otherMembers.length > 0) {
+    try {
+      const notifyBatch = db.batch();
+      for (const m of otherMembers) {
+        const notifRef = db.collection('users').doc(m.uid).collection('notifications').doc();
+        notifyBatch.set(notifRef, {
+          type: 'group_challenge_created',
+          fromUid: currentUser.uid,
+          fromName: formatDisplayName(currentUser.displayName),
+          groupId, groupName: groupDetailGroup ? groupDetailGroup.name : '',
+          challengeId: challengeRef.id, challengeName,
+          read: false, createdAt: Date.now(),
+        });
+      }
+      await notifyBatch.commit();
+    } catch (e) {
+      console.error('notify group members of new challenge failed', e);
+    }
   }
   creatingGroupChallenge = false;
   await refreshMyGroupsAndActiveChallenges();
@@ -3135,6 +3220,15 @@ async function acceptFriendRequest(fromUid) {
     const batch = db.batch();
     batch.set(db.collection('friendships').doc(pairId), { uidA, uidB, since: Date.now() });
     batch.delete(db.collection('friendRequests').doc(friendRequestId(fromUid, currentUser.uid)));
+    // Previens la personne dont la demande vient d'etre acceptee (trou reel
+    // comble : avant ce correctif, elle n'etait jamais notifiee) - meme canal
+    // que le reste (in-app + push OS via sendPushOnNotificationCreate).
+    batch.set(db.collection('users').doc(fromUid).collection('notifications').doc(), {
+      type: 'friend_request_accepted',
+      fromUid: currentUser.uid,
+      fromName: formatDisplayName(currentUser.displayName),
+      read: false, createdAt: Date.now(),
+    });
     await batch.commit();
     if (navigator.vibrate) navigator.vibrate(10);
     if (friendSearchResult && typeof friendSearchResult === 'object' && friendSearchResult.uid === fromUid) {
