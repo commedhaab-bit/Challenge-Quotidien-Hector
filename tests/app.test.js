@@ -2467,7 +2467,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v67'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v68'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
