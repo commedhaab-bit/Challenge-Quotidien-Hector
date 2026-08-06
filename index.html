@@ -5014,6 +5014,11 @@ function formatDateLabel(d) {
 }
 
 let currentChallengeId = null;
+// Retour utilisateur "effet waouh" : pose par addSetInner() (willComplete) au
+// moment exact ou l'objectif du jour vient d'etre atteint, consomme UNE SEULE
+// FOIS par le prochain render() de la fiche d'exercice (petite salve de
+// confettis localisee) - jamais rejoue sur un re-rendu ulterieur du meme etat.
+let justCompletedDailyObjective = false;
 
 function emptyDayState() {
   return { challenges: {} };
@@ -5194,6 +5199,7 @@ async function addSetInner(amount) {
 
   if (willComplete) {
     s.recordStreak = newRecord ? s.recordStreak + 1 : 0;
+    justCompletedDailyObjective = true; // consomme par le prochain render() de la fiche d'exercice (mini confettis)
   }
   await saveStats();
 
@@ -5352,8 +5358,33 @@ function customAddSubmit() {
   }
 }
 
+// Passe UX "effet waouh" (retour utilisateur) : sur les navigateurs qui la
+// supportent, une navigation animee (animate=true) utilise desormais la View
+// Transitions API native plutot que le simple fade CSS manuel - resout un
+// probleme architectural jamais contourne jusqu'ici (render() remplace TOUJOURS
+// TOUT le innerHTML de #app, voir les nombreuses notes ailleurs dans ce fichier/
+// CLAUDE.md sur "aucune vraie transition entre 2 etats sur un meme noeud n'est
+// possible") : la View Transitions API capture un instantane AVANT/APRES le
+// changement de DOM et anime automatiquement entre les deux, MEME si les noeuds
+// sont entierement recrees - exactement le cas ici. Bonus "gratuit" : tout
+// element portant un `view-transition-name` CSS identique avant/apres (ex:
+// l'indicateur d'onglet actif, le bouton "+" qui devient un formulaire) morphe
+// automatiquement d'une position/forme a l'autre, sans code JS supplementaire -
+// voir renderTabBar()/renderGroupsScreen().
+// Repli total si non supportee (Safari < 18, tres large repli mobile - voir
+// CLAUDE.md) ou si l'utilisateur a demande moins de mouvement : redescend sur
+// EXACTEMENT le comportement precedent (fade CSS manuel 140ms), aucune
+// regression possible.
 function applyContent(app, html, animate, afterRender) {
-  if (animate) {
+  const canUseViewTransition = animate
+    && typeof document.startViewTransition === 'function'
+    && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (canUseViewTransition) {
+    document.startViewTransition(() => {
+      app.innerHTML = html;
+      if (afterRender) afterRender();
+    });
+  } else if (animate) {
     app.classList.add('fade-out');
     setTimeout(() => {
       app.innerHTML = html;
@@ -5389,6 +5420,44 @@ function applyContentPreservingFocus(app, html, animate) {
       try { input.setSelectionRange(caret, caret); } catch (e) { /* certains types (number, select) ne supportent pas setSelectionRange */ }
     }
   });
+}
+
+// Retour utilisateur "effet waouh" : anime un nombre affiche de sa valeur
+// precedente vers sa valeur cible (defilement), au lieu de sauter instantanement -
+// beaucoup plus satisfaisant a chaque serie loguee. `key` (distinct de `elId`, ex:
+// 'exercise:42') identifie CE compteur precis d un point de vue metier (pas juste
+// son id DOM, qui peut etre reutilise par un exercice DIFFERENT) : ne rejoue
+// jamais si la valeur n a pas change depuis le dernier appel pour cette meme cle,
+// evite une animation "pour rien" sur un simple re-rendu sans changement reel.
+// Ecrit directement dans le DOM (hors du cycle de render()) via
+// requestAnimationFrame : si un nouveau render() remplace le noeud entre-temps,
+// l animation s arrete silencieusement au prochain frame (le noeud detache
+// n est simplement plus visible, aucune erreur).
+const countUpLastValues = {};
+function animateCountUp(elId, key, targetValue) {
+  const previous = countUpLastValues[key];
+  countUpLastValues[key] = targetValue;
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (previous === undefined || previous === targetValue || reduceMotion) {
+    el.textContent = targetValue;
+    return;
+  }
+  const start = Date.now();
+  const from = previous;
+  const duration = 500;
+  // Ignore volontairement le timestamp fourni par requestAnimationFrame (base sur
+  // performance.now(), une horloge DIFFERENTE de Date.now() - les melanger
+  // produirait un delta absurde) : relit Date.now() a chaque frame a la place.
+  function step() {
+    if (document.getElementById(elId) !== el) return; // noeud remplace par un re-render entre-temps
+    const progress = Math.min(1, (Date.now() - start) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubique
+    el.textContent = Math.round(from + (targetValue - from) * eased);
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
 }
 
 function render(animate) {
@@ -5505,6 +5574,14 @@ function render(animate) {
     `;
     const unitDisplay = c.unit === 'sec' ? t('exercise.unitSecLabel') : t('exercise.unitRepsLabel');
     const unitDisplayLower = c.unit === 'sec' ? t('exercise.unitSecLabelLower') : t('exercise.unitRepsLabel');
+    // Retour utilisateur "effet waouh" : petite salve de confettis LOCALISEE (pas
+    // l'ecran plein, reserve aux VRAIS grands moments - objectif de groupe,
+    // trophee) au moment precis ou l'objectif du jour vient d'etre atteint. Le
+    // drapeau est pose par addSetInner() (willComplete) et consomme UNE SEULE
+    // FOIS ici (jamais rejoue sur un re-rendu ulterieur du meme etat "termine" -
+    // ex: revenir sur cette fiche plus tard dans la journee).
+    const showMiniConfetti = justCompletedDailyObjective;
+    justCompletedDailyObjective = false;
 
     html += `
       <button class="nav-back-btn floating" onclick="history.back()" aria-label="${t('common.back')}">‹</button>
@@ -5530,7 +5607,7 @@ function render(animate) {
         ${!entry.done ? `
           <div class="progress-row">
             <div class="progress-numbers">
-              <span class="progress-current">${total}</span><span class="progress-target"> / ${target}</span>
+              <span class="progress-current" id="exerciseProgressCurrent">${total}</span><span class="progress-target"> / ${target}</span>
               <span class="progress-unit"> ${unitDisplay}</span>
               ${c.unit === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(target)})</span>` : ''}
               <button class="target-edit" onclick="editTarget()" aria-label="${t('exercise.editTargetAria')}">✏️</button>
@@ -5543,6 +5620,7 @@ function render(animate) {
           </div>
         ` : `
           <div class="normal-objective-recap">${t('exercise.normalObjectiveRecap', { target: formatTargetLabel(target, c.unit) })}</div>
+          ${showMiniConfetti ? `<div class="exercise-mini-confetti">${renderConfettiBurst()}</div>` : ''}
         `}
 
         ${activeExerciseGroupChallenges.map((g) => {
@@ -5657,6 +5735,11 @@ function render(animate) {
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') customAddSubmit();
       });
+    }
+    // Retour utilisateur "effet waouh" : le gros chiffre de progression defile
+    // vers sa nouvelle valeur plutot que de sauter instantanement.
+    if (currentChallengeId !== null) {
+      animateCountUp('exerciseProgressCurrent', 'exercise:' + currentChallengeId, getTotal());
     }
   });
 }
@@ -6293,7 +6376,7 @@ function renderAthleteLevelBlock(xpTotalValue, clickable = true) {
 
 function renderAthleteCard() {
   return `
-    <div class="athlete-card" onclick="openLevelRoadmap()">
+    <div class="athlete-card tilt-card" onclick="openLevelRoadmap()">
       ${renderAthleteLevelBlock(xpTotal)}
     </div>
   `;
@@ -7000,8 +7083,11 @@ function updateGroupJoinCodeInput(value) { groupJoinCodeInput = value; groupJoin
 // Un seul des deux formulaires ouvert a la fois (rejoindre / creer), en icones
 // haut-droite plutot qu'en blocs pleine largeur toujours visibles - retour UX :
 // action peu frequente, ne merite pas la meme place qu'un CTA principal.
-function toggleCreatingGroupOpen() { creatingGroupOpen = !creatingGroupOpen; if (creatingGroupOpen) joiningGroupOpen = false; render(); }
-function toggleJoiningGroupOpen() { joiningGroupOpen = !joiningGroupOpen; if (joiningGroupOpen) creatingGroupOpen = false; render(); }
+// render(true) (pas render() instantane) : necessaire pour que la View Transitions
+// API morphe le bouton "+"/loupe en formulaire (voir renderGroupsScreen()) - sans
+// animate=true, applyContent() ne declenche jamais startViewTransition().
+function toggleCreatingGroupOpen() { creatingGroupOpen = !creatingGroupOpen; if (creatingGroupOpen) joiningGroupOpen = false; render(true); }
+function toggleJoiningGroupOpen() { joiningGroupOpen = !joiningGroupOpen; if (joiningGroupOpen) creatingGroupOpen = false; render(true); }
 
 // Etat vide "premium" reutilisable (icone + texte + CTA optionnel) - remplace le
 // simple texte .history-empty pour les etats vides de l'onglet Groupes (retour UX :
@@ -7065,19 +7151,30 @@ function renderGroupsScreen() {
   // Rejoindre/creer : deux icones haut-droite (loupe/plus) plutot que deux gros
   // blocs toujours affiches - retour UX, ces actions sont rares une fois les
   // premiers groupes crees. Un seul formulaire ouvert a la fois (voir toggle*()).
+  // Retour utilisateur "effet waouh" : le bouton "+"/loupe (ferme) et le panneau du
+  // formulaire (ouvert) partagent le meme view-transition-name - toujours l un OU
+  // l autre present, jamais les deux en meme temps (mutuellement exclusifs). La
+  // View Transitions API (applyContent()) morphe alors automatiquement la forme du
+  // petit bouton rond vers le panneau, comme le bouton de composition de Gmail -
+  // aucun JS de morph manuel necessaire (voir toggleCreatingGroupOpen()/
+  // toggleJoiningGroupOpen(), qui appellent desormais render(true)).
   const joinFormHtml = joiningGroupOpen ? `
-    <div class="section-label">${t('groups.joinTitle')}</div>
-    <input id="groupJoinCodeInput" class="library-search-input" type="text" placeholder="${t('groups.joinCodePlaceholder')}"
-           value="${escapeHtml(groupJoinCodeInput)}" oninput="updateGroupJoinCodeInput(this.value)">
-    <button class="friend-search-submit-btn" onclick="joinGroupByCode(groupJoinCodeInput)">${t('groups.joinBtn')}</button>
-    ${joinErrorHtml}
+    <div class="group-fab-form" style="view-transition-name:group-join-fab">
+      <div class="section-label">${t('groups.joinTitle')}</div>
+      <input id="groupJoinCodeInput" class="library-search-input" type="text" placeholder="${t('groups.joinCodePlaceholder')}"
+             value="${escapeHtml(groupJoinCodeInput)}" oninput="updateGroupJoinCodeInput(this.value)">
+      <button class="friend-search-submit-btn" onclick="joinGroupByCode(groupJoinCodeInput)">${t('groups.joinBtn')}</button>
+      ${joinErrorHtml}
+    </div>
   ` : '';
 
   const createFormHtml = creatingGroupOpen ? `
-    <div class="section-label">${t('groups.createTitle')}</div>
-    <input id="groupCreateNameInput" class="library-search-input" type="text" placeholder="${t('groups.createNamePlaceholder')}"
-           value="${escapeHtml(groupCreateNameInput)}" oninput="updateGroupCreateNameInput(this.value)">
-    <button class="friend-search-submit-btn" onclick="createGroup(groupCreateNameInput, '💪')">${t('groups.createSubmitBtn')}</button>
+    <div class="group-fab-form" style="view-transition-name:group-create-fab">
+      <div class="section-label">${t('groups.createTitle')}</div>
+      <input id="groupCreateNameInput" class="library-search-input" type="text" placeholder="${t('groups.createNamePlaceholder')}"
+             value="${escapeHtml(groupCreateNameInput)}" oninput="updateGroupCreateNameInput(this.value)">
+      <button class="friend-search-submit-btn" onclick="createGroup(groupCreateNameInput, '💪')">${t('groups.createSubmitBtn')}</button>
+    </div>
   ` : '';
 
   return `
@@ -7090,8 +7187,8 @@ function renderGroupsScreen() {
         <div class="subtitle">${t('groups.subtitle')}</div>
       </div>
       <div class="groups-header-actions">
-        <button class="add-custom-fab" onclick="toggleJoiningGroupOpen()" title="${t('groups.joinAria')}" aria-label="${t('groups.joinAria')}">🔍</button>
-        <button class="add-custom-fab" onclick="toggleCreatingGroupOpen()" title="${t('groups.createAria')}" aria-label="${t('groups.createAria')}">+</button>
+        <button class="add-custom-fab"${joiningGroupOpen ? '' : ' style="view-transition-name:group-join-fab"'} onclick="toggleJoiningGroupOpen()" title="${t('groups.joinAria')}" aria-label="${t('groups.joinAria')}">🔍</button>
+        <button class="add-custom-fab"${creatingGroupOpen ? '' : ' style="view-transition-name:group-create-fab"'} onclick="toggleCreatingGroupOpen()" title="${t('groups.createAria')}" aria-label="${t('groups.createAria')}">+</button>
       </div>
     </div>
     ${joinFormHtml}
@@ -7419,7 +7516,7 @@ function renderGroupDetailScreen() {
     // a l'image de la Boss Battle dans l'onglet Communaute) - progression + temps
     // restant mis en avant, classement/jokers releguent en dessous.
     challengeHtml = `
-      <div class="group-challenge-hero">
+      <div class="group-challenge-hero tilt-card">
         <div class="group-challenge-hero-top">
           <span class="group-challenge-hero-badge">${t('groups.viewTabs.challenge')}</span>
           <span class="group-challenge-hero-time">${formatGroupChallengeTimeRemaining(groupDetailChallenge.endDate)}</span>
@@ -7730,6 +7827,7 @@ function renderTabBar() {
     <nav class="tab-bar" role="tablist">
       ${tabs.map(t => `
         <button class="tab-btn${activeTab === t.id ? ' active' : ''}" onclick="switchTab('${t.id}')" role="tab" aria-selected="${activeTab === t.id}">
+          ${activeTab === t.id ? '<span class="tab-active-indicator"></span>' : ''}
           <span class="tab-icon">${t.icon}</span>
           <span class="tab-label">${t.label}</span>
         </button>
@@ -7808,6 +7906,43 @@ function initPullToRefresh() {
       indicator.style.opacity = '0';
     }
   }, { passive: true });
+}
+
+// Retour utilisateur "effet waouh" : leger effet de profondeur (tilt 3D) au
+// toucher sur les cartes "hero" (.tilt-card - defi de groupe, carte athlete) -
+// la carte s'incline en suivant la position du doigt, puis revient a plat au
+// relachement avec un petit rebond. Delegation d'evenements sur document
+// (plutot qu'un ecouteur par carte, qu'il faudrait re-attacher a CHAQUE
+// render() qui recree tout le DOM - meme contrainte que partout ailleurs dans
+// ce fichier) : survit nativement a tous les re-renders, aucune re-attache
+// necessaire. Jamais active si prefers-reduced-motion (effet purement
+// decoratif, base sur du mouvement).
+function initTiltCards() {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let tiltEl = null;
+  const resetTilt = (el) => {
+    el.classList.add('tilt-resetting');
+    el.style.transform = '';
+    el.addEventListener('transitionend', () => el.classList.remove('tilt-resetting'), { once: true });
+  };
+  document.addEventListener('touchmove', (e) => {
+    const card = e.target.closest && e.target.closest('.tilt-card');
+    if (!card) {
+      if (tiltEl) { resetTilt(tiltEl); tiltEl = null; }
+      return;
+    }
+    card.classList.remove('tilt-resetting'); // suivi instantane pendant le glisser, pas de transition qui "traine"
+    const touch = e.touches[0];
+    const rect = card.getBoundingClientRect();
+    const x = (touch.clientX - rect.left) / rect.width;
+    const y = (touch.clientY - rect.top) / rect.height;
+    const rotateY = (Math.min(1, Math.max(0, x)) - 0.5) * 10;
+    const rotateX = (0.5 - Math.min(1, Math.max(0, y))) * 10;
+    card.style.transform = `perspective(600px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+    tiltEl = card;
+  }, { passive: true });
+  document.addEventListener('touchend', () => { if (tiltEl) { resetTilt(tiltEl); tiltEl = null; } }, { passive: true });
+  document.addEventListener('touchcancel', () => { if (tiltEl) { resetTilt(tiltEl); tiltEl = null; } }, { passive: true });
 }
 
 async function refreshApp() {
@@ -7953,6 +8088,7 @@ document.addEventListener('click', (e) => {
 }, true);
 
 initPullToRefresh();
+initTiltCards();
 
 </script>
 

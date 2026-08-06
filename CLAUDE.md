@@ -2771,3 +2771,100 @@ CACHE_NAME -> v72. Aucun changement de regles Firestore, aucun nouvel index
 precedents : valide par tests+lint (client ET Cloud Functions), **pas
 visuellement dans un vrai navigateur**.
 
+## Passe "effet waouh" (animations/polish) — demande explicite de l'utilisateur
+
+**Demande** : rendre l'appli "plus animee, plus stylee, moins page web, plus
+interactive" - liste de 8 idees proposees (quelques "petites victoires" +
+plusieurs "gros chantiers"), toutes approuvees et livrees en un seul lot.
+
+**Fondation : View Transitions API (`document.startViewTransition()`), voir
+`applyContent()`** - resout un probleme architectural jamais contourne
+jusqu'ici : `render()` remplace TOUJOURS tout le `innerHTML` de `#app`
+(aucune vraie transition CSS entre 2 etats d'un meme noeud n'est possible,
+documente a de nombreux endroits ailleurs dans ce fichier). La View
+Transitions API capture un instantane AVANT/APRES le changement de DOM et
+anime automatiquement entre les deux, MEME si les noeuds sont entierement
+recrees. `applyContent(app, html, animate, afterRender)` : si `animate` est
+vrai ET `document.startViewTransition` existe ET `prefers-reduced-motion`
+n'est pas demande, utilise la View Transition ; sinon **repli total et
+identique au comportement precedent** (fade CSS manuel 140ms) - zero
+regression possible sur les navigateurs non-supportes (Safari < 18, repli
+tres frequent sur mobile). CSS : `::view-transition-old(root)`/
+`::view-transition-new(root)` personnalisees (leger glissement + zoom,
+220ms) plutot que le simple fondu par defaut du navigateur.
+
+**Bonus "gratuit" de la View Transitions API : elements qui MORPHENT d'une
+position/forme a l'autre** via `view-transition-name` CSS identique
+avant/apres, sans AUCUN code JS de positionnement manuel :
+- **Indicateur d'onglet actif qui glisse** (`renderTabBar()`) : un seul
+  `<span class="tab-active-indicator">` existe a la fois (uniquement sur
+  l'onglet ACTIF, jamais 0 ni plusieurs), `view-transition-name: tab-indicator`
+  - la View Transitions API le fait glisser automatiquement d'un onglet a
+  l'autre. Repli gracieux total si non supportee (apparait directement a sa
+  position finale, jamais invisible/casse).
+- **FAB "+"/loupe qui morphe en formulaire** (`renderGroupsScreen()`,
+  `toggleCreatingGroupOpen()`/`toggleJoiningGroupOpen()` appellent desormais
+  `render(true)` au lieu de `render()`) : le bouton ferme et le panneau
+  ouvert (`.group-fab-form`) partagent le meme `view-transition-name`
+  (`group-create-fab`/`group-join-fab`), TOUJOURS l'un OU l'autre present,
+  jamais les deux (sinon 2 elements avec le meme nom = la transition de ce
+  nom echoue silencieusement) - exactement l'animation du bouton de
+  composition de Gmail, sans FLIP animation JS manuelle.
+
+**Retour tactile generalise** : regle CSS globale (`button:active`,
+`.clickable:active` → `scale(0.96)`) plutot que dupliquee par composant -
+les regles `:active` plus specifiques deja existantes (`.tab-btn:active`)
+restent prioritaires par specificite CSS, celle-ci comble seulement les
+elements qui n'en avaient encore aucune. Le retour haptique
+(`navigator.vibrate`) etait deja largement present (listener `click` global
+existant, `document.addEventListener('click', ...)`) - non etendu davantage.
+
+**Lisere neon renforce** sur `.active-card` (fiche d'exercice - l'ecran le
+plus frequente de l'appli, n'avait jusqu'ici AUCUNE teinte de marque en
+dehors du mode Hardcore) et `.group-challenge-hero` (glow existant
+intensifie, `0.08` → `0.14` d'opacite).
+
+**Tilt 3D au toucher sur les cartes hero** (`.tilt-card` -
+`.group-challenge-hero`, `.athlete-card`) : `initTiltCards()`, delegation
+d'evenements `touchmove`/`touchend`/`touchcancel` sur `document` (comme
+`initPullToRefresh()`, meme fichier) - survit nativement a tous les
+re-renders (contrairement a un listener attache par carte, qu'il faudrait
+re-attacher a CHAQUE render() qui recree tout le DOM). Aucune transition CSS
+pendant le glisser (suivi instantane du doigt) ; une classe `.tilt-resetting`
+n'est ajoutee que ponctuellement au relachement, pour un retour a plat en
+douceur. Jamais actif si `prefers-reduced-motion` (effet purement decoratif).
+
+**Chiffres qui defilent** (`animateCountUp(elId, key, targetValue)`) : anime
+un nombre affiche de sa valeur precedente vers sa cible (500ms, ease-out
+cubique) au lieu de sauter instantanement. `key` (distinct de `elId`)
+identifie le compteur d'un point de vue METIER (ex: `'exercise:' + id`) -
+ne rejoue jamais si la valeur n'a pas change depuis le dernier appel, evite
+une animation "pour rien" sur un re-rendu sans changement reel. Ecrit
+directement dans le DOM via `requestAnimationFrame`, hors du cycle de
+`render()` : si un nouveau `render()` remplace le noeud entre-temps,
+l'animation s'arrete silencieusement au frame suivant (`document.getElementById(elId)
+!== el`). **Piege corrige en l'implementant** : `Date.now()` utilise pour
+`start` ET a chaque frame (JAMAIS le timestamp fourni par
+`requestAnimationFrame`, base sur une horloge `performance.now()`
+DIFFERENTE - les melanger produirait un delta absurde). Applique pour
+l'instant au seul chiffre de progression de la fiche d'exercice
+(`#exerciseProgressCurrent`) - le plus frequemment vu de toute l'appli.
+
+**Mini confettis localises** a l'atteinte de l'objectif du JOUR (pas
+seulement les grands moments deja epiques - objectif de groupe, trophee) :
+reutilise TEL QUEL le composant `renderConfettiBurst()` existant (deja
+respectueux de `prefers-reduced-motion`), enveloppe dans
+`.exercise-mini-confetti` (particules plus petites, positionnement
+localise). Drapeau `justCompletedDailyObjective` pose par `addSetInner()`
+(`willComplete`), consomme UNE SEULE FOIS par le rendu suivant de la fiche
+d'exercice (jamais rejoue sur un re-rendu ulterieur du meme etat "termine" -
+ex: revenir sur cette fiche plus tard dans la journee).
+
+CACHE_NAME -> v73. Aucun changement de regles Firestore/Cloud Functions.
+**Limite de verification explicite** : le harnais de test (mock DOM,
+`document.addEventListener`/`requestAnimationFrame` no-op) ne peut verifier
+que la logique structurelle (gating, classes CSS, `view-transition-name`
+jamais duplique) - jamais le rendu visuel reel (glissement, morph, tilt,
+defilement des chiffres) ni le support navigateur effectif de la View
+Transitions API, a confirmer par l'utilisateur sur un vrai appareil.
+

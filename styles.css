@@ -22,6 +22,37 @@
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
+  /* Retour utilisateur "effet waouh" : retour tactile GENERALISE (avant ce
+     correctif, seuls quelques boutons isoles comme .tab-btn avaient un effet
+     d'appui) - tout element interactif se "tasse" legerement au toucher, pour un
+     ressenti plus physique/moins "page web statique". Regle volontairement
+     large plutot que dupliquee par composant : les regles :active plus
+     specifiques deja existantes (ex: .tab-btn:active, qui ajoute aussi un fond)
+     restent prioritaires par specificite CSS - celle-ci ne fait que combler les
+     elements qui n'en avaient encore aucune. */
+  button:not(:disabled), .clickable {
+    transition: transform 0.1s ease;
+  }
+  button:not(:disabled):active, .clickable:active {
+    transform: scale(0.96);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button:active, .clickable:active { transform: none; }
+  }
+
+  /* Retour utilisateur "effet waouh" : effet de profondeur (tilt 3D) au toucher
+     sur les cartes hero (voir initTiltCards() dans index.html) - AUCUNE
+     transition par defaut (suivi instantane du doigt pendant le glisser), la
+     transition n'est ajoutee que ponctuellement (.tilt-resetting) au relachement
+     pour un retour a plat en douceur. */
+  .tilt-card {
+    transform-style: preserve-3d;
+    will-change: transform;
+  }
+  .tilt-card.tilt-resetting {
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
   html, body {
     margin: 0;
     padding: 0;
@@ -50,6 +81,36 @@
     opacity: 0;
   }
 
+  /* 0. View Transitions API (retour utilisateur "effet waouh") - voir applyContent()
+     dans index.html : sur les navigateurs qui la supportent, remplace le simple
+     fade CSS manuel par une vraie transition native entre 2 etats du DOM, meme
+     si #app est entierement recree (voir le commentaire complet cote JS). Repli
+     total et invisible si non supportee (Safari < 18) : ::view-transition-* est
+     alors simplement ignore, .app.fade-out (ci-dessus) prend le relais comme
+     avant. Duree volontairement courte (220ms) pour rester aussi reactif que
+     l ancien fade 140ms malgre un mouvement plus riche (leger glissement +
+     zoom, pas un simple fondu plat). */
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.22s;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  ::view-transition-old(root) { animation-name: app-view-transition-out; }
+  ::view-transition-new(root) { animation-name: app-view-transition-in; }
+  @keyframes app-view-transition-out {
+    to { opacity: 0; transform: translateY(-6px) scale(0.99); }
+  }
+  @keyframes app-view-transition-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+      animation: none !important;
+    }
+  }
+
   /* BARRE DE NAVIGATION PERSISTANTE (bas d'écran) */
   .tab-bar {
     position: fixed;
@@ -65,6 +126,7 @@
     z-index: 500;
   }
   .tab-btn {
+    position: relative;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -84,6 +146,25 @@
   .tab-btn:active {
     background: var(--bg-card);
     transform: scale(0.96);
+  }
+  /* Retour utilisateur "effet waouh" : indicateur qui glisse d'un onglet a
+     l'autre plutot que de simplement changer de couleur - `view-transition-name`
+     identique a chaque rendu (un seul span existe a la fois, sur l'onglet actif,
+     voir renderTabBar()) : la View Transitions API (applyContent()) morphe
+     automatiquement sa position d'un onglet a l'autre, MEME si le noeud DOM est
+     entierement recree a chaque render() - aucun JS de positionnement manuel
+     necessaire. Repli gracieux total si non supportee : l'indicateur apparait
+     simplement deja a sa position finale, sans glissement (jamais invisible/casse).*/
+  .tab-active-indicator {
+    view-transition-name: tab-indicator;
+    position: absolute;
+    top: 2px;
+    left: 22%;
+    right: 22%;
+    height: 3px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent-glow), 0 0 10px var(--accent-glow);
   }
   .tab-icon {
     font-size: 21px;
@@ -1414,6 +1495,16 @@
     align-items: center;
     justify-content: center;
   }
+  /* Retour utilisateur "effet waouh" : panneau vers lequel .add-custom-fab morphe
+     (voir renderGroupsScreen(), view-transition-name partage) - meme famille
+     visuelle que .group-challenge-form-section (carte, memes rayons/couleurs). */
+  .group-fab-form {
+    background: var(--bg-card);
+    border: 1.5px solid var(--accent-dim);
+    border-radius: 16px;
+    padding: 14px 16px 16px;
+    margin-bottom: 14px;
+  }
   .add-custom-fab:active { transform: scale(0.94); background: var(--bg-raised); }
   .library-search-input {
     width: 100%;
@@ -2371,11 +2462,15 @@
   /* ACTIVE CHALLENGE VIEW */
   .active-card {
     background: var(--bg-card);
-    border: 1px solid var(--line);
+    border: 1px solid var(--accent-dim);
     border-radius: 18px;
     padding: 6px 20px 20px;
     position: relative;
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+    /* Retour utilisateur "effet waouh" : leger lisere neon (deja utilise sur
+       l en-tete de defi de groupe/carte athlete) - avant ce correctif, l ecran
+       le plus frequente de l appli n avait AUCUNE teinte de marque, juste une
+       ombre neutre. */
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), 0 0 20px rgba(57, 233, 122, 0.10);
   }
   /* Immersion visuelle renforcée quand le mode Hardcore est engagé (objectif normal
      déjà atteint, phase Hardcore active ou terminée) : toute la carte se teinte, pas
@@ -3170,6 +3265,20 @@
     .confetti-piece { animation: none; opacity: 0; }
   }
 
+  /* Retour utilisateur "effet waouh" : reutilise TEL QUEL le meme composant
+     confettis que la celebration de defi de groupe (.confetti-burst/.confetti-piece
+     ci-dessus, deja respectueux de prefers-reduced-motion) pour une salve plus
+     discrete/localisee sur la fiche d'exercice, au moment ou l'objectif du jour
+     est atteint - jamais l'ecran plein reserve aux VRAIS grands moments. */
+  .exercise-mini-confetti {
+    position: relative;
+    height: 0;
+  }
+  .exercise-mini-confetti .confetti-piece {
+    width: 5px;
+    height: 5px;
+  }
+
   /* 3. Jokers tactiques : identite couleur distincte par type (au lieu du meme
      bouton generique repete 3x) - electrique/bleu (Doublon), impact/rouge
      (Boulet), dore/bouclier (Immunite). */
@@ -3311,7 +3420,7 @@
     border-radius: 20px;
     padding: 22px 20px;
     margin-bottom: 16px;
-    box-shadow: 0 0 24px rgba(57, 233, 122, 0.08);
+    box-shadow: 0 0 28px rgba(57, 233, 122, 0.14);
   }
   .group-challenge-hero-top {
     display: flex;

@@ -950,6 +950,22 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(tabBtnCount, 5, 'il ne doit plus y avoir que 5 onglets dans la barre du bas (Journal fusionne dans Profil)');
   console.log('OK: onglets renommes/reordonnes/regroupes (Aujourd hui / Défis / Commu / Groupes / Profil)');
 
+  // Retour utilisateur "effet waouh" : un seul indicateur (.tab-active-indicator),
+  // toujours sur l onglet ACTIF - jamais 0 ni plusieurs a la fois (condition
+  // necessaire pour que la View Transitions API le fasse glisser proprement d un
+  // onglet a l autre via view-transition-name, voir styles.css).
+  const activeTabBefore = activeTab;
+  activeTab = 'today';
+  let indicatorHtml = renderTabBar();
+  __assertEq((indicatorHtml.match(/tab-active-indicator/g) || []).length, 1, 'un seul indicateur doit exister a la fois');
+  __assertOk(indicatorHtml.indexOf('tab-active-indicator') < indicatorHtml.indexOf('🏋️‍♂️'), 'l indicateur doit se trouver DANS le bouton de l onglet actif (Aujourd hui)');
+  activeTab = 'groups';
+  indicatorHtml = renderTabBar();
+  __assertEq((indicatorHtml.match(/tab-active-indicator/g) || []).length, 1, 'un seul indicateur doit exister a la fois, meme apres changement d onglet');
+  __assertOk(indicatorHtml.indexOf('tab-active-indicator') < indicatorHtml.indexOf('👥'), 'l indicateur doit avoir suivi le nouvel onglet actif (Groupes)');
+  activeTab = activeTabBefore;
+  console.log('OK: indicateur d onglet actif unique, positionne sur l onglet courant (glisse via View Transitions si supportee)');
+
   // --- 18. Journal fusionne en sous-onglet de Profil : trophées absents du sous-onglet
   // Journal, presents dans le sous-onglet Profil ---
   activeTab = 'account';
@@ -1324,8 +1340,17 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(currentPopupHtml.includes('Défi complété'), 'la popup doit annoncer la completion du defi');
   __assertOk(currentPopupHtml.includes('+' + expectedXp + ' XP'), 'la popup doit afficher la carte XP gagnee');
   document.getElementById('appPopupCloseBtn').onclick();
-  currentChallengeId = null;
   console.log('OK: XP attribue (+' + expectedXp + ') et popup immersive (carte XP) affichee a la validation d un defi');
+
+  // Retour utilisateur "effet waouh" : une petite salve de confettis LOCALISEE
+  // (pas l ecran plein, reserve aux vrais grands moments) doit accompagner
+  // l atteinte de l objectif du jour, une seule fois (jamais rejouee sur un
+  // re-rendu ulterieur du meme etat "termine").
+  __assertOk(document.getElementById('app').innerHTML.includes('exercise-mini-confetti'), 'une petite salve de confettis localisee doit accompagner l atteinte de l objectif du jour');
+  render(false);
+  __assertOk(!document.getElementById('app').innerHTML.includes('exercise-mini-confetti'), 'un re-rendu ulterieur du meme etat termine ne doit jamais rejouer la salve de confettis');
+  console.log('OK: mini confettis localises a l atteinte de l objectif du jour (jamais rejoues sur un re-rendu ulterieur)');
+  currentChallengeId = null;
 
   // --- 29. Serie quotidienne : 1ere validation du jour incremente le streak ; la popup de
   // serie s'affiche APRES celle de completion (elle est enfilee derriere, 900ms plus tard) ---
@@ -1580,6 +1605,27 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(fullAccountHtml.includes('onclick="showStreakInfoModal()">🔥 6 j'), 'la pastille de serie interactive doit etre dans l en-tete du Profil');
   __assertOk(fullAccountHtml.indexOf('class="header"') < idxAthlete, 'l en-tete doit precede la carte athlete');
   console.log('OK: onglet Profil (en-tete avec pastille serie, carte athlete cliquable, bouton Parametres tout en bas)');
+
+  // Retour utilisateur "effet waouh" : la carte athlete doit porter .tilt-card
+  // (effet de profondeur au toucher, voir initTiltCards() - delegation globale,
+  // aucune re-attache necessaire aux re-renders).
+  __assertOk(fullAccountHtml.includes('class="athlete-card tilt-card"'), 'la carte athlete doit etre une carte "tilt" (effet de profondeur au toucher)');
+  __assertOk(__rawHtml.includes("matchMedia('(prefers-reduced-motion: reduce)').matches) return;") && __rawHtml.includes('function initTiltCards()'), 'l effet tilt ne doit jamais s activer si prefers-reduced-motion est demande');
+  console.log('OK: cartes hero "tilt" (effet de profondeur au toucher, jamais actif sous prefers-reduced-motion)');
+
+  // Retour utilisateur "effet waouh" : le gros chiffre de progression doit defiler
+  // vers sa nouvelle valeur (pas sauter instantanement) a chaque serie loguee -
+  // mais UNIQUEMENT en cas de vrai changement (jamais rejoue "pour rien" sur un
+  // re-rendu sans changement, ni sur le tout premier affichage).
+  const countUpTestEl = document.getElementById('countUpTestTarget');
+  countUpTestEl.textContent = '';
+  animateCountUp('countUpTestTarget', 'countup-test-key', 42);
+  __assertEq(countUpTestEl.textContent, 42, 'le tout premier affichage doit ecrire la valeur directement (aucune valeur precedente connue, rien a animer depuis)');
+  animateCountUp('countUpTestTarget', 'countup-test-key', 42);
+  __assertEq(countUpTestEl.textContent, 42, 'un re-rendu SANS changement de valeur ne doit jamais relancer d animation (juste re-ecrire la meme valeur)');
+  animateCountUp('countUpTestTarget', 'countup-test-key', 55);
+  __assertEq(countUpTestEl.textContent, 42, 'un VRAI changement de valeur doit passer par l animation differee (requestAnimationFrame) plutot qu un saut instantane - le mock de test n execute jamais les frames, donc le texte doit rester a l ancienne valeur ici (preuve que le chemin "instantane" n a pas ete pris a tort)');
+  console.log('OK: animateCountUp() (defilement uniquement sur un vrai changement, jamais sur le premier affichage ni un re-rendu identique)');
 
   // --- 38. Pastille de serie cliquable : modal explicative style Duolingo (titre neutre,
   // badge bouclier explicite, croix de fermeture, message d accroche a 0 jour) ---
@@ -2481,7 +2527,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v72'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v73'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -2606,6 +2652,21 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(__rawHtml.includes('rel="preconnect" href="https://www.gstatic.com"'), 'preconnect vers gstatic.com');
   __assertOk(__rawHtml.includes('rel="preconnect" href="https://firestore.googleapis.com"'), 'preconnect vers firestore.googleapis.com');
   console.log('OK: detection de mise a jour SW cablee, bandeaux presents, preconnect Firebase/Firestore');
+
+  // Retour utilisateur "effet waouh" : applyContent() utilise desormais la View
+  // Transitions API native quand elle est disponible, avec repli total et invisible
+  // sur le fade CSS manuel sinon (le mock de test se comporte comme un navigateur
+  // SANS support, exactement comme Safari < 18 - deja prouve par l ensemble de la
+  // suite qui continue de passer a l identique).
+  __assertOk(!('startViewTransition' in document), 'le mock de test doit se comporter comme un navigateur sans support (repli fade CSS), meme chemin que les navigateurs non-supportes en prod');
+  let viewTransitionCalls = 0;
+  document.startViewTransition = (cb) => { viewTransitionCalls++; cb(); return { finished: Promise.resolve(), ready: Promise.resolve(), updateCallbackDone: Promise.resolve() }; };
+  activeTab = 'library';
+  render(true);
+  __assertEq(viewTransitionCalls, 1, 'quand document.startViewTransition existe, applyContent() doit l utiliser au lieu du fade CSS manuel');
+  __assertOk(document.getElementById('app').innerHTML.length > 0, 'le contenu doit avoir ete applique de facon SYNCHRONE via le callback de startViewTransition (pas de setTimeout a attendre, contrairement au repli)');
+  delete document.startViewTransition;
+  console.log('OK: View Transitions API (repli total si non supportee, utilisee en priorite sinon, callback synchrone)');
 
   // --- 94. Securite : escapeHtml/escapeJsAttr echappent correctement les caracteres
   // dangereux (protection XSS) ---
@@ -5512,6 +5573,20 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!renderGroupsScreen().includes('id="groupCreateNameInput"'), 'recliquer sur l icone plus doit refermer son propre formulaire');
   console.log('OK: rejoindre/creer en icones haut-droite (loupe/plus), un seul formulaire ouvert a la fois (passe UX premium)');
 
+  // Retour utilisateur "effet waouh" : le bouton "+" (ferme) et le panneau du
+  // formulaire (ouvert) doivent partager le meme view-transition-name, mais
+  // JAMAIS etre presents tous les deux a la fois (sinon 2 elements avec le meme
+  // nom = la View Transitions API echoue silencieusement sur ce nom).
+  __assertOk(!renderGroupsScreen().includes('id="groupCreateNameInput"'), 'etat initial : formulaire ferme (verifie par le test precedent, resynchronise ici)');
+  __assertOk(renderGroupsScreen().includes('view-transition-name:group-create-fab') && renderGroupsScreen().includes('view-transition-name:group-join-fab'), 'ferme : les 2 BOUTONS (+ et loupe) doivent porter leur propre view-transition-name');
+  toggleCreatingGroupOpen();
+  const createOpenHtml = renderGroupsScreen();
+  __assertEq((createOpenHtml.match(/view-transition-name:group-create-fab/g) || []).length, 1, 'ouvert : le nom ne doit apparaitre qu une seule fois (sur le PANNEAU, plus sur le bouton)');
+  __assertOk(createOpenHtml.includes('class="group-fab-form" style="view-transition-name:group-create-fab"'), 'ouvert : c est desormais le panneau qui porte le nom, pas le bouton');
+  __assertOk(createOpenHtml.includes('view-transition-name:group-join-fab'), 'le formulaire "rejoindre" (toujours ferme) doit garder son nom sur son propre bouton, inchange');
+  toggleCreatingGroupOpen();
+  console.log('OK: view-transition-name partage entre bouton ferme et panneau ouvert (morph FAB via View Transitions), jamais duplique');
+
   openGroupId = openGroupIdBeforeCardCheck;
 
   // Creation d'un defi collectif : le createur recoit son propre doc participant
@@ -5655,6 +5730,7 @@ const cssText = __rawHtml + __cssSource;
   // devient accessoire : releguee derriere le bouton "⋯" (comme l ecran d info
   // d un groupe WhatsApp) plutot que toujours visible en tete d ecran.
   __assertOk(groupDetailHtml.includes('group-challenge-hero'), 'le defi actif doit etre affiche dans une carte "hero" proeminente, pas une simple barre de progression');
+  __assertOk(groupDetailHtml.includes('class="group-challenge-hero tilt-card"'), 'la carte hero du defi de groupe doit aussi etre une carte "tilt" (effet waouh)');
   __assertOk(groupDetailHtml.includes('8%'), 'le pourcentage de progression (40/500) doit etre affiche en gros dans la carte hero');
   __assertOk(groupDetailHtml.includes(tn('groups.timeRemaining.daysLeft', 7)), 'le temps restant avant l echeance (7 jours) doit etre affiche dans la carte hero');
   __assertOk(!groupDetailHtml.includes(t('groups.inviteFriendsLabel')) && !groupDetailHtml.includes(tn('groups.membersLabel', groupDetailMembers.length)), 'la liste des membres/invitations ne doit plus etre affichee directement dans l ecran principal (releguee au bouton info)');
