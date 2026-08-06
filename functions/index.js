@@ -211,7 +211,11 @@ function shouldSettleChallenge(totalProgress, targetTotal, endDate, now) {
 //   dette ni recompense), mais garde ses vraies statistiques ailleurs (Hall of Fame).
 // - Le Boulet : handicap soustrait du totalAmount du CIBLE (jamais son vrai
 //   totalAmount, qui reste intact pour les stats) - un handicap de 20 sur quelqu'un
-//   a 80 le classe comme s'il n'avait que 60 pour le reglement uniquement.
+//   a 5 le classe comme s'il avait -15 pour le reglement uniquement. Decision
+//   explicite (retour utilisateur) : effectiveAmount PEUT etre negatif, aucun
+//   plancher a 0 - computeSettlementPairs() ne se base que sur l'ORDRE relatif
+//   (positions dans ce tableau deja trie), jamais sur la valeur numerique brute,
+//   donc un effectiveAmount negatif ne casse rien en aval.
 // Le Doublon (x2 pendant 2h) n'a PAS sa place ici : il agit plus tot, directement
 // sur le totalAmount reel au moment de la contribution (voir applyDoublonMultiplier
 // / logGroupChallengeContribution) - une fois credite, ce montant double est un
@@ -219,7 +223,7 @@ function shouldSettleChallenge(totalProgress, targetTotal, endDate, now) {
 function rankForSettlement(ranked) {
   return ranked
     .filter((p) => !p.immune)
-    .map((p) => ({ ...p, effectiveAmount: Math.max(0, (p.totalAmount || 0) - (p.handicap || 0)) }))
+    .map((p) => ({ ...p, effectiveAmount: (p.totalAmount || 0) - (p.handicap || 0) }))
     .sort((a, b) => b.effectiveAmount - a.effectiveAmount);
 }
 

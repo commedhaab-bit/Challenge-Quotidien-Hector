@@ -6129,17 +6129,24 @@ function renderJournalSection() {
 // Bloc niveau/titre/barre XP, factorisé pour être réutilisable avec l'XP de N'IMPORTE
 // QUEL utilisateur (renderAthleteCard() pour soi-même, renderFriendProfileSheet() pour
 // un ami) — pure fonction d'un total d'XP, aucune dépendance à l'utilisateur courant.
-function renderAthleteLevelBlock(xpTotalValue) {
+// `clickable` (par défaut true, pour ne rien changer aux appels existants avant ce
+// correctif) contrôle SEULEMENT le texte d'indice "appuie pour voir ta progression" -
+// trompeur sur la fiche d'un ami (bug réel signalé), qui n'ouvre jamais le Parcours
+// de niveau (ce serait le TIEN, pas le sien) contrairement à ta propre carte.
+function renderAthleteLevelBlock(xpTotalValue, clickable = true) {
   const { level, xpIntoLevel, xpNeeded } = xpProgress(xpTotalValue);
   const title = athleteTitle(level);
   const pct = xpNeeded > 0 ? Math.min(100, Math.round((xpIntoLevel / xpNeeded) * 100)) : 100;
+  const xpLabel = clickable
+    ? t('profileTab.xpProgress', { current: xpIntoLevel, needed: xpNeeded })
+    : t('profileTab.xpProgressPlain', { current: xpIntoLevel, needed: xpNeeded });
   return `
     <div class="athlete-level-row">
       <div class="athlete-level">${t('profileTab.levelLabel', { n: level })}</div>
     </div>
     <div class="athlete-title">${title}</div>
     <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
-    <div class="athlete-xp-label">${t('profileTab.xpProgress', { current: xpIntoLevel, needed: xpNeeded })}</div>
+    <div class="athlete-xp-label">${xpLabel}</div>
   `;
 }
 
@@ -6233,7 +6240,7 @@ function renderFriendProfileSheet({ displayName, photoURL, loading, profile, act
         ? `<div class="activity-feed-list">${activities.map(entry => renderActivityFeedRow(entry)).join('')}</div>`
         : `<div class="history-empty">${t('friends.noRecentActivity')}</div>`);
     bodyHtml = `
-      <div class="athlete-card">${renderAthleteLevelBlock(profile.xpTotal)}</div>
+      <div class="athlete-card">${renderAthleteLevelBlock(profile.xpTotal, false)}</div>
       <div class="friend-profile-streak">${t('community.streakValue', { n: profile.streakCount })}</div>
       <div class="section-label">${t('friends.recentActivityLabel')}</div>
       ${activitiesHtml}
@@ -7274,9 +7281,9 @@ function renderGroupDetailScreen() {
 
   return `
     <button class="nav-back-btn" onclick="history.back()" aria-label="${t('groups.backAria')}">‹</button>
-    <div class="library-header-row">
+    <div class="library-header-row group-detail-header-row">
       <h1 class="title">${escapeHtml(groupDetailGroup.emoji || '')} ${escapeHtml(groupDetailGroup.name)}</h1>
-      <button class="icon-btn" onclick="openGroupInfoOverlay()" aria-label="${t('groups.infoAria')}">⋯</button>
+      <button class="icon-btn group-info-btn" onclick="openGroupInfoOverlay()" aria-label="${t('groups.infoAria')}">⋯</button>
     </div>
     ${viewTabsHtml}
     <div class="groups-subtab-content">${challengeHtml}</div>

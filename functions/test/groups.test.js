@@ -195,9 +195,16 @@ test('rankForSettlement() : Le Boulet (handicap) peut faire chuter la cible sous
   assert.deepEqual(result.map((p) => p.uid), ['b', 'a']);
 });
 
-test('rankForSettlement() : le handicap ne fait jamais descendre l effectiveAmount sous 0', () => {
+test('rankForSettlement() : le handicap PEUT faire passer effectiveAmount sous 0 (decision explicite, aucun plancher)', () => {
   const ranked = [{ uid: 'a', totalAmount: 10, handicap: 999 }];
-  assert.equal(rankForSettlement(ranked)[0].effectiveAmount, 0);
+  assert.equal(rankForSettlement(ranked)[0].effectiveAmount, -989);
+});
+
+test('rankForSettlement() : un effectiveAmount negatif se classe quand meme correctement (toujours dernier, jamais casse le tri)', () => {
+  const ranked = [{ uid: 'a', totalAmount: 5, handicap: 20 }, { uid: 'b', totalAmount: 5 }];
+  const result = rankForSettlement(ranked);
+  assert.deepEqual(result.map((p) => p.uid), ['b', 'a'], 'b (effectiveAmount 5) doit rester devant a (effectiveAmount -15)');
+  assert.equal(result[1].effectiveAmount, -15);
 });
 
 test('rankForSettlement() : le totalAmount BRUT (stats Hall of Fame) n est jamais modifie par le handicap', () => {

@@ -2467,7 +2467,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v68'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v69'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -5342,6 +5342,11 @@ const cssText = __rawHtml + __cssSource;
   ];
   const sheetComplete = renderFriendProfileSheet({ displayName: 'Bea M.', photoURL: '', loading: false, profile: { xpTotal: 320, streakCount: 4 }, activities: activitesAmie, activitiesFailed: false });
   __assertOk(sheetComplete.includes('Niveau'), 'la fiche doit afficher le niveau de l ami (xpProgress/athleteTitle, purs sur un xpTotal quelconque)');
+  // Bug reel signale : la fiche d un ami n est PAS cliquable pour ouvrir un Parcours
+  // de niveau (ce serait le TIEN, pas le sien) - ne doit donc jamais afficher l indice
+  // "appuie pour voir ta progression" copie depuis sa propre carte cliquable.
+  __assertOk(!sheetComplete.includes(t('profileTab.xpProgress').split(' · ')[1]), 'la fiche d un ami ne doit jamais afficher l indice "appuie pour voir ta progression" (elle n est pas cliquable)');
+  __assertOk(sheetComplete.includes('XP'), 'la fiche d un ami doit quand meme afficher le total XP (juste sans l indice de clic)');
   __assertOk(sheetComplete.includes('4 j'), 'la fiche doit afficher la serie de l ami');
   __assertOk(sheetComplete.includes('Pompes'), 'la fiche doit lister l activite recente de l ami (renderActivityFeedRow reutilise tel quel)');
 

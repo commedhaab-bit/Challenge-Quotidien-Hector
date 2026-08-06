@@ -2532,3 +2532,54 @@ config du depot. Resolu en poussant un nouveau commit (celui-ci) : un nouvel
 en tete si ca se reproduit : re-run ne suffit pas toujours, un nouveau commit
 peut etre necessaire.
 
+## Lot de retours utilisateur (UX/bugs) - 1ere vague
+
+**Le Boulet : score de reglement desormais REELLEMENT negatif** - decision
+explicite de l'utilisateur (question posee, 2 options presentees). Avant :
+`rankForSettlement()` plafonnait `effectiveAmount` a 0
+(`Math.max(0, totalAmount - handicap)`). Retire le plancher - un handicap de
+20 sur quelqu'un a 5 le classe desormais a -15. Verifie sans risque :
+`computeSettlementPairs()` ne se base QUE sur l'ordre relatif (positions dans
+le tableau deja trie), jamais sur la valeur numerique brute, donc un
+`effectiveAmount` negatif ne casse rien en aval (tri/appairage). Texte du
+joker simplifie en meme temps (bouton "-20" au lieu de "+20", qui etait
+trompeur sur le signe ; description raccourcie, retrait de la mention
+"jamais en dessous de 0" devenue fausse).
+
+**Trophee "500 pompes" declenche par un autre exercice : pas un bug de
+comptage, diagnostic transmis a l'utilisateur.** `PUSHUP_FAMILY_IDS = [1,
+1001, 1002, 1003]` (Pompes, diamant, declinees, pike) ne contient PAS "Leg
+raises" (id 13). Explication retenue : `checkNewBadges()` ne se declenche
+qu'a la completion du defi DU JOUR (n'importe lequel), et verifie TOUS les
+badges a ce moment-la - si le cumul de pompes avait deja franchi 500 lors de
+seances anterieures, le popup peut legitimement apparaitre au moment d'un
+AUTRE exercice, simplement parce que c'est la completion suivante qui
+declenche la verification. Aucun changement de code (le calcul lui-meme est
+correct).
+
+**Fil d'activite en francais brut : deja resolu pour les nouvelles entrees,
+aucun changement de code necessaire.** Verifie : `renderActivityFeedRow()`
+utilise deja `t('exercises.' + entry.exerciseSlug + '.name')` en priorite
+quand `exerciseSlug` est present (traductions EN/ES confirmees completes pour
+les 2 exercices cites en exemple par l'utilisateur). Les occurrences
+observees viennent forcement d'entrees ecrites AVANT l'ajout de ce champ
+(`exerciseSlug: null` sur ces vieux documents, repli attendu sur le texte
+francais deja stocke) - pas de backfill retroactif entrepris (cout/risque
+disproportionne pour des entrees qui defilent hors du fil au fil du temps).
+
+**Fiche d'un ami : texte "appuie pour voir ta progression" trompeur, corrige.**
+`renderAthleteLevelBlock(xpTotalValue, clickable = true)` accepte desormais
+un 2e parametre : `true` sur sa propre carte (`renderAthleteCard()`,
+reellement cliquable -> `openLevelRoadmap()`), `false` sur la fiche d'un ami
+(`renderFriendProfileSheet()`, jamais cliquable - ce serait TON parcours de
+niveau, pas le sien). Nouvelle cle `profileTab.xpProgressPlain` (memes
+valeurs, sans l'indice de clic) pour le cas `false`.
+
+**En-tete du detail groupe : espacement + contraste du bouton "..".** Nouvelle
+classe `.group-detail-header-row` (marge sous le nom du groupe, avant les 3
+onglets Defi/Ardoise/Palmares juste en dessous - `.library-header-row`,
+partagee avec d'autres ecrans, reste inchangee pour ne rien casser ailleurs)
+et `.group-info-btn` (bordure accent, fond plus contraste, glyphe plus grand).
+
+CACHE_NAME -> v69.
+

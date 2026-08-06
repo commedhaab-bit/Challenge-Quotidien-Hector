@@ -3371,4 +3371,17 @@
   }
   .group-challenge-field-label { font-size: 11.5px; font-weight: 700; color: var(--chalk-dim); margin: 4px 2px 0; }
 
+  /* 9. Retour utilisateur : en-tete du detail groupe trop colle aux 3 onglets
+     juste en dessous (Defi/Ardoise/Palmares), et bouton "..." pas assez visible. */
+  .group-detail-header-row { margin-bottom: 18px; }
+  .group-info-btn {
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--chalk);
+    background: var(--bg-card);
+    border-color: var(--accent-dim);
+    padding: 6px 12px;
+  }
+
   ::-webkit-scrollbar { display: none; }
