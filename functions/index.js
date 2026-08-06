@@ -9,6 +9,11 @@ admin.initializeApp();
 // (France/Espagne) que la region par defaut us-central1 - a ajuster si besoin.
 setGlobalOptions({ region: 'europe-west1' });
 
+// Note deploiement : le premier trigger Firestore (onDocumentCreated, voir
+// sendPushOnNotificationCreate plus bas) a necessite 3 bindings IAM
+// supplementaires accordes manuellement par le proprietaire du projet - voir
+// CLAUDE.md pour le detail exact (roles + comptes de service concernes).
+
 // Phase 0 : valide la chaine complete outillage -> CI -> deploiement Blaze avant
 // d'ecrire la moindre logique metier (aggregateLeaderboard, closeExpiredGroupChallenges,
 // applyGroupJoker, aggregateGroupContribution - voir le plan). Ne fait rien d'autre

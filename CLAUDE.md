@@ -1600,6 +1600,18 @@ ou proactivement dans Firestore > Index > Composites.
 
 **APIs Google Cloud a activer manuellement une fois** (le compte de service ne peut pas les activer lui-meme, action reservee au proprietaire du projet) : Cloud Functions, Cloud Build, Artifact Registry, Cloud Run Admin, Eventarc, Cloud Scheduler, Pub/Sub — toutes deja activees a ce stade.
 
+**Bindings IAM supplementaires necessaires sur les SERVICE AGENTS** (pas le compte
+de service de deploiement lui-meme cette fois) **des le premier trigger Firestore**
+(`onDocumentCreated`, ex: `sendPushOnNotificationCreate`, notifications push) -
+un trigger `onCall`/`onSchedule` seul n'en a jamais eu besoin. Meme cause que
+ci-dessus (le compte de service de deploiement ne peut pas definir de policy
+IAM) : le deploiement echoue avec `Failed to verify the project has the
+correct IAM bindings...`, et Firebase donne lui-meme les 3 commandes exactes
+(numero de projet `613473786890`) - accordees UNE FOIS, via la Console
+(IAM & Admin > IAM > "Accorder l'acces"), par le proprietaire du projet :
+- `service-613473786890@gcp-sa-pubsub.iam.gserviceaccount.com` -> role `roles/iam.serviceAccountTokenCreator`
+- `613473786890-compute@developer.gserviceaccount.com` -> roles `roles/run.invoker` ET `roles/eventarc.eventReceiver`
+
 Runtime des fonctions : Node 22 (bascule depuis Node 20, deprecie et decommissionne le 2026-10-30).
 
 ## Phase 1 : classement precalcule cote serveur (aggregateLeaderboard + getMyRank)
