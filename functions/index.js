@@ -651,9 +651,18 @@ const PUSH_MESSAGES = {
 // voir setPreferredLanguage() cote client). Nettoie les tokens invalides
 // (appareil desinstalle/permission revoquee) retournes par la reponse FCM -
 // evite l'accumulation silencieuse de tokens morts.
+// Logs explicites a chaque etape (console.log/console.error, visibles dans
+// Cloud Functions > Journaux) : un 200 HTTP sur cette fonction ne prouve PAS
+// qu'un push a reellement ete envoye (les 2 sorties anticipees ci-dessous
+// renvoient aussi 200, silencieusement, sans ce logging) - necessaire pour
+// diagnostiquer un signalement reel ou aucune preuve n'etait visible cote
+// client (ni erreur, ni push recu).
 async function sendPushToUser(db, uid, type, data) {
   const tokensSnap = await db.collection('users').doc(uid).collection('pushTokens').get();
-  if (tokensSnap.empty) return;
+  if (tokensSnap.empty) {
+    console.log(`sendPushToUser: aucun token pushTokens pour uid=${uid} (type=${type}) - rien a envoyer`);
+    return;
+  }
 
   let locale = 'fr';
   const appDataDoc = await db.collection('users').doc(uid).collection('kv').doc('appData').get();
@@ -661,7 +670,10 @@ async function sendPushToUser(db, uid, type, data) {
     locale = appDataDoc.data().preferredLanguage;
   }
   const buildMessage = PUSH_MESSAGES[locale][type] || PUSH_MESSAGES.fr[type];
-  if (!buildMessage) return; // type de notification sans equivalent push (ne devrait pas arriver)
+  if (!buildMessage) {
+    console.error(`sendPushToUser: AUCUNE entree PUSH_MESSAGES pour type="${type}" (uid=${uid}, locale=${locale}) - push abandonne`);
+    return;
+  }
   const { title, body } = buildMessage(data);
 
   const tokens = tokensSnap.docs.map((d) => d.id);
@@ -670,14 +682,18 @@ async function sendPushToUser(db, uid, type, data) {
     notification: { title, body },
     webpush: { fcmOptions: { link: '/' } },
   });
+  console.log(`sendPushToUser: type=${type} uid=${uid} tokens=${tokens.length} success=${response.successCount} failure=${response.failureCount}`);
 
   const staleCodes = new Set(['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']);
   const batch = db.batch();
   let hasStale = false;
   response.responses.forEach((r, i) => {
-    if (!r.success && r.error && staleCodes.has(r.error.code)) {
-      hasStale = true;
-      batch.delete(db.collection('users').doc(uid).collection('pushTokens').doc(tokens[i]));
+    if (!r.success) {
+      console.error(`sendPushToUser: echec token ${tokens[i]} - ${r.error && r.error.code}`);
+      if (r.error && staleCodes.has(r.error.code)) {
+        hasStale = true;
+        batch.delete(db.collection('users').doc(uid).collection('pushTokens').doc(tokens[i]));
+      }
     }
   });
   if (hasStale) await batch.commit();
@@ -691,7 +707,9 @@ async function sendPushToUser(db, uid, type, data) {
 exports.sendPushOnNotificationCreate = onDocumentCreated('users/{uid}/notifications/{notifId}', async (event) => {
   const snap = event.data;
   if (!snap) return;
-  await sendPushToUser(admin.firestore(), event.params.uid, snap.data().type, snap.data());
+  const data = snap.data();
+  console.log(`sendPushOnNotificationCreate: uid=${event.params.uid} type=${data.type}`);
+  await sendPushToUser(admin.firestore(), event.params.uid, data.type, data);
 });
 
 // Exposees uniquement pour les tests unitaires (logique pure, sans Firestore) -
