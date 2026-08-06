@@ -27,6 +27,10 @@ const LOCALE_ES = {
       label: 'Coach de voz',
       desc: 'Anuncia en voz alta la cuenta atrás de preparación y el fin del reto.',
     },
+    soundEffects: {
+      label: 'Efectos de sonido',
+      desc: 'Un pequeño sonido de éxito al alcanzar tu objetivo del día.',
+    },
     leaderboardOptOut: {
       label: 'Clasificación comunitaria',
       desc: 'Muestra tu nombre, tu racha y tu XP en la clasificación compartida con otros usuarios.',

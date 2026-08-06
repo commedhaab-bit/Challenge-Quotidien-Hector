@@ -467,6 +467,7 @@ async function loadAppData() {
     xpWeekStart = xwd.xpWeekStart || null;
     leaderboardOptOut = d.leaderboardOptOut ?? false;
     voiceCoachEnabled = d.voiceCoachEnabled ?? true;
+    soundEffectsEnabled = d.soundEffectsEnabled ?? false;
     hasSeenTour = d.hasSeenTour ?? false;
     lastCompleted = d.lastCompleted ?? {};
     stats = d.stats ?? {};
@@ -495,6 +496,7 @@ async function loadAppData() {
       xpWeeklyData: { xpWeekly, xpWeekStart },
       leaderboardOptOut,
       voiceCoachEnabled,
+      soundEffectsEnabled,
       hasSeenTour,
       lastCompleted,
       stats,
@@ -4081,6 +4083,47 @@ async function toggleVoiceCoach() {
   render();
 }
 
+// Retour utilisateur "effet waouh" : petit "chime" de reussite optionnel (a
+// double tranchant - certains detestent le son - donc DESACTIVE par defaut,
+// contrairement au coach vocal). Champ moderne (appData consolide
+// uniquement, voir loadAppData()) : pas de champ legacy a migrer, contrairement
+// a voiceCoachEnabled qui existait avant la consolidation.
+let soundEffectsEnabled = false;
+async function toggleSoundEffects() {
+  soundEffectsEnabled = !soundEffectsEnabled;
+  if (navigator.vibrate) navigator.vibrate(10);
+  await saveAppField('soundEffectsEnabled', soundEffectsEnabled);
+  if (soundEffectsEnabled) playSuccessChime(); // aperçu immédiat du son qu'on vient d'activer
+  render();
+}
+
+// 2 notes ascendantes (do -> mi, synthese Web Audio - aucun fichier audio a
+// charger/mettre en cache) : joue uniquement si soundEffectsEnabled ET l'API
+// est disponible (jamais une erreur silencieuse, simple no-op sinon - certains
+// navigateurs/contextes n'exposent pas AudioContext, ex: iframe restreinte).
+function playSuccessChime() {
+  if (!soundEffectsEnabled) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  try {
+    const ctx = new Ctx();
+    const notes = [523.25, 659.25]; // do5, mi5
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      const start = ctx.currentTime + i * 0.11;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+      osc.start(start);
+      osc.stop(start + 0.24);
+    });
+  } catch (e) { /* synthese audio indisponible : jamais bloquant */ }
+}
+
 // ==== NOTIFICATIONS PUSH (Firebase Cloud Messaging, Phase B) ====
 // Le token FCM de CET appareil est mis en cache dans localStorage (jamais dans
 // le document consolide appData, contrairement a voiceCoachEnabled ci-dessus) :
@@ -4671,6 +4714,26 @@ function renderDoubleTimerRingSVG(normalPct, hardcorePct, sizePx) {
   `;
 }
 
+// Retour utilisateur "effet waouh" : anneau SVG unique pour l'objectif du JOUR
+// des exercices en repetitions (reserve aux exercices 'reps' - les exercices en
+// secondes ont deja leur propre double-anneau riche via le chronometre
+// ci-dessus, un 2e anneau serait redondant). Meme technique que
+// renderDoubleTimerRingSVG() (stroke-dasharray/dashoffset), rayon/constantes
+// dedies pour rester independant du chronometre.
+const EXERCISE_PROGRESS_RING_RADIUS = 52;
+const EXERCISE_PROGRESS_RING_CIRCUMFERENCE = 2 * Math.PI * EXERCISE_PROGRESS_RING_RADIUS;
+function renderExerciseProgressRingSVG(pctFraction) {
+  const clamped = Math.min(1, Math.max(0, pctFraction));
+  const offset = EXERCISE_PROGRESS_RING_CIRCUMFERENCE * (1 - clamped);
+  return `
+    <svg class="exercise-progress-ring" viewBox="0 0 120 120" width="120" height="120">
+      <circle class="exercise-progress-ring-bg" cx="60" cy="60" r="${EXERCISE_PROGRESS_RING_RADIUS}"></circle>
+      <circle class="exercise-progress-ring-fill${clamped >= 1 ? ' complete' : ''}" cx="60" cy="60" r="${EXERCISE_PROGRESS_RING_RADIUS}"
+        style="stroke-dasharray:${EXERCISE_PROGRESS_RING_CIRCUMFERENCE}; stroke-dashoffset:${offset};"></circle>
+    </svg>
+  `;
+}
+
 // Met à jour les deux anneaux déjà présents dans le DOM (appelé à chaque tick, sans re-render complet)
 function updateTimerRingDOM(elapsedSec) {
   if (!currentChallengeId) return;
@@ -5107,6 +5170,7 @@ async function pickChallenge(id) {
   render(true);
   const c = getChallenge();
   if (c && c.slug) loadActiveExerciseGroupChallenges(c.slug); // fire-and-forget : re-rend dès que prêt, jamais bloquant pour la navigation
+  if (!Object.prototype.hasOwnProperty.call(exerciseSparklineCache, id)) loadExerciseSparkline(id); // idem, mis en cache par exercice pour la session
 }
 
 // Retour utilisateur : afficher la progression du/des défi(s) de groupe liés à
@@ -5151,6 +5215,66 @@ async function startGroupChallengeExercise(slug) {
   await pickChallenge(c.id);
 }
 
+// Retour utilisateur "effet waouh" : mini-graphique (sparkline) des 7 derniers
+// jours d'activite sur CET exercice precis, affiche a cote du total a vie -
+// donne une tendance en un coup d'oeil (progresse/ralentit), que le simple
+// total cumule ne montre jamais. Reutilise historyDayCache si deja peuple par
+// le Journal (meme cache, memes cles dateKey) - sinon ne lit QUE les 7 jours
+// necessaires (pas les 28 du Journal complet), reste econome en lectures. Mis
+// en cache PAR EXERCICE pour la session (jamais relu une 2e fois pour le meme
+// exercice) - voir pickChallenge().
+let exerciseSparklineCache = {}; // { [challengeId]: [total x7, plus ancien -> plus recent] }
+
+async function loadExerciseSparkline(challengeId) {
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(dateKey(d));
+  }
+  try {
+    const totals = await Promise.all(days.map(async (k) => {
+      if (k === todayKey) {
+        const entry = state.challenges[challengeId];
+        return entry && entry.sets ? entry.sets.reduce((a, b) => a + b, 0) : 0;
+      }
+      let dayDoc;
+      if (Object.prototype.hasOwnProperty.call(historyDayCache, k)) {
+        dayDoc = historyDayCache[k];
+      } else {
+        try {
+          const res = await dbGet('day:' + k);
+          dayDoc = JSON.parse(res.value);
+        } catch (e) {
+          dayDoc = null;
+        }
+        historyDayCache[k] = dayDoc; // alimente le MEME cache que le Journal (loadHistoryEntries()), reutilisable ensuite
+      }
+      const entry = dayDoc && dayDoc.challenges ? dayDoc.challenges[challengeId] : null;
+      return entry && entry.sets ? entry.sets.reduce((a, b) => a + b, 0) : 0;
+    }));
+    // Navigation rapide possible pendant le chargement : n'applique le resultat
+    // que s'il correspond encore a l'exercice actuellement affiche.
+    if (currentChallengeId !== challengeId) return;
+    exerciseSparklineCache[challengeId] = totals;
+    render();
+  } catch (e) {
+    console.error('load exercise sparkline failed', e);
+  }
+}
+
+function renderExerciseSparkline(totals) {
+  if (!totals || totals.every((v) => v === 0)) return '';
+  const max = Math.max(...totals, 1);
+  const w = 60, h = 18, pad = 2;
+  const points = totals.map((v, i) => {
+    const x = pad + (i * (w - pad * 2)) / (totals.length - 1);
+    const y = h - pad - (v / max) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return `<svg class="exercise-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>`;
+}
+
 async function addSet(amount) {
   if (amount <= 0) return;
   beginAppDataBatch(); // stats/lastCompleted/dailyActivity/badges/xpTotal/xpWeeklyData/streakData : un seul aller-retour Firestore pour tout ce qui suit, voir saveAppField()
@@ -5180,6 +5304,13 @@ async function addSetInner(amount) {
       currentTotal: g.targetTotal > 0 ? Math.min(g.targetTotal, g.currentTotal + amount) : g.currentTotal + amount,
     }));
   }
+  // Idem pour la sparkline (7 derniers jours) : le dernier point (aujourd'hui)
+  // doit refleter la serie qu'on vient de loguer sans attendre un rechargement.
+  if (exerciseSparklineCache[currentChallengeId]) {
+    const spark = exerciseSparklineCache[currentChallengeId].slice();
+    spark[spark.length - 1] += amount;
+    exerciseSparklineCache[currentChallengeId] = spark;
+  }
   const total = getTotal();
   const target = getTarget();
   const willComplete = total >= target && !entry.done;
@@ -5200,6 +5331,7 @@ async function addSetInner(amount) {
   if (willComplete) {
     s.recordStreak = newRecord ? s.recordStreak + 1 : 0;
     justCompletedDailyObjective = true; // consomme par le prochain render() de la fiche d'exercice (mini confettis)
+    playSuccessChime(); // no-op silencieux si soundEffectsEnabled est desactive (defaut)
   }
   await saveStats();
 
@@ -5568,7 +5700,7 @@ function render(animate) {
     // silencieuse si aucun des deux n'existe ; aucune requête réseau du tout pour les
     // clés connues comme n'ayant aucune image (PICTOGRAM_ASSET_MISSING).
     const heroImgHtml = PICTOGRAM_ASSET_MISSING.has(heroKey) ? '' : `
-        <img class="exercise-hero-apng" src="exercices/${heroKey}.webp" alt="${t('exercise.demoAlt', { name: escapeHtml(challengeDisplayName(c)) })}" decoding="async" loading="eager"
+        <img class="exercise-hero-apng parallax-img" src="exercices/${heroKey}.webp" alt="${t('exercise.demoAlt', { name: escapeHtml(challengeDisplayName(c)) })}" decoding="async" loading="eager"
              onload="this.classList.add('loaded');"
              onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${heroKey}.png';}else{this.remove();}">
     `;
@@ -5601,7 +5733,7 @@ function render(animate) {
 
         <div class="stats-row">
           <div class="stat-chip">${t('exercise.recordPrefix', { value: stats[c.id] ? stats[c.id].bestDay.total : 0, unit: unitLabel === 'sec' ? 's' : '' })}</div>
-          <div class="stat-chip">${t('exercise.lifetimeTotal', { value: (stats[c.id] ? stats[c.id].lifetimeTotal : 0).toLocaleString(LOCALE_TO_INTL[currentLocale]) })}</div>
+          <div class="stat-chip">${t('exercise.lifetimeTotal', { value: (stats[c.id] ? stats[c.id].lifetimeTotal : 0).toLocaleString(LOCALE_TO_INTL[currentLocale]) })}${renderExerciseSparkline(exerciseSparklineCache[c.id])}</div>
         </div>
 
         ${!entry.done ? `
@@ -5612,12 +5744,19 @@ function render(animate) {
               ${c.unit === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(target)})</span>` : ''}
               <button class="target-edit" onclick="editTarget()" aria-label="${t('exercise.editTargetAria')}">✏️</button>
             </div>
-            <div class="progress-pct">${pct}%</div>
+            ${c.unit === 'sec' ? `<div class="progress-pct">${pct}%</div>` : ''}
           </div>
 
+          ${c.unit === 'sec' ? `
           <div class="bar-track">
             <div class="bar-fill" style="width:${pct}%"></div>
           </div>
+          ` : `
+          <div class="progress-ring-wrap">
+            ${renderExerciseProgressRingSVG(pct / 100)}
+            <div class="progress-ring-pct">${pct}%</div>
+          </div>
+          `}
         ` : `
           <div class="normal-objective-recap">${t('exercise.normalObjectiveRecap', { target: formatTargetLabel(target, c.unit) })}</div>
           ${showMiniConfetti ? `<div class="exercise-mini-confetti">${renderConfettiBurst()}</div>` : ''}
@@ -6410,6 +6549,7 @@ function renderLevelRoadmapSheet() {
   }).join('');
   return `
     <div class="level-roadmap-sheet">
+      <div class="sheet-drag-handle"></div>
       <button class="level-roadmap-close" onclick="closeLevelRoadmap()">✕</button>
       <div class="level-roadmap-header">
         <div class="level-roadmap-level">${t('profileTab.levelLabel', { n: level })}</div>
@@ -6423,6 +6563,48 @@ function renderLevelRoadmapSheet() {
   `;
 }
 
+// Retour utilisateur "effet waouh" : les panneaux (parcours de niveau, fiche
+// d'ami, info groupe) deviennent de VRAIES feuilles a glisser (bottom sheets) -
+// suivent le doigt en temps reel pendant le glissement, reviennent a leur place
+// si relachees trop tot, se ferment si tirees assez loin. Fonction PARTAGEE
+// (pas dupliquee par panneau) : les 3 ecrans qui utilisent ce meme patron DOM
+// (.level-roadmap-overlay/.level-roadmap-sheet, cree hors du cycle render()
+// principal - voir plus haut) en beneficient identiquement. Le tap sur le FOND
+// (backdrop, pas la feuille elle-meme) ferme aussi le panneau, comme tout
+// bottom sheet natif.
+function attachSheetBehavior(overlayEl, closeFn) {
+  overlayEl.onclick = (e) => { if (e.target === overlayEl) closeFn(); };
+  const sheet = overlayEl.querySelector('.level-roadmap-sheet');
+  if (!sheet) return;
+  let startY = null;
+  sheet.addEventListener('touchstart', (e) => {
+    // Le glisser-pour-fermer ne s'engage que depuis le HAUT de la feuille (deja
+    // scrollee tout en haut) - sinon un glissement doit continuer a faire
+    // defiler normalement une liste longue (activite recente d'un ami, etc.).
+    startY = sheet.scrollTop <= 0 ? e.touches[0].clientY : null;
+  }, { passive: true });
+  sheet.addEventListener('touchmove', (e) => {
+    if (startY === null) return;
+    const delta = e.touches[0].clientY - startY;
+    if (delta > 0) {
+      sheet.style.transition = 'none';
+      sheet.style.transform = `translateY(${delta}px)`;
+    }
+  }, { passive: true });
+  sheet.addEventListener('touchend', (e) => {
+    if (startY === null) return;
+    const delta = e.changedTouches[0].clientY - startY;
+    sheet.style.transition = 'transform 0.25s cubic-bezier(0.22, 1, 0.36, 1)';
+    if (delta > 120) {
+      sheet.style.transform = 'translateY(100%)';
+      setTimeout(closeFn, 200);
+    } else {
+      sheet.style.transform = '';
+    }
+    startY = null;
+  }, { passive: true });
+}
+
 function openLevelRoadmap() {
   closeLevelRoadmap();
   const el = document.createElement('div');
@@ -6430,6 +6612,7 @@ function openLevelRoadmap() {
   el.className = 'level-roadmap-overlay';
   el.innerHTML = renderLevelRoadmapSheet();
   document.body.appendChild(el);
+  attachSheetBehavior(el, closeLevelRoadmap);
   levelRoadmapOpen = true;
 }
 
@@ -6454,7 +6637,18 @@ function renderFriendProfileSheet({ displayName, photoURL, loading, profile, act
     : `<div class="leaderboard-avatar-fallback">${escapeHtml(displayName.charAt(0).toUpperCase())}</div>`;
   let bodyHtml;
   if (loading) {
-    bodyHtml = `<div class="history-empty">${t('friends.profileLoading')}</div>`;
+    // Retour utilisateur "effet waouh" : ecran squelette (shimmer) pendant le
+    // chargement async du profil, a la place d un simple texte "Chargement..." -
+    // reutilise TEL QUEL le meme keyframe que le shimmer des images
+    // (picto-shimmer), deja respectueux de prefers-reduced-motion.
+    bodyHtml = `
+      <div class="skeleton-block skeleton-text" style="width:70%"></div>
+      <div class="skeleton-block skeleton-text" style="width:45%"></div>
+      <div class="skeleton-block skeleton-bar"></div>
+      <div class="skeleton-block skeleton-row"></div>
+      <div class="skeleton-block skeleton-row"></div>
+      <div class="skeleton-block skeleton-row"></div>
+    `;
   } else if (!profile) {
     bodyHtml = `<div class="history-empty">${t('friends.profileUnavailable')}</div>`;
   } else {
@@ -6472,6 +6666,7 @@ function renderFriendProfileSheet({ displayName, photoURL, loading, profile, act
   }
   return `
     <div class="level-roadmap-sheet">
+      <div class="sheet-drag-handle"></div>
       <button class="level-roadmap-close" onclick="closeFriendProfile()">✕</button>
       <div class="level-roadmap-header friend-profile-header">
         ${avatar}
@@ -6490,6 +6685,7 @@ async function openFriendProfile(uid, displayName, photoURL) {
   el.className = 'level-roadmap-overlay';
   el.innerHTML = renderFriendProfileSheet({ displayName, photoURL, loading: true });
   document.body.appendChild(el);
+  attachSheetBehavior(el, closeFriendProfile);
 
   let profile = null, activities = [], activitiesFailed = false;
   try {
@@ -6507,6 +6703,7 @@ async function openFriendProfile(uid, displayName, photoURL) {
   }
   if (friendProfileOpenUid !== uid) return;
   el.innerHTML = renderFriendProfileSheet({ displayName, photoURL, loading: false, profile, activities, activitiesFailed });
+  attachSheetBehavior(el, closeFriendProfile); // le noeud .level-roadmap-sheet vient d'etre recree (innerHTML), ses ecouteurs de glissement le sont donc aussi
 }
 
 function closeFriendProfile() {
@@ -6556,6 +6753,12 @@ function renderSettingsSection() {
           <div class="settings-row-desc">${t('settings.voiceCoach.desc')}</div>
         </div>
         <button class="switch${voiceCoachEnabled ? ' on' : ''}" onclick="toggleVoiceCoach()"><span class="switch-knob"></span></button>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-label">🔔 ${t('settings.soundEffects.label')}
+          <div class="settings-row-desc">${t('settings.soundEffects.desc')}</div>
+        </div>
+        <button class="switch${soundEffectsEnabled ? ' on' : ''}" onclick="toggleSoundEffects()"><span class="switch-knob"></span></button>
       </div>
       <div class="settings-row">
         <div class="settings-row-label">🌍 ${t('settings.leaderboardOptOut.label')}
@@ -6940,8 +7143,11 @@ function renderCommunityScreen() {
     { id: 'weekly', label: t('community.views.weekly') },
     { id: 'alltime', label: t('community.views.alltime') },
   ];
+  // Retour utilisateur "effet waouh" : ecran squelette (shimmer, memes classes
+  // que renderFriendProfileSheet()) a la place d un simple texte "Chargement..."
+  // pendant le premier chargement du classement.
   const topHtml = communityLeaderboardLoading
-    ? `<div class="history-empty">${t('community.loading')}</div>`
+    ? Array.from({ length: 6 }).map(() => '<div class="skeleton-block skeleton-row"></div>').join('')
     : (communityLeaderboardTop.length === 0
       ? `<div class="history-empty">${t('community.noOneYet')}</div>`
       : communityLeaderboardTop.map((e, i) => renderLeaderboardRow(e, i + 1, communityLeaderboardView, e.uid === currentUser.uid)).join(''));
@@ -7016,11 +7222,26 @@ function renderFriendActionRow(uid, displayName, photoURL, actionHtml, clickable
   // stopper la propagation pour ne pas déclencher l'ouverture en même temps (voir
   // renderFriendsScreen()).
   const clickAttr = clickable ? ` onclick="openFriendProfile('${escapeJsAttr(uid)}', '${escapeJsAttr(displayName)}', '${escapeJsAttr(photoURL)}')"` : '';
-  return `
-    <div class="leaderboard-row${clickable ? ' clickable' : ''}"${clickAttr}>
+  // Retour utilisateur "effet waouh" : sur la liste "Mes amis" (clickable=true),
+  // l'action (retirer) est révélée par un glissement vers la gauche (swipe) -
+  // ligne épurée par défaut, plutôt qu'un bouton toujours visible - même geste
+  // que Gmail/WhatsApp (voir initSwipeableRows()). Repli desktop/non-tactile :
+  // révélée au survol (:hover, voir styles.css). Les autres usages de cette
+  // fonction (recherche, invitation à un groupe - clickable=false) gardent le
+  // bouton toujours visible tel quel : action rare, pas besoin de la cacher.
+  const contentClass = `leaderboard-row${clickable ? ' clickable swipeable-row-content' : ''}`;
+  const rowHtml = `
+    <div class="${contentClass}"${clickAttr}>
       ${avatar}
       <span class="leaderboard-name">${escapeHtml(displayName)}</span>
-      ${actionHtml}
+      ${clickable ? '' : actionHtml}
+    </div>
+  `;
+  if (!clickable) return rowHtml;
+  return `
+    <div class="swipeable-row">
+      <div class="swipeable-row-actions">${actionHtml}</div>
+      ${rowHtml}
     </div>
   `;
 }
@@ -7600,6 +7821,7 @@ function renderGroupInfoSheet() {
 
   return `
     <div class="level-roadmap-sheet">
+      <div class="sheet-drag-handle"></div>
       <button class="level-roadmap-close" onclick="closeGroupInfoOverlay()">✕</button>
       <div class="level-roadmap-header">
         <div class="level-roadmap-title">${escapeHtml(groupDetailGroup.emoji || '')} ${escapeHtml(groupDetailGroup.name)}</div>
@@ -7623,6 +7845,7 @@ function openGroupInfoOverlay() {
   el.className = 'level-roadmap-overlay';
   el.innerHTML = renderGroupInfoSheet();
   document.body.appendChild(el);
+  attachSheetBehavior(el, closeGroupInfoOverlay);
 }
 function closeGroupInfoOverlay() {
   groupInfoOverlayOpen = false;
@@ -7945,6 +8168,70 @@ function initTiltCards() {
   document.addEventListener('touchcancel', () => { if (tiltEl) { resetTilt(tiltEl); tiltEl = null; } }, { passive: true });
 }
 
+// Retour utilisateur "effet waouh" : glisser une ligne "Mes amis" vers la
+// gauche révèle son action cachée (retirer) - même geste que Gmail/WhatsApp
+// (voir renderFriendActionRow()). Délégation sur document (comme
+// initTiltCards() ci-dessus) : survit nativement à tous les re-renders.
+// Distingue un TAP (mouvement infime) d'un VRAI glissement horizontal, pour
+// ne jamais bloquer l'ouverture de la fiche ami (onclick de la ligne) sur un
+// simple tap - seul un glissement REEL neutralise le clic qui suit.
+const SWIPE_REVEAL_PX = 52;
+function initSwipeableRows() {
+  let dragRow = null, startX = null, startY = null, moved = false;
+  document.addEventListener('touchstart', (e) => {
+    const row = e.target.closest && e.target.closest('.swipeable-row-content');
+    if (!row) { dragRow = null; return; }
+    dragRow = row;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    moved = false;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!dragRow) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) moved = true;
+    if (Math.abs(dx) > Math.abs(dy)) { // glissement principalement HORIZONTAL - sinon laisser le scroll vertical agir normalement
+      const clamped = Math.min(0, Math.max(-SWIPE_REVEAL_PX, dx));
+      dragRow.style.transition = 'none';
+      dragRow.style.transform = `translateX(${clamped}px)`;
+    }
+  }, { passive: true });
+  document.addEventListener('touchend', () => {
+    if (!dragRow) return;
+    const row = dragRow;
+    const currentX = parseFloat((row.style.transform.match(/-?\d+\.?\d*/) || [])[0]) || 0;
+    row.style.transition = 'transform 0.2s ease';
+    row.style.transform = currentX < -SWIPE_REVEAL_PX / 2 ? `translateX(-${SWIPE_REVEAL_PX}px)` : '';
+    if (moved) {
+      // Neutralise le PROCHAIN clic uniquement (evite d'ouvrir la fiche ami juste
+      // apres avoir glisse pour reveler l'action) - jamais les suivants.
+      const suppressClick = (ev) => { ev.stopPropagation(); ev.preventDefault(); row.removeEventListener('click', suppressClick, true); };
+      row.addEventListener('click', suppressClick, true);
+    }
+    dragRow = null;
+  }, { passive: true });
+}
+
+// Retour utilisateur "effet waouh" : legere parallaxe sur l'image de
+// demonstration de l'exercice (.parallax-img) - suit le defilement un peu
+// plus LENTEMENT que le texte sous elle (facteur 0.15), illusion de profondeur
+// classique. Un seul ecouteur de scroll pose UNE FOIS au demarrage (jamais
+// reattache) - cherche l'element cible A CHAQUE evenement (peut etre un noeud
+// different apres un re-render, meme contrainte que partout ailleurs dans ce
+// fichier), no-op silencieux si aucun n'est present a l'ecran courant.
+// Plafonne (+/-15px) : ce n'est qu'un clin d'oeil, jamais un decalage visible
+// qui ferait deborder l'image de sa carte.
+function initParallax() {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  window.addEventListener('scroll', () => {
+    const img = document.querySelector('.parallax-img');
+    if (!img) return;
+    const offset = Math.max(-15, Math.min(15, window.scrollY * 0.15));
+    img.style.transform = `translateY(${offset}px)`;
+  }, { passive: true });
+}
+
 async function refreshApp() {
   await loadAppData();
   if (activeTab === 'account' && profileView === 'journal') {
@@ -8089,6 +8376,8 @@ document.addEventListener('click', (e) => {
 
 initPullToRefresh();
 initTiltCards();
+initSwipeableRows();
+initParallax();
 
 </script>
 

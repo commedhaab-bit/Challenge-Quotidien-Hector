@@ -29,6 +29,10 @@ const LOCALE_FR = {
       label: 'Coach vocal',
       desc: 'Annonce le compte à rebours de préparation et la fin du défi à voix haute.',
     },
+    soundEffects: {
+      label: 'Effets sonores',
+      desc: 'Un petit son de réussite quand tu atteins ton objectif du jour.',
+    },
     leaderboardOptOut: {
       label: 'Classement communautaire',
       desc: 'Affiche ton nom, ta série et ton XP dans le classement partagé avec les autres utilisateurs.',

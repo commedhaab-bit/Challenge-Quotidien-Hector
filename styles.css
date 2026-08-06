@@ -531,25 +531,55 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* PARCOURS DE NIVEAU — page complète ouverte depuis la carte athlète */
+  /* PARCOURS DE NIVEAU / FICHE AMI / INFO GROUPE — retour utilisateur "effet
+     waouh" : de VRAIES feuilles a glisser (bottom sheets), pas une page pleine
+     qui se contente d'apparaitre. Le fond (backdrop) reste semi-transparent et
+     cliquable pour fermer (attachSheetBehavior() dans index.html) ; la feuille
+     elle-meme suit le doigt en temps reel pendant le glissement (voir
+     attachSheetBehavior()), ce CSS ne gere que l'etat "au repos"
+     (entree/sortie, forme). */
   .level-roadmap-overlay {
     position: fixed;
     inset: 0;
     z-index: 970;
-    background: var(--bg);
-    overflow-y: auto;
-    padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0px));
-    animation: app-popup-fade-in 0.2s ease;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    animation: sheet-backdrop-fade-in 0.2s ease;
   }
   .level-roadmap-sheet {
+    width: 100%;
     max-width: 480px;
-    margin: 0 auto;
+    max-height: 88vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: var(--bg);
+    border-radius: 22px 22px 0 0;
+    padding: 8px 20px calc(24px + env(safe-area-inset-bottom, 0px));
     position: relative;
+    animation: sheet-slide-up 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .sheet-drag-handle {
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--line);
+    margin: 6px auto 16px;
+  }
+  @keyframes sheet-backdrop-fade-in {
+    from { opacity: 0; }
+  }
+  @keyframes sheet-slide-up {
+    from { transform: translateY(100%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .level-roadmap-overlay, .level-roadmap-sheet { animation: none; }
   }
   .level-roadmap-close {
     position: absolute;
-    top: 0;
-    right: 0;
+    top: 14px;
+    right: 14px;
     background: var(--bg-card);
     border: 1px solid var(--line);
     color: var(--chalk);
@@ -829,6 +859,32 @@
     /* espace pour ne jamais laisser la derniere ligne cachee sous la barre de rang
        ancree + la tab-bar */
     margin-bottom: 140px;
+  }
+  /* Retour utilisateur "effet waouh" : glisser une ligne "Mes amis" vers la
+     gauche revele son action cachee (retirer), meme geste que Gmail/WhatsApp -
+     voir initSwipeableRows()/renderFriendActionRow(). Repli desktop/non-tactile :
+     revelee au survol (:hover). */
+  .swipeable-row {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+  }
+  .swipeable-row-actions {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 14px;
+    background: rgba(239, 83, 80, 0.12);
+  }
+  .swipeable-row-content {
+    position: relative;
+    transition: transform 0.2s ease;
+    touch-action: pan-y;
+  }
+  .swipeable-row:hover .swipeable-row-content {
+    transform: translateX(-52px);
   }
   .leaderboard-row {
     display: flex;
@@ -2343,6 +2399,22 @@
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
   }
+  /* Retour utilisateur "effet waouh" : ecrans squelettes generiques (classement,
+     fiche d'ami) pendant un chargement async, a la place d'un simple texte
+     "Chargement..." - reutilise TEL QUEL le meme keyframe que le shimmer des
+     images ci-dessus (picto-shimmer), deja respectueux de prefers-reduced-motion. */
+  .skeleton-block {
+    border-radius: 10px;
+    background: linear-gradient(90deg, var(--bg-raised), rgba(255,255,255,0.07), var(--bg-raised));
+    background-size: 200% 100%;
+    animation: picto-shimmer 1.4s ease-in-out infinite;
+  }
+  .skeleton-text { height: 14px; margin-bottom: 10px; }
+  .skeleton-bar { height: 8px; border-radius: 999px; margin: 14px 0; }
+  .skeleton-row { height: 44px; margin-bottom: 8px; }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-block { animation: none; }
+  }
   .exercise-picto svg {
     width: 34px;
     height: 34px;
@@ -2370,6 +2442,11 @@
     transition: opacity 0.25s ease;
   }
   .exercise-hero-apng.loaded { opacity: 1; }
+  /* Retour utilisateur "effet waouh" : legere parallaxe au defilement (voir
+     initParallax() dans index.html) - will-change prepare le navigateur a une
+     transform frequemment mise a jour, sans transition CSS (doit suivre le
+     scroll en temps reel, jamais avec un delai qui donnerait un effet de trainee). */
+  .parallax-img { will-change: transform; }
   .picker-item .name {
     font-size: 15.5px;
     font-weight: 600;
@@ -2551,6 +2628,25 @@
     font-size: 12px;
     font-weight: 700;
     color: var(--chalk-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  /* Retour utilisateur "effet waouh" : mini-graphique des 7 derniers jours
+     d'activite (renderExerciseSparkline()), a cote du total a vie - donne une
+     tendance en un coup d'oeil qu'un simple chiffre cumule ne montre jamais. */
+  .exercise-sparkline {
+    width: 34px;
+    height: 12px;
+    overflow: visible;
+    flex-shrink: 0;
+  }
+  .exercise-sparkline polyline {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   .toast {
@@ -3022,6 +3118,54 @@
   }
   .timer-ring-fill-hardcore.complete {
     filter: drop-shadow(0 0 14px rgba(255, 107, 53, 0.7));
+  }
+
+  /* Retour utilisateur "effet waouh" : anneau de progression pour l'objectif du
+     jour des exercices en repetitions (renderExerciseProgressRingSVG()), a la
+     place de l'ancienne barre horizontale - meme technique que .timer-ring
+     ci-dessus (stroke-dasharray/dashoffset), rayon/couleurs dedies. Reserve aux
+     exercices 'reps' - les exercices en secondes gardent la barre (ils ont deja
+     leur propre riche double-anneau via le chronometre plus bas sur l'ecran). */
+  .progress-ring-wrap {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    margin: 4px auto 20px;
+  }
+  .exercise-progress-ring {
+    transform: rotate(-90deg);
+    overflow: visible;
+  }
+  .exercise-progress-ring-bg {
+    fill: none;
+    stroke: var(--bg);
+    stroke-width: 10;
+  }
+  .exercise-progress-ring-fill {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 10;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+    filter: drop-shadow(0 0 8px var(--accent-glow));
+  }
+  .exercise-progress-ring-fill.complete {
+    stroke: var(--good);
+    filter: drop-shadow(0 0 12px var(--accent-glow));
+  }
+  .progress-ring-pct {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 900;
+    color: var(--chalk);
+    font-variant-numeric: tabular-nums;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .exercise-progress-ring-fill { transition: none; }
   }
   /* Ne contient QUE le temps (l'icône est positionnée en absolu par rapport à ce
      conteneur) : le translate(-50%,-50%) centre ainsi le texte du temps parfaitement

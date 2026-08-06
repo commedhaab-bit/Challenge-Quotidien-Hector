@@ -1465,6 +1465,28 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(voiceCoachEnabled, true, 'un second toggle doit reactiver');
   console.log('OK: coach vocal (toggle persiste, speak() respecte le toggle)');
 
+  // Retour utilisateur "effet waouh" : chime de reussite optionnel, DESACTIVE
+  // par defaut (contrairement au coach vocal) - a double tranchant, certains
+  // detestent le son.
+  soundEffectsEnabled = false;
+  let audioContextCalls = 0;
+  const originalAudioContext = window.AudioContext;
+  window.AudioContext = function () { audioContextCalls++; return originalAudioContext(); };
+  playSuccessChime();
+  __assertEq(audioContextCalls, 0, 'aucun son ne doit jamais etre joue tant que soundEffectsEnabled est desactive (defaut)');
+  await toggleSoundEffects();
+  __assertEq(soundEffectsEnabled, true, 'toggleSoundEffects doit inverser l etat');
+  __assertEq(__appDataStore.data.soundEffectsEnabled, true, 'le nouvel etat doit etre persiste dans le document consolide appData');
+  __assertEq(audioContextCalls, 1, 'activer le reglage doit jouer un aperçu immediat du son');
+  playSuccessChime();
+  __assertEq(audioContextCalls, 2, 'une fois active, playSuccessChime() doit reellement synthetiser un son (Web Audio)');
+  await toggleSoundEffects();
+  __assertEq(soundEffectsEnabled, false, 'un second toggle doit desactiver a nouveau');
+  window.AudioContext = originalAudioContext;
+  const settingsHtmlSound = renderSettingsSection();
+  __assertOk(settingsHtmlSound.includes('onclick="toggleSoundEffects()"'), 'le reglage doit etre visible dans Parametres');
+  console.log('OK: chime de reussite optionnel (desactive par defaut, apercu immediat a l activation, reglage dans Parametres)');
+
   // --- 35. Compte a rebours de preparation : 3, 2, 1, puis "C'est parti !" et demarrage reel du chrono ---
   voiceCoachEnabled = true;
   __spokenLog.length = 0;
@@ -1613,6 +1635,12 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(__rawHtml.includes("matchMedia('(prefers-reduced-motion: reduce)').matches) return;") && __rawHtml.includes('function initTiltCards()'), 'l effet tilt ne doit jamais s activer si prefers-reduced-motion est demande');
   console.log('OK: cartes hero "tilt" (effet de profondeur au toucher, jamais actif sous prefers-reduced-motion)');
 
+  // Retour utilisateur "effet waouh" : legere parallaxe sur l image de
+  // demonstration de l exercice (.parallax-img) au defilement.
+  __assertOk(__rawHtml.includes('class="exercise-hero-apng parallax-img"'), 'l image de demonstration de l exercice doit porter la classe .parallax-img');
+  __assertOk(__rawHtml.includes("matchMedia('(prefers-reduced-motion: reduce)').matches) return;") && __rawHtml.includes('function initParallax()'), 'la parallaxe ne doit jamais s activer si prefers-reduced-motion est demande');
+  console.log('OK: parallaxe sur l image de l exercice (jamais active sous prefers-reduced-motion)');
+
   // Retour utilisateur "effet waouh" : le gros chiffre de progression doit defiler
   // vers sa nouvelle valeur (pas sauter instantanement) a chaque serie loguee -
   // mais UNIQUEMENT en cas de vrai changement (jamais rejoue "pour rien" sur un
@@ -1626,6 +1654,50 @@ const cssText = __rawHtml + __cssSource;
   animateCountUp('countUpTestTarget', 'countup-test-key', 55);
   __assertEq(countUpTestEl.textContent, 42, 'un VRAI changement de valeur doit passer par l animation differee (requestAnimationFrame) plutot qu un saut instantane - le mock de test n execute jamais les frames, donc le texte doit rester a l ancienne valeur ici (preuve que le chemin "instantane" n a pas ete pris a tort)');
   console.log('OK: animateCountUp() (defilement uniquement sur un vrai changement, jamais sur le premier affichage ni un re-rendu identique)');
+
+  // Retour utilisateur "effet waouh" : les panneaux (parcours de niveau, fiche
+  // d ami, info groupe) sont desormais de VRAIES feuilles a glisser - le mock
+  // DOM du harnais ne simule pas de vrais evenements tactiles (querySelector
+  // limite aux #id, voir plus haut dans ce fichier), donc ce test appelle
+  // attachSheetBehavior() directement avec des objets synthetiques pour
+  // verifier sa LOGIQUE (seuil de fermeture vs retour a plat, tap sur le fond).
+  {
+    const fakeSheet = { scrollTop: 0, style: {}, _listeners: {}, addEventListener(type, cb) { this._listeners[type] = cb; } };
+    const fakeOverlay = { onclick: null, querySelector(sel) { return sel === '.level-roadmap-sheet' ? fakeSheet : null; } };
+    let closeCalls = 0;
+    const fakeClose = () => { closeCalls++; };
+    attachSheetBehavior(fakeOverlay, fakeClose);
+    __assertOk(typeof fakeOverlay.onclick === 'function', 'un gestionnaire de clic doit etre pose sur le fond (backdrop)');
+    fakeOverlay.onclick({ target: {} }); // clic sur un ENFANT (la feuille elle-meme), jamais le fond
+    __assertEq(closeCalls, 0, 'un clic sur le contenu de la feuille ne doit jamais la fermer');
+    fakeOverlay.onclick({ target: fakeOverlay }); // clic sur le fond lui-meme
+    __assertEq(closeCalls, 1, 'un clic sur le fond (backdrop) doit fermer le panneau, comme tout bottom sheet natif');
+
+    // Glissement COURT (sous le seuil de 120px) : doit revenir a plat, jamais fermer.
+    fakeSheet._listeners.touchstart({ touches: [{ clientY: 100 }] });
+    fakeSheet._listeners.touchmove({ touches: [{ clientY: 160 }] });
+    __assertEq(fakeSheet.style.transform, 'translateY(60px)', 'la feuille doit suivre le doigt en temps reel pendant le glissement');
+    fakeSheet._listeners.touchend({ changedTouches: [{ clientY: 160 }] });
+    __assertEq(fakeSheet.style.transform, '', 'un glissement sous le seuil doit revenir a plat (transform vide), jamais fermer');
+    __assertEq(closeCalls, 1, 'un glissement sous le seuil ne doit jamais appeler la fermeture');
+
+    // Glissement LONG (au-dessus du seuil de 120px) : doit fermer (apres le delai d animation).
+    fakeSheet._listeners.touchstart({ touches: [{ clientY: 100 }] });
+    fakeSheet._listeners.touchmove({ touches: [{ clientY: 300 }] });
+    fakeSheet._listeners.touchend({ changedTouches: [{ clientY: 300 }] });
+    __assertEq(fakeSheet.style.transform, 'translateY(100%)', 'un glissement au-dessus du seuil doit animer la sortie de la feuille');
+    await new Promise((r) => setTimeout(r, 250));
+    __assertEq(closeCalls, 2, 'un glissement au-dessus du seuil doit appeler la fermeture (apres le delai d animation de sortie)');
+
+    // Glisser depuis une liste deja scrollee (scrollTop > 0) : ne doit jamais s engager
+    // (sinon impossible de faire defiler une longue liste sans fermer la feuille par erreur).
+    fakeSheet.scrollTop = 40;
+    fakeSheet.style.transform = '';
+    fakeSheet._listeners.touchstart({ touches: [{ clientY: 100 }] });
+    fakeSheet._listeners.touchmove({ touches: [{ clientY: 300 }] });
+    __assertEq(fakeSheet.style.transform, '', 'le glisser-pour-fermer ne doit jamais s engager si la feuille n est pas deja scrollee tout en haut');
+  }
+  console.log('OK: attachSheetBehavior() (feuilles a glisser : tap sur le fond ferme, seuil de glissement pour fermer vs revenir a plat, jamais depuis une liste scrollee)');
 
   // --- 38. Pastille de serie cliquable : modal explicative style Duolingo (titre neutre,
   // badge bouclier explicite, croix de fermeture, message d accroche a 0 jour) ---
@@ -1706,6 +1778,7 @@ const cssText = __rawHtml + __cssSource;
   render(false);
   let detailHtml = document.getElementById('app').innerHTML;
   __assertOk(detailHtml.includes('timer-ring-wrap'), 'le disque du chrono (anneau) doit etre present');
+  __assertOk(detailHtml.includes('bar-track') && !detailHtml.includes('progress-ring-wrap'), 'un exercice en secondes doit garder la barre horizontale pour l objectif du jour (deja un riche double-anneau via le chronometre, un 2e anneau serait redondant)');
   __assertOk(detailHtml.includes('onclick="toggleTimer()"'), 'tout le disque doit etre cliquable (toggle play/pause)');
   __assertOk(detailHtml.includes('timer-play-icon'), 'la petite icone play/pause epuree doit etre presente sous le temps');
   __assertOk(!detailHtml.includes('timer-play-btn'), 'l ancien gros bouton circulaire colore ne doit plus exister');
@@ -1740,6 +1813,7 @@ const cssText = __rawHtml + __cssSource;
   render(false);
   detailHtml = document.getElementById('app').innerHTML;
   __assertOk(!detailHtml.includes('tally-wrap'), 'les traits de comptage doivent aussi avoir disparu pour un exercice en repetitions (carte "Ajouter une serie" fixe)');
+  __assertOk(detailHtml.includes('progress-ring-wrap') && !detailHtml.includes('progress-pct'), 'un exercice en repetitions doit afficher l anneau de progression (effet waouh) a la place de l ancienne barre/pourcentage textuel pour l objectif du jour');
   currentChallengeId = null;
   console.log('OK: disque double-anneau epure (plus de bouton/textes/plein ecran/ajout manuel en secondes)');
 
@@ -1763,6 +1837,45 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(ringSvg.includes('id="timerRingHardcoreFill"'), 'l anneau exterieur (hardcore) doit avoir son propre id');
   __assertOk((ringSvg.match(/<circle/g) || []).length === 4, 'le SVG doit contenir 4 cercles (fond+remplissage x2)');
   console.log('OK: computeTimerRingPct (normal plafonne a 100%, hardcore calcule sur la plage restante) + rendu SVG double anneau');
+
+  // Retour utilisateur "effet waouh" : anneau de progression (au lieu de la
+  // barre horizontale) pour l objectif du jour des exercices en repetitions -
+  // reserve a ces exercices, ceux en secondes gardent la barre (deja un riche
+  // double-anneau via le chronometre).
+  const ringSvg0 = renderExerciseProgressRingSVG(0);
+  __assertOk(ringSvg0.includes('exercise-progress-ring-fill') && !ringSvg0.includes('exercise-progress-ring-fill complete'), 'a 0%, l anneau ne doit pas porter la classe "complete"');
+  const ringSvgFull = renderExerciseProgressRingSVG(1);
+  __assertOk(ringSvgFull.includes('exercise-progress-ring-fill complete'), 'a 100%, l anneau doit porter la classe "complete" (meme convention que le double-anneau du chronometre)');
+  const ringSvgOver = renderExerciseProgressRingSVG(1.4);
+  __assertEq(ringSvgOver, ringSvgFull, 'une fraction au-dela de 1 doit etre plafonnee exactement comme a 100% (jamais un stroke-dashoffset negatif)');
+  console.log('OK: renderExerciseProgressRingSVG() (plafonne a 100%, classe "complete" une fois l objectif atteint)');
+
+  // Retour utilisateur "effet waouh" : mini-graphique (sparkline) des 7 derniers
+  // jours d'activite sur l'exercice courant, affiche a cote du total a vie.
+  __assertEq(renderExerciseSparkline([0, 0, 0, 0, 0, 0, 0]), '', 'aucune activite sur les 7 derniers jours -> rien a afficher (pas un graphique plat inutile)');
+  __assertOk(renderExerciseSparkline([5, 0, 10, 0, 0, 0, 20]).includes('<polyline points="'), 'une activite recente doit produire un mini-graphique en courbe');
+
+  // todayKey peut avoir ete fige a une date fictive par un test precedent (voir
+  // le meme piege documente pour loadHistoryEntries()) - loadExerciseSparkline()
+  // calcule sa fenetre depuis le VRAI new Date(), donc todayKey doit correspondre
+  // a la vraie date du jour ici, sinon "aujourd hui" ne matche plus le bon index.
+  todayKey = dateKey(new Date());
+  exerciseSparklineCache = {};
+  historyDayCache = {}; // evite de lire une entree perimee/etrangere en cache depuis un test precedent (meme cle relative "il y a N jours")
+  const sparkPastDate = new Date();
+  sparkPastDate.setDate(sparkPastDate.getDate() - 3);
+  const sparkPastKey = dateKey(sparkPastDate);
+  __store.set('day:' + sparkPastKey, JSON.stringify({ challenges: { [pompes.id]: { sets: [7, 8], targetOverride: null, done: true, hardcoreDone: false, hardcoreAnnounced: false } } }));
+  state = emptyDayState();
+  await pickChallenge(pompes.id);
+  await loadExerciseSparkline(pompes.id); // le fire-and-forget de pickChallenge() n est pas attendu ici : relance directe pour un test deterministe
+  __assertEq(exerciseSparklineCache[pompes.id].length, 7, 'la sparkline doit couvrir exactement 7 jours');
+  __assertEq(exerciseSparklineCache[pompes.id][3], 15, 'le jour seede (J-3, 4e position en partant du plus ancien) doit refleter le total reel (7+8)');
+  __assertEq(exerciseSparklineCache[pompes.id][6], 0, 'aujourd hui (dernier point) doit partir de 0 (aucune serie loguee pour l instant)');
+  await addSet(5);
+  __assertEq(exerciseSparklineCache[pompes.id][6], 5, 'chaque serie loguee doit incrementer OPTIMISTEMENT le dernier point (aujourd hui) de la sparkline, sans attendre un rechargement');
+  currentChallengeId = null;
+  console.log('OK: sparkline 7 jours (renderExerciseSparkline() + loadExerciseSparkline(), mise a jour optimiste a chaque serie loguee)');
 
   // --- 43. toggleTimer() : clic sur le disque bascule play (decompte) / pause (banque le temps) ---
   popupQueue = []; popupOpen = false;
@@ -2527,7 +2640,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v73'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v74'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3157,7 +3270,7 @@ const cssText = __rawHtml + __cssSource;
   // --- 118. Fermeture #3 (lazy-loading) : l image hero de la fiche detail reste
   // explicitement eager (LCP-critique, ne doit jamais devenir lazy) ; les images de
   // liste (renderExercisePicto) restent lazy comme deja verifie plus haut ---
-  __assertOk(__rawHtml.includes('class="exercise-hero-apng"') && __rawHtml.includes('loading="eager"'), 'l image hero de la fiche detail doit etre explicitement loading="eager"');
+  __assertOk(__rawHtml.includes('class="exercise-hero-apng parallax-img"') && __rawHtml.includes('loading="eager"'), 'l image hero de la fiche detail doit etre explicitement loading="eager"');
   console.log('OK: image hero de la fiche detail explicitement loading="eager" (LCP-critique)');
 
   // --- 119. Nettoyage des libelles d exercices : plus aucun nom ne contient
@@ -4289,6 +4402,15 @@ const cssText = __rawHtml + __cssSource;
   activeTab = 'community';
   communityLeaderboardView = 'alltime';
   await loadCommunityLeaderboard('alltime');
+  // Retour utilisateur "effet waouh" : ecran squelette (shimmer) pendant le
+  // chargement du classement, a la place d un simple texte "Chargement...".
+  communityLeaderboardLoading = true;
+  const communitySkeletonHtml = renderCommunityScreen();
+  __assertOk((communitySkeletonHtml.match(/skeleton-row/g) || []).length === 6, 'le classement en chargement doit afficher 6 lignes squelettes');
+  __assertOk(!communitySkeletonHtml.includes('leaderboard-row'), 'aucune vraie ligne de classement ne doit apparaitre tant que le chargement n est pas termine');
+  communityLeaderboardLoading = false;
+  console.log('OK: ecran squelette du classement pendant le chargement (effet waouh, remplace le texte "Chargement...")');
+
   const communityHtml = renderCommunityScreen();
   __assertOk(communityHtml.includes('leaderboard-tabs') && communityHtml.includes('leaderboard-row'), 'l ecran Communaute doit afficher les onglets et les lignes de classement');
   __assertOk(communityHtml.includes('#1') && communityHtml.includes('#3'), 'chaque ligne doit afficher un rang numerique EXACT (gratuit, simple index du tableau precalcule) - plus de badge approximatif');
@@ -5418,6 +5540,14 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(rowCliquable.includes("openFriendProfile('u1'"), 'clickable=true (liste Mes amis) doit ouvrir la fiche profil au clic sur la ligne');
   __assertOk(rowCliquable.includes('leaderboard-row clickable'), 'la ligne cliquable doit porter la classe CSS clickable (curseur pointeur)');
 
+  // Retour utilisateur "effet waouh" : sur la liste "Mes amis" (clickable=true),
+  // l action doit etre cachee par defaut (revelee par glissement, voir
+  // initSwipeableRows()) - jamais pour les autres usages (recherche/invitation),
+  // ou l action reste toujours visible telle quelle.
+  __assertOk(rowCliquable.includes('class="swipeable-row"') && rowCliquable.includes('swipeable-row-actions') && rowCliquable.includes('swipeable-row-content'), 'la ligne cliquable doit etre enveloppee dans la structure "glisser pour reveler"');
+  __assertEq((rowCliquable.match(/<span><\\/span>/g) || []).length, 1, 'l action ne doit apparaitre qu UNE SEULE fois (dans le panneau cache), jamais dupliquee dans la ligne visible');
+  __assertOk(!rowNonCliquable.includes('swipeable-row'), 'les usages non cliquables (recherche, invitation a un groupe) ne doivent jamais etre enveloppes dans la structure de glissement - l action y reste toujours visible');
+
   // renderFriendsScreen() : le bouton "retirer" (🗑️) doit stopper la propagation, sinon
   // il declencherait AUSSI l ouverture de la fiche profil de l ami qu on retire.
   myFriends = [{ uid: 'amie-uid', displayName: 'Bea M.', photoURL: '' }];
@@ -5427,8 +5557,11 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(friendsScreenHtml.includes("event.stopPropagation(); removeFriend('amie-uid')"), 'le bouton retirer doit stopper la propagation avant de retirer l ami');
 
   // renderFriendProfileSheet() : etats chargement / contenu complet / repli opt-out.
+  // Retour utilisateur "effet waouh" : ecran squelette (shimmer) plutot qu un
+  // simple texte "Chargement..." pendant le fetch async du profil.
   const sheetChargement = renderFriendProfileSheet({ displayName: 'Bea M.', photoURL: '', loading: true });
-  __assertOk(sheetChargement.includes(t('friends.profileLoading')), 'etat de chargement doit etre affiche pendant le fetch');
+  __assertOk((sheetChargement.match(/skeleton-block/g) || []).length >= 3, 'l etat de chargement doit afficher un ecran squelette (plusieurs blocs), pas juste un texte');
+  __assertOk(!sheetChargement.includes(t('friends.profileLoading')), 'l ancien texte "Chargement..." ne doit plus apparaitre, remplace par le squelette');
 
   const activitesAmie = [
     { id: 'a1', uid: 'amie-uid', displayName: 'Bea M.', challengeName: 'Pompes', amount: 20, unit: 'reps', at: Date.now(), kudosCount: 0 },

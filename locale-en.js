@@ -26,6 +26,10 @@ const LOCALE_EN = {
       label: 'Voice coach',
       desc: 'Announces the prep countdown and challenge completion out loud.',
     },
+    soundEffects: {
+      label: 'Sound effects',
+      desc: 'A little success chime when you hit your target for the day.',
+    },
     leaderboardOptOut: {
       label: 'Community leaderboard',
       desc: 'Shows your name, streak and XP on the leaderboard shared with other users.',

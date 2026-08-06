@@ -2868,3 +2868,114 @@ jamais duplique) - jamais le rendu visuel reel (glissement, morph, tilt,
 defilement des chiffres) ni le support navigateur effectif de la View
 Transitions API, a confirmer par l'utilisateur sur un vrai appareil.
 
+## Passe "effet waouh" 2 — de vrais composants d'interface premium
+
+**Demande explicite de l'utilisateur** : aller plus loin que la 1ere passe
+(animations/transitions) - 6 chantiers approuves pour "moins ressembler a une
+page web basique, plus a une appli premium". La mascotte animee (7e idee)
+est volontairement EXCLUE de ce lot - l'utilisateur veut d'abord choisir un
+design ensemble avant toute implementation (voir plus bas).
+
+**1. Bottom sheets a glisser (drag-to-dismiss reel)** - les 3 panneaux
+(`.level-roadmap-overlay`/`.level-roadmap-sheet`, parcours de niveau/fiche
+ami/info groupe) etaient jusqu'ici une simple page PLEIN ECRAN (fondu
+d'entree, fermeture par un bouton "✕"). Refonte complete en VRAIES feuilles
+a glisser : le fond devient un backdrop semi-transparent (`display:flex;
+align-items:flex-end`), la feuille elle-meme un panneau `border-radius:22px
+22px 0 0` avec poignee de glissement (`.sheet-drag-handle`) qui slide depuis
+le bas (`@keyframes sheet-slide-up`). **`attachSheetBehavior(overlayEl,
+closeFn)`** (fonction PARTAGEE, appelee par les 3 `open*()`) : (a) tap sur le
+backdrop (pas la feuille) ferme le panneau, comme tout bottom sheet natif ;
+(b) glissement tactile suit le doigt en temps reel, ferme si tire au-dela de
+120px (avec animation de sortie avant `closeFn()`), sinon rebondit a plat ;
+(c) le glisser-pour-fermer ne s'engage que si la feuille est deja scrollee
+tout en haut (`sheet.scrollTop <= 0`) - sinon un glissement continue de faire
+defiler une liste longue normalement. `openFriendProfile()` (seul cas
+async, repeint le noeud `.level-roadmap-sheet` 2 fois - chargement puis
+donnees) appelle `attachSheetBehavior()` une 2e fois apres le repaint final,
+le noeud precedent (et ses ecouteurs) ayant ete detruit par `innerHTML`.
+
+**2. Anneau de progression SVG** (`renderExerciseProgressRingSVG()`) - a la
+place de l'ancienne barre horizontale, pour l'objectif du jour des exercices
+en REPETITIONS uniquement (`c.unit !== 'sec'`). Meme technique deja
+eprouvee que le double-anneau du chronometre (`renderDoubleTimerRingSVG()` -
+voir plus haut, `stroke-dasharray`/`stroke-dashoffset`), constantes/rayon
+dedies et independants. **Les exercices en secondes gardent la barre** -
+volontairement PAS un 2e anneau, ils ont deja leur propre riche double-
+anneau via le chronometre plus bas sur le meme ecran (redondance evitee).
+
+**3. Sparkline 7 jours** (`renderExerciseSparkline()`/`loadExerciseSparkline()`)
+- mini-graphique en courbe (SVG `<polyline>`) a cote du total a vie
+(`Σ 1200 a vie`), tendance des 7 derniers jours sur CET exercice precis.
+**Reutilise le meme cache que le Journal** (`historyDayCache`, memes cles
+`dateKey`) : si le Journal a deja ete ouvert cette session, aucune nouvelle
+lecture Firestore ; sinon ne lit QUE les 7 jours necessaires (pas les 28 du
+Journal complet), reste econome en quota. Mis en cache PAR EXERCICE
+(`exerciseSparklineCache`) pour la session, jamais relu une 2e fois pour le
+meme exercice. Mise a jour OPTIMISTE du dernier point (aujourd'hui) a
+chaque serie loguee (`addSetInner()`), comme pour la progression du defi de
+groupe lie. **Piege rencontre en l'implementant (2e fois cette session)** :
+`todayKey` peut avoir ete fige a une date fictive par un test precedent -
+meme piege deja documente pour `loadHistoryEntries()`, corrige de la meme
+facon (`todayKey = dateKey(new Date())` explicite en tete de test) + reset
+de `historyDayCache` (un test anterieur peut avoir cache une entree
+etrangere sous la MEME cle relative "il y a N jours").
+
+**4. Glisser pour reveler (swipe-to-reveal)** sur la liste "Mes amis"
+(`renderFriendActionRow()`, `clickable=true` uniquement - jamais pour la
+recherche/l'invitation a un groupe, ou l'action reste toujours visible telle
+quelle) : le bouton "retirer" (🗑️), avant toujours visible, est desormais
+CACHE par defaut derriere un glissement vers la gauche (meme geste que
+Gmail/WhatsApp) - `.swipeable-row` (wrapper, `overflow:hidden`) /
+`.swipeable-row-actions` (panneau cache, `position:absolute`) /
+`.swipeable-row-content` (la ligne elle-meme, translate au glissement).
+**`initSwipeableRows()`** (delegation sur `document`, comme
+`initTiltCards()`) distingue un TAP (mouvement < 8px) d'un VRAI glissement -
+seul un vrai glissement neutralise le clic qui suit (evite d'ouvrir la fiche
+ami juste apres avoir glisse pour reveler l'action). **Repli desktop/non-
+tactile** : `:hover` revele aussi le panneau (aucune fonctionnalite perdue
+pour un pointeur non-tactile).
+
+**5. Parallaxe legere** (`initParallax()`, classe `.parallax-img`) sur
+l'image de demonstration de l'exercice (`.exercise-hero-apng`) - suit le
+defilement a 15% de la vitesse reelle (`window.scrollY * 0.15`), plafonnee
+a +/-15px (jamais un decalage qui ferait deborder l'image de sa carte).
+Un seul ecouteur `scroll` pose UNE FOIS au demarrage, cherche l'element
+cible a CHAQUE evenement (peut etre un noeud different apres un re-render).
+Impact volontairement modeste : l'appli a peu de grands ecrans qui
+defilent (mise en page compacte mobile), effet du a rester discret par
+construction plutot qu'un choix de reglage.
+
+**6. Ecrans squelettes ("shimmer")** a la place d'un simple texte
+"Chargement..." - fiche d'un ami (`renderFriendProfileSheet()`, etat
+`loading`) et classement communautaire (`renderCommunityScreen()`,
+`communityLeaderboardLoading`). **Reutilise TEL QUEL** le keyframe
+`picto-shimmer` deja existant pour le chargement des images (`.exercise-picto`)
+- nouvelles classes generiques `.skeleton-block`/`.skeleton-text`/
+`.skeleton-bar`/`.skeleton-row` (memes couleurs/meme animation, juste des
+formes differentes), reutilisables pour un futur ecran squelette sans
+nouveau CSS.
+
+**Bonus non planifie, ajoute en cours de route : chime de reussite optionnel**
+(`playSuccessChime()`/`toggleSoundEffects()`) - synthese Web Audio pure (2
+notes ascendantes, aucun fichier audio a charger/mettre en cache),
+**DESACTIVE par defaut** (contrairement au coach vocal deja activable par
+defaut) - a double tranchant, certains detestent le son. Nouveau reglage
+Parametres (meme famille que le coach vocal), joue un apercu immediat a
+l'activation. Champ moderne (`appData` consolide uniquement,
+`d.soundEffectsEnabled ?? false`) : contrairement a `voiceCoachEnabled`, pas
+de champ legacy separe a migrer (jamais existe avant la consolidation).
+Declenche au meme moment que les mini confettis (`willComplete` dans
+`addSetInner()`).
+
+**Mascotte animee (7e idee) : NON IMPLEMENTEE, en attente d'un choix de
+design avec l'utilisateur** - propositions concretes a faire dans une
+prochaine conversation avant tout code.
+
+CACHE_NAME -> v74. Aucun changement de regles Firestore/Cloud Functions.
+Meme limite de verification explicite que la 1ere passe "effet waouh" : le
+harnais de test ne peut verifier que la logique structurelle (classes CSS,
+gating, seuils numeriques via des objets synthetiques pour
+`attachSheetBehavior()`) - jamais le rendu visuel reel (glissement de
+feuille, tilt, anneau, sparkline, parallaxe) sur un vrai appareil.
+
