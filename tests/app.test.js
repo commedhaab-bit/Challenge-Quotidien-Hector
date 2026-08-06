@@ -1533,6 +1533,20 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(shouldAutoPromptPushNotifications(null, 'default'), false, 'support pas encore determine -> ne pas demander avant de savoir');
   console.log('OK: shouldAutoPromptPushNotifications() (redemande a chaque demarrage tant qu aucune decision n a ete prise, jamais si deja tranche)');
 
+  // Regression du bug reel signale par l utilisateur : un token FCM peut
+  // devenir invalide (ex: "Forcer la mise a jour de l appli" desinscrit le
+  // service worker) sans que Notification.permission ne change - la Cloud
+  // Function supprime alors silencieusement le doc pushTokens correspondant,
+  // et RIEN ne le regenerait avant ce correctif (le reglage restait affiche
+  // "actif" indefiniment). shouldRefreshPushToken() doit redeclencher un
+  // rafraichissement silencieux a CHAQUE demarrage tant que la permission est
+  // deja accordee (jamais un nouveau prompt natif, deja gere par enablePushNotifications()).
+  __assertEq(shouldRefreshPushToken(true, 'granted'), true, 'permission deja accordee -> rafraichir silencieusement le token a chaque demarrage');
+  __assertEq(shouldRefreshPushToken(true, 'default'), false, 'aucune decision prise -> pas de rafraichissement (c est shouldAutoPromptPushNotifications qui gere ce cas)');
+  __assertEq(shouldRefreshPushToken(true, 'denied'), false, 'refusee -> rien a rafraichir');
+  __assertEq(shouldRefreshPushToken(false, 'granted'), false, 'navigateur non supporte -> jamais de rafraichissement');
+  console.log('OK: shouldRefreshPushToken() (rafraichit silencieusement le token a chaque demarrage si deja accorde - corrige un token invalide sans que la permission ne change)');
+
   currentUser = { displayName: 'Test', email: 't@test.com', photoURL: '' };
   settingsScreenOpen = false;
   const fullAccountHtml = renderAccountTabScreen();

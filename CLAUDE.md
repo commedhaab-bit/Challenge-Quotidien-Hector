@@ -2481,3 +2481,40 @@ CACHE_NAME -> v66.
    constructeur produit bien un `{title, body}` non-vide - ce test aurait
    immediatement attrape ce bug precis avant deploiement.
 
+## Notifications push — token FCM invalide sans que la permission ne change
+
+**Diagnostic en 2 temps avec l'utilisateur** : le correctif du type `kudo`
+manquant n'a pas suffi (toujours aucun push recu) - ajout de logs explicites
+dans `sendPushToUser()` (`console.log`/`console.error` a chaque etape, un 200
+HTTP sur la fonction ne prouvait PAS qu'un push avait ete envoye) pour
+diagnostiquer via les Journaux Cloud Functions. Log obtenu :
+`sendPushToUser: aucun token pushTokens pour uid=... - rien a envoyer`.
+
+**Cause racine reconstituee** : (1) token FCM obtenu et sauvegarde a
+l'activation du reglage, push confirme fonctionnel ("defi de groupe reussi")
+; (2) l'utilisateur utilise "Forcer la mise a jour de l'appli" (Depannage)
+pour corriger le bug du service worker plus haut - desinscrit l'ancien
+service worker, ce qui invalide le token FCM associe cote Google (independant
+de `Notification.permission`, qui reste `'granted'`) ; (3) `sendPushToUser()`
+detecte ce token invalide lors d'un envoi suivant et supprime le doc
+`pushTokens` correspondant (comportement voulu, evite l'accumulation de
+tokens morts) ; (4) **rien ne le regenerait automatiquement** - le reglage
+Parametres continuait d'afficher "actif" (calcule uniquement depuis
+`localStorage`/`Notification.permission`, jamais depuis la presence reelle
+du token cote serveur), laissant croire que tout fonctionnait alors que plus
+aucun push n'arrivait, silencieusement.
+
+**Correctif** : `shouldRefreshPushToken(supported, permission)` (pure, testee)
+declenche desormais un rafraichissement silencieux du token (reappel de
+`enablePushNotifications()`, qui gere deja correctement le cas "permission
+deja accordee" - `Notification.requestPermission()` resout alors
+immediatement sans rien afficher) a **chaque demarrage de l'app** tant que la
+permission est deja accordee - pas seulement lors du tout premier octroi
+(`shouldAutoPromptPushNotifications()`, cas `'default'`, inchangee). Les 2
+fonctions sont combinees dans `maybePromptPushNotificationsOnStartup()`.
+Cout accepte : 1 ecriture Firestore (`pushTokens/{token}.set()`) par demarrage
+d'app pour un utilisateur ayant active le push - volontairement PAS
+optimise/court-circuite meme si le token local n'a pas change, car c'est
+justement ce cas precis (token local inchange mais doc serveur supprime) qui
+causait le bug.
+

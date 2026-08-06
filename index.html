@@ -4052,10 +4052,28 @@ function shouldAutoPromptPushNotifications(supported, permission) {
   return supported === true && permission === 'default';
 }
 
+// Pure (aucun acces navigateur) : faut-il RAFRAICHIR silencieusement le token
+// (sans re-demander la permission, deja accordee) a CE demarrage ? Bug reel
+// signale par l'utilisateur : un token FCM peut devenir invalide sans que
+// Notification.permission ne change (ex: "Forcer la mise a jour de l'appli"
+// dans Depannage desinscrit le service worker, ce qui invalide le token
+// associe cote Google) - la Cloud Function le detecte alors et supprime le
+// doc pushTokens correspondant (voir sendPushToUser()), mais RIEN ne le
+// regenerait automatiquement : le reglage Parametres continuait d'afficher
+// "actif" (il ne regarde que localStorage/permission, jamais la presence
+// reelle cote serveur), et plus aucun push n'arrivait, silencieusement.
+function shouldRefreshPushToken(supported, permission) {
+  return supported === true && permission === 'granted';
+}
+
 async function maybePromptPushNotificationsOnStartup() {
   let permission = null;
   try { permission = typeof Notification !== 'undefined' ? Notification.permission : null; } catch (e) { permission = null; }
-  if (!shouldAutoPromptPushNotifications(pushNotificationsSupported, permission)) return;
+  if (!shouldAutoPromptPushNotifications(pushNotificationsSupported, permission) && !shouldRefreshPushToken(pushNotificationsSupported, permission)) return;
+  // Dans les 2 cas, enablePushNotifications() reste la bonne fonction : elle
+  // gere deja correctement le cas "permission deja accordee" (Notification.requestPermission()
+  // resout alors immediatement sans rien afficher) en (re)obtenant/(re)sauvegardant
+  // le token cote serveur - exactement le comportement de reparation necessaire ici.
   await enablePushNotifications();
 }
 
