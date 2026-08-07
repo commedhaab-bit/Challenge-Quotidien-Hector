@@ -3484,3 +3484,67 @@ CACHE_NAME -> v82. **Changement touchant `functions/**` (2 fonctions) -
 deploiement `deploy-functions.yml` confirme explicitement avec l'utilisateur
 avant tout push**, conformement a la politique d'autonomie du projet (voir
 memoire dediee) qui exclut ce dossier de la zone de confiance automatique.
+
+
+## Trophee "cumul a vie" annonce immediatement (decouple de la completion du jour)
+
+**Signalement initial de l'utilisateur** ("mes repetitions loguees hors
+validation du defi du jour sont perdues") **s'est revele inexact a la
+verification du code** - `entry.sets` (repetitions brutes), `stats[id].lifetimeTotal`/
+`bestDay` et `registerGroupChallengeContributionsIfNeeded()` (credit des defis
+de groupe) etaient deja mis a jour de facon INCONDITIONNELLE dans
+`addSetInner()`, avant tout test de `willComplete` - rien n'etait reellement
+perdu. Le VRAI et seul ecart trouve : `checkNewBadges()` (detection/deblocage
+de trophee) n'etait appelee que dans les blocs `if (willComplete)` (completion
+normale + Hardcore) - donc un trophee base sur un CUMUL A VIE deja franchi
+(`pushups_100/500/1000/5000/10000`, `core_15min/1h/6h/24h` dans `BADGE_DEFS`,
+tous sur `sumLifetime(...)`) restait "gele", non annonce, jusqu'a la prochaine
+completion d'un objectif personnel du jour QUELCONQUE - parfois des jours plus
+tard, ou jamais si l'utilisateur ne fait que contribuer a des defis de groupe
+sans jamais completer son propre objectif quotidien.
+
+**Analyse presentee a l'utilisateur avant tout code** (demande explicite,
+"NE CODE RIEN POUR L'INSTANT... decris-moi d'abord precisement la logique"),
+avec 2 questions de jugement : (a) annoncer le trophee des le franchissement
+du seuil meme si la serie qui le declenche depasse largement ce seuil (ex: +30
+pompes alors qu'il n'en manquait que 20), ou attendre une frontiere plus
+"propre" ; (b) pour un exercice chronometre, s'assurer que la verification
+n'interrompt jamais le chrono en cours. Reponse utilisateur : (a) immediat, la
+popup doit s'afficher des le tap qui fait franchir le seuil, meme en cas de
+depassement ; (b) confirme que l'architecture existante le garantit deja pour
+les chronos, a verifier plutot qu'a construire.
+
+**Verifie par lecture directe du code (pas suppose)** : `tickTimer()` (boucle
+`setInterval` 250ms) n'appelle JAMAIS `addSet()`/`addSetInner()` directement -
+il appelle uniquement `stopTimer(elapsed)` si la cible est atteinte
+automatiquement. `stopTimer()` (appelee soit par ce cas auto, soit par le clic
+manuel pause dans `toggleTimer()`) appelle `addSet()` **exactement une fois**
+par invocation. `addSetInner()` est donc deja le seul et unique point de
+passage, appele une fois par tap (reps) ou une fois par arret de chrono
+(timer) - jamais en plein tick. Placer la verification de trophee a
+l'interieur de cette fonction satisfait donc les deux exigences (immediat
+pour les reps, jamais d'interruption du chrono) sans aucun code specifique par
+type d'exercice.
+
+**Correctif** : nouvel appel INCONDITIONNEL a `checkNewBadges()` dans
+`addSetInner()`, juste apres la mise a jour de `stats[id].lifetimeTotal` (donc
+avant le test `willComplete`), avec son propre octroi d'XP
+(`awardXp(trophyXp)`) et sa propre mise en file de popups
+(`enqueueTrophyPopups()`/`enqueueLevelPopups()`) - independant des 2 appels
+`checkNewBadges()` deja existants dans les blocs `willComplete`/Hardcore, qui
+restent seuls responsables des trophees bases sur `badges.totalCompletions`/
+`computeStreak()`/`badges.totalHardcore` (legitimement lies a la completion du
+defi du jour, pas un bug). `checkNewBadges()` etant deja idempotente (ignore
+tout badge present dans `badges.unlocked`), aucun risque de popup ou d'XP en
+double entre cet appel precoce et les 2 appels existants plus bas dans la
+meme fonction.
+
+Nouveau test (`tests/app.test.js`, juste apres le test de la popup epique de
+trophee) : `stats[pompes.id].lifetimeTotal = 75`, `addSet(30)` (serie tres en
+dessous de l'objectif personnel du jour) -> verifie que `entry.done` reste
+`false` (pas de completion du jour) alors que le trophee "100 pompes
+cumulees" se debloque et s'affiche immediatement (`badges.unlocked` +
+`currentPopupHtml`).
+
+CACHE_NAME -> v83. Aucun changement de regles Firestore/Cloud Functions -
+modification 100% cote client (`index.html`), aucune touche a `functions/**`.

@@ -2133,6 +2133,31 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = null;
   console.log('OK: popup epique de trophee separee de la popup de completion du defi');
 
+  // --- 50bis. Bug reel signale : un trophee base sur un CUMUL A VIE (ex: "100
+  // pompes cumulees") restait "gele" tant que l objectif personnel du JOUR
+  // n etait pas atteint - meme si des repetitions loguees pour un defi de
+  // groupe faisaient deja franchir le seuil. checkNewBadges() n etait appelee
+  // que dans le bloc de completion (willComplete) ; desormais aussi juste apres
+  // la mise a jour de lifetimeTotal, independamment de willComplete. ---
+  popupQueue = []; popupOpen = false;
+  badges = { totalCompletions: 0, unlocked: [], totalHardcore: 0 };
+  await saveBadges();
+  xpTotal = 0; await saveXp();
+  state = emptyDayState();
+  activeToday = new Set([pompes.id]);
+  await pickChallenge(pompes.id);
+  stats[pompes.id] = { lifetimeTotal: 75, bestDay: { total: 0, date: null }, recordStreak: 0 }; // a 25 pompes du trophee "100 pompes cumulees"
+  await addSet(30); // serie partielle pour AUJOURD HUI (tres en dessous de l objectif du jour), mais 75+30=105 franchit le cumul de 100
+  await flushWorkoutWrites();
+  __assertOk(!getEntry(pompes.id).done, 'cette serie partielle ne doit PAS completer l objectif personnel du jour (30 tres en dessous de l objectif)');
+  __assertEq(stats[pompes.id].lifetimeTotal, 105, 'le cumul a vie doit refleter la serie meme sans completion du jour (deja le cas avant ce correctif)');
+  __assertOk(popupOpen, 'le trophee "cumul a vie" doit desormais s afficher IMMEDIATEMENT, sans attendre une completion du defi du jour');
+  __assertOk(currentPopupHtml.includes('Trophée débloqué') && currentPopupHtml.includes(badgeLabel(BADGE_DEFS.find((b) => b.id === 'pushups_100'))), 'la popup doit bien annoncer le trophee "100 pompes cumulees"');
+  __assertOk(badges.unlocked.includes('pushups_100'), 'le trophee doit etre marque debloque immediatement (persiste), pas seulement affiche');
+  document.getElementById('appPopupCloseBtn').onclick();
+  currentChallengeId = null;
+  console.log('OK: un trophee "cumul a vie" se debloque des le seuil franchi, meme sans completer l objectif personnel du jour (bug reel corrige)');
+
   // --- 51. Bouton de l etat vide "Aujourd hui" renomme en "Choisir un defi" ---
   const emptyStateHtml = renderTodayEmptyState();
   __assertOk(emptyStateHtml.includes('Choisir un défi'), 'le bouton doit maintenant s appeler "Choisir un défi"');
@@ -2717,7 +2742,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v82'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v83'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');

@@ -5390,6 +5390,34 @@ async function addSetInner(amount) {
   }
   await saveStats();
 
+  // Retour utilisateur : les trophees bases sur un CUMUL A VIE (ex: "100 pompes
+  // cumulees", sumLifetime(...) dans BADGE_DEFS) doivent etre detectes et
+  // annonces DES QUE lifetimeTotal franchit le seuil - pas seulement quand
+  // l'objectif personnel du jour est atteint (willComplete plus bas). Avant ce
+  // correctif, des repetitions loguees pour un defi de groupe SANS jamais
+  // completer le "Defi du Jour" personnel ne declenchaient jamais checkNewBadges()
+  // - le nombre etait deja correct (lifetimeTotal, mis a jour juste au-dessus,
+  // inconditionnellement) mais le trophee restait "gele" jusqu'a la prochaine
+  // completion, n'importe laquelle, parfois des jours plus tard. Verifie ICI,
+  // juste apres la mise a jour de lifetimeTotal - independant de willComplete.
+  // Pour un exercice chronometre, addSet()/addSetInner() n'est appele qu'UNE
+  // FOIS a l'arret du chrono (stopTimer(), voir tickTimer() plus bas dans le
+  // fichier) - jamais a chaque tick - donc cette verification ne peut jamais
+  // interrompre un chrono en cours, seulement reagir a une serie reellement
+  // loguee. checkNewBadges() ignore deja tout badge present dans
+  // badges.unlocked : aucun risque de double-declenchement avec les 2 autres
+  // appels plus bas (completion normale / Hardcore), qui restent responsables
+  // des badges bases sur badges.totalCompletions/computeStreak() (mis a jour
+  // plus tard, dans leurs blocs respectifs, donc pas encore vrais ici).
+  const earlyFreshBadges = checkNewBadges();
+  if (earlyFreshBadges.length > 0) {
+    await saveBadges();
+    const earlyTrophyXp = earlyFreshBadges.reduce((sum, b) => sum + (b.xp || 0), 0);
+    const { levelBefore: earlyLevelBefore, levelAfter: earlyLevelAfter } = await awardXp(earlyTrophyXp);
+    enqueueTrophyPopups(earlyFreshBadges);
+    enqueueLevelPopups(earlyLevelBefore, earlyLevelAfter);
+  }
+
   if (willComplete) {
     entry.done = true;
     weekData[todayKey] = true;
