@@ -595,6 +595,17 @@ async function deleteMyAccount() {
       await friendshipCleanupBatch.commit();
     }
 
+    // Bug reel signale : le pseudo (usernames/{pseudo}, reservation create-only -
+    // voir firestore.rules) n'etait jamais libere - en recreant un profil juste
+    // apres une suppression, l'app refusait le pseudo comme "deja pris" (par
+    // l'ancien compte, pourtant supprime). Meme regle de suppression que le
+    // renommage (finishUsernameSetup()) : chacun ne peut supprimer que SON
+    // PROPRE document (uid == request.auth.uid).
+    if (username) {
+      try { await usernamesCollRef().doc(username).delete(); }
+      catch (e) { reportSaveError('release username on account deletion failed', e); }
+    }
+
     // Supprime tous les documents de données de l'utilisateur (kv store)
     const snap = await db.collection('users').doc(uid).collection('kv').get();
     const batch = db.batch();
@@ -654,6 +665,16 @@ auth.onAuthStateChanged(user => {
     currentChallengeId = null;
     editingChallengeId = null;
     libraryOpenCats = new Set();
+    // Bug reel signale : `username` n'etait JAMAIS reinitialise ici - dans le
+    // meme onglet/session (deconnexion puis reconnexion immediate sur un
+    // AUTRE compte, ex: juste apres deleteMyAccount()), la valeur de l'ancien
+    // compte restait en memoire. Pour un compte tout neuf, loadAppData() ne la
+    // touche meme pas (son bloc `if (doc && doc.exists)` est saute quand le
+    // document consolide n'existe pas encore) - finishProfileOnboarding()
+    // voyait alors `username` toujours "vrai" et sautait silencieusement
+    // l'etape de choix du pseudo, qui ne se declenchait qu'au PROCHAIN
+    // demarrage complet de l'app (ou `let username = null;` repart bien de zero).
+    username = null;
     usernameSetupMode = null;
     usernameDraft = '';
     usernameAvailability = null;
@@ -4219,14 +4240,6 @@ async function toggleSoundEffects() {
 }
 
 // ==== NOTIFICATIONS PUSH (Firebase Cloud Messaging, Phase B) ====
-// Le token FCM de CET appareil est mis en cache dans localStorage (jamais dans
-// le document consolide appData, contrairement a voiceCoachEnabled ci-dessus) :
-// contrairement aux autres reglages, l'activation du push est INTRINSEQUEMENT
-// par appareil (chaque appareil a son propre token, voir users/{uid}/pushTokens/
-// {token}) - synchroniser un simple booleen entre appareils donnerait une fausse
-// impression qu'activer sur son telephone active aussi sur son ordinateur.
-const FCM_TOKEN_STORAGE_KEY = 'fcmPushToken';
-
 // null tant que pas encore determine (verifie une fois, en tache de fond, voir
 // continueStartApp()) - le reglage reste discret/masque en attendant plutot que
 // d'afficher un toggle qui pourrait ne rien faire. firebase.messaging.isSupported()
@@ -4284,25 +4297,16 @@ async function maybePromptPushNotificationsOnStartup() {
   await enablePushNotifications();
 }
 
-// Calcule a la demande (jamais mis en cache dans une variable globale) : reflete
-// toujours l'etat REEL du navigateur (permission) + de cet appareil precis
-// (token deja obtenu), jamais un etat suppose apres un rechargement de page.
-function isPushNotificationsEnabledOnThisDevice() {
-  try {
-    return typeof Notification !== 'undefined' && Notification.permission === 'granted' && !!localStorage.getItem(FCM_TOKEN_STORAGE_KEY);
-  } catch (e) {
-    return false;
-  }
-}
-
-// Appelee soit automatiquement au demarrage (maybePromptPushNotificationsOnStartup(),
-// tant qu'aucune decision n'a encore ete prise), soit sur un tap explicite du
-// reglage Parametres - dans les 2 cas, Notification.requestPermission() ne
-// declenche reellement le prompt natif du navigateur que si la permission est
-// encore 'default' (sinon elle resout immediatement sans rien afficher). Si
-// l'utilisateur refuse, on ne force rien : le reglage reste simplement
-// "desactive" (Notification.permission === 'denied'), avec un texte
-// explicatif cote rendu plutot qu'une erreur.
+// Retour utilisateur : le switch manuel "Notifications push" de Parametres a
+// ete retire (doublon confus avec la popup systeme native - la seule source de
+// verite desormais est Notification.permission). Appelee UNIQUEMENT depuis
+// maybePromptPushNotificationsOnStartup() (au demarrage, tant qu'aucune
+// decision n'a encore ete prise, ou pour rafraichir silencieusement un token
+// perime). Notification.requestPermission() ne declenche reellement le prompt
+// natif du navigateur que si la permission est encore 'default' (sinon elle
+// resout immediatement sans rien afficher). Si l'utilisateur refuse, on ne
+// force rien - aucun texte/etat a afficher cote reglages, il n'y a plus de
+// reglage a afficher.
 async function enablePushNotifications() {
   if (!pushNotificationsSupported) return;
   try {
@@ -4320,38 +4324,12 @@ async function enablePushNotifications() {
     await db.collection('users').doc(currentUser.uid).collection('pushTokens').doc(token).set({
       token, createdAt: Date.now(), userAgent: navigator.userAgent,
     });
-    try { localStorage.setItem(FCM_TOKEN_STORAGE_KEY, token); } catch (e) { /* navigation privee : tant pis, le reglage semblera "off" au prochain chargement */ }
     if (navigator.vibrate) navigator.vibrate(10);
     render();
   } catch (e) {
     reportSaveError('enable push notifications failed', e);
     render();
   }
-}
-
-// Supprime le doc token de CET appareil (jamais celui des autres appareils du
-// meme compte, chacun garde le sien) + revoque le token cote FCM.
-async function disablePushNotifications() {
-  let token = null;
-  try { token = localStorage.getItem(FCM_TOKEN_STORAGE_KEY); } catch (e) { /* tant pis */ }
-  try {
-    if (token && currentUser) {
-      await db.collection('users').doc(currentUser.uid).collection('pushTokens').doc(token).delete();
-    }
-    if (pushNotificationsSupported) {
-      await firebase.messaging().deleteToken();
-    }
-  } catch (e) {
-    reportSaveError('disable push notifications failed', e);
-  } finally {
-    try { localStorage.removeItem(FCM_TOKEN_STORAGE_KEY); } catch (e) { /* tant pis */ }
-    render();
-  }
-}
-
-function togglePushNotifications() {
-  if (isPushNotificationsEnabledOnThisDevice()) disablePushNotifications();
-  else enablePushNotifications();
 }
 
 // cancel() avant chaque prise de parole pour éviter les retards/empilements audio ;
@@ -6806,32 +6784,6 @@ function closeFriendProfile() {
   friendProfileOpenUid = null;
 }
 
-// Ligne "Notifications push" de Parametres : masquee tant que le support n'est
-// pas encore determine (evite un toggle qui pourrait ne rien faire), texte
-// explicatif au lieu d'un toggle si non supporte ou bloque par le navigateur
-// (jamais une erreur silencieuse).
-function renderPushNotificationsSettingsRow() {
-  if (pushNotificationsSupported === null) return '';
-  if (!pushNotificationsSupported) {
-    return `
-      <div class="settings-row">
-        <div class="settings-row-label">🔔 ${t('settings.pushNotifications.label')}
-          <div class="settings-row-desc">${t('settings.pushNotifications.unsupportedDesc')}</div>
-        </div>
-      </div>
-    `;
-  }
-  const denied = typeof Notification !== 'undefined' && Notification.permission === 'denied';
-  return `
-    <div class="settings-row">
-      <div class="settings-row-label">🔔 ${t('settings.pushNotifications.label')}
-        <div class="settings-row-desc">${denied ? t('settings.pushNotifications.deniedDesc') : t('settings.pushNotifications.desc')}</div>
-      </div>
-      ${denied ? '' : `<button class="switch${isPushNotificationsEnabledOnThisDevice() ? ' on' : ''}" onclick="togglePushNotifications()"><span class="switch-knob"></span></button>`}
-    </div>
-  `;
-}
-
 function renderSettingsSection() {
   return `
     <div class="section-label">${t('settings.screenTitle')}</div>
@@ -6860,7 +6812,6 @@ function renderSettingsSection() {
         </div>
         <button class="switch${leaderboardOptOut ? '' : ' on'}" onclick="toggleLeaderboardOptOut()"><span class="switch-knob"></span></button>
       </div>
-      ${renderPushNotificationsSettingsRow()}
       <div class="settings-row">
         <div class="settings-row-label">🌐 ${t('settings.language.label')}
           <div class="settings-row-desc">${t('settings.language.desc')}</div>

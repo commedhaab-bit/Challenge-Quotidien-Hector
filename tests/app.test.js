@@ -1644,25 +1644,24 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!voiceRowHtml.includes('switch on'), 'le switch ne doit pas apparaitre actif quand voiceCoachEnabled=false');
   voiceCoachEnabled = true;
 
-  // Reglage "Notifications push" (Phase B) : masque tant que le support n est
-  // pas determine (evite un toggle potentiellement casse), texte explicatif
-  // (pas de toggle) si non supporte, toggle normal sinon.
+  // Retour utilisateur : le switch manuel "Notifications push" de Parametres a
+  // ete retire (doublon confus avec la popup systeme native de permission -
+  // seul Notification.permission fait desormais foi). Verifie qu il n apparait
+  // plus DANS AUCUN cas (support inconnu/non supporte/supporte), et que les
+  // fonctions dediees a ce switch (desormais sans plus aucun appelant) ont bien
+  // disparu du code plutot que d etre laissees mortes.
   const pushSupportedBefore = pushNotificationsSupported;
-  pushNotificationsSupported = null;
-  __assertOk(!renderSettingsSection().includes(t('settings.pushNotifications.label')), 'le reglage push ne doit rien afficher tant que le support n est pas determine');
-  pushNotificationsSupported = false;
-  const unsupportedHtml = renderSettingsSection();
-  __assertOk(unsupportedHtml.includes(t('settings.pushNotifications.label')) && unsupportedHtml.includes(t('settings.pushNotifications.unsupportedDesc')), 'navigateur non supporte -> texte explicatif, sans toggle');
-  __assertOk(!unsupportedHtml.includes('onclick="togglePushNotifications()"'), 'aucun toggle ne doit etre propose si le navigateur ne supporte pas le Web Push');
-  pushNotificationsSupported = true;
-  const supportedHtml = renderSettingsSection();
-  __assertOk(supportedHtml.includes(t('settings.pushNotifications.label')) && supportedHtml.includes('onclick="togglePushNotifications()"'), 'navigateur supporte -> toggle normal propose');
+  for (const supportState of [null, false, true]) {
+    pushNotificationsSupported = supportState;
+    const html = renderSettingsSection();
+    __assertOk(!html.includes('Notifications push') && !html.includes('Push notifications') && !html.includes('Notificaciones push'), 'le reglage push (toutes langues) ne doit plus jamais apparaitre dans Parametres, quel que soit le support (' + supportState + ')');
+    __assertOk(!html.includes('togglePushNotifications'), 'aucun toggle push ne doit plus etre propose');
+  }
   pushNotificationsSupported = pushSupportedBefore;
-  // Notification n est pas defini dans ce bac a sable de test (aucun vrai
-  // navigateur) - isPushNotificationsEnabledOnThisDevice() doit rester
-  // defensif (jamais de throw), pas juste "marcher par chance" en environnement reel.
-  __assertEq(isPushNotificationsEnabledOnThisDevice(), false, 'sans Notification/permission connue, le reglage doit se comporter comme desactive, jamais planter');
-  console.log('OK: reglage "Notifications push" (masque tant que non determine, texte explicatif si non supporte, toggle normal sinon)');
+  __assertOk(typeof togglePushNotifications === 'undefined', 'togglePushNotifications() doit avoir ete entierement retiree (plus aucun appelant)');
+  __assertOk(typeof disablePushNotifications === 'undefined', 'disablePushNotifications() doit avoir ete entierement retiree (plus aucun appelant)');
+  __assertOk(typeof isPushNotificationsEnabledOnThisDevice === 'undefined', 'isPushNotificationsEnabledOnThisDevice() doit avoir ete entierement retiree (plus aucun appelant)');
+  console.log('OK: reglage "Notifications push" retire de Parametres (doublon avec la permission systeme native), fonctions mortes nettoyees');
 
   // Retour utilisateur explicite : redemander la permission a CHAQUE demarrage
   // tant que l utilisateur n a pas encore tranche (comme la plupart des grandes
@@ -2718,7 +2717,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v80'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v81'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -3880,6 +3879,13 @@ const cssText = __rawHtml + __cssSource;
   // membre/ami chez les autres utilisateurs. Couverture desormais possible grace aux
   // extensions du mock Firestore ci-dessus (db.batch(), where(...,'in',...)).
   currentUser = { uid: 'm-deleteme-uid', displayName: 'A Supprimer', email: 'del@test.com', photoURL: '' };
+  // Bug reel signale (2e ronde) : le pseudo (reservation create-only
+  // usernames/{pseudo}) n etait jamais libere - en recreant un profil juste
+  // apres une suppression, l app refusait le pseudo comme "deja pris" par
+  // l ancien compte, pourtant supprime.
+  const usernameBeforeDelete = username;
+  username = 'monpseudo';
+  await db.collection('usernames').doc('monpseudo').set({ uid: 'm-deleteme-uid' });
   await db.collection('users').doc('m-deleteme-uid').collection('myGroups').doc('groupA').set({ groupId: 'groupA', name: 'Groupe A' });
   await db.collection('users').doc('m-deleteme-uid').collection('myGroups').doc('groupB').set({ groupId: 'groupB', name: 'Groupe B' });
   await db.collection('groups').doc('groupA').collection('members').doc('m-deleteme-uid').set({ uid: 'm-deleteme-uid', displayName: 'A Supprimer' });
@@ -3900,7 +3906,28 @@ const cssText = __rawHtml + __cssSource;
   const friendship1After = await db.collection('friendships').doc('a-friend1-uid_m-deleteme-uid').get();
   const friendship2After = await db.collection('friendships').doc('m-deleteme-uid_z-friend2-uid').get();
   __assertOk(!friendship1After.exists && !friendship2After.exists, 'les 2 relations d amitie (peu importe le sens, uidA ou uidB) doivent etre supprimees - un seul document partage par paire, donc retire aussi de la liste de l autre personne');
-  console.log('OK: deleteMyAccount() nettoie desormais le roster des groupes et les relations d amitie (bug RGPD reel corrige)');
+  const usernameDocAfterDelete = await db.collection('usernames').doc('monpseudo').get();
+  __assertOk(!usernameDocAfterDelete.exists, 'le pseudo doit etre libere a la suppression du compte, sinon personne (meme le meme utilisateur) ne peut plus jamais le reprendre');
+  username = usernameBeforeDelete;
+  console.log('OK: deleteMyAccount() nettoie desormais le roster des groupes, les relations d amitie ET le pseudo reserve (bugs RGPD reels corriges)');
+
+  // Bug reel signale (cause racine du pseudo saute silencieusement pendant
+  // l onboarding) : la variable username n etait jamais reinitialisee a la
+  // deconnexion - dans la meme session (deconnexion puis reconnexion immediate
+  // sur un AUTRE compte, ex: juste apres deleteMyAccount()), la valeur de
+  // l ancien compte restait en memoire, et pour un compte tout neuf
+  // loadAppData() ne la touche meme pas (son bloc conditionnel "doc existe" est
+  // saute quand le document consolide n existe pas encore) -
+  // finishProfileOnboarding() voyait alors username toujours "vrai" et sautait
+  // silencieusement l etape de choix du pseudo. Le handler onAuthStateChanged()
+  // n est jamais reellement declenchable depuis ce harnais de test (mock
+  // auth() : pilote manuellement depuis le test, jamais un vrai callback) -
+  // verification a la source, meme principe que les autres garde-fous
+  // document/window.addEventListener deja verifies ainsi ailleurs dans ce fichier.
+  const usernameResetIdx = __rawHtml.indexOf('    username = null;');
+  const usernameSetupModeResetIdx = __rawHtml.indexOf('usernameSetupMode = null;');
+  __assertOk(usernameResetIdx !== -1, 'le handler de deconnexion doit reinitialiser username a null (indentation de reaffectation, pas la declaration let en tete de fichier)');
+  __assertOk(usernameResetIdx !== -1 && usernameSetupModeResetIdx !== -1 && usernameResetIdx < usernameSetupModeResetIdx, 'la reinitialisation de username doit se trouver dans le meme bloc que celle de usernameSetupMode (deconnexion), pas ailleurs par coincidence');
 
   // --- 141. Pilier 1 : Hero Banner communautaire remplace l ecran vide par defaut
   // (accompagnement sans effort de choix + preuve sociale/FOMO) ---

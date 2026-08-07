@@ -34,12 +34,6 @@ const LOCALE_EN = {
       label: 'Community leaderboard',
       desc: 'Shows your name, streak and XP on the leaderboard shared with other users.',
     },
-    pushNotifications: {
-      label: 'Push notifications',
-      desc: 'Get alerted even when the app is closed (group challenges, friends, reminders).',
-      deniedDesc: 'Blocked in your browser settings — re-enable them there to receive them again.',
-      unsupportedDesc: 'Not available in this browser — on iPhone, install the app to your home screen (iOS 16.4+) to get access.',
-    },
     language: {
       label: 'Language',
       desc: 'Change the app language on this device.',

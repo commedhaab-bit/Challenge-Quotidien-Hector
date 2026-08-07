@@ -35,12 +35,6 @@ const LOCALE_ES = {
       label: 'Clasificación comunitaria',
       desc: 'Muestra tu nombre, tu racha y tu XP en la clasificación compartida con otros usuarios.',
     },
-    pushNotifications: {
-      label: 'Notificaciones push',
-      desc: 'Recibe una alerta incluso cuando la app está cerrada (retos de grupo, amigos, recordatorios).',
-      deniedDesc: 'Bloqueadas en los ajustes de tu navegador — reactívalas desde ahí para volver a recibirlas.',
-      unsupportedDesc: 'No disponible en este navegador — en iPhone, instala la app en la pantalla de inicio (iOS 16.4+) para acceder.',
-    },
     language: {
       label: 'Idioma',
       desc: 'Cambia el idioma de la aplicación en este dispositivo.',

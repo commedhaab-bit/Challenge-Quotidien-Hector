@@ -3368,3 +3368,64 @@ disponible hors ligne des le tout premier lancement, pas seulement apres une
 
 CACHE_NAME -> v80. Aucun changement de regles Firestore/Cloud Functions.
 
+## Pseudo non libere a la suppression + onboarding qui saute le pseudo + retrait du switch push doublon
+
+Trois corrections liees, signalees ensemble par l'utilisateur apres un vrai
+test "supprimer mon compte puis le recreer immediatement".
+
+**1. Pseudo non libere a la suppression du compte.** `deleteMyAccount()`
+supprimait deja le kv store, `leaderboard/{uid}`, le roster de groupes et les
+amities (voir la section precedente) - mais jamais `usernames/{pseudo}`
+(reservation create-only, un seul document par pseudo, voir
+`firestore.rules`). Un pseudo repris juste apres une suppression restait donc
+"deja pris" par le compte pourtant supprime. Corrige en supprimant ce document
+au meme endroit, avec la meme regle deja utilisee pour le renommage
+(`finishUsernameSetup()`) : chacun ne peut supprimer que SON PROPRE document
+(`uid == request.auth.uid`).
+
+**2. Onboarding qui saute silencieusement le choix du pseudo.** Bug plus
+subtil, cause racine reelle trouvee en lisant le code plutot que supposee :
+la variable `username` n'etait **jamais reinitialisee a la deconnexion**
+(`auth.onAuthStateChanged`, branche `user == null` - ce bloc reinitialise deja
+`usernameSetupMode`/`usernameDraft`/etc. mais oubliait `username` lui-meme).
+Dans la MEME session/onglet (deconnexion puis reconnexion immediate sur un
+AUTRE compte - exactement le scenario "supprimer puis recreer" sans recharger
+la page), la valeur du pseudo de l'ancien compte restait donc en memoire. Pour
+un compte tout neuf, `loadAppData()` ne corrige pas non plus le tir : son bloc
+`if (doc && doc.exists) { ... username = d.username ?? null; ... }` est
+**entierement saute** quand le document consolide n'existe pas encore (compte
+jamais vu) - rien d'autre ne remet `username` a `null` dans ce cas.
+Consequence : `finishProfileOnboarding()` (juste apres l'ecran "niveau") teste
+`if (!username)` pour forcer l'ecran de choix du pseudo - avec la valeur
+perimee toujours "vraie", ce test echouait silencieusement et l'onboarding
+enchainait directement sur l'ecran de confirmation, sans jamais demander de
+pseudo. Seul un **redemarrage complet** de l'app repartait de zero
+(`let username = null;` au chargement du module) et faisait alors
+correctement apparaitre le verrou `usernameSetupMode = 'gate'` de `startApp()`
+- exactement le symptome signale ("n'apparait qu'au relancement"). Corrige en
+ajoutant `username = null;` au meme endroit que les autres reinitialisations
+de deconnexion, la ou ca aurait toujours du etre.
+
+**3. Retrait du switch "Notifications push" de Parametres.** Demande
+explicite : ce switch manuel faisait doublon avec la popup systeme native de
+permission et creait de la confusion (2 sources de verite potentiellement
+incoherentes). Retire entierement - `renderPushNotificationsSettingsRow()`,
+`togglePushNotifications()`, `disablePushNotifications()`,
+`isPushNotificationsEnabledOnThisDevice()` et la constante
+`FCM_TOKEN_STORAGE_KEY` (plus aucun lecteur une fois ces fonctions retirees)
+supprimes entierement plutot que laisses morts, ainsi que les 4 cles de
+traduction `settings.pushNotifications.*` (fr/en/es). **Ce qui reste** :
+`enablePushNotifications()` (toujours appelee, mais UNIQUEMENT depuis
+`maybePromptPushNotificationsOnStartup()`) et toute la logique
+`shouldAutoPromptPushNotifications()`/`shouldRefreshPushToken()` qui decide,
+au demarrage, de (re)demander la permission native ou de rafraichir
+silencieusement un token perime - c'est desormais la SEULE source de verite,
+`Notification.permission`, jamais un etat local en plus.
+
+CACHE_NAME -> v81. Aucun changement de regles Firestore/Cloud Functions. La
+correction #2 (reinitialisation a la deconnexion) n'est testable qu'a la
+source (verification de presence/ordre dans le texte du fichier) : le mock
+`auth()` de test declare explicitement ne jamais declencher son callback
+`onAuthStateChanged` ("pilote manuellement depuis le test") - meme limite deja
+rencontree pour les autres ecouteurs `document`/`window.addEventListener`.
+
