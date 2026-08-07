@@ -187,6 +187,16 @@ const LOCALE_FR = {
         'Je crois en toi, tu le sais ça ?',
       ],
     },
+    // Cosmetiques de Kilo (chantier gamification Phase 3) - id = cle dans
+    // ACCESSORY_DEFS/KILO_ACCESSORY_SVG, texte canonique francais repris via
+    // accessoryLabel() (meme convention que badgeLabel()).
+    accessories: {
+      medal: 'Médaille de série',
+      belt: 'Ceinture de champion',
+      cape: 'Cape de super-héros',
+      unlockedTitle: 'Nouvel accessoire débloqué !',
+      unlockedSubtitle: 'Kilo porte fièrement son nouvel accessoire.',
+    },
   },
   card: {
     hardcoreDone: '🔥 Hardcore complété',

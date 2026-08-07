@@ -493,6 +493,7 @@ async function loadAppData() {
     if (badges.totalHardcore === undefined) badges.totalHardcore = 0; // migration (comptes créés avant son introduction)
     dailyActivity = d.dailyActivity ?? {};
     weights = d.weights ?? {};
+    unlockedAccessories = d.unlockedAccessories ?? [];
     rebuildChallenges();
     backfillDefaultWeights();
     return;
@@ -521,6 +522,7 @@ async function loadAppData() {
       badges,
       dailyActivity,
       weights,
+      unlockedAccessories,
     });
   }
 }
@@ -3912,7 +3914,11 @@ function buildPopupInnerHtml(next) {
   // Mascotte Kilo (retour utilisateur "effet waouh") : si next.kiloState est fourni,
   // remplace l'icone emoji par Kilo dans la pose/expression correspondante -
   // reutilise le meme composant que partout ailleurs (accueil, etc.).
-  const iconHtml = next.kiloState ? renderKilo(next.kiloState, { size: 118, clickable: true }) : next.icon;
+  // kiloAccessories (chantier gamification Phase 3) : optionnel, fait porter a
+  // Kilo un/des accessoire(s) precis dans CETTE popup (ex: annonce de
+  // deblocage, voir enqueueAccessoryPopups()) - jamais l equipement "normal"
+  // de Kilo (computeEquippedAccessory()), qui reste propre a chaque ecran.
+  const iconHtml = next.kiloState ? renderKilo(next.kiloState, { size: 118, clickable: true, accessories: next.kiloAccessories || [] }) : next.icon;
   return `
     <div class="app-popup-card${next.epic ? ' epic' : ''}">
       ${next.closable ? `<button class="app-popup-close-x" id="appPopupCloseX" aria-label="${t('common.close')}">✕</button>` : ''}
@@ -4017,6 +4023,23 @@ function enqueueTrophyPopups(freshBadges) {
       big: badgeLabel(b),
       subtitle: t('popups.trophy.unlockedSubtitle'),
       xp: b.xp,
+    });
+  }
+}
+
+// Chantier gamification Phase 3 (cosmetiques) - meme pattern que
+// enqueueTrophyPopups() ci-dessus. kiloAccessories (voir buildPopupInnerHtml())
+// fait porter a Kilo l accessoire tout juste debloque, pour le montrer
+// directement dans la popup d annonce plutot que de decrire juste par texte.
+function enqueueAccessoryPopups(freshAccessories) {
+  for (const a of freshAccessories) {
+    enqueuePopup({
+      kiloState: 'success',
+      kiloAccessories: [a.id],
+      icon: a.icon,
+      title: t('kilo.accessories.unlockedTitle'),
+      big: accessoryLabel(a),
+      subtitle: t('kilo.accessories.unlockedSubtitle'),
     });
   }
 }
@@ -4515,6 +4538,13 @@ function formatRelative(ms) {
 let stats = {}; // { [challengeId]: { lifetimeTotal, bestDay:{total,date} } }
 let badges = { totalCompletions: 0, unlocked: [], totalHardcore: 0 };
 let dailyActivity = {}; // { 'YYYY-MM-DD': count }
+// Cosmetiques de Kilo (chantier gamification Phase 3) - simple tableau d ids
+// debloques (voir ACCESSORY_DEFS/checkNewAccessories() plus bas), meme forme
+// que badges.unlocked. Champ NOUVEAU (jamais existe sous une ancienne cle
+// separee) : aucune fonction loadUnlockedAccessories() dediee necessaire,
+// juste un repli a [] partout ou le document consolide n a pas (encore) ce
+// champ - voir loadAppData().
+let unlockedAccessories = [];
 
 // Familles d'exercices pour les trophées cumulatifs : ids CHALLENGE_LIBRARY
 // des variantes de pompes (reps) et des exercices de gainage chronometres (sec).
@@ -4605,6 +4635,63 @@ function checkNewBadges() {
     }
   }
   return freshlyUnlocked;
+}
+
+async function saveUnlockedAccessories() {
+  await saveAppField('unlockedAccessories', unlockedAccessories);
+}
+
+// ==== Cosmetiques de Kilo (chantier gamification Phase 3) ====
+// Meme pattern que BADGE_DEFS/checkNewBadges() ci-dessus, deliberement branche
+// sur des trophees DEJA existants (badges.unlocked) plutot que de dupliquer
+// des seuils - source de verite unique. `label`/`icon` = texte canonique
+// francais (voir badgeLabel() plus haut, meme convention - accessoryLabel()
+// juste en dessous), `id` deja un identifiant stable reutilisable comme cle
+// i18n (kilo.accessories.<id>) ET comme cle dans KILO_ACCESSORY_SVG.
+const ACCESSORY_DEFS = [
+  { id: 'medal', label: 'Médaille de série', icon: '🎖️', check: () => badges.unlocked.includes('streak_7') },
+  { id: 'belt', label: 'Ceinture de champion', icon: '🥋', check: () => badges.unlocked.includes('hardcore_50') },
+  { id: 'cape', label: 'Cape de super-héros', icon: '🦸', check: () => ['streak_100', 'comp_250', 'pushups_10000'].some((id) => badges.unlocked.includes(id)) },
+];
+
+// Ordre de prestige (du moins au plus prestigieux) - voir
+// computeEquippedAccessory() : Kilo "porte" toujours l accessoire debloque le
+// plus prestigieux, jamais plusieurs a la fois (equipement v1 volontairement
+// simple, pas de garde-robe/ecran de selection dans cette version).
+const ACCESSORY_PRESTIGE_ORDER = ['medal', 'belt', 'cape'];
+
+// `label` reste TOUJOURS le texte canonique francais - meme convention que
+// badgeLabel()/challengeDisplayName().
+function accessoryLabel(a) {
+  return t('kilo.accessories.' + a.id);
+}
+
+/**
+ * Parcourt ACCESSORY_DEFS, debloque tout accessoire dont check() devient vrai
+ * et n est pas deja dans unlockedAccessories. Retourne uniquement les
+ * accessoires NOUVELLEMENT debloques par cet appel (pour piloter la popup),
+ * sans persister - l appelant doit encore appeler saveUnlockedAccessories().
+ * Idempotent, meme garantie que checkNewBadges().
+ */
+function checkNewAccessories() {
+  const freshlyUnlocked = [];
+  for (const a of ACCESSORY_DEFS) {
+    if (!unlockedAccessories.includes(a.id) && a.check()) {
+      unlockedAccessories.push(a.id);
+      freshlyUnlocked.push(a);
+    }
+  }
+  return freshlyUnlocked;
+}
+
+// Fonction PURE (aucun acces a l etat global) : quel accessoire Kilo doit-il
+// porter maintenant, parmi ceux deja debloques ? Le plus prestigieux (voir
+// ACCESSORY_PRESTIGE_ORDER), ou aucun (null) si rien n est encore debloque.
+function computeEquippedAccessory(unlocked) {
+  for (let i = ACCESSORY_PRESTIGE_ORDER.length - 1; i >= 0; i--) {
+    if (unlocked.includes(ACCESSORY_PRESTIGE_ORDER[i])) return ACCESSORY_PRESTIGE_ORDER[i];
+  }
+  return null;
 }
 
 function showToast(html, duration = 2600) {
@@ -5672,6 +5759,15 @@ async function addSetInner(amount) {
     enqueueTrophyPopups(earlyFreshBadges);
     enqueueLevelPopups(earlyLevelBefore, earlyLevelAfter);
   }
+  // Chantier gamification Phase 3 (cosmetiques) : verifie a chaque fois qu un
+  // badge vient d etre debloque (ce bloc ET les 2 autres plus bas) - branche
+  // directement sur badges.unlocked, jamais de seuil duplique. Idempotent,
+  // cout negligeable meme quand rien de nouveau.
+  const earlyFreshAccessories = checkNewAccessories();
+  if (earlyFreshAccessories.length > 0) {
+    await saveUnlockedAccessories();
+    enqueueAccessoryPopups(earlyFreshAccessories);
+  }
 
   if (willComplete) {
     entry.done = true;
@@ -5708,6 +5804,13 @@ async function addSetInner(amount) {
     });
     enqueueTrophyPopups(freshBadges);
     enqueueLevelPopups(levelBefore, levelAfter);
+    // Chantier gamification Phase 3 (cosmetiques) - voir le commentaire au 1er
+    // appel de checkNewAccessories() plus haut.
+    const freshAccessories = checkNewAccessories();
+    if (freshAccessories.length > 0) {
+      await saveUnlockedAccessories();
+      enqueueAccessoryPopups(freshAccessories);
+    }
 
     // Progression automatique : 3 records consécutifs -> proposer d'augmenter l'objectif par défaut
     if (s.recordStreak >= 3) {
@@ -5764,6 +5867,13 @@ async function addSetInner(amount) {
     });
     enqueueTrophyPopups(freshHardcoreBadges);
     enqueueLevelPopups(hcLevelBefore, hcLevelAfter);
+    // Chantier gamification Phase 3 (cosmetiques) - voir le commentaire au 1er
+    // appel de checkNewAccessories() plus haut (ex: hardcore_50 -> ceinture).
+    const freshHardcoreAccessories = checkNewAccessories();
+    if (freshHardcoreAccessories.length > 0) {
+      await saveUnlockedAccessories();
+      enqueueAccessoryPopups(freshHardcoreAccessories);
+    }
   }
 
   // Écriture day:{todayKey} confiée au flush groupé : saveStats() plus haut (toujours
@@ -6005,10 +6115,17 @@ function render(animate) {
       kiloHomeBubbleMood = kiloHomeMood;
       kiloHomeBubbleText = pickKiloLine('kilo.home.' + kiloHomeMood, {});
     }
+    // Chantier gamification Phase 3 (cosmetiques) : Kilo "porte" toujours
+    // l'accessoire debloque le plus prestigieux sur l'accueil (equipement v1
+    // volontairement simple, voir computeEquippedAccessory()) - null si rien
+    // n'est encore debloque. Portee volontairement limitee a CET ecran pour
+    // cette 1ere version (le mecanisme accessories de renderKilo() peut etre
+    // reutilise ailleurs plus tard, ex: la fiche d'exercice, sans changement).
+    const kiloHomeEquipped = computeEquippedAccessory(unlockedAccessories);
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
-        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMood, { size: 72 })}</div>
+        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMood, { size: 72, accessories: kiloHomeEquipped ? [kiloHomeEquipped] : [] })}</div>
         <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>
       ${kiloHomeBubbleText ? `<div class="kilo-home-bubble" onclick="kiloHomeTap()">${escapeHtml(kiloHomeBubbleText)}</div>` : ''}
@@ -7902,6 +8019,43 @@ const KILO_STATE_SVG = {
   },
 };
 
+// ==== Cosmetiques de Kilo (chantier gamification Phase 3) ====
+// Chaque accessoire est une couche SVG INDEPENDANTE, ancree a des coordonnees
+// FIXES dans le meme viewBox que le corps (-100 -100 200 200) - aucun acces
+// aux sous-groupes internes d'un etat necessaire (le corps reste un bloc
+// opaque par etat, voir KILO_STATE_SVG plus haut). Coordonnees calees sur la
+// position du torse dans les etats les plus courants (idle/success/beer,
+// torse y=-20..20) - **limite assumee** : un leger decalage de quelques px
+// est possible sur des etats au torse deplace (ex: warning y=-15..25,
+// level_up y=-10..30), non geant visuellement, a confirmer par l'utilisateur
+// (rendu SVG non verifiable par le harnais de test, mock DOM).
+// behindBody : ordre de peinture - la cape doit apparaitre DERRIERE Kilo
+// (peinte AVANT .kilo-body), la medaille/ceinture DEVANT (peintes APRES).
+const KILO_ACCESSORY_SVG = {
+  medal: {
+    behindBody: false,
+    markup:
+      '<path d="M -8 -10 L -18 -32 L -8 -32 L 0 -10 Z" fill="#f43f5e"/>' +
+      '<path d="M 8 -10 L 18 -32 L 8 -32 L 0 -10 Z" fill="#3b82f6"/>' +
+      '<circle cx="0" cy="4" r="12" fill="#fbbf24" stroke="#ca8a04" stroke-width="2"/>' +
+      '<circle cx="0" cy="4" r="7" fill="none" stroke="#fef9c3" stroke-width="1.5"/>' +
+      '<text x="0" y="8" fill="#78350f" font-size="9" font-weight="900" text-anchor="middle">7</text>',
+  },
+  belt: {
+    behindBody: false,
+    markup:
+      '<rect x="-50" y="10" width="100" height="14" rx="4" fill="#78350f" stroke="#451a03" stroke-width="1.5"/>' +
+      '<rect x="-14" y="6" width="28" height="22" rx="4" fill="#fbbf24" stroke="#ca8a04" stroke-width="2"/>' +
+      '<circle cx="0" cy="17" r="5" fill="#78350f"/>',
+  },
+  cape: {
+    behindBody: true,
+    markup:
+      '<path d="M -50 -25 Q 0 -45 50 -25 L 65 60 Q 0 40 -65 60 Z" fill="#ef4444" stroke="#b91c1c" stroke-width="2"/>' +
+      '<path d="M -50 -25 Q 0 -45 50 -25 L 46 -12 Q 0 -28 -46 -12 Z" fill="#fbbf24"/>',
+  },
+};
+
 function renderKilo(state, options) {
   const cfg = KILO_STATE_SVG[state] || KILO_STATE_SVG.idle;
   const opts = options || {};
@@ -7918,16 +8072,33 @@ function renderKilo(state, options) {
     innerMarkup = cfg.markup.split('{{GRAD}}').join(`url(#${gradId})`);
   }
 
-  // Hierarchie reelle (visage/bras/accessoires vivent DANS kilo-body, pas
-  // comme des elements freres) : un seul groupe porte l'animation d'ensemble
+  // opts.accessories (chantier gamification Phase 3) : ids KILO_ACCESSORY_SVG a
+  // superposer, chacun dans son propre <g> (jamais fusionne au corps) - separes
+  // en 2 groupes de peinture selon behindBody (voir plus haut).
+  const accessoryIds = opts.accessories || [];
+  const accessoryMarkup = (behind) => accessoryIds
+    .filter((id) => KILO_ACCESSORY_SVG[id] && KILO_ACCESSORY_SVG[id].behindBody === behind)
+    .map((id) => `<g class="kilo-accessory kilo-accessory-${id}">${KILO_ACCESSORY_SVG[id].markup}</g>`)
+    .join('');
+
+  // Hierarchie reelle (visage/bras vivent DANS kilo-body, pas comme des
+  // elements freres) : un seul groupe porte l'animation d'ensemble
   // (kilo-idle, kilo-warning... poses sur la racine SVG) -> aucun risque de
   // desynchronisation entre le corps, le visage et les bras pendant le
-  // mouvement.
+  // mouvement. Les accessoires sont freres de .kilo-body (pas dedans) : ils
+  // suivent donc naturellement l'animation d'ENSEMBLE (rebond idle,
+  // tremblement hype, balancement teasing... posee sur la racine <svg>, qui
+  // les englobe aussi), sans jamais etre perturbes par les animations
+  // internes propres a un membre precis (bras qui trinque, eclairs qui
+  // crepitent...) qui restent scopees a leurs propres sous-groupes DANS
+  // .kilo-body.
   return `
     <svg class="kilo-svg kilo-${state}" width="${size}" height="${size}" viewBox="-100 -100 200 200" preserveAspectRatio="xMidYMid meet"
          ${opts.clickable ? 'onclick="kiloTap(this)"' : ''} role="img" aria-label="Kilito, humeur ${state}">
       ${defsHtml}
+      ${accessoryMarkup(true)}
       <g${cfg.opacity ? ` opacity="${cfg.opacity}"` : ''}><g class="kilo-body">${innerMarkup}</g></g>
+      ${accessoryMarkup(false)}
     </svg>
   `;
 }

@@ -183,6 +183,16 @@ const LOCALE_EN = {
         'I believe in you, you know that?',
       ],
     },
+    // Kilo cosmetics (gamification Phase 3) - id = key in ACCESSORY_DEFS/
+    // KILO_ACCESSORY_SVG, canonical French text mirrored via accessoryLabel()
+    // (same convention as badgeLabel()).
+    accessories: {
+      medal: 'Streak medal',
+      belt: 'Champion belt',
+      cape: 'Superhero cape',
+      unlockedTitle: 'New accessory unlocked!',
+      unlockedSubtitle: 'Kilo proudly wears his new accessory.',
+    },
   },
   card: {
     hardcoreDone: '🔥 Hardcore completed',

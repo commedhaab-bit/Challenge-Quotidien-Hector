@@ -185,6 +185,16 @@ const LOCALE_ES = {
         '¿Sabes que creo en ti?',
       ],
     },
+    // Cosmeticos de Kilo (Fase 3 de gamificacion) - id = clave en
+    // ACCESSORY_DEFS/KILO_ACCESSORY_SVG, texto canonico frances retomado via
+    // accessoryLabel() (misma convencion que badgeLabel()).
+    accessories: {
+      medal: 'Medalla de racha',
+      belt: 'Cinturón de campeón',
+      cape: 'Capa de superhéroe',
+      unlockedTitle: '¡Nuevo accesorio desbloqueado!',
+      unlockedSubtitle: 'Kilo luce con orgullo su nuevo accesorio.',
+    },
   },
   card: {
     hardcoreDone: '🔥 Hardcore completado',

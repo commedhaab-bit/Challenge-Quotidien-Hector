@@ -4022,3 +4022,76 @@ qu'elle etait specifique a la fiche d'exercice. Utilisee maintenant par les
 CACHE_NAME -> v89 (nouveau namespace `kilo.home.*` dans les 3 fichiers
 `locale-*.js`). Aucun changement de regles Firestore/Cloud Functions -
 modification 100% cote client, aucune touche a `functions/**`.
+
+
+## Cosmetiques de Kilo : 3 accessoires debloquables (chantier gamification, Phase 3)
+
+Derniere phase du chantier Kilo (voir `generic-riding-gizmo.md`). Livre les 3
+accessoires concrets demandes (pas seulement l'architecture vide).
+
+**`renderKilo(state, {size, clickable, accessories: [...]})`** etendu :
+`accessories` est un tableau d'ids (`KILO_ACCESSORY_SVG`), chacun rendu dans
+son propre `<g class="kilo-accessory kilo-accessory-{id}">`, **frere** de
+`.kilo-body` (jamais dedans) - suit donc naturellement l'animation
+d'ENSEMBLE posee sur la racine `<svg>` (rebond idle, tremblement hype,
+balancement teasing...), sans jamais etre perturbe par les animations
+internes propres a un membre precis (bras qui trinque, eclairs...) qui
+restent scopees a leurs sous-groupes DANS `.kilo-body`. **Ordre de peinture
+selon `behindBody`** : la cape (`behindBody:true`) est peinte AVANT
+`.kilo-body` (donc visuellement DERRIERE Kilo) ; la medaille/ceinture
+(`behindBody:false`) sont peintes APRES (DEVANT). Coordonnees **fixes**,
+calees sur la position du torse des etats les plus courants -
+**limite assumee et documentee dans le code** : un leger decalage de
+quelques px est possible sur les etats au torse deplace (warning, level_up),
+non verifiable par le harnais de test (mock DOM), a confirmer visuellement.
+
+**3 accessoires, dessines en formes SVG simples (pas de gradient, contrairement
+aux etats qui utilisent `{{GRAD}}`)** :
+- **Medaille** (ruban rouge+bleu, cercle or) - debloquee a `streak_7`.
+- **Ceinture de champion** (bande marron + plaque or) - debloquee a `hardcore_50`.
+- **Cape** (grande forme rouge/or derriere le dos) - debloquee sur un trophee
+  majeur (`streak_100` OU `comp_250` OU `pushups_10000`, le premier atteint).
+
+**`ACCESSORY_DEFS`/`checkNewAccessories()`** : meme pattern que
+`BADGE_DEFS`/`checkNewBadges()` (idempotent, ne retourne que les
+NOUVEAUX debloques par cet appel) - branche **directement sur
+`badges.unlocked`**, jamais de seuil duplique (source de verite unique).
+`unlockedAccessories` (nouveau champ du document consolide `appData`, simple
+tableau d'ids comme `badges.unlocked` - pas de fonction `loadX()` dediee,
+c'est un champ NOUVEAU sans ancienne cle separee a migrer) persiste via
+`saveUnlockedAccessories()`.
+
+**Cablage** : `checkNewAccessories()` + `enqueueAccessoryPopups()` (nouvelle
+fonction, meme pattern que `enqueueTrophyPopups()`) appeles aux 3 MEMES
+points que `checkNewBadges()` dans `addSetInner()` (badges cumulatifs tot,
+completion normale, completion Hardcore) - un accessoire peut donc se
+debloquer independamment de la completion du defi du jour, exactement comme
+les trophees "cumul a vie" (voir la section dediee plus haut dans ce
+fichier). La popup d'annonce fait deja **porter l'accessoire a Kilo**
+(`kiloAccessories` sur l'objet popup, transmis a `renderKilo()` via
+`buildPopupInnerHtml()`) plutot que de se contenter d'un texte.
+
+**Equipement v1 volontairement simple** (`computeEquippedAccessory(unlocked)`,
+fonction pure) : Kilo porte toujours l'accessoire debloque le **plus
+prestigieux** (ordre fixe medaille < ceinture < cape, `ACCESSORY_PRESTIGE_ORDER`),
+jamais plusieurs a la fois - pas de garde-robe/ecran de selection dans cette
+version (idee de suite notee dans le plan). **Portee volontairement limitee
+a l'accueil** pour cette 1ere version : c'est le seul `renderKilo()` qui
+reçoit `accessories` pour l'equipement "normal" (par opposition a
+`kiloAccessories` sur une popup d'annonce, un usage different) - le
+mecanisme est generique et peut etre reutilise sur d'autres ecrans (fiche
+d'exercice...) plus tard sans changement, simplement pas fait ici pour
+garder cette phase ciblee.
+
+CACHE_NAME -> v90 (nouveau namespace `kilo.accessories.*` dans les 3
+fichiers `locale-*.js`). Aucun changement de regles Firestore/Cloud
+Functions - modification 100% cote client, aucune touche a `functions/**`.
+
+---
+
+**Les 3 phases du chantier "Kilo, mascotte-partenaire emotionnel" sont
+desormais livrees** (coach sur la fiche d'exercice, moteur d'humeur global +
+bulle d'accueil + tap interactif, cosmetiques debloquables). Voir
+`generic-riding-gizmo.md` pour le detail complet et les idees bonus notees
+hors scope (reglage "faire taire Kilo", micro-fidgets d'inactivite, ecran
+"garde-robe", repliques differenciees par type d'exploit).

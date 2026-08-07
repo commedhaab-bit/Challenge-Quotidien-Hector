@@ -1555,8 +1555,8 @@ const cssText = __rawHtml + __cssSource;
   // Bugs reels signales : Kilito n etait ni assez visible sur l accueil, ni centre
   // horizontalement dans les popups (SVG en display:block, ignore le text-align du
   // popup contrairement aux icones emoji).
-  __assertOk(__rawHtml.includes("renderKilo(kiloHomeMood, { size: 72 })"), 'Kilito doit etre nettement plus grand sur l accueil (etait a peine visible a 44px)');
-  __assertOk(__rawHtml.includes("renderKilo(next.kiloState, { size: 118, clickable: true })"), 'Kilito doit aussi etre agrandi dans les popups');
+  __assertOk(__rawHtml.includes("renderKilo(kiloHomeMood, { size: 72, accessories:"), 'Kilito doit etre nettement plus grand sur l accueil (etait a peine visible a 44px)');
+  __assertOk(__rawHtml.includes("renderKilo(next.kiloState, { size: 118, clickable: true, accessories:"), 'Kilito doit aussi etre agrandi dans les popups');
   __assertOk(cssText.includes('.app-popup-icon.kilo-icon') && cssText.includes('justify-content: center'), 'Kilito doit etre explicitement centre horizontalement dans les popups (un SVG display:block ignore le text-align du parent)');
   console.log('OK: Kilito agrandi sur l accueil + dans les popups, et correctement centre (bugs reels corriges)');
 
@@ -1618,6 +1618,85 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(renderKilo('teasing').includes('kilo-foot-tap'), '"Taquin / Decu" doit afficher un pied qui tape du sol (groupe anime dedie)');
   __assertOk(renderKilo('teasing').includes('#06b6d4') && !renderKilo('teasing').includes('#64748b'), '"Taquin" doit rester dans les couleurs habituelles de Kilo (cyan), distinct de "lost" (triste/grise)');
   console.log('OK: 2 nouveaux etats SVG "hype" (Full Muscu/Eclairs) et "teasing" (Taquin/Decu), dessines a la main comme les 6 existants');
+
+  // --- Cosmetiques de Kilo (chantier gamification Phase 3) ---
+  // ACCESSORY_DEFS/checkNewAccessories() : branche directement sur
+  // badges.unlocked (jamais de seuil duplique), meme pattern/meme garantie
+  // d idempotence que BADGE_DEFS/checkNewBadges().
+  const badgesBackupForAccessories = badges;
+  const unlockedAccessoriesBackup = unlockedAccessories;
+  badges = { totalCompletions: 0, unlocked: [], totalHardcore: 0 };
+  unlockedAccessories = [];
+  __assertEq(checkNewAccessories(), [], 'aucun badge pertinent debloque -> aucun accessoire');
+  badges.unlocked.push('streak_7');
+  __assertEq(checkNewAccessories().map((a) => a.id), ['medal'], 'streak_7 doit debloquer la medaille');
+  __assertOk(unlockedAccessories.includes('medal'), 'unlockedAccessories doit etre mis a jour en memoire');
+  __assertEq(checkNewAccessories(), [], 'checkNewAccessories() doit etre idempotent (ne redebloque pas ce qui l est deja)');
+  badges.unlocked.push('hardcore_50');
+  __assertEq(checkNewAccessories().map((a) => a.id), ['belt'], 'hardcore_50 doit debloquer la ceinture');
+  badges.unlocked.push('streak_100');
+  __assertEq(checkNewAccessories().map((a) => a.id), ['cape'], 'streak_100 (un des 3 trophees majeurs acceptes) doit debloquer la cape');
+  console.log('OK: ACCESSORY_DEFS/checkNewAccessories() (branche sur badges.unlocked, idempotent)');
+
+  // computeEquippedAccessory() : equipement v1 volontairement simple - le plus
+  // prestigieux parmi les accessoires debloques (medaille < ceinture < cape),
+  // aucun si rien n est encore debloque.
+  __assertEq(computeEquippedAccessory([]), null, 'rien de debloque -> aucun accessoire equipe');
+  __assertEq(computeEquippedAccessory(['medal']), 'medal');
+  __assertEq(computeEquippedAccessory(['medal', 'belt']), 'belt', 'la ceinture doit dominer la medaille');
+  __assertEq(computeEquippedAccessory(['medal', 'belt', 'cape']), 'cape', 'la cape doit dominer tout le reste');
+  __assertEq(computeEquippedAccessory(['cape', 'medal']), 'cape', 'l ordre du tableau ne doit pas influencer le resultat, seul le prestige compte');
+  console.log('OK: computeEquippedAccessory() (equipement v1 - le plus prestigieux parmi les accessoires debloques)');
+
+  // renderKilo({accessories}) : chaque accessoire est une couche SVG
+  // independante, dans le bon ordre de peinture (la cape DERRIERE le corps,
+  // la medaille/ceinture DEVANT).
+  const svgWithMedal = renderKilo('idle', { accessories: ['medal'] });
+  __assertOk(svgWithMedal.includes('kilo-accessory-medal'), 'la medaille doit apparaitre comme couche dediee');
+  __assertOk(svgWithMedal.indexOf('kilo-body') < svgWithMedal.indexOf('kilo-accessory-medal'), 'la medaille doit etre peinte APRES le corps (devant)');
+  const svgWithCape = renderKilo('idle', { accessories: ['cape'] });
+  __assertOk(svgWithCape.includes('kilo-accessory-cape'), 'la cape doit apparaitre comme couche dediee');
+  __assertOk(svgWithCape.indexOf('kilo-accessory-cape') < svgWithCape.indexOf('kilo-body'), 'la cape doit etre peinte AVANT le corps (derriere)');
+  const svgNoAccessory = renderKilo('idle');
+  __assertOk(!svgNoAccessory.includes('kilo-accessory'), 'sans accessoires demandes, aucune couche accessoire ne doit apparaitre');
+  const svgWithAll = renderKilo('idle', { accessories: ['medal', 'belt', 'cape'] });
+  __assertOk(svgWithAll.includes('kilo-accessory-medal') && svgWithAll.includes('kilo-accessory-belt') && svgWithAll.includes('kilo-accessory-cape'), 'plusieurs accessoires doivent pouvoir etre superposes simultanement');
+  console.log('OK: renderKilo({accessories}) superpose les accessoires en couches independantes, dans le bon ordre de peinture');
+
+  // Integration reelle : debloquer un badge de serie via le VRAI flux
+  // addSetInner() (n importe lequel des 3 points d appel existants de
+  // checkNewBadges()) doit AUSSI debloquer et persister l accessoire
+  // correspondant, sans avoir besoin de simuler 7 vrais jours calendaires -
+  // computeStreak() ne fait que lire streakCount, positionnable directement.
+  badges = { totalCompletions: 0, unlocked: [], totalHardcore: 0 };
+  unlockedAccessories = [];
+  streakCount = 7;
+  popupQueue = []; popupOpen = false;
+  activeToday = new Set([pompes.id]);
+  state = emptyDayState();
+  await pickChallenge(pompes.id);
+  await addSet(getTarget()); // complete l objectif du jour -> declenche checkNewBadges()/checkNewAccessories()
+  await flushWorkoutWrites();
+  __assertOk(unlockedAccessories.includes('medal'), 'debloquer streak_7 via le vrai flux addSetInner() doit AUSSI debloquer la medaille');
+  __assertOk(__appDataStore.data.unlockedAccessories && __appDataStore.data.unlockedAccessories.includes('medal'), 'le deblocage doit etre persiste dans le document consolide appData (saveUnlockedAccessories())');
+  // La popup d annonce peut etre derriere d autres popups deja en file (ex:
+  // le trophee "7 jours de suite" lui-meme, enqueue juste avant) - on cherche
+  // donc aussi bien la popup DEJA affichee que celles encore en attente,
+  // plutot que de supposer une position fixe dans la file.
+  const accessoryPopupQueued = (popupOpen && currentPopupHtml.includes('kilo-accessory-medal') && currentPopupHtml.includes(t('kilo.accessories.unlockedTitle')))
+    || popupQueue.some((p) => p.kiloAccessories && p.kiloAccessories.includes('medal'));
+  __assertOk(accessoryPopupQueued, 'une popup doit annoncer le deblocage (affichee ou en file d attente), Kilo y portant deja le nouvel accessoire');
+  while (popupOpen) document.getElementById('appPopupCloseBtn').onclick(); // vide toute la file (trophee + accessoire + completion...)
+  console.log('OK: debloquer un badge de serie via le vrai flux addSetInner() debloque aussi, persiste et annonce l accessoire correspondant');
+
+  // L accessoire nouvellement debloque doit ensuite apparaitre sur l accueil
+  // (Kilo "porte" toujours le plus prestigieux des accessoires debloques).
+  currentChallengeId = null;
+  render(false);
+  __assertOk(document.getElementById('app').innerHTML.includes('kilo-accessory-medal'), 'l accueil doit afficher l accessoire nouvellement debloque sur Kilo');
+  streakCount = 0;
+  badges = badgesBackupForAccessories;
+  unlockedAccessories = unlockedAccessoriesBackup;
 
   // Integration : Kilo doit apparaitre sur l accueil.
   activeTab = 'today';
@@ -2842,7 +2921,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v89'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v90'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
