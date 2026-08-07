@@ -4095,3 +4095,55 @@ bulle d'accueil + tap interactif, cosmetiques debloquables). Voir
 `generic-riding-gizmo.md` pour le detail complet et les idees bonus notees
 hors scope (reglage "faire taire Kilo", micro-fidgets d'inactivite, ecran
 "garde-robe", repliques differenciees par type d'exploit).
+
+## Idees bonus Kilo, lot 1/7 (#1 reglage "Faire taire Kilo" + #2 micro-fidget d'inactivite)
+
+Premier lot d'une serie de 12 idees bonus explicitement approuvees par
+l'utilisateur (numerotees dans une conversation dediee, hors de ce fichier)
+en plus des 3 phases deja livrees ci-dessus.
+
+**#1 - `kiloMuted`/`toggleKiloMuted()`** : meme structure exacte que
+`soundEffectsEnabled`/`toggleSoundEffects()` (nouveau champ simple du
+document consolide `appData`, pas de cle legacy a migrer). Coupe
+UNIQUEMENT les 2 bulles de dialogue (`kilo-home-bubble`/
+`kilo-exercise-bubble`) - Kilo reste entierement VISIBLE (SVG, animations,
+humeur, accessoires) et ses popups fonctionnelles (trophee, level up,
+completion...) continuent de s'afficher normalement. Un seul garde-fou par
+site de rendu de bulle (`!kiloMuted && ...Text ? ...`), plutot que de gater
+chaque point d'ecriture de bulle un par un (2 sites : accueil + fiche
+d'exercice).
+
+**#2 - micro-fidget d'inactivite (`kiloHomeFidgetUntil`/
+`maybeTriggerKiloIdleFidget()`)** : "effet vivant"/Tamagotchi meme sans
+interaction. Meme principe horodatage->classe CSS deja etabli pour le
+rebond au tap (`kiloHomeTapBounceUntil`) - jamais de manipulation DOM
+directe, puisque `render()` remplace tout `#app` a chaque appel. Un
+**unique** `setInterval` global (15s, enregistre une seule fois au
+chargement du script - jamais demarre/arrete par ecran, contrairement a
+`timerIntervalId`) avec 1 chance sur 3 de declencher un fidget a chaque
+tick (moyenne ~45s, dans la fourchette 30-60s demandee, sans cadence
+parfaitement reguliere - une vraie regularite romprait l'effet "vivant").
+Gate explicite : accueil idle uniquement (`activeTab==='today'`,
+`!currentChallengeId`), jamais si une popup est deja affichee (`popupOpen`
+- ne doit jamais distraire en pleine lecture), jamais si
+`prefers-reduced-motion` (purement decoratif, CSS neutraliserait de toute
+facon l'animation, autant ne pas forcer un `render()` pour rien). Animation
+CSS volontairement generique (`kilo-fidget-wiggle`, simple rotation/scale
+sur `.kilo-svg`) plutot que specifique a un etat - fonctionne a l'identique
+quelle que soit l'humeur affichee, sans dupliquer un trace par etat.
+**Fonctionne meme si `kiloMuted`** : coupe seulement les bulles, pas les
+animations - Kilo reste vivant visuellement.
+
+**Piege de test rencontre et corrige** : le setInterval est enregistre via
+un wrapper (`() => maybeTriggerKiloIdleFidget()`), jamais une reference
+directe a la fonction - une reference directe aurait capture la version
+d'origine pour toujours des le chargement du script, avant meme que le
+harnais de test ait pu la neutraliser (meme convention deja etablie pour
+`maybeInterceptSpammyTaps`, necessaire ici aussi : un run de suite qui
+depasserait 15s declencherait sinon des `render()` aleatoires en plein
+milieu de tests sans rapport, etat DOM/popup imprevisible).
+
+CACHE_NAME -> v91 (`styles.css` modifie - nouvelle animation
+`kilo-fidget-wiggle`, nouvelles regles `locale-*.js` `settings.kiloMuted.*`).
+Aucun changement de regles Firestore/Cloud Functions - modification 100%
+cote client, aucune touche a `functions/**`.

@@ -31,6 +31,10 @@ const LOCALE_ES = {
       label: 'Efectos de sonido',
       desc: 'Un pequeño sonido de éxito al alcanzar tu objetivo del día.',
     },
+    kiloMuted: {
+      label: 'Silenciar a Kilo',
+      desc: 'Desactiva sus globos de diálogo - sigue visible, solo callado.',
+    },
     leaderboardOptOut: {
       label: 'Clasificación comunitaria',
       desc: 'Muestra tu nombre, tu racha y tu XP en la clasificación compartida con otros usuarios.',

@@ -672,6 +672,17 @@ currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photo
 // dedie qui verifie le VRAI comportement du garde-fou.
 const __realMaybeInterceptSpammyTaps = maybeInterceptSpammyTaps;
 maybeInterceptSpammyTaps = async () => true;
+// Micro-fidget d'inactivite de Kilito (idee bonus #2) : neutralise le tick
+// global (setInterval, 15s) enregistre au chargement du script - un run de
+// suite qui depasserait 15s declencherait sinon des render() aleatoires en
+// plein milieu de tests sans rapport (etat DOM/popup imprevisible). Le
+// setInterval() du script appelle un wrapper (jamais une reference directe),
+// donc cette reassignation est bien prise en compte a chaque tick, meme si
+// le setInterval a ete enregistre AVANT cette ligne.
+// Reference d'origine conservee (meme convention que maybeInterceptSpammyTaps)
+// pour etre appelee directement/deterministement dans le test dedie.
+const __realMaybeTriggerKiloIdleFidget = maybeTriggerKiloIdleFidget;
+maybeTriggerKiloIdleFidget = () => {};
 // Depuis la fusion CSS (#4), les regles de style ne sont plus dans __rawHtml (index.html)
 // mais dans styles.css (__cssSource) : les tests qui verifient du texte CSS doivent
 // chercher dans cssText plutot que dans __rawHtml seul.
@@ -1747,6 +1758,59 @@ const cssText = __rawHtml + __cssSource;
   const kiloSlotIdxHomeAfter = kiloHomeAppHtml.indexOf('kilo-home-slot');
   __assertOk(!kiloHomeAppHtml.slice(kiloSlotIdxHomeAfter, kiloSlotIdxHomeAfter + 60).includes('tapped'), 'le rebond doit disparaitre une fois expire');
   console.log('OK: tap sur Kilo (accueil) declenche le rebond + une phrase d encouragement aleatoire dans la bulle');
+
+  // Idee bonus #1 (retour utilisateur) : reglage "Faire taire Kilo" - coupe
+  // ses bulles de dialogue (accueil + fiche d exercice), le reste (SVG,
+  // animations, humeur, popups) doit continuer de s afficher normalement.
+  __assertEq(kiloMuted, false, 'kiloMuted doit etre desactive par defaut (ne pas couper silencieusement un comportement deja en place)');
+  await toggleKiloMuted();
+  __assertEq(kiloMuted, true, 'toggleKiloMuted doit inverser l etat');
+  __assertEq(__appDataStore.data.kiloMuted, true, 'le nouvel etat doit etre persiste dans le document consolide appData');
+  render(false);
+  let kiloMutedAppHtml = document.getElementById('app').innerHTML;
+  __assertOk(!kiloMutedAppHtml.includes('kilo-home-bubble'), 'aucune bulle d accueil ne doit s afficher une fois Kilo muet');
+  __assertOk(kiloMutedAppHtml.includes('kilo-home-slot'), 'Kilo (SVG) doit rester visible sur l accueil meme muet');
+  await toggleKiloMuted();
+  __assertEq(kiloMuted, false, 'un second toggle doit reactiver les bulles');
+  const settingsHtmlKiloMuted = renderSettingsSection();
+  __assertOk(settingsHtmlKiloMuted.includes('onclick="toggleKiloMuted()"'), 'le reglage doit etre visible dans Parametres');
+  console.log('OK: reglage "Faire taire Kilo" (bulles masquees, SVG/animations/popups inchanges, persiste dans appData)');
+
+  // Idee bonus #2 (retour utilisateur) : micro-fidget d inactivite sur
+  // l accueil - tick global neutralise pour toute la suite (voir plus haut,
+  // meme convention que maybeInterceptSpammyTaps), teste ici directement en
+  // appelant la VRAIE fonction via sa reference d origine.
+  activeTab = 'today';
+  currentChallengeId = null;
+  popupOpen = false;
+  kiloHomeFidgetUntil = 0;
+  const originalMathRandomFidget = Math.random;
+  Math.random = () => 0; // < 1/3 -> declenche systematiquement
+  __realMaybeTriggerKiloIdleFidget();
+  __assertOk(Date.now() < kiloHomeFidgetUntil, 'un tick "gagnant" doit programmer une fenetre de fidget');
+  render(false);
+  let kiloFidgetAppHtml = document.getElementById('app').innerHTML;
+  let kiloSlotIdxFidget = kiloFidgetAppHtml.indexOf('kilo-home-slot');
+  __assertOk(kiloFidgetAppHtml.slice(kiloSlotIdxFidget, kiloSlotIdxFidget + 80).includes('fidgeting'), 'la classe .fidgeting doit apparaitre pendant la fenetre de fidget');
+  kiloHomeFidgetUntil = 0; // simule l expiration (sans attendre reellement 500ms)
+  render(false);
+  kiloFidgetAppHtml = document.getElementById('app').innerHTML;
+  kiloSlotIdxFidget = kiloFidgetAppHtml.indexOf('kilo-home-slot');
+  __assertOk(!kiloFidgetAppHtml.slice(kiloSlotIdxFidget, kiloSlotIdxFidget + 80).includes('fidgeting'), 'la classe .fidgeting doit disparaitre une fois la fenetre expiree');
+  Math.random = () => 0.9; // >= 1/3 -> ne doit jamais declencher
+  __realMaybeTriggerKiloIdleFidget();
+  __assertEq(kiloHomeFidgetUntil, 0, 'un tick "perdant" ne doit rien declencher');
+  Math.random = () => 0;
+  currentChallengeId = 1;
+  __realMaybeTriggerKiloIdleFidget();
+  __assertEq(kiloHomeFidgetUntil, 0, 'hors de l accueil idle (fiche d exercice ouverte), aucun fidget ne doit se declencher meme un tick "gagnant"');
+  currentChallengeId = null;
+  popupOpen = true;
+  __realMaybeTriggerKiloIdleFidget();
+  __assertEq(kiloHomeFidgetUntil, 0, 'une popup deja affichee ne doit jamais etre perturbee par un fidget');
+  popupOpen = false;
+  Math.random = originalMathRandomFidget;
+  console.log('OK: micro-fidget d inactivite (idee bonus #2) - fenetre temporisee, gate sur accueil idle/popup, probabiliste');
 
   // --- 35. Compte a rebours de preparation : 3, 2, 1, puis "C'est parti !" et demarrage reel du chrono ---
   voiceCoachEnabled = true;
@@ -2921,7 +2985,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v90'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v91'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');

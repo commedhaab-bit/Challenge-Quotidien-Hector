@@ -3898,7 +3898,8 @@
     .kilo-arm-cheers, .kilo-mug-clink, .kilo-lost, .kilo-lost-mark,
     .kilo-level_up, .kilo-trophy, .kilo-trophy-pump, .kilo-arms-raise, .kilo-aura-pulse,
     .kilo-tapped, .kilo-exercise-bubble, .kilo-hype, .kilo-lightning, .kilo-teasing,
-    .kilo-foot-tap, .kilo-home-slot.tapped .kilo-svg, .kilo-home-bubble {
+    .kilo-foot-tap, .kilo-home-slot.tapped .kilo-svg, .kilo-home-bubble,
+    .kilo-home-slot.fidgeting .kilo-svg {
       animation: none !important;
     }
   }
@@ -3936,6 +3937,17 @@
      appel, un simple classList.add() imperatif serait efface avant meme
      d'avoir pu s'afficher. Memes keyframes que .kilo-tapped (deja existant). */
   .kilo-home-slot.tapped .kilo-svg { animation: kilo-tap-bounce 0.4s ease; }
+  /* Micro-fidget d'inactivite (idee bonus #2, retour utilisateur) : meme
+     principe horodatage->render() que .tapped ci-dessus (kiloHomeFidgetUntil,
+     voir maybeTriggerKiloIdleFidget() dans index.html). Anime UNIQUEMENT le
+     groupe racine (transform), jamais un trace redessine par etat - fonctionne
+     donc a l'identique quelle que soit l'humeur affichee. */
+  .kilo-home-slot.fidgeting .kilo-svg { animation: kilo-fidget-wiggle 0.5s ease; }
+  @keyframes kilo-fidget-wiggle {
+    0%, 100% { transform: rotate(0deg) scale(1); }
+    30% { transform: rotate(-5deg) scale(1.03); }
+    60% { transform: rotate(4deg) scale(1.02); }
+  }
 
   /* Bulle de dialogue de l'accueil (chantier gamification Phase 2) - pas de
      pointe triangulaire precise contrairement a .kilo-exercise-bubble : Kilo

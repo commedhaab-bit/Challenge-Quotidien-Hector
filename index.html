@@ -494,6 +494,7 @@ async function loadAppData() {
     dailyActivity = d.dailyActivity ?? {};
     weights = d.weights ?? {};
     unlockedAccessories = d.unlockedAccessories ?? [];
+    kiloMuted = d.kiloMuted ?? false;
     rebuildChallenges();
     backfillDefaultWeights();
     return;
@@ -523,6 +524,7 @@ async function loadAppData() {
       dailyActivity,
       weights,
       unlockedAccessories,
+      kiloMuted,
     });
   }
 }
@@ -4384,6 +4386,21 @@ async function toggleSoundEffects() {
   render();
 }
 
+// Chantier gamification (idee bonus #1, retour utilisateur) : coupe le
+// BAVARDAGE de Kilo (bulles d'accueil/de fiche d'exercice) pour qui trouve la
+// personnalite too much a la longue - Kilo reste VISIBLE (SVG, animations,
+// humeur) et ses popups FONCTIONNELLES (trophee, level up, completion...)
+// continuent de s'afficher normalement, seules les 2 bulles de dialogue sont
+// masquees. Un seul garde-fou au niveau du RENDU (voir render()), plutot que
+// de gater chaque site d ecriture de bulle un par un.
+let kiloMuted = false;
+async function toggleKiloMuted() {
+  kiloMuted = !kiloMuted;
+  if (navigator.vibrate) navigator.vibrate(10);
+  await saveAppField('kiloMuted', kiloMuted);
+  render();
+}
+
 // ==== NOTIFICATIONS PUSH (Firebase Cloud Messaging, Phase B) ====
 // null tant que pas encore determine (verifie une fois, en tache de fond, voir
 // continueStartApp()) - le reglage reste discret/masque en attendant plutot que
@@ -5376,6 +5393,12 @@ let kiloHomeBubbleMood = null;
 // efface par le prochain rendu sans jamais avoir eu le temps de s'afficher -
 // meme raisonnement que exerciseKiloFlashUntil (Phase 1).
 let kiloHomeTapBounceUntil = 0;
+// Micro-fidget d'inactivite (idee bonus #2, retour utilisateur) : meme
+// principe horodatage->classe CSS que kiloHomeTapBounceUntil ci-dessus,
+// pilote par maybeTriggerKiloIdleFidget() (setInterval global, voir plus
+// bas). Purement cosmetique - ne change jamais l'humeur/la bulle affichee,
+// juste un petit signe de vie meme sans interaction.
+let kiloHomeFidgetUntil = 0;
 
 function emptyDayState() {
   return { challenges: {} };
@@ -6125,10 +6148,10 @@ function render(animate) {
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
-        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMood, { size: 72, accessories: kiloHomeEquipped ? [kiloHomeEquipped] : [] })}</div>
+        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}${Date.now() < kiloHomeFidgetUntil ? ' fidgeting' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMood, { size: 72, accessories: kiloHomeEquipped ? [kiloHomeEquipped] : [] })}</div>
         <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>
-      ${kiloHomeBubbleText ? `<div class="kilo-home-bubble" onclick="kiloHomeTap()">${escapeHtml(kiloHomeBubbleText)}</div>` : ''}
+      ${!kiloMuted && kiloHomeBubbleText ? `<div class="kilo-home-bubble" onclick="kiloHomeTap()">${escapeHtml(kiloHomeBubbleText)}</div>` : ''}
       <h1 class="title">${t('today.title')}</h1>
     `;
     // Défis BRUTS (non résolus) : renderChallengeCard() appelle déjà resolveChallenge()
@@ -6221,7 +6244,7 @@ function render(animate) {
           </div>
           <div class="active-header-kilo">
             <div class="kilo-exercise-slot">${renderKilo(kiloExerciseMood, { size: 72, clickable: true })}</div>
-            ${exerciseKiloBubbleText ? `<div class="kilo-exercise-bubble">${escapeHtml(exerciseKiloBubbleText)}</div>` : ''}
+            ${!kiloMuted && exerciseKiloBubbleText ? `<div class="kilo-exercise-bubble">${escapeHtml(exerciseKiloBubbleText)}</div>` : ''}
           </div>
         </div>
 
@@ -7241,6 +7264,12 @@ function renderSettingsSection() {
         <button class="switch${soundEffectsEnabled ? ' on' : ''}" onclick="toggleSoundEffects()"><span class="switch-knob"></span></button>
       </div>
       <div class="settings-row">
+        <div class="settings-row-label">🤐 ${t('settings.kiloMuted.label')}
+          <div class="settings-row-desc">${t('settings.kiloMuted.desc')}</div>
+        </div>
+        <button class="switch${kiloMuted ? ' on' : ''}" onclick="toggleKiloMuted()"><span class="switch-knob"></span></button>
+      </div>
+      <div class="settings-row">
         <div class="settings-row-label">🌍 ${t('settings.leaderboardOptOut.label')}
           <div class="settings-row-desc">${t('settings.leaderboardOptOut.desc')}</div>
         </div>
@@ -8132,6 +8161,35 @@ function kiloHomeTap() {
   render();
   setTimeout(() => render(), 450);
 }
+
+// Micro-fidget d'inactivite sur l'accueil (idee bonus #2, retour utilisateur)
+// : "effet vivant"/Tamagotchi meme sans interaction. Tick global toutes les
+// 15s (setInterval unique, voir son enregistrement plus bas), avec 1 chance
+// sur 3 de declencher un fidget a chaque tick - moyenne d'environ 45s entre 2
+// fidgets, dans la fourchette 30-60s demandee, sans jamais etre parfaitement
+// regulier (une vraie cadence fixe romprait l'effet "vivant" recherche).
+// Jamais quand une popup est deja affichee (ne doit jamais distraire en
+// pleine lecture) ni hors de l'accueil (currentChallengeId/autre onglet) -
+// ni si prefers-reduced-motion (purement decoratif, CSS neutraliserait de
+// toute facon l'animation, mais autant ne pas forcer un render() pour rien).
+// Fonctionne meme si kiloMuted (coupe seulement les BULLES de dialogue, pas
+// les animations - voir toggleKiloMuted()) : Kilo reste vivant visuellement.
+function maybeTriggerKiloIdleFidget() {
+  if (activeTab !== 'today' || currentChallengeId || popupOpen) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (Math.random() > 1 / 3) return;
+  kiloHomeFidgetUntil = Date.now() + 500;
+  render();
+  setTimeout(() => render(), 550);
+}
+// Tick global, enregistre une seule fois au chargement du script (jamais
+// demarre/arrete par ecran, contrairement a timerIntervalId) - la fonction
+// elle-meme se charge de ne rien faire hors de l'accueil idle. Wrapper (pas
+// une reference directe a la fonction) : le harnais de test neutralise cette
+// fonction APRES le chargement du script (meme convention que
+// maybeInterceptSpammyTaps) - une reference directe capturerait la version
+// d'origine pour toujours, avant meme que le test ait pu la neutraliser.
+setInterval(() => maybeTriggerKiloIdleFidget(), 15000);
 
 // Moteur d'humeur de Kilo sur l'accueil (chantier gamification Phase 2) -
 // remplace l'ancien computeKiloHomeState() (idle en journee / warning des 19h

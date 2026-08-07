@@ -33,6 +33,10 @@ const LOCALE_FR = {
       label: 'Effets sonores',
       desc: 'Un petit son de réussite quand tu atteins ton objectif du jour.',
     },
+    kiloMuted: {
+      label: 'Faire taire Kilo',
+      desc: 'Coupe ses bulles de dialogue - il reste visible, juste silencieux.',
+    },
     leaderboardOptOut: {
       label: 'Classement communautaire',
       desc: 'Affiche ton nom, ta série et ton XP dans le classement partagé avec les autres utilisateurs.',

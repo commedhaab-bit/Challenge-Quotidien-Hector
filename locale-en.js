@@ -30,6 +30,10 @@ const LOCALE_EN = {
       label: 'Sound effects',
       desc: 'A little success chime when you hit your target for the day.',
     },
+    kiloMuted: {
+      label: 'Silence Kilo',
+      desc: 'Turns off his speech bubbles - he stays visible, just quiet.',
+    },
     leaderboardOptOut: {
       label: 'Community leaderboard',
       desc: 'Shows your name, streak and XP on the leaderboard shared with other users.',
