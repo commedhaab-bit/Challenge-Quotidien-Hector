@@ -1136,6 +1136,67 @@ const LOCALE_FR = {
         "On est {{day}}. No pain no gain, {{exercise}} t'attend.",
         "{{day}} : jour parfait pour prouver que {{exercise}} ne te fait pas peur.",
         "{{day}}... et devine quoi ? {{exercise}} est toujours au programme.",
+        // Catalogue industriel (15 archetypes) - ouverture d'exercice, punchline du jour.
+        // --- Coach Shonen ---
+        "{{day}} : jour d'entraînement ultime pour {{exercise}} ! Ton pouvoir grandit !",
+        "Même un {{day}}, ton esprit de guerrier réclame {{exercise}} !",
+        "{{day}}. L'arc d'entraînement pour {{exercise}} ne s'arrête jamais !",
+        // --- Sergent instructeur ---
+        "{{day}}, aucune permission accordée. {{exercise}} nous attend, soldat.",
+        "Un {{day}} de plus, une excuse de moins. {{exercise}}, maintenant.",
+        "{{day}} : discipline avant tout. {{exercise}} au programme, point final.",
+        // --- Pote taquin ---
+        "{{day}}, et devine ce qu'on va faire ? Eh oui, {{exercise}}.",
+        "Un {{day}} tranquille, tu croyais ? {{exercise}} dit non.",
+        "{{day}}, comme d'habitude. {{exercise}} ne prend jamais de vacances, hein.",
+        // --- Philosophe du fitness ---
+        "{{day}}. Même le temps qui passe ne dispense pas de {{exercise}}.",
+        "Un {{day}} de plus dans le grand cycle de {{exercise}}.",
+        "{{day}} : chaque jour porte sa propre leçon, aujourd'hui c'est {{exercise}}.",
+        // --- Gamer/geek ---
+        "{{day}} : quête quotidienne débloquée, {{exercise}} t'attend.",
+        "Nouveau {{day}}, même farm : {{exercise}} au programme.",
+        "{{day}}. Le serveur reset, mais {{exercise}} reste sur ta to-do list.",
+        // --- Héros de film d'action 80s ---
+        "{{day}}. Et {{exercise}} n'a toujours pas dit son dernier mot.",
+        "Même un {{day}}, on ne recule pas devant {{exercise}}.",
+        "{{day}}, prépare-toi pour {{exercise}}, ça va chauffer.",
+        // --- Scientifique/ingénieur ---
+        "{{day}} : conditions expérimentales stables. Protocole {{exercise}} maintenu.",
+        "Aucune variable jour ne modifie l'objectif {{exercise}} ce {{day}}.",
+        "{{day}}, {{exercise}} reste constant dans l'équation.",
+        // --- Influenceur Fit-Bro ---
+        "{{day}}, bro. {{exercise}} au programme, comme toujours.",
+        "Même un {{day}}, la grind pour {{exercise}} continue.",
+        "{{day}} : focus total sur {{exercise}}, aucune excuse.",
+        // --- Vieux sage ---
+        "{{day}}. La sagesse dit : {{exercise}} attend patiemment.",
+        "Un {{day}} de plus sur le chemin de {{exercise}}.",
+        "{{day}} : le temps ne s'arrête jamais, {{exercise}} non plus.",
+        // --- Coach rétro Gym Tonic ---
+        "{{day}} ! On enfile le legging, {{exercise}} nous attend !",
+        "Même un {{day}}, la musique continue pour {{exercise}} !",
+        "{{day}}, et un, et deux, {{exercise}} au programme !",
+        // --- Spartiate/mythologique ---
+        "{{day}}. Sparte ne connaît pas de jour de repos pour {{exercise}}.",
+        "Un {{day}} de plus, une bataille de plus : {{exercise}}.",
+        "{{day}} : la gloire attend ceux qui font {{exercise}}.",
+        // --- Capitaine pirate ---
+        "{{day}}, moussaillon. {{exercise}} nous attend, en avant !",
+        "Même un {{day}}, le trésor de {{exercise}} reste à conquérir.",
+        "{{day}} : hissons les voiles pour {{exercise}} !",
+        // --- Manager corporate ---
+        "{{day}} : livrable {{exercise}} toujours au planning.",
+        "Aucun jour off pour {{exercise}}, même un {{day}}.",
+        "{{day}}, on reste aligné sur l'objectif {{exercise}}.",
+        // --- Nutritionniste obsessionnel ---
+        "{{day}}. {{exercise}} d'abord, la collation ensuite.",
+        "Un {{day}} de plus, un {{exercise}} de plus, les macros suivent.",
+        "{{day}} : {{exercise}} au menu, comme chaque jour.",
+        // --- Minimaliste stoïcien ---
+        "{{day}}. {{exercise}}. Simple.",
+        "{{day}} ou pas, {{exercise}} reste.",
+        "{{day}}. {{exercise}} attend.",
       ],
       // Idee bonus #7 (retour utilisateur, "statistiques transformees en
       // punchlines delirantes") : remplace occasionnellement la bulle
@@ -1152,6 +1213,67 @@ const LOCALE_FR = {
         "{{lifetime}}... si chaque répétition valait un centime, tu serais presque riche.",
         "{{lifetime}} de {{exercise}} cumulés. Les autres mascottes m'envient, tu sais.",
         "{{lifetime}}. Honnêtement, je commence à manquer de superlatifs pour toi.",
+        // Catalogue industriel (15 archetypes) - comparaison delirante du cumul a vie.
+        // --- Coach Shonen ---
+        "{{lifetime}} de {{exercise}} à vie ! Ton niveau de puissance dépasse l'écran !",
+        "{{lifetime}}... c'est le genre de chiffre qui débloque une transformation légendaire.",
+        "{{lifetime}} sur {{exercise}}. Même les plus grands héros seraient impressionnés.",
+        // --- Sergent instructeur ---
+        "{{lifetime}} de {{exercise}}. Rapport officiel : performance exemplaire, soldat.",
+        "{{lifetime}}. Ce chiffre mérite une médaille, pas juste un compliment.",
+        "{{lifetime}} sur {{exercise}} : discipline confirmée à tous les niveaux.",
+        // --- Pote taquin ---
+        "{{lifetime}} de {{exercise}}... ok là tu m'impressionnes vraiment.",
+        "{{lifetime}} ? Sérieux ? T'as pas une vie en dehors de {{exercise}} ?",
+        "{{lifetime}}. Bon, je l'avoue, chapeau bas.",
+        // --- Philosophe du fitness ---
+        "{{lifetime}} de {{exercise}}. Chaque répétition, une pierre dans l'édifice du temps.",
+        "{{lifetime}}... le cumul d'une vie d'efforts silencieux.",
+        "{{lifetime}} sur {{exercise}} : la preuve que la constance transcende le temps.",
+        // --- Gamer/geek ---
+        "{{lifetime}} de {{exercise}}. XP totale : niveau légendaire atteint.",
+        "{{lifetime}}... ce compteur devrait avoir son propre trophée Steam.",
+        "{{lifetime}} sur {{exercise}} : boss final du grind, vaincu depuis longtemps.",
+        // --- Héros de film d'action 80s ---
+        "{{lifetime}} de {{exercise}}. Même Rocky applaudirait ce chiffre.",
+        "{{lifetime}}... digne d'une suite au cinéma.",
+        "{{lifetime}} sur {{exercise}} : une légende est née.",
+        // --- Scientifique/ingénieur ---
+        "{{lifetime}} de {{exercise}}. Données cumulées hors norme statistique.",
+        "{{lifetime}}... un échantillon suffisant pour une étude complète.",
+        "{{lifetime}} sur {{exercise}} : rendement cumulatif exceptionnel confirmé.",
+        // --- Influenceur Fit-Bro ---
+        "{{lifetime}} de {{exercise}}, bro. Cette shape ne ment pas.",
+        "{{lifetime}}... masterclass absolue, respect total.",
+        "{{lifetime}} sur {{exercise}} : le grind ultime, direct.",
+        // --- Vieux sage ---
+        "{{lifetime}} de {{exercise}}. La patience, accumulée en un seul chiffre.",
+        "{{lifetime}}... le fruit de mille petits pas.",
+        "{{lifetime}} sur {{exercise}} : la sagesse du geste répété.",
+        // --- Coach rétro Gym Tonic ---
+        "{{lifetime}} de {{exercise}} ! Un record digne d'un clip des années 80 !",
+        "{{lifetime}}... ça mérite une standing ovation en legging néon.",
+        "{{lifetime}} sur {{exercise}} : le hit de l'été, en boucle depuis toujours.",
+        // --- Spartiate/mythologique ---
+        "{{lifetime}} de {{exercise}}. Une armée entière serait fière de ce chiffre.",
+        "{{lifetime}}... digne des plus grands guerriers de Sparte.",
+        "{{lifetime}} sur {{exercise}} : la gloire, mesurée en répétitions.",
+        // --- Capitaine pirate ---
+        "{{lifetime}} de {{exercise}}. Un trésor accumulé au fil des traversées.",
+        "{{lifetime}}... même Barbe Noire n'a jamais amassé autant.",
+        "{{lifetime}} sur {{exercise}} : butin colossal, moussaillon.",
+        // --- Manager corporate ---
+        "{{lifetime}} de {{exercise}}. ROI cumulatif exceptionnel sur le long terme.",
+        "{{lifetime}}... ce KPI mérite d'être présenté en comité de direction.",
+        "{{lifetime}} sur {{exercise}} : performance annuelle dépassée, largement.",
+        // --- Nutritionniste obsessionnel ---
+        "{{lifetime}} de {{exercise}}. À ce rythme, le métabolisme applaudit aussi.",
+        "{{lifetime}}... presque autant de calories brûlées que de grains de riz mangés.",
+        "{{lifetime}} sur {{exercise}} : les macros n'ont jamais aussi bien suivi.",
+        // --- Minimaliste stoïcien ---
+        "{{lifetime}} de {{exercise}}. Le chiffre parle de lui-même.",
+        "{{lifetime}}. Accumulé, sans bruit.",
+        "{{lifetime}} sur {{exercise}}. La répétition, encore et encore.",
       ],
     },
     // Moteur d'humeur global de l'accueil (chantier gamification Phase 2, voir
