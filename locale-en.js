@@ -149,6 +149,40 @@ const LOCALE_EN = {
         "+{{amount}}... not bad at all!",
       ],
     },
+    // Global home-screen mood engine (gamification Phase 2, see computeKiloMood()) -
+    // one key per mood ('idle'/'warning'/'hype'/'teasing'), each an ARRAY of
+    // variants (pickKiloLine() picks one at random, never recomputed while the
+    // mood stays the same - see render()). tapEncouragement: separate pool,
+    // played when tapping Kilo.
+    home: {
+      idle: [
+        "Ready whenever you are, I'm not going anywhere.",
+        'One day at a time. Shall we?',
+      ],
+      warning: [
+        "You know, my dumbbell is starting to rust from waiting...",
+        "It's getting late and there's still work to do. Let's move?",
+        'Still waiting over here. Patiently. Very patiently.',
+      ],
+      hype: [
+        'My muscles grew just watching you! Incredible!',
+        'Full Muscle Mode activated! Nothing can stop you today.',
+        'That set? Legendary. Writing it down in the history books.',
+      ],
+      teasing: [
+        'Well, well... you still remember me?',
+        "It's been a while. My dumbbell's gathering dust.",
+        'I was about to call for help. Good to see you again.',
+      ],
+      tapEncouragement: [
+        "Come on, let's go!",
+        'Every rep counts, I swear.',
+        'You and me, a winning team.',
+        "A little more effort and I'll give you a wink.",
+        "You're stronger than you think.",
+        'I believe in you, you know that?',
+      ],
+    },
   },
   card: {
     hardcoreDone: '🔥 Hardcore completed',

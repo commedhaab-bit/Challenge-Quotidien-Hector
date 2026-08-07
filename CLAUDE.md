@@ -3920,3 +3920,105 @@ ton coach/parfois taquin, comme demande.
 CACHE_NAME -> v88 (nouvelles cles `locale-*.js`). Aucun changement de regles
 Firestore/Cloud Functions - modification 100% cote client, aucune touche a
 `functions/**`.
+
+
+## Kilo, moteur d'humeur global + bulle d'accueil + tap interactif (chantier gamification, Phase 2)
+
+Suite de la Phase 1 (coach sur la fiche d'exercice). Voir le plan
+`generic-riding-gizmo.md` pour le contexte complet ; la Phase 3 (cosmetiques)
+reste feuille de route, non construite ici.
+
+**2 nouveaux etats SVG** (`KILO_STATE_SVG`, dessines a la main dans le meme
+style Bezier que les 6 existants - decision explicite de l'utilisateur,
+plutot que de reutiliser des etats existants) :
+- `hype` ("Full Muscu/Eclairs") : reprend la pose bras flechis/lunettes de
+  `success` en base (biceps encore plus bombes), 3 eclairs qui crepitent en
+  boucle autour de Kilo (`.kilo-lightning`, meme principe de decalage
+  d'animation que `.kilo-spark`).
+- `teasing` ("Taquin/Decu") : bras croises devant le torse, sourcil leve,
+  sourire en coin, pied qui tape le sol (`.kilo-foot-tap`). **Volontairement
+  distinct de `lost`** (deja utilise pour la perte de serie, triste/grise) :
+  `teasing` reste dans les couleurs cyan habituelles de Kilo, juste
+  passif-agressif/moqueur - pas triste.
+
+**`computeKiloMood(opts)`** (index.html) remplace entierement l'ancien
+`computeKiloHomeState(activeIds, stateChallenges, hour)` (supprime, ses
+tests dedies transformes en equivalents `computeKiloMood`) - reste **pure**
+(toutes les donnees temporelles/derivees sont des parametres d'un objet
+options, jamais lues en interne). **Ordre de priorite documente
+explicitement dans le code**, une seule humeur a la fois :
+1. `teasing` - inactif depuis >= 2 jours (`daysSinceLastActivity`, via le
+   nouveau helper `computeDaysSinceLastActivity(lastCompletedDate, todayKey)`
+   qui extrait un calcul deja fait en interne par `evaluateStreakOnLoad()`
+   mais jamais expose auparavant). Le signal le plus fort : tout le reste
+   passe au second plan.
+2. `hype` - une serie "enorme" vient d'etre loguee (`justLoggedHugeSet`, au
+   moins la moitie de l'objectif du jour en UNE fois, voir `addSetInner()`
+   qui pose `kiloHomeHugeSetUntil` pour une fenetre de **5 minutes** -
+   volontairement bien plus longue que le flash de 1.6s de la fiche
+   d'exercice en Phase 1, pour que l'effet reste visible en revenant sur
+   l'accueil) OU la serie franchit un palier de 7 jours
+   (`streakCount % 7 === 0`).
+3. `warning` - tard (**>= 18h**, valeur du cahier des charges, distincte du
+   seuil 19h de l'ancienne fonction) ET loin du but, cote **personnel**
+   (moins de la moitie des defis actifs du jour sont valides - **changement
+   de comportement assume** : l'ancienne fonction stressait des qu'un SEUL
+   defi actif n'etait pas fait, meme avec plusieurs autres deja valides ;
+   desormais un ratio, pour ne pas stresser inutilement quelqu'un qui a deja
+   fait l'essentiel) OU cote **groupe** (un defi de groupe actif a moins de
+   24h de son echeance et moins de 70% de la cible collective atteinte -
+   nouvelle donnee, voir plus bas).
+4. Repli : `idle` (comportement par defaut conserve - ne renvoie jamais
+   `success`, comme l'ancienne fonction).
+
+**Lacune de donnees comblee** : `refreshMyGroupsAndActiveChallenges()`
+enrichit desormais chaque entree de `myActiveGroupChallenges` avec `endDate`
+(deja present sur le MEME doc deja lu, aucun cout supplementaire) et
+`currentTotal` (nouvelle lecture des participants par defi actif, meme
+formule `computeGroupTotalProgress()` que `loadActiveExerciseGroupChallenges()`
+- jamais de calcul duplique). Cout equivalent a une lecture deja faite pour
+la fiche d'exercice, juste generalise a TOUS les defis actifs au demarrage.
+
+**Bulle d'accueil** : `kiloHomeBubbleText`/`kiloHomeBubbleMood` - meme
+principe que la Phase 1 (texte DEJA RESOLU, jamais recalcule a chaque
+`render()` qui recalcule l'humeur elle-meme en continu) mais recalculee
+**quand l'humeur change** plutot qu'a l'ouverture d'un ecran (il n'y a pas
+d'evenement "ouverture" equivalent a `pickChallenge()` sur l'accueil,
+affiche en continu). Dictionnaire `kilo.home.*` (nouveau namespace,
+fr/en/es) indexe par humeur (`idle`/`warning`/`hype`/`teasing`), chacune un
+TABLEAU de variantes.
+
+**Tap interactif ("effet Tamagotchi")** : `kiloHomeTap()` (nouvelle
+fonction, PAS une simple extension de `kiloTap()` - voir plus bas pourquoi)
+declenche a la fois le rebond visuel ET une phrase d'encouragement aleatoire
+(`kilo.home.tapEncouragement`, pool separe des repliques d'humeur). **Piege
+rencontre et evite en amont** : `kiloTap()` (Phase 1 et anterieure)
+manipule le DOM DIRECTEMENT (`classList.add('kilo-tapped')`) - fonctionne
+pour un SVG isole dans une popup (jamais re-rendu entre-temps), mais
+l'accueil re-rend TOUT `#app` a chaque `render()` (necessaire ici pour
+afficher la nouvelle phrase d'encouragement) : un `classList.add()`
+imperatif serait immediatement efface par ce meme `render()` avant meme
+d'avoir eu le temps de s'afficher a l'ecran. `kiloHomeTap()` pilote donc le
+rebond via un horodatage consulte PAR `render()` lui-meme
+(`kiloHomeTapBounceUntil`, classe CSS `.tapped` sur `.kilo-home-slot`,
+memes keyframes `kilo-tap-bounce` que `.kilo-tapped`) - exactement le meme
+principe que `exerciseKiloFlashUntil` en Phase 1.
+
+**Bulle sans pointe triangulaire precise** (a la difference de la fiche
+d'exercice) : `.header` (accueil) est `justify-content:space-between` avec
+3 enfants (date/Kilo/pastille de serie) - la position horizontale exacte de
+Kilo n'est pas assez fiable a cibler avec un triangle CSS pointant
+precisement vers lui. `.kilo-home-bubble` est donc une carte pleine largeur
+centree sous le bandeau, sans pointe - meme habillage visuel
+(`background`/`border`/`border-radius`) que `.kilo-exercise-bubble` pour
+rester coherent, mais sans son `::before`/`::after`.
+
+**Fonction partagee renommee** : `pickKiloExerciseLine()` (Phase 1) devient
+`pickKiloLine()` - son implementation etait deja 100% generique (resolution
+i18n + pioche aleatoire + interpolation), seul le nom laissait a tort penser
+qu'elle etait specifique a la fiche d'exercice. Utilisee maintenant par les
+2 ecrans (`kilo.exercise.*` ET `kilo.home.*`).
+
+CACHE_NAME -> v89 (nouveau namespace `kilo.home.*` dans les 3 fichiers
+`locale-*.js`). Aucun changement de regles Firestore/Cloud Functions -
+modification 100% cote client, aucune touche a `functions/**`.

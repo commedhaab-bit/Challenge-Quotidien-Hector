@@ -2076,6 +2076,17 @@ function daysBetween(keyA, keyB) {
   return Math.round((b - a) / 86400000);
 }
 
+// Nombre de jours ecoules depuis la derniere activite (chantier gamification
+// Phase 2, voir computeKiloMood()) - reutilise daysBetween(), meme calcul deja
+// fait en interne par evaluateStreakOnLoad() pour la perte de serie, mais
+// jamais expose comme fonction reutilisable jusqu'ici. Repli a 0 si aucune
+// activite n'a jamais ete enregistree (lastCompletedDate absent) - un compte
+// tout neuf ne doit jamais etre traite comme "inactif depuis des jours".
+function computeDaysSinceLastActivity(lastCompletedDate, todayKey) {
+  if (!lastCompletedDate) return 0;
+  return daysBetween(lastCompletedDate, todayKey);
+}
+
 // ==== COMMUNAUTÉ : GÉNÉRATION DÉTERMINISTE (zéro backend) ====
 // Le défi du jour communautaire et la cible hebdomadaire du Boss Battle doivent être
 // STRICTEMENT IDENTIQUES pour tous les utilisateurs sans aucun serveur : un PRNG seedé
@@ -2369,7 +2380,7 @@ let myGroups = []; // [{ groupId, name, emoji, joinedAt }]
 // Alimente registerGroupChallengeContributionsIfNeeded() : seulement les defis actifs
 // dont JE fais partie, pour associer chaque serie loguee (n'importe quel onglet) au(x)
 // bon(s) defi(s) de groupe sans avoir a rouvrir l'onglet Groupes.
-let myActiveGroupChallenges = []; // [{ groupId, challengeId, exerciseSlug, targetTotal }]
+let myActiveGroupChallenges = []; // [{ groupId, challengeId, exerciseSlug, targetTotal, endDate, currentTotal }]
 // Retour utilisateur : sur la fiche d'un exercice, afficher la progression du/des
 // defi(s) de groupe lie(s) (memes membres, meme exercice) sous l'objectif personnel
 // du jour - evite l'impression de 2 mondes separes ("je fais des pompes ici, mais je
@@ -2866,7 +2877,16 @@ async function refreshMyGroupsAndActiveChallenges() {
         .where('status', '==', 'active').limit(1).get();
       if (activeSnap.empty) return null;
       const c = activeSnap.docs[0];
-      return { groupId: g.groupId, challengeId: c.id, exerciseSlug: c.data().exerciseSlug, targetTotal: c.data().targetTotal };
+      // endDate et currentTotal (chantier gamification Phase 2, moteur d'humeur -
+      // "loin du but ET l'echeance approche") : endDate est deja present sur ce
+      // MEME doc deja lu ci-dessus (aucun cout supplementaire) ; currentTotal
+      // necessite une lecture de plus (participants), meme formule que
+      // loadActiveExerciseGroupChallenges() (computeGroupTotalProgress(), jamais
+      // de calcul duplique) - cout equivalent, juste generalise a TOUS les defis
+      // actifs au demarrage plutot qu'a la seule fiche d'exercice ouverte.
+      const participantsSnap = await db.collection('groups').doc(g.groupId).collection('challenges').doc(c.id).collection('participants').get();
+      const currentTotal = computeGroupTotalProgress(participantsSnap.docs.map((d) => d.data()));
+      return { groupId: g.groupId, challengeId: c.id, exerciseSlug: c.data().exerciseSlug, targetTotal: c.data().targetTotal, endDate: c.data().endDate, currentTotal };
     }));
     myActiveGroupChallenges = activeLists.filter(Boolean);
     render();
@@ -5247,6 +5267,29 @@ let justCompletedDailyObjective = false;
 let exerciseKiloFlashUntil = 0;
 let exerciseKiloBubbleText = '';
 
+// Kilo, moteur d'humeur global (retour utilisateur, chantier gamification
+// Phase 2). kiloHomeHugeSetUntil : horodatage jusqu'auquel une serie enorme
+// venant d'etre loguee doit faire pencher l'humeur de l'accueil vers 'hype' -
+// fenetre bien plus longue que le flash de la fiche d'exercice (Phase 1,
+// 1.6s, reaction immediate au tap) car ici il faut que l'effet reste visible
+// en revenant sur l'accueil apres la serie, pas seulement pendant le tap lui-
+// meme (voir addSetInner()/computeKiloMood()). kiloHomeBubbleText/Mood :
+// meme principe que exerciseKiloBubbleText - texte DEJA RESOLU, recalcule
+// UNIQUEMENT quand l'humeur change (jamais a chaque render(), qui recalcule
+// l'humeur elle-meme en continu - sinon la replique clignoterait/se
+// re-randomiserait sur un simple re-rendu sans rapport).
+let kiloHomeHugeSetUntil = 0;
+const KILO_HUGE_SET_WINDOW_MS = 5 * 60 * 1000;
+let kiloHomeBubbleText = '';
+let kiloHomeBubbleMood = null;
+// Horodatage du dernier tap sur Kilo (accueil) - pilote la classe CSS
+// '.tapped' (rebond, memes keyframes que .kilo-tapped) sur .kilo-home-slot,
+// PAS une manipulation DOM directe (voir kiloHomeTap()) : render() remplace
+// tout #app a chaque appel, un simple classList.add() serait immediatement
+// efface par le prochain rendu sans jamais avoir eu le temps de s'afficher -
+// meme raisonnement que exerciseKiloFlashUntil (Phase 1).
+let kiloHomeTapBounceUntil = 0;
+
 function emptyDayState() {
   return { challenges: {} };
 }
@@ -5334,7 +5377,7 @@ async function pickChallenge(id) {
   // et flash remis a zero a chaque nouvel exercice choisi - jamais la replique
   // ou le flash motive d'un exercice PRECEDENT qui trainerait visuellement.
   exerciseKiloFlashUntil = 0;
-  exerciseKiloBubbleText = pickKiloExerciseLine(
+  exerciseKiloBubbleText = pickKiloLine(
     'kilo.exercise.opening.' + computeKiloExerciseProgressBucket(getTotal(), getTarget(), entry.done),
     { current: getTotal(), target: getTarget() }
   );
@@ -5572,8 +5615,16 @@ async function addSetInner(amount) {
   // fenetre de flash se termine, meme si l'utilisateur ne retape pas entre-temps
   // (sinon Kilo resterait affiche en 'success' indefiniment jusqu'au prochain tap).
   exerciseKiloFlashUntil = Date.now() + 1600;
-  exerciseKiloBubbleText = pickKiloExerciseLine('kilo.exercise.tapPunchline', { amount });
+  exerciseKiloBubbleText = pickKiloLine('kilo.exercise.tapPunchline', { amount });
   setTimeout(() => render(), 1650);
+
+  // Chantier gamification Phase 2 : une serie "enorme" loguee d'un coup (au
+  // moins la moitie de l'objectif du jour en UNE fois) fait pencher l'humeur
+  // de Kilo sur l'ACCUEIL vers 'hype' pendant quelques minutes (voir
+  // computeKiloMood()) - independant du flash local de cette fiche d'exercice.
+  if (target > 0 && amount >= target * 0.5) {
+    kiloHomeHugeSetUntil = Date.now() + KILO_HUGE_SET_WINDOW_MS;
+  }
 
   // Records & totaux à vie
   if (!stats[currentChallengeId]) {
@@ -5935,13 +5986,32 @@ function render(animate) {
   let html = '';
 
   if (!currentChallengeId) {
-    const kiloHomeState = computeKiloHomeState([...activeToday], state.challenges, today.getHours());
+    const kiloHomeMood = computeKiloMood({
+      activeIds: [...activeToday],
+      stateChallenges: state.challenges,
+      hour: today.getHours(),
+      streakCount: computeStreak(),
+      daysSinceLastActivity: computeDaysSinceLastActivity(lastCompletedDate, todayKey),
+      justLoggedHugeSet: Date.now() < kiloHomeHugeSetUntil,
+      groupChallenges: myActiveGroupChallenges,
+    });
+    // Bulle d'accueil : recalculee UNIQUEMENT quand l'humeur change (jamais a
+    // chaque render(), qui recalcule l'humeur elle-meme en continu - sinon la
+    // replique clignoterait/se re-randomiserait sur un simple re-rendu sans
+    // rapport). kiloHomeTap() met a jour exceptionnellement ce texte hors
+    // changement d'humeur (encouragement au tap), ce garde-fou le laisse alors
+    // intact puisque le mood recalcule ici n'a pas change entre-temps.
+    if (kiloHomeMood !== kiloHomeBubbleMood) {
+      kiloHomeBubbleMood = kiloHomeMood;
+      kiloHomeBubbleText = pickKiloLine('kilo.home.' + kiloHomeMood, {});
+    }
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
-        <div class="kilo-home-slot">${renderKilo(kiloHomeState, { size: 72, clickable: true })}</div>
+        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMood, { size: 72 })}</div>
         <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>
+      ${kiloHomeBubbleText ? `<div class="kilo-home-bubble" onclick="kiloHomeTap()">${escapeHtml(kiloHomeBubbleText)}</div>` : ''}
       <h1 class="title">${t('today.title')}</h1>
     `;
     // Défis BRUTS (non résolus) : renderChallengeCard() appelle déjà resolveChallenge()
@@ -7791,6 +7861,45 @@ const KILO_STATE_SVG = {
       '<text x="0" y="3" fill="#0f172a" font-size="13" font-weight="900" text-anchor="middle">1</text>' +
       '</g></g>',
   },
+  // "Full Muscu / Eclairs" (chantier gamification Phase 2) : reprend la pose bras
+  // flechis/lunettes de 'success' en base (meme famille visuelle - Kilo qui vient
+  // d'accomplir un exploit), avec des biceps encore plus bombes et 3 eclairs
+  // (zigzag) qui crepitent en boucle autour de lui - voir computeKiloMood().
+  hype: {
+    markup:
+      '<g class="kilo-lightning" style="--kilo-lightning-delay:0ms"><path d="M -85 -55 L -70 -25 L -80 -25 L -62 12" stroke="#facc15" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>' +
+      '<g class="kilo-lightning" style="--kilo-lightning-delay:150ms"><path d="M 85 -55 L 70 -25 L 80 -25 L 62 12" stroke="#facc15" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>' +
+      '<g class="kilo-lightning" style="--kilo-lightning-delay:300ms"><path d="M 6 -72 L -7 -46 L 5 -46 L -9 -18" stroke="#fde047" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>' +
+      '<rect x="-70" y="-40" width="20" height="80" rx="8" fill="#06b6d4"/>' +
+      '<rect x="50" y="-40" width="20" height="80" rx="8" fill="#06b6d4"/>' +
+      '<rect x="-48" y="-20" width="96" height="40" rx="20" fill="#1e293b" stroke="#facc15" stroke-width="3.5"/>' +
+      '<path d="M -42 -12 Q 0 -22 42 -12" stroke="#ef4444" stroke-width="9" fill="none" stroke-linecap="round"/>' +
+      '<path d="M -24 -4 L -4 -4 L -8 7 L -20 7 Z" fill="#0f172a" stroke="#facc15" stroke-width="1.5"/>' +
+      '<path d="M 24 -4 L 4 -4 L 8 7 L 20 7 Z" fill="#0f172a" stroke="#facc15" stroke-width="1.5"/>' +
+      '<line x1="-6" y1="-2" x2="6" y2="-2" stroke="#facc15" stroke-width="2"/>' +
+      '<path d="M -10 12 Q 0 22 12 10" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="round"/>' +
+      '<path d="M -48 0 C -76 -8 -80 -44 -50 -30" stroke="#06b6d4" stroke-width="7.5" fill="none" stroke-linecap="round"/>' +
+      '<path d="M 48 0 C 76 -8 80 -44 50 -30" stroke="#06b6d4" stroke-width="7.5" fill="none" stroke-linecap="round"/>',
+  },
+  // "Taquin / Decu" (chantier gamification Phase 2) : bras croises devant le
+  // torse, un sourcil leve, sourire en coin asymetrique (smirk) - DISTINCT de
+  // 'lost' (triste/grise, deja utilise pour la perte de serie) : ici Kilo
+  // reste dans ses couleurs habituelles, juste passif-agressif/moqueur - voir
+  // computeKiloMood() (inactivite >=2 jours).
+  teasing: {
+    markup:
+      '<rect x="-70" y="-40" width="20" height="80" rx="8" fill="#06b6d4"/>' +
+      '<rect x="50" y="-40" width="20" height="80" rx="8" fill="#06b6d4"/>' +
+      '<rect x="-48" y="-20" width="96" height="40" rx="20" fill="#1e293b" stroke="#06b6d4" stroke-width="3.5"/>' +
+      '<path d="M -42 -12 Q 0 -22 42 -12" stroke="#ef4444" stroke-width="9" fill="none" stroke-linecap="round"/>' +
+      '<path d="M 6 -13 Q 15 -17 22 -12" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round"/>' +
+      '<circle cx="-15" cy="4" r="6" fill="#ffffff"/><circle cx="-14" cy="3" r="2.5" fill="#0f172a"/>' +
+      '<circle cx="15" cy="6" r="5" fill="#ffffff"/><circle cx="17" cy="6" r="2" fill="#0f172a"/>' +
+      '<path d="M -8 14 Q 2 20 10 12" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="round"/>' +
+      '<path d="M -48 0 C -30 16 -8 10 -2 0" stroke="#06b6d4" stroke-width="5.5" fill="none" stroke-linecap="round"/>' +
+      '<path d="M 48 0 C 30 -16 8 -10 2 0" stroke="#06b6d4" stroke-width="5.5" fill="none" stroke-linecap="round"/>' +
+      '<g class="kilo-foot-tap"><path d="M -12 46 L 8 46" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/></g>',
+  },
 };
 
 function renderKilo(state, options) {
@@ -7835,21 +7944,81 @@ function kiloTap(el) {
   el.classList.add('kilo-tapped');
 }
 
-// Etat de Kilo sur l'accueil : idle en journee, warning des 19h si au moins un
-// defi actif du jour n'est pas encore valide. Fonction PURE (l'heure est un
-// parametre, jamais new Date()/Date.now() directement dedans) pour rester
-// testable de facon deterministe.
-function computeKiloHomeState(activeIds, stateChallenges, hour) {
-  if (activeIds.length === 0) return 'idle';
-  const allDone = activeIds.every((id) => stateChallenges[id] && stateChallenges[id].done);
-  if (allDone) return 'idle';
-  return hour >= 19 ? 'warning' : 'idle';
+// Interactivite tactile de Kilo sur l'accueil (chantier gamification Phase 2,
+// "effet Tamagotchi") : contrairement a kiloTap() (simple manipulation DOM
+// directe, suffisante pour un SVG isole dans une popup), l'accueil re-rend
+// TOUT #app a chaque render() - un classList.add() imperatif serait donc
+// immediatement efface par le prochain rendu avant meme d'avoir eu le temps
+// de s'afficher. Pilote donc le rebond via un horodatage consulte par
+// render() lui-meme (kiloHomeTapBounceUntil, classe CSS '.tapped' sur
+// .kilo-home-slot, memes keyframes que .kilo-tapped), meme principe que
+// exerciseKiloFlashUntil (Phase 1). Met AUSSI a jour la bulle avec un
+// encouragement aleatoire, par-dessus le rebond - exactement comme demande.
+function kiloHomeTap() {
+  if (navigator.vibrate) navigator.vibrate(8);
+  kiloHomeTapBounceUntil = Date.now() + 400;
+  kiloHomeBubbleText = pickKiloLine('kilo.home.tapEncouragement', {});
+  render();
+  setTimeout(() => render(), 450);
+}
+
+// Moteur d'humeur de Kilo sur l'accueil (chantier gamification Phase 2) -
+// remplace l'ancien computeKiloHomeState() (idle en journee / warning des 19h
+// si un defi actif n'etait pas valide), desormais un cas particulier de cette
+// fonction plus riche. Reste PURE : toutes les donnees temporelles/derivees
+// sont des parametres explicites, JAMAIS new Date()/Date.now() lu en interne
+// (meme convention que la fonction qu'elle remplace) - testable de facon
+// deterministe.
+//
+// ORDRE DE PRIORITE (documente explicitement, une seule humeur affichee a la
+// fois) :
+//   1. 'teasing' - inactif depuis >= 2 jours. Le signal le plus fort : on ne
+//      l'a pas vu depuis un moment, tout le reste (serie, retard...) passe au
+//      second plan tant que ce n'est pas rattrape.
+//   2. 'hype'    - vient de logger une enorme serie d'un coup (justLoggedHugeSet,
+//      ephemere/evenementiel, comme le flash de la fiche d'exercice en Phase 1),
+//      OU la serie vient de franchir un palier de 7 jours.
+//   3. 'warning' - tard (>= 18h, cf. cahier des charges - distinct du seuil 19h
+//      de l'ancienne fonction) ET loin du but : cote PERSONNEL (moins de la
+//      moitie des defis actifs du jour sont valides - pas juste "un seul non
+//      fait", contrairement a l'ancien comportement, pour ne pas stresser
+//      inutilement quelqu'un qui a deja fait l'essentiel) OU cote GROUPE (au
+//      moins un defi de groupe actif a moins de 24h de son echeance ET moins
+//      de 70% de la cible collective atteinte).
+//   4. Repli : 'idle' (aucune de ces conditions - comportement par defaut
+//      conserve de l'ancienne fonction, qui ne renvoyait jamais 'success').
+function computeKiloMood(opts) {
+  const {
+    activeIds, stateChallenges, hour,
+    streakCount = 0, daysSinceLastActivity = 0, justLoggedHugeSet = false,
+    groupChallenges = [], nowMs = Date.now(),
+  } = opts;
+
+  if (daysSinceLastActivity >= 2) return 'teasing';
+
+  const streakMilestone = streakCount > 0 && streakCount % 7 === 0;
+  if (justLoggedHugeSet || streakMilestone) return 'hype';
+
+  if (hour >= 18) {
+    if (activeIds.length > 0) {
+      const doneCount = activeIds.filter((id) => stateChallenges[id] && stateChallenges[id].done).length;
+      if (doneCount / activeIds.length < 0.5) return 'warning';
+    }
+    const groupBehind = groupChallenges.some((g) => {
+      if (!g.endDate || !(g.targetTotal > 0)) return false;
+      const hoursLeft = (g.endDate - nowMs) / 3600000;
+      return hoursLeft > 0 && hoursLeft <= 24 && (g.currentTotal || 0) < g.targetTotal * 0.7;
+    });
+    if (groupBehind) return 'warning';
+  }
+
+  return 'idle';
 }
 
 // ==== Kilo, coach temps reel sur la fiche d'exercice (retour utilisateur) ====
 // Palier de progression - fonction PURE (aucun Math.random() ici), testable
 // independamment du choix aleatoire de la replique exacte (voir
-// pickKiloExerciseLine() plus bas). 4 paliers : rien encore fait, en cours
+// pickKiloLine() plus bas). 4 paliers : rien encore fait, en cours
 // (moins de la moitie), presque termine (moitie ou plus), objectif atteint.
 function computeKiloExerciseProgressBucket(total, target, done) {
   if (done || (target > 0 && total >= target)) return 'done';
@@ -7867,12 +8036,13 @@ function computeKiloExerciseMood(total, target, done) {
 
 // Resout une cle i18n vers une replique DEJA interpolee, en piochant au hasard
 // si la cle resout vers un tableau de variantes (voir locale-fr.js/-en.js/-es.js,
-// namespace kilo.exercise.*) - t() lui-meme ne fait l'interpolation {{}} que
-// lorsque la valeur resolue est DIRECTEMENT une chaine (voir sa doc), donc
-// l'interpolation est refaite ici a la main une fois la variante choisie.
+// namespaces kilo.exercise.*/kilo.home.*) - t() lui-meme ne fait l'interpolation
+// {{}} que lorsque la valeur resolue est DIRECTEMENT une chaine (voir sa doc),
+// donc l'interpolation est refaite ici a la main une fois la variante choisie.
 // Purement cosmetique : aucun besoin de determinisme testable au-dela de "une
-// variante valide de la cle est retournee".
-function pickKiloExerciseLine(key, params) {
+// variante valide de la cle est retournee". Partagee entre la fiche d'exercice
+// (Phase 1) et l'accueil (Phase 2) - nom volontairement generique.
+function pickKiloLine(key, params) {
   const resolved = t(key);
   const list = Array.isArray(resolved) ? resolved : [resolved];
   const chosen = list[Math.floor(Math.random() * list.length)];

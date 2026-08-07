@@ -1555,20 +1555,69 @@ const cssText = __rawHtml + __cssSource;
   // Bugs reels signales : Kilito n etait ni assez visible sur l accueil, ni centre
   // horizontalement dans les popups (SVG en display:block, ignore le text-align du
   // popup contrairement aux icones emoji).
-  __assertOk(__rawHtml.includes("renderKilo(kiloHomeState, { size: 72, clickable: true })"), 'Kilito doit etre nettement plus grand sur l accueil (etait a peine visible a 44px)');
+  __assertOk(__rawHtml.includes("renderKilo(kiloHomeMood, { size: 72 })"), 'Kilito doit etre nettement plus grand sur l accueil (etait a peine visible a 44px)');
   __assertOk(__rawHtml.includes("renderKilo(next.kiloState, { size: 118, clickable: true })"), 'Kilito doit aussi etre agrandi dans les popups');
   __assertOk(cssText.includes('.app-popup-icon.kilo-icon') && cssText.includes('justify-content: center'), 'Kilito doit etre explicitement centre horizontalement dans les popups (un SVG display:block ignore le text-align du parent)');
   console.log('OK: Kilito agrandi sur l accueil + dans les popups, et correctement centre (bugs reels corriges)');
 
-  // computeKiloHomeState() : idle en journee, warning des 19h SEULEMENT si au
-  // moins un defi actif du jour n est pas encore valide. Fonction PURE (l heure
-  // est un parametre) pour rester testable de facon deterministe.
-  __assertEq(computeKiloHomeState([], {}, 20), 'idle', 'aucun defi actif -> toujours idle, meme tard le soir (rien a reprocher)');
-  __assertEq(computeKiloHomeState([1], {}, 20), 'warning', 'un defi actif non valide + 19h passees -> warning');
-  __assertEq(computeKiloHomeState([1], {}, 14), 'idle', 'un defi actif non valide mais AVANT 19h -> idle (pas encore urgent)');
-  __assertEq(computeKiloHomeState([1], { 1: { done: true } }, 20), 'idle', 'defi actif mais DEJA valide -> idle, meme apres 19h');
-  __assertEq(computeKiloHomeState([1, 2], { 1: { done: true }, 2: { done: false } }, 20), 'warning', 'plusieurs defis actifs : UN SEUL non valide suffit a declencher warning apres 19h');
-  console.log('OK: computeKiloHomeState() (idle en journee, warning des 19h uniquement si un defi actif n est pas encore valide)');
+  // computeKiloMood() : moteur d'humeur global de l'accueil (chantier
+  // gamification Phase 2) - remplace l'ancien computeKiloHomeState(). Fonction
+  // PURE (toutes les donnees temporelles/derivees sont des parametres, jamais
+  // new Date()/Date.now() lu en interne) pour rester testable de facon
+  // deterministe.
+  __assertEq(computeKiloMood({ activeIds: [], stateChallenges: {}, hour: 20 }), 'idle', 'aucun defi actif -> idle, meme tard le soir (rien a reprocher)');
+  __assertEq(computeKiloMood({ activeIds: [1], stateChallenges: {}, hour: 20 }), 'warning', 'un seul defi actif non valide + 18h passees -> warning (0% valide, largement sous la moitie)');
+  __assertEq(computeKiloMood({ activeIds: [1], stateChallenges: {}, hour: 14 }), 'idle', 'un defi actif non valide mais AVANT 18h -> idle (pas encore urgent)');
+  __assertEq(computeKiloMood({ activeIds: [1], stateChallenges: { 1: { done: true } }, hour: 20 }), 'idle', 'defi actif deja valide -> idle, meme apres 18h');
+  __assertEq(computeKiloMood({ activeIds: [1, 2], stateChallenges: { 1: { done: true }, 2: { done: false } }, hour: 20 }), 'idle', 'retour utilisateur : la moitie des defis actifs deja valides ne doit PLUS stresser (contrairement a l ancien comportement "un seul non fait suffit")');
+  __assertEq(computeKiloMood({ activeIds: [1, 2, 3], stateChallenges: { 1: { done: true }, 2: { done: false }, 3: { done: false } }, hour: 20 }), 'warning', 'moins de la moitie des defis actifs valides (1/3) -> warning');
+  console.log('OK: computeKiloMood() - warning (18h, cote personnel, ratio "moins de la moitie" plutot que "un seul non fait")');
+
+  // Priorite : 'teasing' (inactivite >= 2 jours) domine tout le reste - le
+  // signal le plus fort, documente explicitement dans le code.
+  __assertEq(computeKiloMood({ activeIds: [1], stateChallenges: {}, hour: 20, daysSinceLastActivity: 2 }), 'teasing', 'inactivite >= 2 jours doit dominer meme un retard personnel evident');
+  __assertEq(computeKiloMood({ activeIds: [], stateChallenges: {}, hour: 10, daysSinceLastActivity: 3 }), 'teasing', 'inactivite declenchee meme sans aucun defi actif ni en fin de journee');
+  __assertEq(computeKiloMood({ activeIds: [], stateChallenges: {}, hour: 10, daysSinceLastActivity: 1 }), 'idle', '1 seul jour d ecart ne doit pas encore declencher teasing (seuil >= 2)');
+  console.log('OK: computeKiloMood() - teasing (inactivite >= 2 jours, priorite maximale)');
+
+  // Priorite : 'hype' (juste sous teasing) - grosse serie venant d etre loguee
+  // (ephemere) OU palier de serie de 7 jours.
+  __assertEq(computeKiloMood({ activeIds: [1], stateChallenges: {}, hour: 20, justLoggedHugeSet: true }), 'hype', 'une enorme serie qui vient d etre loguee doit declencher hype, meme en pleine situation de retard personnel');
+  __assertEq(computeKiloMood({ activeIds: [], stateChallenges: {}, hour: 10, streakCount: 7 }), 'hype', 'un palier de serie de 7 jours doit declencher hype');
+  __assertEq(computeKiloMood({ activeIds: [], stateChallenges: {}, hour: 10, streakCount: 14 }), 'hype', 'chaque multiple de 7 jours declenche de nouveau hype');
+  __assertEq(computeKiloMood({ activeIds: [], stateChallenges: {}, hour: 10, streakCount: 8 }), 'idle', 'une serie hors palier (8 jours) ne declenche pas hype');
+  __assertEq(computeKiloMood({ activeIds: [], stateChallenges: {}, hour: 10, streakCount: 7, daysSinceLastActivity: 2 }), 'teasing', 'teasing (inactivite) doit dominer un palier de serie - priorite documentee dans le code');
+  console.log('OK: computeKiloMood() - hype (grosse serie venant d etre loguee OU palier de serie de 7 jours, priorite sous teasing)');
+
+  // Retard cote defi de GROUPE (nouvelle donnee, myActiveGroupChallenges enrichi
+  // de endDate/currentTotal - voir refreshMyGroupsAndActiveChallenges()).
+  const nowForGroupTest = Date.now();
+  const groupLateSoonBehind = [{ endDate: nowForGroupTest + 10 * 3600000, targetTotal: 100, currentTotal: 20 }]; // 10h restantes, 20% atteint
+  __assertEq(computeKiloMood({ activeIds: [], stateChallenges: {}, hour: 20, groupChallenges: groupLateSoonBehind, nowMs: nowForGroupTest }), 'warning', 'un defi de groupe a moins de 24h de son echeance et loin de la cible (< 70%) doit declencher warning, meme sans aucun defi personnel actif');
+  const groupPlentyOfTime = [{ endDate: nowForGroupTest + 5 * 86400000, targetTotal: 100, currentTotal: 20 }]; // 5 jours restants
+  __assertEq(computeKiloMood({ activeIds: [], stateChallenges: {}, hour: 20, groupChallenges: groupPlentyOfTime, nowMs: nowForGroupTest }), 'idle', 'un defi de groupe loin de la cible mais avec largement le temps (5 jours) ne doit pas stresser');
+  const groupAlmostDoneNearDeadline = [{ endDate: nowForGroupTest + 10 * 3600000, targetTotal: 100, currentTotal: 80 }]; // 80% atteint
+  __assertEq(computeKiloMood({ activeIds: [], stateChallenges: {}, hour: 20, groupChallenges: groupAlmostDoneNearDeadline, nowMs: nowForGroupTest }), 'idle', 'un defi de groupe proche de l echeance mais deja bien avance (>= 70%) ne doit pas stresser');
+  console.log('OK: computeKiloMood() - warning declenche aussi par un defi de GROUPE proche de son echeance et loin de la cible collective');
+
+  // computeDaysSinceLastActivity() : petit helper reutilisable extrait du calcul
+  // deja fait en interne par evaluateStreakOnLoad() pour la perte de serie.
+  __assertEq(computeDaysSinceLastActivity(null, '2026-01-10'), 0, 'aucune activite jamais enregistree -> 0 (jamais traite comme inactif, compte tout neuf)');
+  __assertEq(computeDaysSinceLastActivity('2026-01-10', '2026-01-10'), 0, 'activite aujourd hui meme -> 0');
+  __assertEq(computeDaysSinceLastActivity('2026-01-08', '2026-01-10'), 2, 'ecart de 2 jours calcule correctement');
+  console.log('OK: computeDaysSinceLastActivity() (repli a 0 si jamais actif, reutilise daysBetween())');
+
+  // Les 2 nouveaux etats SVG (chantier gamification Phase 2, dessines a la main
+  // dans le meme style que les 6 existants).
+  for (const kiloState of ['hype', 'teasing']) {
+    const svg = renderKilo(kiloState);
+    __assertOk(svg.includes('kilo-' + kiloState), 'renderKilo(\\'' + kiloState + '\\') doit porter la classe kilo-' + kiloState);
+    __assertOk(svg.includes('<svg') && svg.includes('</svg>'), 'renderKilo(\\'' + kiloState + '\\') doit produire un SVG complet');
+  }
+  __assertOk(renderKilo('hype').includes('kilo-lightning'), '"Full Muscu / Eclairs" doit afficher des eclairs (groupes animes dedies)');
+  __assertOk(renderKilo('teasing').includes('kilo-foot-tap'), '"Taquin / Decu" doit afficher un pied qui tape du sol (groupe anime dedie)');
+  __assertOk(renderKilo('teasing').includes('#06b6d4') && !renderKilo('teasing').includes('#64748b'), '"Taquin" doit rester dans les couleurs habituelles de Kilo (cyan), distinct de "lost" (triste/grise)');
+  console.log('OK: 2 nouveaux etats SVG "hype" (Full Muscu/Eclairs) et "teasing" (Taquin/Decu), dessines a la main comme les 6 existants');
 
   // Integration : Kilo doit apparaitre sur l accueil.
   activeTab = 'today';
@@ -1578,6 +1627,47 @@ const cssText = __rawHtml + __cssSource;
   render(false);
   __assertOk(document.getElementById('app').innerHTML.includes('kilo-home-slot'), 'Kilo doit apparaitre dans l en-tete de l accueil');
   console.log('OK: Kilo integre dans l en-tete de l accueil (idle/warning selon l heure et l avancement du jour)');
+
+  // Bulle d'accueil (chantier gamification Phase 2) : doit afficher une replique
+  // valide pour l humeur affichee, et NE PAS changer sur un re-rendu qui ne
+  // change pas l humeur (evite le clignotement/re-randomisation). Etat remis a
+  // zero explicitement pour garantir 'idle' quelle que soit l heure REELLE
+  // d execution des tests (computeKiloMood() lit today.getHours() en interne
+  // dans render(), non mockable ici) - aucun defi actif = 'idle' garanti.
+  streakCount = 0;
+  lastCompletedDate = todayKey;
+  kiloHomeHugeSetUntil = 0;
+  myActiveGroupChallenges = [];
+  activeToday = new Set();
+  currentChallengeId = null;
+  kiloHomeBubbleMood = null;
+  render(false);
+  let kiloHomeAppHtml = document.getElementById('app').innerHTML;
+  __assertEq(kiloHomeBubbleMood, 'idle', 'pre-requis : aucun defi actif doit garantir l humeur idle, independamment de l heure reelle');
+  __assertOk(kiloHomeAppHtml.includes('kilo-home-bubble'), 'une bulle doit accompagner Kilo sur l accueil');
+  const firstHomeBubbleText = kiloHomeBubbleText;
+  const idleVariants = t('kilo.home.idle').map((v) => interpolate(v, {}));
+  __assertOk(idleVariants.includes(firstHomeBubbleText), 'le texte affiche doit correspondre a une variante valide de l humeur idle');
+  render(false); // re-rendu sans rapport : l humeur n a pas change -> le texte ne doit pas bouger
+  __assertEq(kiloHomeBubbleText, firstHomeBubbleText, 'la bulle ne doit pas se re-randomiser sur un re-rendu qui ne change pas l humeur');
+  console.log('OK: bulle d accueil de Kilo (replique valide pour l humeur actuelle, stable tant que l humeur ne change pas)');
+
+  // Tap sur Kilo (accueil, "effet Tamagotchi") : rebond (classe .tapped,
+  // pilotee par horodatage - jamais une manipulation DOM directe, voir
+  // kiloHomeTap()) + nouvelle phrase d encouragement dans la bulle, par-dessus
+  // l humeur affichee.
+  kiloHomeTap();
+  kiloHomeAppHtml = document.getElementById('app').innerHTML;
+  const kiloSlotIdxHome = kiloHomeAppHtml.indexOf('kilo-home-slot');
+  __assertOk(kiloHomeAppHtml.slice(kiloSlotIdxHome, kiloSlotIdxHome + 60).includes('tapped'), 'le tap doit declencher le rebond (classe .tapped)');
+  const tapEncouragementVariants = t('kilo.home.tapEncouragement').map((v) => interpolate(v, {}));
+  __assertOk(tapEncouragementVariants.includes(kiloHomeBubbleText), 'le tap doit afficher une phrase d encouragement aleatoire dans la bulle');
+  kiloHomeTapBounceUntil = 0; // simule l expiration du rebond (sans attendre reellement 400ms)
+  render(false);
+  kiloHomeAppHtml = document.getElementById('app').innerHTML;
+  const kiloSlotIdxHomeAfter = kiloHomeAppHtml.indexOf('kilo-home-slot');
+  __assertOk(!kiloHomeAppHtml.slice(kiloSlotIdxHomeAfter, kiloSlotIdxHomeAfter + 60).includes('tapped'), 'le rebond doit disparaitre une fois expire');
+  console.log('OK: tap sur Kilo (accueil) declenche le rebond + une phrase d encouragement aleatoire dans la bulle');
 
   // --- 35. Compte a rebours de preparation : 3, 2, 1, puis "C'est parti !" et demarrage reel du chrono ---
   voiceCoachEnabled = true;
@@ -2752,7 +2842,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v88'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v89'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -6095,6 +6185,13 @@ const cssText = __rawHtml + __cssSource;
   await refreshMyGroupsAndActiveChallenges();
   __assertEq(myActiveGroupChallenges.length, 1, 'le nouveau defi actif doit apparaitre dans myActiveGroupChallenges');
   __assertEq(myActiveGroupChallenges[0].exerciseSlug, pompes.slug, 'le bon exerciseSlug doit etre associe');
+  // Chantier gamification Phase 2 (moteur d humeur, computeKiloMood()) : endDate/
+  // currentTotal doivent desormais etre enrichis sur chaque defi actif. endDate
+  // repris du MEME doc deja lu (aucun cout supplementaire) ; currentTotal via une
+  // lecture des participants (meme formule que loadActiveExerciseGroupChallenges(),
+  // 0 ici puisqu aucune contribution n a encore ete loguee).
+  __assertEq(myActiveGroupChallenges[0].endDate, challengeEndDate, 'endDate doit etre repris du doc defi actif');
+  __assertEq(myActiveGroupChallenges[0].currentTotal, 0, 'currentTotal doit etre calcule via une lecture des participants (0 au tout debut)');
   console.log('OK: createGroupChallenge() (doc defi + mon propre doc participant, repris par refreshMyGroupsAndActiveChallenges())');
 
   // Notifications push (Phase A) - trou reel comble : creer un defi de groupe

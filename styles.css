@@ -3852,6 +3852,37 @@
   .kilo-aura-pulse { animation: kilo-aura-pulse 1.1s ease-in-out 0.6s infinite; transform-origin: center; }
   @keyframes kilo-aura-pulse { 0%, 100% { opacity: 0.7; transform: scale(1); } 50% { opacity: 1; transform: scale(1.1); } }
 
+  /* "Full Muscu / Eclairs" (chantier gamification Phase 2, voir computeKiloMood()
+     dans index.html) : tremblement electrique rapide sur l'ensemble + crepitement
+     independant de chaque eclair (meme principe de decalage que .kilo-spark). */
+  .kilo-hype {
+    animation: kilo-hype-shake 0.5s ease-in-out infinite;
+    filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.95)) drop-shadow(0 0 22px rgba(234, 179, 8, 0.7));
+  }
+  @keyframes kilo-hype-shake {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    20% { transform: translate(-1.5px, 0.5px) rotate(-1deg); }
+    40% { transform: translate(1.5px, -0.5px) rotate(1deg); }
+    60% { transform: translate(-1px, 0.5px) rotate(-0.5deg); }
+    80% { transform: translate(1px, -0.5px) rotate(0.5deg); }
+  }
+  .kilo-lightning {
+    transform-origin: center;
+    animation: kilo-lightning-flicker 0.9s ease-in-out infinite;
+    animation-delay: var(--kilo-lightning-delay, 0ms);
+  }
+  @keyframes kilo-lightning-flicker { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+  /* "Taquin / Decu" (chantier gamification Phase 2) : leger balancement
+     passif-agressif + un pied qui tape du sol (voir computeKiloMood()). */
+  .kilo-teasing { animation: kilo-teasing-sway 2.4s ease-in-out infinite; }
+  @keyframes kilo-teasing-sway { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(3deg); } }
+  .kilo-foot-tap {
+    transform-origin: center;
+    animation: kilo-foot-tap 0.6s ease-in-out infinite;
+  }
+  @keyframes kilo-foot-tap { 0%, 100% { transform: translateX(0); opacity: 0.5; } 50% { transform: translateX(4px); opacity: 1; } }
+
   /* Retour tactile au tap (voir kiloTap() dans index.html) - meme famille que le
      reste des micro-interactions "effet waouh" deja en place. */
   .kilo-tapped { animation: kilo-tap-bounce 0.4s ease; }
@@ -3866,24 +3897,25 @@
     .kilo-idle, .kilo-warning, .kilo-sweat, .kilo-success, .kilo-spark,
     .kilo-arm-cheers, .kilo-mug-clink, .kilo-lost, .kilo-lost-mark,
     .kilo-level_up, .kilo-trophy, .kilo-trophy-pump, .kilo-arms-raise, .kilo-aura-pulse,
-    .kilo-tapped, .kilo-exercise-bubble {
+    .kilo-tapped, .kilo-exercise-bubble, .kilo-hype, .kilo-lightning, .kilo-teasing,
+    .kilo-foot-tap, .kilo-home-slot.tapped .kilo-svg, .kilo-home-bubble {
       animation: none !important;
     }
   }
 
-  /* En-tete Aujourd'hui : Kilo entre la date et la pastille de serie (idle en
-     journee, warning des 19h si l'objectif du jour n'est pas encore valide -
-     voir computeKiloHomeState()). align-self:center plutot que de toucher
-     .header (align-items:baseline, partagee par 3 autres ecrans) - Kilo est le
-     seul element de cette ligne qui a besoin d'un centrage vertical propre.
-     Bug reel signale (retour utilisateur, "Modif #26") : meme avec
-     align-self:center, la taille intrinseque de 72px du SVG (voir
-     renderKilo(kiloHomeState, {size:72}) dans index.html) continue de
-     dicter la hauteur de toute la ligne flex .header (un flex item garde son
-     "hypothetical cross size" pour le calcul de la hauteur de ligne, meme
-     hors alignement de baseline) - le bandeau Date/Streak devenait donc
-     anormalement haut. Hauteur de calage reduite a 36px (~gabarit d'origine
-     avant l'agrandissement de Kilo) avec overflow visible + marge verticale
+  /* En-tete Aujourd'hui : Kilo entre la date et la pastille de serie (moteur
+     d'humeur global, voir computeKiloMood() dans index.html - chantier
+     gamification Phase 2, remplace l'ancien computeKiloHomeState()).
+     align-self:center plutot que de toucher .header (align-items:baseline,
+     partagee par 3 autres ecrans) - Kilo est le seul element de cette ligne
+     qui a besoin d'un centrage vertical propre. Bug reel signale (retour
+     utilisateur, "Modif #26") : meme avec align-self:center, la taille
+     intrinseque de 72px du SVG continue de dicter la hauteur de toute la
+     ligne flex .header (un flex item garde son "hypothetical cross size"
+     pour le calcul de la hauteur de ligne, meme hors alignement de
+     baseline) - le bandeau Date/Streak devenait donc anormalement haut.
+     Hauteur de calage reduite a 36px (~gabarit d'origine avant
+     l'agrandissement de Kilo) avec overflow visible + marge verticale
      negative de -18px sur le SVG lui-meme pour compenser : Kilo garde ses
      72px visuels (deborde symetriquement au-dessus/en dessous du calage) sans
      jamais agrandir la ligne flex qui le contient. */
@@ -3895,7 +3927,37 @@
     align-items: center;
     justify-content: center;
     overflow: visible;
+    cursor: pointer;
   }
   .kilo-home-slot .kilo-svg { margin: -18px 0; }
+  /* Rebond au tap (chantier gamification Phase 2, "effet Tamagotchi") - piloté
+     par un horodatage cote JS (kiloHomeTapBounceUntil, voir kiloHomeTap()),
+     PAS une manipulation DOM directe : render() remplace tout #app a chaque
+     appel, un simple classList.add() imperatif serait efface avant meme
+     d'avoir pu s'afficher. Memes keyframes que .kilo-tapped (deja existant). */
+  .kilo-home-slot.tapped .kilo-svg { animation: kilo-tap-bounce 0.4s ease; }
+
+  /* Bulle de dialogue de l'accueil (chantier gamification Phase 2) - pas de
+     pointe triangulaire precise contrairement a .kilo-exercise-bubble : Kilo
+     est ici au milieu d'une ligne a 3 elements (date/Kilo/pastille de serie,
+     .header en justify-content:space-between), sa position horizontale exacte
+     n'est pas fiable a cibler avec un triangle CSS. Carte pleine largeur,
+     centree, sous le bandeau - meme habillage visuel que la bulle de la fiche
+     d'exercice pour rester coherent. */
+  .kilo-home-bubble {
+    max-width: 320px;
+    margin: -10px auto 18px;
+    background: var(--bg-card);
+    border: 1px solid var(--accent-dim);
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+    color: var(--chalk);
+    cursor: pointer;
+    animation: kilo-exercise-bubble-pop-in 0.25s ease;
+  }
 
   ::-webkit-scrollbar { display: none; }

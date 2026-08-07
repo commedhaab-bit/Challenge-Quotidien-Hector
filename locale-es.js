@@ -151,6 +151,40 @@ const LOCALE_ES = {
         '+{{amount}}... ¡nada mal!',
       ],
     },
+    // Motor de humor global de la pantalla de inicio (Fase 2 de gamificacion,
+    // ver computeKiloMood()) - una clave por humor ('idle'/'warning'/'hype'/
+    // 'teasing'), cada una un ARRAY de variantes (pickKiloLine() elige una al
+    // azar, nunca recalculada mientras el humor no cambie - ver render()).
+    // tapEncouragement: grupo independiente, se usa al tocar a Kilo.
+    home: {
+      idle: [
+        'Listo cuando tú quieras, no me muevo de aquí.',
+        'Un día a la vez. ¿Vamos?',
+      ],
+      warning: [
+        'Mi mancuerna empieza a oxidarse de tanto esperarte...',
+        'Se hace tarde y todavía queda trabajo. ¿Nos movemos?',
+        'Sigo esperando por aquí. Con paciencia. Mucha paciencia.',
+      ],
+      hype: [
+        '¡Mis músculos crecieron solo con mirarte! ¡Increíble!',
+        '¡Modo Full Músculo activado! Nada puede detenerte hoy.',
+        '¿Esa serie? Legendaria. Lo anoto en los anales.',
+      ],
+      teasing: [
+        'Vaya, vaya... ¿todavía te acuerdas de mí?',
+        'Cuánto tiempo. Mi mancuerna está criando polvo.',
+        'Estaba a punto de pedir ayuda. Qué bueno verte de nuevo.',
+      ],
+      tapEncouragement: [
+        '¡Venga, vamos!',
+        'Cada repetición cuenta, te lo juro.',
+        'Tú y yo, un equipo ganador.',
+        'Un poco más de esfuerzo y te guiño un ojo.',
+        'Eres más fuerte de lo que crees.',
+        '¿Sabes que creo en ti?',
+      ],
+    },
   },
   card: {
     hardcoreDone: '🔥 Hardcore completado',

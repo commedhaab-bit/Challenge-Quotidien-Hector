@@ -153,6 +153,40 @@ const LOCALE_FR = {
         "+{{amount}}... pas mal du tout !",
       ],
     },
+    // Moteur d'humeur global de l'accueil (chantier gamification Phase 2, voir
+    // computeKiloMood()) - une cle par humeur possible ('idle'/'warning'/'hype'/
+    // 'teasing'), chacune un TABLEAU de variantes (pickKiloLine() en pioche une
+    // au hasard, jamais recalculee tant que l'humeur ne change pas - voir
+    // render()). tapEncouragement : pioche independante, jouee au tap sur Kilo.
+    home: {
+      idle: [
+        "Prêt·e quand tu veux, je ne bouge pas d'ici.",
+        'Un jour à la fois. On y va ?',
+      ],
+      warning: [
+        "Tu sais, mon haltère commence à rouiller à force de t'attendre...",
+        "Il se fait tard et il reste du boulot. On s'active ?",
+        "J'attends toujours, moi. Patiemment. Très patiemment.",
+      ],
+      hype: [
+        "Mes muscles ont poussé rien qu'à te regarder ! Incroyable !",
+        "Full Muscu activé ! Rien ne peut t'arrêter aujourd'hui.",
+        'Cette série ? Légendaire. Je note ça dans les annales.',
+      ],
+      teasing: [
+        'Tiens, tiens... on se souvient encore de moi ?',
+        'Ça fait un bail. Mon haltère a pris la poussière.',
+        "J'allais appeler les secours. Content de te revoir.",
+      ],
+      tapEncouragement: [
+        'Allez, on y va !',
+        'Chaque rep compte, je te jure.',
+        'Toi et moi, une équipe de choc.',
+        "Encore un peu d'effort et je te fais un clin d'œil.",
+        "T'es plus fort·e que tu ne le crois.",
+        'Je crois en toi, tu le sais ça ?',
+      ],
+    },
   },
   card: {
     hardcoreDone: '🔥 Hardcore complété',
