@@ -773,6 +773,12 @@ const LOCALE_ES = {
       reminderSubtitle: 'El reto "{{challenge}}" termina pronto — todavía hay tiempo para contribuir.',
       bouletAttackTitle: '¡Te están atacando!',
       bouletAttackSubtitle: '{{name}} te ha puesto El Lastre (-{{amount}}) en "{{challenge}}"!',
+      // Idea extra #17: recuperación in-app si la notificación "recordatorio
+      // nocturno" llega con la app ya abierta (el canal real es el push del
+      // sistema, ver functions/index.js).
+      dailyReminderTitle: '¡No olvides tu reto del día!',
+      dailyReminderSubtitle: 'Kilito te espera — todavía no has hecho nada hoy.',
+      dailyReminderBtn: '¡Voy!',
     },
     removeFriend: {
       title: '¿Eliminar a este amigo?',

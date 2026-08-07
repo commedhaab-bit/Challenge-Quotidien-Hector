@@ -766,6 +766,12 @@ const LOCALE_EN = {
       reminderSubtitle: 'The "{{challenge}}" challenge ends soon — there\'s still time to contribute.',
       bouletAttackTitle: 'You\'re under attack!',
       bouletAttackSubtitle: '{{name}} hit you with The Anchor (-{{amount}}) on "{{challenge}}"!',
+      // Bonus idea #17: in-app catch-up if the "evening reminder" notification
+      // arrives while the app is already open (the real channel is OS push,
+      // see functions/index.js).
+      dailyReminderTitle: "Don't forget your daily challenge!",
+      dailyReminderSubtitle: "Kilito's waiting — you haven't logged anything today yet.",
+      dailyReminderBtn: "I'm on it!",
     },
     removeFriend: {
       title: 'Remove this friend?',

@@ -775,6 +775,12 @@ const LOCALE_FR = {
       reminderSubtitle: 'Le défi "{{challenge}}" se termine bientôt — encore le temps de contribuer.',
       bouletAttackTitle: 'Tu te fais attaquer !',
       bouletAttackSubtitle: '{{name}} t\'a collé Le Boulet (-{{amount}}) sur "{{challenge}}" !',
+      // Idee bonus #17 (retour utilisateur) : rattrapage in-app si la
+      // notification "rappel du soir" est recue pendant que l'appli est deja
+      // ouverte (le vrai canal visé est le push OS, voir functions/index.js).
+      dailyReminderTitle: "N'oublie pas ton défi du jour !",
+      dailyReminderSubtitle: "Kilito t'attend — tu n'as encore rien validé aujourd'hui.",
+      dailyReminderBtn: "J'y vais !",
     },
     removeFriend: {
       title: 'Retirer cet ami ?',

@@ -4380,3 +4380,66 @@ CACHE_NAME -> v96 (`styles.css` modifie - nouvelle animation
 `kilo-intro-pop`, nouvelle cle `locale-*.js` `kilo.home.dailyGreeting`).
 Aucun changement de regles Firestore/Cloud Functions - modification 100%
 cote client, aucune touche a `functions/**`.
+
+## Idees bonus Kilo, lot 7/7 (#17 rappel du soir si rien fait) - dernier lot, chantier complet
+
+**Seule idee bonus des 12 approuvees a toucher `functions/**`** - explicitement
+exclue des Phases push initiales ("Phase A", voir plus haut dans ce fichier :
+"rappel quotidien 'defi pas encore fait' - a rediscuter separement si voulu")
+puis redemandee explicitement dans ce chantier de suite.
+
+**`exports.sendDailyReminderPush`** (nouvelle Scheduled Function,
+`functions/index.js`, `onSchedule('0 19 * * *')` - 1x/jour, 19h UTC) reutilise
+integralement l'infrastructure push DEJA en place (voir "Notifications push OS
+- Phase A" plus haut) : ecrire un simple document
+`users/{uid}/notifications/{id}` suffit, `sendPushOnNotificationCreate`
+(trigger deja existant) se charge automatiquement de l'envoi - **aucun
+nouveau code d'envoi**, uniquement la logique "qui notifier et quoi ecrire".
+
+**Bornee a la population pertinente** (meme raisonnement deja applique a
+`aggregateLeaderboard`/`closeExpiredGroupChallenges`) : seeded via
+`collectionGroup('pushTokens')` (uids ayant deja active le push), jamais un
+balayage de tous les comptes. Pour chaque uid candidat, une lecture de
+`users/{uid}/kv/appData` verifie `dailyActivity[todayKey]` - **fonction PURE
+extraite pour la partie decision**, `computeUidsNeedingDailyReminder(uids,
+appDataByUid, todayKey)` (`functions/index.js`, testee sans Firestore dans
+`functions/test/dailyReminder.test.js`) : un uid SANS document `appData` du
+tout (compte tout juste cree) est traite comme "rien fait" -> candidat au
+rappel, pas un cas d'erreur.
+
+**Simplification assumee et documentee** (meme famille que la tolerance deja
+acceptee sur `mondayOfWeekUTC()`/`aggregateLeaderboard`) : une seule heure UTC
+fixe, pas adaptee au fuseau horaire de chaque utilisateur (aucune donnee de
+fuseau horaire par utilisateur n'est suivie aujourd'hui) - `todayKey` (UTC,
+reutilise `dateKeyUTC()` deja existante) peut differer de la cle LOCALE
+ecrite cote client dans `dailyActivity` de quelques dizaines de minutes a 1-2h
+maximum pour la base d'utilisateurs actuelle (France/Espagne, UTC+1/+2) -
+marge negligeable, acceptable pour un simple rappel non critique.
+
+**Nouveau type de notification `daily_reminder`** ajoute a `PUSH_MESSAGES`
+(fr/en/es, `functions/index.js`) ET a `KNOWN_NOTIFICATION_TYPES`
+(`functions/test/notifications.test.js`, regression deja en place depuis le
+bug reel "kudo oublie" - voir plus haut) - **sans `d.fromName`** (notification
+"systeme", aucun expediteur humain, message generique). Cote client,
+`processUnreadNotifications()` gagne une branche `'daily_reminder'`
+(`kiloState:'warning'`) - rattrapage in-app UNIQUEMENT si l'appli se trouve
+deja ouverte au moment ou la notification arrive (le vrai canal vise reste le
+push OS, recu meme appli fermee).
+
+CACHE_NAME -> v97 (nouvelles cles `locale-*.js`
+`popups.notifications.dailyReminder*`). **Changement touchant `functions/**`
+(1 nouvelle Scheduled Function + PUSH_MESSAGES) - deploiement
+`deploy-functions.yml` a confirmer explicitement avec l'utilisateur avant tout
+push**, conformement a la politique d'autonomie du projet (voir memoire
+dediee) qui exclut ce dossier de la zone de confiance automatique.
+
+---
+
+**Chantier "12 idees bonus Kilo" complet (7/7 lots livres)** : reglage
+"Faire taire Kilo" (#1), micro-fidget d'inactivite (#2), punchlines
+differenciees par type d'exploit (#4), punchlines nommant le jour de la
+semaine (#6), comparaisons delirantes du cumul a vie (#7), easter egg au tap
+repete (#8), reaction sur un gros coup d'ami (#9), reaction aux kudos recus
+(#10), accessoires saisonniers (#13), petite intro au premier lancement du
+jour (#16), rappel du soir si rien fait (#17), rappel d'anniversaire de
+compte (#18). Voir chaque lot ci-dessus pour le detail technique complet.

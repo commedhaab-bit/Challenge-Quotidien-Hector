@@ -2745,6 +2745,17 @@ async function processUnreadNotifications(snap) {
         }),
         btnLabel: t('common.close'),
       });
+    } else if (data.type === 'daily_reminder') {
+      // Idee bonus #17 (retour utilisateur) : le vrai canal vise est le push
+      // OS (ecrit cote Cloud Function, voir sendDailyReminderPush() dans
+      // functions/index.js) - ce popup n'est qu'un rattrapage in-app si
+      // l'appli se trouve deja ouverte au moment ou la notification arrive.
+      enqueuePopup({
+        kiloState: 'warning',
+        title: t('popups.notifications.dailyReminderTitle'),
+        subtitle: t('popups.notifications.dailyReminderSubtitle'),
+        btnLabel: t('popups.notifications.dailyReminderBtn'),
+      });
     }
   }
 }

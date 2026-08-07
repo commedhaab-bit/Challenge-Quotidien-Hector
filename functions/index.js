@@ -705,6 +705,10 @@ const PUSH_MESSAGES = {
       body: `Le défi "${d.challengeName}" se termine bientôt - encore le temps de contribuer.`,
     }),
     boulet_attack: (d) => ({ title: 'Tu te fais attaquer !', body: `${d.fromName} t'a collé Le Boulet (-${d.amount}) sur "${d.challengeName}".` }),
+    // Idee bonus #17 (retour utilisateur) : rappel du soir si rien fait
+    // aujourd'hui - voir sendDailyReminderPush(). Pas de d.fromName (notification
+    // "systeme", aucun expediteur humain), message generique volontairement.
+    daily_reminder: () => ({ title: "N'oublie pas ton défi du jour !", body: "Kilito t'attend - tu n'as encore rien validé aujourd'hui." }),
   },
   en: {
     kudo: (d) => ({ title: 'New kudos!', body: `${d.fromName} just cheered you on.` }),
@@ -724,6 +728,7 @@ const PUSH_MESSAGES = {
       body: `The "${d.challengeName}" challenge ends soon - there's still time to contribute.`,
     }),
     boulet_attack: (d) => ({ title: 'You\'re under attack!', body: `${d.fromName} hit you with The Anchor (-${d.amount}) on "${d.challengeName}".` }),
+    daily_reminder: () => ({ title: "Don't forget your daily challenge!", body: "Kilito's waiting - you haven't logged anything today yet." }),
   },
   es: {
     kudo: (d) => ({ title: '¡Nuevo kudo!', body: `${d.fromName} acaba de animarte.` }),
@@ -743,6 +748,7 @@ const PUSH_MESSAGES = {
       body: `El reto "${d.challengeName}" termina pronto - todavía hay tiempo para contribuir.`,
     }),
     boulet_attack: (d) => ({ title: '¡Te están atacando!', body: `${d.fromName} te ha puesto El Lastre (-${d.amount}) en "${d.challengeName}".` }),
+    daily_reminder: () => ({ title: '¡No olvides tu reto del día!', body: 'Kilito te espera - todavía no has hecho nada hoy.' }),
   },
 };
 
@@ -813,6 +819,58 @@ exports.sendPushOnNotificationCreate = onDocumentCreated('users/{uid}/notificati
   await sendPushToUser(admin.firestore(), event.params.uid, data.type, data);
 });
 
+// =============================================================================
+// Idee bonus #17 (retour utilisateur) : rappel du soir si rien fait aujourd'hui
+// =============================================================================
+// Explicitement exclu des Phases push initiales (voir CLAUDE.md, "Phase A") -
+// rediscute et demande explicitement dans ce chantier de suite. Pure (aucun
+// acces Firestore) : parmi les uids candidats (deja abonnes au push, voir
+// sendDailyReminderPush ci-dessous), lesquels n'ont RIEN valide aujourd'hui et
+// doivent recevoir le rappel ? `appDataByUid` : Map uid -> objet appData, ou
+// simplement ABSENT de la map si le document n'existe pas encore (compte tout
+// juste cree) - traite comme "rien fait", donc candidat au rappel.
+function computeUidsNeedingDailyReminder(uids, appDataByUid, todayKey) {
+  return uids.filter((uid) => {
+    const appData = appDataByUid.get(uid);
+    const doneToday = appData && appData.dailyActivity && (appData.dailyActivity[todayKey] || 0) > 0;
+    return !doneToday;
+  });
+}
+
+// Scheduled Function (1x/jour, 19h UTC - environ 20h/21h en France/Espagne
+// selon la saison, voir le commentaire de region en tete de fichier).
+// **Simplification assumee et documentee** (meme famille que la tolerance
+// deja acceptee sur mondayOfWeekUTC()/aggregateLeaderboard) : une seule heure
+// UTC fixe, pas adaptee au fuseau horaire de chaque utilisateur - un ecart de
+// quelques heures est possible en dehors de l'Europe, acceptable pour un
+// simple rappel non critique. `todayKey` (UTC) peut differer de tres peu
+// (quelques dizaines de minutes a 1-2h) de la cle LOCALE ecrite cote client
+// dans dailyActivity - marge negligeable pour la base d'utilisateurs actuelle
+// (France/Espagne, UTC+1/+2). Bornee a la population ayant deja active le
+// push (collectionGroup('pushTokens')) - jamais un balayage de tous les
+// comptes, meme raisonnement deja applique a aggregateLeaderboard/
+// closeExpiredGroupChallenges (cout borne par une population pertinente, pas
+// par la taille totale de la base).
+exports.sendDailyReminderPush = onSchedule('0 19 * * *', async () => {
+  const db = admin.firestore();
+  const todayKey = dateKeyUTC(new Date());
+  const tokensSnap = await db.collectionGroup('pushTokens').get();
+  const uids = [...new Set(tokensSnap.docs.map((d) => d.ref.parent.parent.id))];
+  if (uids.length === 0) return;
+
+  const appDataByUid = new Map();
+  await Promise.all(uids.map(async (uid) => {
+    const doc = await db.collection('users').doc(uid).collection('kv').doc('appData').get();
+    if (doc.exists) appDataByUid.set(uid, doc.data());
+  }));
+
+  const uidsToNotify = computeUidsNeedingDailyReminder(uids, appDataByUid, todayKey);
+  console.log(`sendDailyReminderPush: ${uidsToNotify.length}/${uids.length} candidat(e)s au rappel du soir (todayKey=${todayKey})`);
+  await Promise.all(uidsToNotify.map((uid) =>
+    db.collection('users').doc(uid).collection('notifications').add({ type: 'daily_reminder', read: false, createdAt: Date.now() })
+  ));
+});
+
 // Exposees uniquement pour les tests unitaires (logique pure, sans Firestore) -
 // voir functions/test/leaderboard.test.js et functions/test/groups.test.js.
 module.exports.__testables = {
@@ -828,5 +886,6 @@ module.exports.__testables = {
   rankForSettlement,
   applyDoublonMultiplier,
   computeDueReminderThresholds,
+  computeUidsNeedingDailyReminder,
   PUSH_MESSAGES,
 };

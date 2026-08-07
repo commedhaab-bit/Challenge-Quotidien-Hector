@@ -22,6 +22,7 @@ const KNOWN_NOTIFICATION_TYPES = [
   'group_challenge_settled',
   'group_challenge_reminder',
   'boulet_attack',
+  'daily_reminder',
 ];
 
 test('PUSH_MESSAGES.fr couvre TOUS les types de notification reellement ecrits par l app (sinon sendPushToUser() abandonne silencieusement pour ce type)', () => {
