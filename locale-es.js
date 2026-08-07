@@ -1219,6 +1219,67 @@ const LOCALE_ES = {
         'Me haces sonreír, literalmente (bueno, si pudiera sonreír más).',
         'Venga, demuéstrame de qué estás hecho.',
         'Un pequeño toque, una gran motivación. Me encanta esta energía.',
+        // Catalogo industrial (15 arquetipos) - inicio, animo al tocar.
+        // --- Coach Shonen ---
+        "¡Siento tu poder disparándose!",
+        "¡Un poco más y subes de nivel!",
+        "¡Tu espíritu de lucha sigue ardiendo!",
+        // --- Sargento instructor ---
+        "¡De pie, soldado! ¡Nunca retrocedemos!",
+        "¡Esa determinación, me encanta!",
+        "¡Toca otra vez, quiero ver ese fuego en tus ojos!",
+        // --- Amigo taquin/ironico ---
+        "¿Otra vez tocándome, eh?",
+        "Buscas un cumplido, admítelo.",
+        "Vale, vale, eres el/la mejor, ¿contento/a?",
+        // --- Filosofo del fitness ---
+        "Cada gesto cuenta en el gran río del esfuerzo.",
+        "Tu constancia esculpe tu futuro, toque a toque.",
+        "Hasta un pequeño toque es una victoria silenciosa.",
+        // --- Gamer/geek ---
+        "¡Combo x2 activado!",
+        "Tu contador de XP sube, ¡sigue así!",
+        "Un toque, una bonificación. La rutina perfecta.",
+        // --- Heroe de accion 80s ---
+        "¡Nunca retrocedemos, jamás!",
+        "¡Esta energía es puro cine!",
+        "¡Hasta la vista, pereza!",
+        // --- Cientifico/ingeniero ---
+        "Rendimiento óptimo detectado en cada toque.",
+        "Correlación positiva entre tocar y motivación, confirmada.",
+        "Datos alentadores, continúa el experimento.",
+        // --- Influencer Fit-Bro ---
+        "Esta energía, bro, ¡me encanta!",
+        "Mantén el foco, el grind nunca para.",
+        "Estás en plena forma mental ahora mismo.",
+        // --- Viejo sabio ---
+        "El gesto repetido forja el espíritu.",
+        "Un toque, una intención. La sabiduría está en la repetición.",
+        "Sigue, la paciencia siempre da frutos.",
+        // --- Coach retro Gym Tonic ---
+        "Y toque, y toque, ¡mantén el ritmo!",
+        "¡Esta energía synthwave me transporta!",
+        "¡Toca, sonríe, repite!",
+        // --- Espartano/mitologico ---
+        "¡Esa determinación haría que Esparta se sintiera orgullosa!",
+        "¡Sigue, guerrero/a, la gloria te espera!",
+        "Cada toque forja tu armadura interior.",
+        // --- Capitan pirata ---
+        "¡Mil sabords, qué energía!",
+        "¡Sigue, marinero, el tesoro está cerca!",
+        "¡Esa determinación, digna de un verdadero lobo de mar!",
+        // --- Manager corporativo ---
+        "¡Excelente compromiso de usuario, sigue así!",
+        "¡El KPI de motivación va en fuerte aumento!",
+        "Capitalicemos este impulso positivo.",
+        // --- Nutricionista obsesivo ---
+        "Esa energía, ¡se nota que comiste bien!",
+        "Sigue, las macros van al ritmo.",
+        "Este toque merece un snack proteico.",
+        // --- Minimalista estoico ---
+        "Un gesto. Una intención. Es suficiente.",
+        "Simple. Eficaz. Sigue.",
+        "Sin palabras de más. Solo acción.",
       ],
       // Idea extra #8 (easter egg al tocar repetidamente): se muestra en
       // lugar de tapEncouragement al alcanzar el umbral de toques rápidos

@@ -1221,6 +1221,67 @@ const LOCALE_FR = {
         'Tu me fais sourire, littéralement (enfin, si je pouvais sourire plus).',
         'Vas-y, montre-moi ce que t\'as dans le ventre.',
         'Un petit tap, une grande motivation. J\'aime cette énergie.',
+        // Catalogue industriel (15 archetypes) - accueil, encouragement au tap.
+        // --- Coach Shonen ---
+        "Je sens ton pouvoir monter en flèche !",
+        "Encore un peu et tu passes au niveau supérieur !",
+        "Ton énergie de combat est intacte, je le vois !",
+        // --- Sergent instructeur ---
+        "Debout, soldat ! On ne recule jamais !",
+        "Cette détermination, j'aime ça !",
+        "Tape encore, je veux voir ta rage de vaincre !",
+        // --- Pote taquin ---
+        "Encore en train de me tapoter, toi ?",
+        "Tu cherches un compliment, avoue.",
+        "Ok ok, t'es le/la meilleur·e, content·e ?",
+        // --- Philosophe du fitness ---
+        "Chaque geste compte dans le grand fleuve de l'effort.",
+        "Ta constance sculpte ton avenir, tap après tap.",
+        "Même un petit tap est une victoire silencieuse.",
+        // --- Gamer/geek ---
+        "Combo x2 activé !",
+        "Ton compteur d'XP grimpe, continue !",
+        "Un tap, un bonus. La routine parfaite.",
+        // --- Héros de film d'action 80s ---
+        "On ne recule jamais, jamais !",
+        "Cette énergie, c'est du pur cinéma !",
+        "Hasta la vista, la flemme !",
+        // --- Scientifique/ingénieur ---
+        "Rendement optimal détecté à chaque tap.",
+        "Corrélation positive entre tap et motivation, confirmée.",
+        "Données encourageantes, poursuis l'expérience.",
+        // --- Influenceur Fit-Bro ---
+        "Cette énergie, bro, j'adore !",
+        "On garde le focus, la grind ne s'arrête jamais.",
+        "T'es en pleine shape mentale là, direct.",
+        // --- Vieux sage ---
+        "Le geste répété forge l'esprit.",
+        "Un tap, une intention. La sagesse est dans la répétition.",
+        "Continue, la patience porte toujours ses fruits.",
+        // --- Coach rétro Gym Tonic ---
+        "Et hop, et hop, on garde le rythme !",
+        "Cette énergie synthwave me transporte !",
+        "On tape, on sourit, on recommence !",
+        // --- Spartiate/mythologique ---
+        "Cette détermination ferait pâlir Sparte elle-même !",
+        "Continue, guerrier·ère, la gloire t'attend !",
+        "Chaque tap forge ton armure intérieure.",
+        // --- Capitaine pirate ---
+        "Mille sabords, quelle énergie !",
+        "Continue moussaillon, le trésor approche !",
+        "Cette détermination, digne d'un vrai loup de mer !",
+        // --- Manager corporate ---
+        "Excellent engagement utilisateur, continue comme ça !",
+        "KPI de motivation en forte hausse !",
+        "On capitalise sur cette dynamique positive.",
+        // --- Nutritionniste obsessionnel ---
+        "Cette énergie, ça se voit que t'as bien mangé !",
+        "Continue, les macros suivent le rythme.",
+        "Ce tap mérite une collation protéinée.",
+        // --- Minimaliste stoïcien ---
+        "Un geste. Une intention. Ça suffit.",
+        "Simple. Efficace. Continue.",
+        "Pas de mots inutiles. Juste de l'action.",
       ],
       // Idee bonus #8 (retour utilisateur, easter egg au tap repete) : affichee
       // a la place de tapEncouragement des que le seuil de taps rapproches est

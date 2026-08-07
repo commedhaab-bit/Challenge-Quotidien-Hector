@@ -1214,6 +1214,67 @@ const LOCALE_EN = {
         "You're making me smile, literally (well, if I could smile more).",
         'Come on, show me what you\'ve got.',
         'One little tap, one big boost of motivation. I love this energy.',
+        // Industrial catalog (15 archetypes) - home, tap encouragement.
+        // --- Shonen coach ---
+        "I can feel your power surging!",
+        "A little more and you level up!",
+        "Your fighting spirit is still burning bright!",
+        // --- Drill sergeant ---
+        "On your feet, soldier! We never retreat!",
+        "That determination, I love it!",
+        "Tap again, I want to see that fire in your eyes!",
+        // --- Teasing/ironic buddy ---
+        "Tapping on me again, huh?",
+        "Looking for a compliment, admit it.",
+        "Okay okay, you're the best, happy now?",
+        // --- Fitness philosopher ---
+        "Every gesture matters in the great river of effort.",
+        "Your consistency sculpts your future, tap after tap.",
+        "Even a small tap is a silent victory.",
+        // --- Gamer/geek ---
+        "Combo x2 activated!",
+        "Your XP counter is climbing, keep going!",
+        "One tap, one bonus. The perfect routine.",
+        // --- 80s action hero ---
+        "We never back down, never!",
+        "That energy is pure cinema!",
+        "Hasta la vista, laziness!",
+        // --- Scientist/engineer ---
+        "Optimal output detected on every tap.",
+        "Positive correlation between tapping and motivation, confirmed.",
+        "Encouraging data, keep the experiment running.",
+        // --- Fit-bro influencer ---
+        "This energy, bro, I love it!",
+        "Stay focused, the grind never stops.",
+        "You're in full mental shape right now.",
+        // --- Old sage ---
+        "The repeated gesture forges the spirit.",
+        "One tap, one intention. Wisdom lies in repetition.",
+        "Keep going, patience always pays off.",
+        // --- Retro Gym Tonic coach ---
+        "And a tap, and a tap, keep the rhythm!",
+        "This synthwave energy carries me away!",
+        "Tap, smile, repeat!",
+        // --- Spartan ---
+        "That determination would make Sparta proud!",
+        "Keep going, warrior, glory awaits!",
+        "Every tap forges your inner armor.",
+        // --- Pirate captain ---
+        "Shiver me timbers, what energy!",
+        "Keep going, matey, the treasure's near!",
+        "That determination, worthy of a true sea dog!",
+        // --- Corporate manager ---
+        "Excellent user engagement, keep it up!",
+        "Motivation KPI is trending sharply upward!",
+        "Let's capitalize on this positive momentum.",
+        // --- Obsessive nutritionist ---
+        "That energy, you can tell you ate well!",
+        "Keep going, the macros are keeping pace.",
+        "This tap deserves a protein snack.",
+        // --- Minimalist stoic ---
+        "One gesture. One intention. That's enough.",
+        "Simple. Effective. Keep going.",
+        "No wasted words. Just action.",
       ],
       // Bonus idea #8 (easter egg on repeated taps): shown instead of
       // tapEncouragement once the rapid-tap threshold is reached (see kiloHomeTap()).
