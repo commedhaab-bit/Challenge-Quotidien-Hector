@@ -3310,7 +3310,7 @@ async function refreshFriendsData() {
       Promise.all(incomingDocs.map(d => fetchPublicProfile(d.fromUid))),
     ]);
     myFriends = friendUids.map((uid, i) => ({ uid, ...(friendProfiles[i] || { displayName: t('friends.unknownProfile'), photoURL: '' }) }));
-    incomingFriendRequests = incomingDocs.map((d, i) => ({ fromUid: d.fromUid, at: d.at, ...(incomingProfiles[i] || { displayName: t('friends.unknownProfile'), photoURL: '' }) }));
+    incomingFriendRequests = incomingDocs.map((d, i) => ({ fromUid: d.fromUid, at: d.at, fromUsername: d.fromUsername || null, ...(incomingProfiles[i] || { displayName: t('friends.unknownProfile'), photoURL: '' }) }));
     // Redémarre le fil d'activité à chaque changement de la liste d'amis (nouvel ami
     // ajouté/retiré change forcément le filtre where('uid','in', ...) de la requête).
     startActivityFeedListener();
@@ -3353,6 +3353,17 @@ function openFriendsScreen() {
   friendSearchResult = null;
   pushNavState();
   render(true);
+  // Bug reel signale (retour utilisateur) : incomingFriendRequests n'etait rafraichi
+  // qu'au demarrage de l'app et apres une action ami (accepter/refuser/retirer) -
+  // jamais a la (re)ouverture de cet ecran. Une demande recue pendant que l'app est
+  // deja ouverte restait donc invisible ici si la popup in-app de notification
+  // (voir processUnreadNotifications(), type 'friend_request') avait ete manquee ou
+  // refusee ("Plus tard"), ou si la notification push OS avait echoue - aucun autre
+  // filet de secours n'existait pour la retrouver. Non attendu (pas de await) : le
+  // rendu synchrone ci-dessus reste immediat, cette relecture Firestore met juste a
+  // jour la liste (et son propre render()) des qu'elle revient, sans jamais dependre
+  // d'une notification recue pour rester fiable.
+  refreshFriendsData();
 }
 
 function updateFriendSearchQuery(value) {
@@ -3387,8 +3398,14 @@ async function submitFriendSearch() {
 
 async function sendFriendRequest(targetUid) {
   try {
+    // fromUsername denormalise (retour utilisateur : la section "Demandes en attente"
+    // doit afficher le PSEUDO de l'expediteur, pas son nom Google formate) - aucun
+    // index public uid->pseudo n'existe ailleurs (seul usernames/{pseudo}->uid, dans
+    // l'autre sens), donc capture ici, au moment de l'envoi, le pseudo de l'expediteur
+    // tel qu'il est alors (repli sur le nom formate cote lecture pour les anciennes
+    // demandes ecrites avant ce champ, voir refreshFriendsData()/renderFriendsScreen()).
     await db.collection('friendRequests').doc(friendRequestId(currentUser.uid, targetUid)).set({
-      fromUid: currentUser.uid, toUid: targetUid, at: Date.now(),
+      fromUid: currentUser.uid, toUid: targetUid, at: Date.now(), fromUsername: username,
     });
     await notificationsCollRef(targetUid).doc().set({
       type: 'friend_request',
@@ -7341,10 +7358,14 @@ function renderFriendsScreen() {
     resultHtml = renderFriendActionRow(r.uid, r.displayName, r.photoURL, actionHtml);
   }
 
+  // Retour utilisateur : chaque ligne doit afficher le PSEUDO de l'expediteur (pas
+  // son nom Google formate) - r.fromUsername est desormais denormalise sur le
+  // document friendRequests des l'envoi (voir sendFriendRequest()) ; repli sur
+  // r.displayName pour les demandes envoyees avant ce champ (anciens documents).
   const incomingHtml = incomingFriendRequests.length > 0 ? `
     <div class="section-label">${t('friends.incomingLabel')}</div>
     <div class="leaderboard-list">
-      ${incomingFriendRequests.map(r => renderFriendActionRow(r.fromUid, r.displayName, r.photoURL, `
+      ${incomingFriendRequests.map(r => renderFriendActionRow(r.fromUid, r.fromUsername ? '@' + r.fromUsername : r.displayName, r.photoURL, `
         <button class="friend-action-btn" onclick="acceptFriendRequest('${escapeJsAttr(r.fromUid)}')">${t('friends.acceptBtn')}</button>
         <button class="friend-action-btn ghost" onclick="declineFriendRequest('${escapeJsAttr(r.fromUid)}')">${t('friends.declineBtn')}</button>
       `)).join('')}

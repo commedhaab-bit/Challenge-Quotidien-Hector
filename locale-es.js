@@ -219,7 +219,7 @@ const LOCALE_ES = {
     requestSent: 'Solicitud enviada',
     acceptRequestBtn: 'Aceptar su solicitud',
     addBtn: '+ Añadir',
-    incomingLabel: 'Solicitudes recibidas',
+    incomingLabel: 'Solicitudes pendientes',
     acceptBtn: 'Aceptar',
     declineBtn: 'Rechazar',
     myFriendsLabel: 'Mis amigos',

@@ -2742,7 +2742,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v84'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v85'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -4195,6 +4195,63 @@ const cssText = __rawHtml + __cssSource;
   friendSearchQuery = ''; friendSearchResult = null;
   currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
   console.log('OK: systeme d amis (recherche exacte par pseudo, demande/acceptation/refus/retrait, badge de notification, jamais d ecriture dans le document personnel d autrui)');
+
+  // --- Retour utilisateur : fiabiliser le systeme de demandes d amis. La section
+  // "Demandes en attente" doit (1) afficher le PSEUDO de l expediteur, pas son nom
+  // Google formate, et (2) rester fiable meme si la notification (push OS ou popup
+  // in-app) a ete manquee/refusee - ouvrir l ecran Amis doit toujours re-interroger
+  // Firestore, jamais dependre d une notification recue pour retrouver une demande. ---
+  __resetCommunityMocks();
+  await usernamesCollRef().doc('senderpseudo').set({ uid: 'sender-uid' });
+  await db.collection('leaderboard').doc('sender-uid').set({ displayName: 'Sender Real', photoURL: '' }, { merge: true });
+  currentUser = { uid: 'sender-uid', displayName: 'Sender Real', email: 's@test.com', photoURL: '' };
+  const usernameBeforeFriendPseudoTest = username;
+  username = 'senderpseudo';
+  await sendFriendRequest('recipient-uid');
+  const pseudoReqDoc = await db.collection('friendRequests').doc('sender-uid_recipient-uid').get();
+  __assertEq(pseudoReqDoc.data().fromUsername, 'senderpseudo', 'le pseudo de l expediteur doit etre denormalise sur le document friendRequests des l envoi (aucun index public uid->pseudo n existe ailleurs)');
+  username = usernameBeforeFriendPseudoTest;
+
+  // Cote destinataire : la ligne "Demandes en attente" doit afficher le pseudo (@...),
+  // pas le nom Google formate.
+  currentUser = { uid: 'recipient-uid', displayName: 'Recipient Name', email: 'r@test.com', photoURL: '' };
+  myFriends = []; incomingFriendRequests = []; outgoingFriendRequestUids = new Set();
+  await refreshFriendsData();
+  __assertEq(incomingFriendRequests.length, 1, 'le destinataire doit voir 1 demande en attente');
+  __assertEq(incomingFriendRequests[0].fromUsername, 'senderpseudo', 'le pseudo doit etre propage dans incomingFriendRequests');
+  const pendingHtml = renderFriendsScreen();
+  __assertOk(pendingHtml.includes(t('friends.incomingLabel')), 'le titre de section "Demandes en attente" doit etre affiche');
+  __assertOk(pendingHtml.includes('@senderpseudo'), 'la ligne doit afficher le PSEUDO de l expediteur, prefixe par "@" (convention deja utilisee ailleurs dans l app)');
+  __assertOk(!pendingHtml.includes('Sender Real') && !pendingHtml.includes('Sender R.'), 'le nom Google formate ne doit plus etre affiche des qu un pseudo est disponible sur la demande');
+
+  // Repli legitime : une demande ecrite AVANT ce correctif (aucun champ fromUsername)
+  // doit retomber sur le nom formate, pas planter/afficher "undefined".
+  await db.collection('friendRequests').doc('legacy-uid_recipient-uid').set({ fromUid: 'legacy-uid', toUid: 'recipient-uid', at: Date.now() });
+  await db.collection('leaderboard').doc('legacy-uid').set({ displayName: 'Legacy Sender', photoURL: '' }, { merge: true });
+  await refreshFriendsData();
+  const legacyHtml = renderFriendsScreen();
+  __assertOk(legacyHtml.includes('Legacy S.'), 'une ancienne demande sans pseudo denormalise doit retomber sur le nom formate (repli gracieux)');
+  console.log('OK: la section "Demandes en attente" affiche le pseudo de l expediteur (repli sur le nom formate pour les anciennes demandes sans ce champ)');
+
+  // Fiabilite : ouvrir l ecran Amis doit TOUJOURS re-interroger Firestore, meme pour
+  // une demande recue pendant que l app etait deja ouverte et pour laquelle aucune
+  // notification (push ou in-app) n a jamais ete traitee - bug reel signale
+  // (incomingFriendRequests n etait rafraichi qu au demarrage de l app et apres une
+  // action ami, jamais a la reouverture de l ecran Amis lui-meme).
+  await db.collection('friendRequests').doc('lateuid_recipient-uid').set({ fromUid: 'lateuid', toUid: 'recipient-uid', at: Date.now(), fromUsername: 'latecomer' });
+  incomingFriendRequests = []; // simule un etat rafraichi pour la derniere fois AVANT que cette demande n existe
+  openFriendsScreen();
+  __assertEq(incomingFriendRequests.length, 0, 'le rendu synchrone initial de l ouverture ne doit pas bloquer sur la relecture Firestore (asynchrone)');
+  await new Promise((r) => setTimeout(r, 20));
+  __assertOk(incomingFriendRequests.some((r) => r.fromUid === 'lateuid'), 'ouvrir l ecran Amis doit re-interroger Firestore et retrouver une demande recue pendant que l app etait deja ouverte, meme sans notification');
+  __assertOk(renderFriendsScreen().includes('@latecomer'), 'la demande retrouvee doit bien s afficher, pseudo inclus, sans avoir jamais dependu d une notification recue');
+  friendsScreenOpen = false;
+  console.log('OK: ouvrir l ecran Amis re-interroge toujours Firestore (fiable meme si la notification push/in-app a ete manquee ou refusee)');
+
+  __resetCommunityMocks();
+  myFriends = []; incomingFriendRequests = []; outgoingFriendRequestUids = new Set();
+  friendSearchQuery = ''; friendSearchResult = null;
+  currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
 
   // --- 145ter. Fil d activite global (amis) : un document PAR defi complete (pas par
   // serie, contrairement au Boss Battle), filtre en lecture par la liste d amis

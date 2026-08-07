@@ -3611,3 +3611,64 @@ cache-first avec remplissage cote service worker - voir la regle "RECIDIVE
 deja vecue" plus haut, qui s applique aussi aux fichiers de traduction).
 Aucun changement de regles Firestore/Cloud Functions - modification 100%
 cote client, aucune touche a `functions/**`.
+
+
+## Fiabilisation des demandes d amis ("Demandes en attente")
+
+**Contexte : la fonctionnalite existait deja presque entierement.** Avant de
+coder quoi que ce soit, verification du code existant (`renderFriendsScreen()`,
+`refreshFriendsData()`) a confirme qu'une section "Demandes recues" (liste,
+masquee si vide, bouton Accepter/Refuser) etait deja en place, alimentee par
+une VRAIE requete Firestore (`friendRequests.where('toUid','==',uid)`), pas
+par un mecanisme lie aux notifications. Le retour utilisateur ("si la
+notification push echoue ou est manquee, aucun moyen de retrouver
+l invitation") a donc oriente vers un vrai bug de FRAICHEUR plutot que vers
+une fonctionnalite manquante :
+
+**Bug reel trouve : `incomingFriendRequests` n etait jamais rafraichi a la
+(re)ouverture de l ecran Amis.** `refreshFriendsData()` (la seule fonction qui
+relit `friendRequests` depuis Firestore) n etait appelee qu au demarrage de
+l app et apres une action ami (accepter/refuser/retirer) - jamais depuis
+`openFriendsScreen()`. Une demande recue pendant que l app etait deja ouverte
+restait donc invisible dans l ecran Amis tant que : (a) la popup in-app de
+`processUnreadNotifications()` (type `friend_request`, propose "Accepter
+maintenant"/"Plus tard") n avait pas ete traitee ET acceptee sur-le-champ - un
+tap sur "Plus tard" abandonnait purement et simplement la demande visuellement
+(aucun refresh ni ecriture locale), ou (b) un redemarrage complet de l app.
+Corrige en ajoutant un appel `refreshFriendsData()` (volontairement NON
+attendu - `render(true)` synchrone garde l ouverture instantanee, le
+rafraichissement Firestore met a jour l affichage des qu il revient, via le
+`render()` deja integre a `refreshFriendsData()`) dans `openFriendsScreen()` -
+la liste est desormais TOUJOURS fiable a l ouverture, independamment de toute
+notification recue, manquee ou refusee.
+
+**Amelioration demandee : afficher le pseudo, pas le nom Google formate.**
+`incomingFriendRequests` utilisait `fetchPublicProfile(fromUid)` (nom Google
+anonymise via `formatDisplayName()`, ex: "Jean D.") - aucun index public
+`uid -> pseudo` n existe ailleurs dans l app (seul `usernames/{pseudo} ->
+uid`, dans l autre sens ; la recherche d amis fonctionne d ailleurs
+exclusivement par pseudo exact, jamais par nom). Plutot que d ajouter une
+lecture supplementaire ou un nouvel index, le pseudo de l expediteur est
+desormais denormalise DIRECTEMENT sur le document `friendRequests` au moment
+de l envoi (`sendFriendRequest()` ecrit `fromUsername: username`), repris tel
+quel par `refreshFriendsData()` puis affiche `'@' + fromUsername` (convention
+deja utilisee ailleurs dans l app, voir `settings.account.label`/recherche
+d amis) dans `renderFriendsScreen()`. **Repli gracieux obligatoire** : les
+demandes ecrites AVANT ce correctif n ont pas ce champ - `fromUsername ||
+null` a la lecture, `r.fromUsername ? '@'+r.fromUsername : r.displayName` a
+l affichage, retombe silencieusement sur le nom formate existant (jamais de
+`undefined` affiche).
+
+**Titre de section aligne sur la demande exacte de l utilisateur** :
+`friends.incomingLabel` renomme de "Demandes reçues" a "Demandes en attente"
+(FR) / "Incoming requests" a "Pending requests" (EN) / "Solicitudes
+recibidas" a "Solicitudes pendientes" (ES).
+
+Aucune regle Firestore a modifier : `friendRequests.create` autorise deja
+n importe quel champ tant que `fromUid == request.auth.uid` (pas de liste
+de champs stricte), et la requete `where('toUid','==',uid)` (deja utilisee
+avant ce correctif) reste inchangee.
+
+CACHE_NAME -> v85 (les 3 fichiers `locale-*.js`, texte de section modifie).
+Aucun changement de regles Firestore/Cloud Functions - modification 100%
+cote client, aucune touche a `functions/**`.

@@ -221,7 +221,7 @@ const LOCALE_FR = {
     requestSent: 'Demande envoyée',
     acceptRequestBtn: 'Accepter sa demande',
     addBtn: '+ Ajouter',
-    incomingLabel: 'Demandes reçues',
+    incomingLabel: 'Demandes en attente',
     acceptBtn: 'Accepter',
     declineBtn: 'Refuser',
     myFriendsLabel: 'Mes amis',

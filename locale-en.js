@@ -218,7 +218,7 @@ const LOCALE_EN = {
     requestSent: 'Request sent',
     acceptRequestBtn: 'Accept their request',
     addBtn: '+ Add',
-    incomingLabel: 'Incoming requests',
+    incomingLabel: 'Pending requests',
     acceptBtn: 'Accept',
     declineBtn: 'Decline',
     myFriendsLabel: 'My friends',
