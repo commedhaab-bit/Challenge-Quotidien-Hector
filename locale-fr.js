@@ -278,7 +278,7 @@ const LOCALE_FR = {
     noChallenge: 'Aucun défi pour l\'instant dans ce groupe.',
     createChallengeBtn: '+ Nouveau défi collectif',
     challengeProgress: '{{current}} / {{target}}',
-    doExerciseBtn: "S'entraîner : {{exercise}}",
+    doExerciseBtn: 'Faire des {{exercise}}',
     targetReachedAwaitingSettlement: '🎉 Objectif atteint ! Le règlement (Ardoise + Palmarès) se met à jour automatiquement d\'ici 15 minutes.',
     cancelChallengeBtn: 'Annuler ce défi',
     cancelChallengeConfirmTitle: 'Annuler ce défi ?',
@@ -410,6 +410,10 @@ const LOCALE_FR = {
       feature2: 'Surpasse-toi chaque jour',
       feature3: 'Suis tes progrès en temps réel',
       startBtn: 'Commencer',
+    },
+    kiloIntro: {
+      message: "Salut ! Moi c'est Kilito et je vais t'accompagner dans cette aventure en tant que coach virtuel IA :)",
+      ctaBtn: 'On y va ensemble !',
     },
     age: {
       coachBadge: 'Coach Virtuel IA',

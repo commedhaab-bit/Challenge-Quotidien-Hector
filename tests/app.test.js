@@ -271,11 +271,16 @@ function makeMockCollection(store) {
       },
       async get() {
         const arr = results();
+        // .ref sur chaque doc de requete (comme le vrai SDK - QueryDocumentSnapshot.ref) :
+        // manquait jusqu'ici, jamais remarque car aucun test n'exercait deleteMyAccount()
+        // de bout en bout (voir son commentaire dedie : db.batch()+doc.ref y est utilise
+        // en prod sans AUCUNE couverture, pour cette raison exacte). reutilise makeDocRef()
+        // (meme closure) pour pointer vers le VRAI doc du store, pas une copie figee.
         return {
           empty: arr.length === 0,
           size: arr.length,
-          docs: arr.map(({ id, data }) => ({ id, data: () => JSON.parse(JSON.stringify(data)) })),
-          forEach(cb) { arr.forEach(({ id, data }) => cb({ id, data: () => JSON.parse(JSON.stringify(data)) })); },
+          docs: arr.map(({ id, data }) => ({ id, data: () => JSON.parse(JSON.stringify(data)), ref: makeDocRef(id) })),
+          forEach(cb) { arr.forEach(({ id, data }) => cb({ id, data: () => JSON.parse(JSON.stringify(data)), ref: makeDocRef(id) })); },
         };
       },
       count() {
@@ -480,7 +485,13 @@ const sandbox = {
                     // tests existants qui simulent plusieurs comptes via de simples
                     // reassignations de currentUser.
                     if (subName === 'kv') {
-                      return { doc: () => makeAppDataDocRef() };
+                      // .get() (enumeration de la sous-collection, utilisee UNIQUEMENT par
+                      // deleteMyAccount()) : renvoie volontairement toujours vide plutot que
+                      // de modeliser un vrai document supprimable - appDataStore est un
+                      // singleton PARTAGE par tout le fichier de test (voir plus haut), le
+                      // vider depuis un seul test casserait silencieusement tous les tests
+                      // sequentiels suivants qui dependent de son contenu deja en place.
+                      return { doc: () => makeAppDataDocRef(), async get() { return { empty: true, size: 0, docs: [], forEach() {} }; } };
                     }
                     // Toute autre sous-collection (ex: notifications) : mock générique
                     // complet, isolé PAR UTILISATEUR (uid) — même mécanisme que les
@@ -950,21 +961,22 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(tabBtnCount, 5, 'il ne doit plus y avoir que 5 onglets dans la barre du bas (Journal fusionne dans Profil)');
   console.log('OK: onglets renommes/reordonnes/regroupes (Aujourd hui / Défis / Commu / Groupes / Profil)');
 
-  // Retour utilisateur "effet waouh" : un seul indicateur (.tab-active-indicator),
-  // toujours sur l onglet ACTIF - jamais 0 ni plusieurs a la fois (condition
-  // necessaire pour que la View Transitions API le fasse glisser proprement d un
-  // onglet a l autre via view-transition-name, voir styles.css).
+  // Retour utilisateur : la barre verte glissante en haut de l onglet actif
+  // ("pas esthetique, plutot genante") a ete retiree - un seul onglet porte la
+  // classe "active" (fond pilule discret + halo sur l icone, voir styles.css),
+  // jamais 0 ni plusieurs a la fois, et .tab-active-indicator n existe plus du tout.
   const activeTabBefore = activeTab;
   activeTab = 'today';
   let indicatorHtml = renderTabBar();
-  __assertEq((indicatorHtml.match(/tab-active-indicator/g) || []).length, 1, 'un seul indicateur doit exister a la fois');
-  __assertOk(indicatorHtml.indexOf('tab-active-indicator') < indicatorHtml.indexOf('🏋️‍♂️'), 'l indicateur doit se trouver DANS le bouton de l onglet actif (Aujourd hui)');
+  __assertOk(!indicatorHtml.includes('tab-active-indicator'), 'la barre glissante retiree ne doit plus jamais apparaitre dans le HTML');
+  __assertEq((indicatorHtml.match(/class="tab-btn active"/g) || []).length, 1, 'un seul onglet doit porter la classe active a la fois');
+  __assertOk(indicatorHtml.indexOf('class="tab-btn active"') < indicatorHtml.indexOf('🏋️‍♂️'), 'l onglet actif doit etre celui d Aujourd hui');
   activeTab = 'groups';
   indicatorHtml = renderTabBar();
-  __assertEq((indicatorHtml.match(/tab-active-indicator/g) || []).length, 1, 'un seul indicateur doit exister a la fois, meme apres changement d onglet');
-  __assertOk(indicatorHtml.indexOf('tab-active-indicator') < indicatorHtml.indexOf('👥'), 'l indicateur doit avoir suivi le nouvel onglet actif (Groupes)');
+  __assertEq((indicatorHtml.match(/class="tab-btn active"/g) || []).length, 1, 'un seul onglet actif a la fois, meme apres changement d onglet');
+  __assertOk(indicatorHtml.indexOf('class="tab-btn active"') < indicatorHtml.indexOf('👥'), 'l onglet actif doit avoir suivi le changement (Groupes)');
   activeTab = activeTabBefore;
-  console.log('OK: indicateur d onglet actif unique, positionne sur l onglet courant (glisse via View Transitions si supportee)');
+  console.log('OK: barre glissante retiree, un seul onglet actif a la fois (fond pilule + halo sur l icone)');
 
   // --- 18. Journal fusionne en sous-onglet de Profil : trophées absents du sous-onglet
   // Journal, presents dans le sous-onglet Profil ---
@@ -1525,6 +1537,14 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!renderKilo('idle').includes('onclick="kiloTap'), 'sans clickable, aucun gestionnaire de tap ne doit etre pose (ex: dans un popup deja fermable autrement)');
   console.log('OK: mascotte Kilo (6 etats distincts, etincelles/sueur/couleur ternie/trophee selon l etat, tap optionnel)');
 
+  // Bugs reels signales : Kilito n etait ni assez visible sur l accueil, ni centre
+  // horizontalement dans les popups (SVG en display:block, ignore le text-align du
+  // popup contrairement aux icones emoji).
+  __assertOk(__rawHtml.includes("renderKilo(kiloHomeState, { size: 72, clickable: true })"), 'Kilito doit etre nettement plus grand sur l accueil (etait a peine visible a 44px)');
+  __assertOk(__rawHtml.includes("renderKilo(next.kiloState, { size: 118, clickable: true })"), 'Kilito doit aussi etre agrandi dans les popups');
+  __assertOk(cssText.includes('.app-popup-icon.kilo-icon') && cssText.includes('justify-content: center'), 'Kilito doit etre explicitement centre horizontalement dans les popups (un SVG display:block ignore le text-align du parent)');
+  console.log('OK: Kilito agrandi sur l accueil + dans les popups, et correctement centre (bugs reels corriges)');
+
   // computeKiloHomeState() : idle en journee, warning des 19h SEULEMENT si au
   // moins un defi actif du jour n est pas encore valide. Fonction PURE (l heure
   // est un parametre) pour rester testable de facon deterministe.
@@ -1839,6 +1859,7 @@ const cssText = __rawHtml + __cssSource;
   let detailHtml = document.getElementById('app').innerHTML;
   __assertOk(detailHtml.includes('timer-ring-wrap'), 'le disque du chrono (anneau) doit etre present');
   __assertOk(detailHtml.includes('bar-track') && !detailHtml.includes('progress-ring-wrap'), 'un exercice en secondes doit garder la barre horizontale pour l objectif du jour (deja un riche double-anneau via le chronometre, un 2e anneau serait redondant)');
+  __assertOk(detailHtml.includes('progress-pct'), 'le pourcentage textuel doit etre affiche a cote de la barre');
   __assertOk(detailHtml.includes('onclick="toggleTimer()"'), 'tout le disque doit etre cliquable (toggle play/pause)');
   __assertOk(detailHtml.includes('timer-play-icon'), 'la petite icone play/pause epuree doit etre presente sous le temps');
   __assertOk(!detailHtml.includes('timer-play-btn'), 'l ancien gros bouton circulaire colore ne doit plus exister');
@@ -1873,7 +1894,11 @@ const cssText = __rawHtml + __cssSource;
   render(false);
   detailHtml = document.getElementById('app').innerHTML;
   __assertOk(!detailHtml.includes('tally-wrap'), 'les traits de comptage doivent aussi avoir disparu pour un exercice en repetitions (carte "Ajouter une serie" fixe)');
-  __assertOk(detailHtml.includes('progress-ring-wrap') && !detailHtml.includes('progress-pct'), 'un exercice en repetitions doit afficher l anneau de progression (effet waouh) a la place de l ancienne barre/pourcentage textuel pour l objectif du jour');
+  // Retour utilisateur : l anneau de progression pour les exercices en repetitions
+  // ("occupe beaucoup trop d espace vertical") a ete retire - retour a la meme barre
+  // horizontale + pourcentage que les exercices en secondes, sans distinction d unite.
+  __assertOk(!detailHtml.includes('progress-ring-wrap'), 'l anneau de progression ne doit plus jamais apparaitre (retire, retour a la barre lineaire)');
+  __assertOk(detailHtml.includes('bar-track') && detailHtml.includes('progress-pct'), 'un exercice en repetitions doit afficher la meme barre horizontale + pourcentage qu un exercice en secondes, plus de distinction d unite pour ce bloc');
   currentChallengeId = null;
   console.log('OK: disque double-anneau epure (plus de bouton/textes/plein ecran/ajout manuel en secondes)');
 
@@ -1897,18 +1922,6 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(ringSvg.includes('id="timerRingHardcoreFill"'), 'l anneau exterieur (hardcore) doit avoir son propre id');
   __assertOk((ringSvg.match(/<circle/g) || []).length === 4, 'le SVG doit contenir 4 cercles (fond+remplissage x2)');
   console.log('OK: computeTimerRingPct (normal plafonne a 100%, hardcore calcule sur la plage restante) + rendu SVG double anneau');
-
-  // Retour utilisateur "effet waouh" : anneau de progression (au lieu de la
-  // barre horizontale) pour l objectif du jour des exercices en repetitions -
-  // reserve a ces exercices, ceux en secondes gardent la barre (deja un riche
-  // double-anneau via le chronometre).
-  const ringSvg0 = renderExerciseProgressRingSVG(0);
-  __assertOk(ringSvg0.includes('exercise-progress-ring-fill') && !ringSvg0.includes('exercise-progress-ring-fill complete'), 'a 0%, l anneau ne doit pas porter la classe "complete"');
-  const ringSvgFull = renderExerciseProgressRingSVG(1);
-  __assertOk(ringSvgFull.includes('exercise-progress-ring-fill complete'), 'a 100%, l anneau doit porter la classe "complete" (meme convention que le double-anneau du chronometre)');
-  const ringSvgOver = renderExerciseProgressRingSVG(1.4);
-  __assertEq(ringSvgOver, ringSvgFull, 'une fraction au-dela de 1 doit etre plafonnee exactement comme a 100% (jamais un stroke-dashoffset negatif)');
-  console.log('OK: renderExerciseProgressRingSVG() (plafonne a 100%, classe "complete" une fois l objectif atteint)');
 
   // Retour utilisateur "effet waouh" : mini-graphique (sparkline) des 7 derniers
   // jours d'activite sur l'exercice courant, affiche a cote du total a vie.
@@ -2700,7 +2713,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v78'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v79'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');
@@ -3530,6 +3543,12 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(__rawHtml.includes('ptrRefreshing || showProfileOnboarding'), 'le pull-to-refresh doit etre desactive pendant l onboarding (evite un refreshApp() accidentel qui reinitialiserait les roulettes)');
   console.log('OK: pull-to-refresh desactive pendant l onboarding (garde-fou complementaire)');
 
+  // Bug reel signale : glisser une bottom sheet vers le bas pour la fermer
+  // declenchait EN MEME TEMPS le pull-to-refresh de la page en arriere-plan
+  // (verification a la source, meme raison que le garde-fou onboarding ci-dessus).
+  __assertOk(__rawHtml.includes("document.querySelector('.level-roadmap-overlay')"), 'le pull-to-refresh doit aussi etre desactive tant qu une bottom sheet (info groupe/profil ami/palier de niveau) est ouverte par-dessus');
+  console.log('OK: pull-to-refresh desactive pendant qu une bottom sheet est ouverte (conflit de gestes corrige)');
+
   // --- 130. Refonte copywriting onboarding (#2) : l ecran de bienvenue est condense
   // en 3 points cles (plus les 2 longs paragraphes), et l explication du coach virtuel
   // est deplacee sur l ecran age (avec l icone cerveau) ---
@@ -3564,6 +3583,26 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(kiloLevelHtml.includes('coach-badge') && kiloLevelHtml.includes('kilo-idle'), 'Kilo doit aussi accompagner l ecran niveau');
   profileStep = 0;
   console.log('OK: Kilo accompagne desormais TOUTES les etapes du questionnaire de profil (bienvenue + age/sexe/mensurations/niveau)');
+
+  // Nouvel ecran demande : presentation de Kilito, juste apres la bienvenue et
+  // avant la 1ere question (age) - etape 0.5 volontairement non entiere (voir
+  // profileNext()/profilePrev()) pour ne renumeroter aucune des etapes existantes.
+  profileStep = 0;
+  profileNext(); // bienvenue -> Kilito (pas directement l age)
+  __assertEq(profileStep, 0.5, 'apres la bienvenue, l etape suivante doit etre la presentation de Kilito, pas directement l age');
+  let kiloIntroHtml = renderProfileOnboardingScreen();
+  __assertOk(kiloIntroHtml.includes('Kilito') && kiloIntroHtml.includes('kilo-intro-hero') && kiloIntroHtml.includes('kilo-idle'), 'l ecran doit presenter Kilito en grand (anime, etat idle)');
+  __assertOk(kiloIntroHtml.includes(t('onboarding.kiloIntro.message')), 'le message de presentation doit etre affiche');
+  __assertOk(kiloIntroHtml.includes('onboarding-cta'), 'l ecran de presentation doit avoir son propre bouton pour continuer');
+  __assertOk(!kiloIntroHtml.includes('pf-progress'), 'les points de progression du questionnaire ne doivent pas apparaitre sur cet ecran (comme sur la bienvenue, ce n est pas une question)');
+  profileNext(); // Kilito -> age
+  __assertEq(profileStep, 1, 'apres l ecran Kilito, l etape suivante doit etre la question age (numerotation existante inchangee)');
+  profilePrev(); // age -> Kilito (retour, pas directement la bienvenue)
+  __assertEq(profileStep, 0.5, 'le bouton retour depuis l age doit ramener sur l ecran Kilito, pas directement sur la bienvenue');
+  profilePrev(); // Kilito -> bienvenue
+  __assertEq(profileStep, 0, 'le bouton retour depuis l ecran Kilito doit ramener sur la bienvenue');
+  profileStep = 0;
+  console.log('OK: nouvel ecran de presentation de Kilito entre la bienvenue et la question age (navigation avant/arriere correcte dans les 2 sens)');
 
   // --- 131. Finitions UI onboarding : bouton CTA present uniquement sur les etapes qui
   // en ont besoin (0, 1, 3, ecran de confirmation), badge coach virtuel repositionne
@@ -3828,6 +3867,34 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(uid1AfterTx.data().kudosTotal, 5, 'runTransaction() doit lire l etat courant (tx.get) et ecrire (tx.set) dans le meme cycle');
   __resetCommunityMocks();
   console.log('OK: extensions du mock Firestore (where in, db.batch, db.runTransaction) pretes pour le fil d amis/kudos');
+
+  // --- Bug reel signale (RGPD) : deleteMyAccount() ne nettoyait jamais le roster des
+  // groupes (groups/{id}/members/{uid}) ni les relations d amitie
+  // (friendships/{pairId}) - le profil supprime continuait d apparaitre comme
+  // membre/ami chez les autres utilisateurs. Couverture desormais possible grace aux
+  // extensions du mock Firestore ci-dessus (db.batch(), where(...,'in',...)).
+  currentUser = { uid: 'm-deleteme-uid', displayName: 'A Supprimer', email: 'del@test.com', photoURL: '' };
+  await db.collection('users').doc('m-deleteme-uid').collection('myGroups').doc('groupA').set({ groupId: 'groupA', name: 'Groupe A' });
+  await db.collection('users').doc('m-deleteme-uid').collection('myGroups').doc('groupB').set({ groupId: 'groupB', name: 'Groupe B' });
+  await db.collection('groups').doc('groupA').collection('members').doc('m-deleteme-uid').set({ uid: 'm-deleteme-uid', displayName: 'A Supprimer' });
+  await db.collection('groups').doc('groupB').collection('members').doc('m-deleteme-uid').set({ uid: 'm-deleteme-uid', displayName: 'A Supprimer' });
+  // 2 amities, une ou m-deleteme-uid est uidA (trie apres), une ou il est uidB (trie
+  // avant) - couvre les 2 sens de la requete bornee (where uidA==uid / where uidB==uid).
+  await db.collection('friendships').doc('a-friend1-uid_m-deleteme-uid').set({ uidA: 'a-friend1-uid', uidB: 'm-deleteme-uid' });
+  await db.collection('friendships').doc('m-deleteme-uid_z-friend2-uid').set({ uidA: 'm-deleteme-uid', uidB: 'z-friend2-uid' });
+  const originalConfirmModalDeleteAccount = confirmModal;
+  confirmModal = async () => true;
+  await deleteMyAccount();
+  confirmModal = originalConfirmModalDeleteAccount;
+  const memberADoc = await db.collection('groups').doc('groupA').collection('members').doc('m-deleteme-uid').get();
+  const memberBDoc = await db.collection('groups').doc('groupB').collection('members').doc('m-deleteme-uid').get();
+  __assertOk(!memberADoc.exists && !memberBDoc.exists, 'deleteMyAccount() doit retirer l utilisateur du roster de CHAQUE groupe dont il etait membre (sinon il continue d apparaitre comme membre chez les autres)');
+  const myGroupsAfterDelete = await db.collection('users').doc('m-deleteme-uid').collection('myGroups').get();
+  __assertEq(myGroupsAfterDelete.size, 0, 'le propre index myGroups de l utilisateur doit aussi etre nettoye');
+  const friendship1After = await db.collection('friendships').doc('a-friend1-uid_m-deleteme-uid').get();
+  const friendship2After = await db.collection('friendships').doc('m-deleteme-uid_z-friend2-uid').get();
+  __assertOk(!friendship1After.exists && !friendship2After.exists, 'les 2 relations d amitie (peu importe le sens, uidA ou uidB) doivent etre supprimees - un seul document partage par paire, donc retire aussi de la liste de l autre personne');
+  console.log('OK: deleteMyAccount() nettoie desormais le roster des groupes et les relations d amitie (bug RGPD reel corrige)');
 
   // --- 141. Pilier 1 : Hero Banner communautaire remplace l ecran vide par defaut
   // (accompagnement sans effort de choix + preuve sociale/FOMO) ---
@@ -5970,10 +6037,15 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(groupDetailHtml.includes(escapeHtml(t('groups.doExerciseBtn', { exercise: t('exercises.' + pompes.slug + '.name') }))), 'le bouton doit nommer l exercice concerne, pas juste "Activer"');
   activeToday = new Set();
   currentChallengeId = null;
+  activeTab = 'groups'; // reproduit le contexte reel du bug : le bouton est sur l ecran Groupes
   await startGroupChallengeExercise(pompes.slug);
   __assertOk(activeToday.has(pompes.id), 'startGroupChallengeExercise() doit activer l exercice s il ne l etait pas deja (jamais le desactiver si deja actif - toggleActiveToday() n est appelee QUE si absent)');
   __assertEq(currentChallengeId, pompes.id, 'startGroupChallengeExercise() doit naviguer directement vers la fiche de l exercice cible');
-  console.log('OK: bouton "Faire {{exercice}}" sur la carte hero (active + navigue directement, plus besoin d activer soi-meme au prealable)');
+  // Bug reel signale : le bouton semblait juste "rafraichir" l ecran Groupes - car
+  // render() teste activeTab AVANT currentChallengeId, donc rester sur 'groups' fait
+  // ignorer completement currentChallengeId. activeTab doit basculer sur 'today'.
+  __assertEq(activeTab, 'today', 'startGroupChallengeExercise() doit basculer sur l onglet Aujourd hui, sinon la fiche exercice ne s affiche jamais (render() reste sur l ecran Groupes)');
+  console.log('OK: bouton "Faire {{exercice}}" sur la carte hero (active + navigue VRAIMENT vers la fiche, bug de render() sur le mauvais onglet corrige)');
 
   // Progression du defi de groupe affichee SOUS l objectif personnel du jour, sur la
   // fiche de l exercice lui-meme - evite l impression de 2 mondes separes ("je fais
@@ -6107,6 +6179,17 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(bouletHtml.includes(t('groups.jokers.bouletLaunchedStatus', { name: 'Moi A.' })), 'le statut du Boulet doit nommer la cible');
   __assertOk(bouletHtml.includes(t('groups.jokers.handicapBadge', { amount: 20 })), 'le handicap doit etre affiche en badge sur la ligne de la cible');
   console.log('OK: Jokers tactiques - Le Boulet (picker de cible, handicap applique et affiche)');
+
+  // Bug reel signale (2e ronde) : le compteur/pourcentage global de la carte hero
+  // (tout en haut de l ecran) sommait encore le totalAmount BRUT de chaque
+  // participant, au lieu de la valeur NETTE (deja utilisee par le classement juste
+  // en dessous depuis le correctif precedent) - desynchronisant visuellement le haut
+  // de la carte du classement qui la suit immediatement.
+  const expectedNetHeroTotal = groupDetailChallenge.participants.reduce((s, p) => s + computeGroupParticipantDisplayAmount(p), 0);
+  const rawHeroTotal = groupDetailChallenge.participants.reduce((s, p) => s + (p.totalAmount || 0), 0);
+  __assertOk(expectedNetHeroTotal !== rawHeroTotal, 'ce scenario (handicap actif) doit avoir un total net different du total brut, sinon le test ne prouve rien');
+  __assertOk(bouletHtml.includes(t('groups.challengeProgress', { current: expectedNetHeroTotal, target: groupDetailChallenge.targetTotal })), 'le compteur global de la carte hero doit refleter le total NET (avec handicap), pas le total brut de repetitions');
+  console.log('OK: le compteur global de la carte hero du defi actif reflete lui aussi le handicap du Boulet (pas seulement le classement en dessous)');
 
   // Bug reel signale en prod : le nombre affiche pour la victime du Boulet restait
   // le totalAmount BRUT (10 repetitions reellement faites), sans jamais refleter

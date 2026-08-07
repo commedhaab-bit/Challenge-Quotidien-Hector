@@ -3219,3 +3219,119 @@ Seuls 4 emplacements reellement vus/entendus par l'utilisateur ont change :
 
 CACHE_NAME -> v78. Aucune regle Firestore/Cloud Functions touchee.
 
+## Retours utilisateur apres tests reels en conditions (9 commits precedents deployes)
+
+Grosse serie de corrections/ajustements apres un vrai passage utilisateur sur les
+9 commits precedemment deployes - 2 captures d'ecran + une liste numerotee (voir
+historique de conversation) servant de reference aux items "#N" ci-dessous.
+
+**Bugs de donnees/rafraichissement (Firebase) :**
+- **Suppression de compte (RGPD)** : `deleteMyAccount()` ne supprimait que le kv
+  store + `leaderboard/{uid}` de l'utilisateur - jamais son doc membre dans les
+  groupes rejoints (`groups/{id}/members/{uid}`) ni ses relations d'amitie
+  (`friendships/{pairId}`), qui restaient visibles cote AUTRES utilisateurs
+  (profil "fantome"). Corrige en lisant `users/{uid}/myGroups` (deja la propre
+  sous-collection de l'utilisateur - jamais un scan de `groups/**`) puis
+  `friendships` par `uidA`/`uidB` (meme requete bornee que `refreshFriendsData()`),
+  et en supprimant tout ca par lots (`db.batch()`) - cout de lecture reste
+  strictement proportionnel au nombre de groupes/amis de CET utilisateur.
+  **Bug de mock decouvert en testant cette correction** : les documents renvoyes
+  par une requete (`.where().get()`, `.collection().get()`) n'avaient jamais de
+  propriete `.ref` dans le mock Firestore de test (contrairement au vrai SDK) -
+  `deleteMyAccount()` tournait donc en prod (`doc.ref` y fonctionne normalement)
+  mais n'avait jamais pu etre testee de bout en bout, exactement comme le
+  signalait deja un commentaire existant. Corrige dans le mock (`makeQuery().get()`),
+  ce qui a aussi revele un 2e trou : `.get()` sur la sous-collection `kv` n'existait
+  pas du tout (mock `kv` = un singleton partage, voir son commentaire dedie) -
+  ajoute un repli qui renvoie toujours vide plutot que de modeliser un vrai
+  document supprimable (vider le singleton partage aurait silencieusement casse
+  tous les tests sequentiels suivants qui en dependent).
+- **Donnees perimees apres notification** : taper sur une notification (nouveau
+  defi de groupe, attaque Boulet) qui ramenait l'app au premier plan alors que
+  l'ecran de detail groupe (ou la fiche d'exercice) etait deja affiche montrait
+  des donnees figees - `loadGroupDetail()`/`loadActiveExerciseGroupChallenges()`
+  sont de simples lectures ponctuelles (`.get()`), jamais des listeners temps
+  reel, et rien ne les redeclenchait au retour au premier plan (seule une
+  navigation manuelle - quitter puis revenir - forcait un fetch frais). Corrige
+  par un nouvel ecouteur `visibilitychange` qui recharge automatiquement l'ecran
+  concerne (si toujours affiche) des que l'app redevient visible.
+
+**UI :** cartes de groupe collees entre elles (`.group-card-list` n'avait jamais
+eu de regle CSS du tout) - `display:flex; flex-direction:column; gap:12px`.
+
+**Items numerotes (voir liste de reference fournie par l'utilisateur) :**
+- **#5** : le compteur/pourcentage global de la carte hero d'un defi de groupe
+  sommait le `totalAmount` BRUT de chaque participant au lieu de la valeur NETTE
+  (`computeGroupParticipantDisplayAmount()`, deja utilisee par le classement juste
+  en dessous depuis un correctif precedent) - desynchronisait visuellement le haut
+  de la carte du classement qui la suit. Meme formule partout desormais.
+- **#7** : bouton renomme (`doExerciseBtn`) - FR "Faire des {{exercice}}" (choix
+  explicite de l'utilisateur ; fonctionne parfaitement pour les noms d'exercice
+  pluriels, largement majoritaires dans le catalogue - quelques singuliers comme
+  "Planche"/"Chaise" restent une imperfection mineure acceptee), EN "Do
+  {{exercice}}", ES "Hacer {{exercice}}" (aucun souci d'article dans ces 2
+  langues). **Bug du clic reel** : `startGroupChallengeExercise()` appelait
+  `pickChallenge()` sans jamais faire basculer `activeTab` sur `'today'` - le
+  dispatcheur principal `render()` teste `activeTab` AVANT `currentChallengeId`,
+  donc rester sur `activeTab==='groups'` faisait simplement ré-afficher l'ecran
+  Groupes (currentChallengeId totalement ignore), ce qui ressemblait a un simple
+  rafraichissement de la page actuelle.
+- **#11** : barre verte glissante en haut de l'onglet actif (`.tab-active-indicator`,
+  `view-transition-name`) retiree entierement - remplacee par un fond "pilule"
+  discret sur `.tab-btn.active` (meme teinte que `.coach-badge`), en plus du halo
+  deja existant sur l'icone active.
+- **#13** : retour tactile (vibration) manquant sur plusieurs boutons (sous-onglets
+  Defi/Ardoise/Palmares d'un groupe, entre autres) - `navigator.vibrate()` n'a
+  toujours ete ajoute qu'au cas par cas (~20 emplacements). Plutot que d'auditer
+  bouton par bouton, UN SEUL ecouteur `click` delegue au niveau du `document`
+  (phase de CAPTURE, pas bubbling) couvre desormais tout `button`/`.clickable` de
+  l'app - meme philosophie que le retour visuel `:active` deja generalise. La
+  capture (avant le `onclick` propre de l'element) garantit qu'une vibration plus
+  riche posee manuellement a un endroit precis (ex: badge debloque) se declenche
+  APRES ce signal court et le remplace naturellement (la Vibration API annule
+  toujours l'appel precedent) - jamais de double-retour perceptible.
+- **#18** : glisser une bottom sheet vers le bas pour la fermer declenchait EN
+  MEME TEMPS le pull-to-refresh de la page en arriere-plan - le listener
+  `initPullToRefresh()` est pose au niveau du `document` et ne verifiait jamais
+  si une feuille etait ouverte par-dessus. Les 3 feuilles (info groupe, profil
+  ami, palier de niveau) partagent deja la meme classe `.level-roadmap-overlay`
+  (voir `attachSheetBehavior()`) - un seul `document.querySelector(...)` dans le
+  garde-fou existant suffit a couvrir les 3 (et toute future feuille qui
+  reutiliserait la meme fonction partagee).
+- **#19 (annulation)** : l'anneau de progression SVG pour les exercices en
+  repetitions (`renderExerciseProgressRingSVG()`, ~130 lignes + CSS dediee,
+  ajoute lors de la 2e passe "effet waouh") retire ENTIEREMENT - "occupe
+  beaucoup trop d'espace vertical". Retour a la meme barre horizontale +
+  pourcentage que les exercices en secondes, plus aucune distinction d'unite
+  pour ce bloc.
+- **#24** : le son de reussite (accord fixe de 3 notes, percu comme un simple
+  "bip") remplace par un cri de felicitations dynamique type "Wouehhh !" -
+  balayage de frequence montant (220Hz -> 660Hz, oscillateur en dents de scie
+  plutot que sinus pour un timbre plus riche) + vibrato + retombee douce en fin
+  de son, a l'image des sons de victoire des applications ludiques/sportives.
+  Web Audio API pur, aucun asset audio a heberger.
+- **#26/#27-30** : Kilito etait trop petit sur l'accueil (44px -> 72px) et pas
+  centre horizontalement dans les popups (84px -> 118px + `.app-popup-icon.kilo-icon`
+  devient un conteneur flex centre). **Cause du defaut de centrage** : `.kilo-svg`
+  est `display:block`, qui ignore le `text-align` de son parent (contrairement a
+  l'icone emoji, simple texte, deja centree par le `text-align` du popup) - un
+  bug reel, pas juste une histoire de taille.
+- **#38** : nouvel ecran d'onboarding de presentation de Kilito, entre la
+  bienvenue et la 1ere question (age) - Kilito tres grand et anime (etat `idle`,
+  deja vivant : flottement doux + halo neon), son nom affiche en tres grand avec
+  une lueur neon (`.kilo-intro-name`), message humanisant fourni par
+  l'utilisateur ("Salut ! Moi c'est Kilito et je vais t'accompagner..."), traduit
+  en EN/ES dans le meme ton. **Choix d'implementation** : nouvelle etape `0.5`
+  (volontairement NON entiere) dans `profileStep`/`profileNext()`/`profilePrev()`
+  plutot que de renumeroter les etapes existantes 1/2/3/4 (age/sexe/mensurations/
+  niveau) - ces numeros sont references par leur valeur exacte a des dizaines
+  d'endroits (tests, formule des points de progression `renderProfileProgressDots()`).
+  Une etape "entre les deux" ne touche a AUCUN d'entre eux, zero risque de
+  regression sur l'existant.
+
+CACHE_NAME -> v79. Aucun changement de regles Firestore/Cloud Functions (seule
+la logique client evolue). Meme limite de verification que d'habitude pour tout
+ce qui touche au rendu visuel reel (tailles/centrage de Kilito, son synthetise,
+disparition de la barre glissante) - valide par tests structurels + lint,
+jamais par un rendu reel sur appareil dans cet environnement.
+

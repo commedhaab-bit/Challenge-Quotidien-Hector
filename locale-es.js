@@ -276,7 +276,7 @@ const LOCALE_ES = {
     noChallenge: 'Todavía no hay ningún reto en este grupo.',
     createChallengeBtn: '+ Nuevo reto colectivo',
     challengeProgress: '{{current}} / {{target}}',
-    doExerciseBtn: 'Entrenar: {{exercise}}',
+    doExerciseBtn: 'Hacer {{exercise}}',
     targetReachedAwaitingSettlement: '🎉 ¡Objetivo alcanzado! El ajuste (Cuenta + Salón de la Fama) se actualizará automáticamente en menos de 15 minutos.',
     cancelChallengeBtn: 'Cancelar este reto',
     cancelChallengeConfirmTitle: '¿Cancelar este reto?',
@@ -408,6 +408,10 @@ const LOCALE_ES = {
       feature2: 'Supérate cada día',
       feature3: 'Sigue tu progreso en tiempo real',
       startBtn: 'Empezar',
+    },
+    kiloIntro: {
+      message: '¡Hola! Soy Kilito y te voy a acompañar en esta aventura como tu coach virtual con IA :)',
+      ctaBtn: '¡Vamos juntos!',
     },
     age: {
       coachBadge: 'Coach Virtual IA',

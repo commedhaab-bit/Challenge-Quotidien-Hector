@@ -401,6 +401,24 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => { flushWorkoutWrites(); });
 
+// Retour utilisateur : parcours complet de l'app en manque de retour tactile a
+// plusieurs endroits (signale sur les sous-onglets Defi/Ardoise/Palmares d'un
+// groupe, mais le meme trou existe partout ou navigator.vibrate() n'a jamais ete
+// ajoute manuellement). Plutot que d'auditer et poser un vibrate() bouton par
+// bouton (deja fait ponctuellement a des moments cles - validation de defi, level
+// up, badges...), UN SEUL ecouteur delegue couvre desormais TOUT bouton/element
+// .clickable de l'app, meme ceux ajoutes plus tard - meme philosophie que le
+// retour visuel :active generalise (voir styles.css). Phase de CAPTURE (pas
+// bubbling) : se declenche AVANT le onclick propre de l'element, donc si ce
+// dernier pose ensuite sa propre vibration plus riche (ex: [60,40,60,40,140] a
+// l'obtention d'un badge), celle-ci se declenche juste APRES et remplace
+// naturellement ce signal court par la Vibration API (un nouvel appel annule
+// toujours le precedent) - jamais de conflit, jamais de double-retour perceptible.
+document.addEventListener('click', (e) => {
+  if (!navigator.vibrate) return;
+  if (e.target.closest('button:not(:disabled), .clickable')) navigator.vibrate(6);
+}, true);
+
 /**
  * Écrit UN SEUL champ du document consolidé, via un merge Firestore natif
  * (`{merge:true}`) qui ne touche jamais les autres champs du même document —
@@ -542,6 +560,40 @@ async function deleteMyAccount() {
 
   try {
     const uid = currentUser.uid;
+
+    // Bug reel signale : le profil continuait d'apparaitre comme MEMBRE dans les
+    // groupes des autres utilisateurs apres suppression (groups/{id}/members/{uid}
+    // n'etait jamais nettoye). Lecture fraiche de myGroups plutot que la variable deja
+    // en memoire : refreshMyGroupsAndActiveChallenges() n'est pas attendu au demarrage,
+    // elle pourrait ne pas encore etre chargee si le compte est supprime tres vite apres
+    // ouverture de l'app. Reste peu couteux : borne a la PROPRE sous-collection
+    // myGroups de cet utilisateur, jamais un scan de la collection groups entiere.
+    // Regles : chacun ne peut supprimer que SON PROPRE doc membre (members/{memberUid},
+    // request.auth.uid == memberUid) - jamais besoin d'ecrire dans le document d'un
+    // autre membre.
+    const myGroupsSnap = await db.collection('users').doc(uid).collection('myGroups').get();
+    if (!myGroupsSnap.empty) {
+      const groupCleanupBatch = db.batch();
+      myGroupsSnap.forEach((d) => {
+        groupCleanupBatch.delete(db.collection('groups').doc(d.id).collection('members').doc(uid));
+        groupCleanupBatch.delete(d.ref); // users/{uid}/myGroups/{groupId} lui-meme
+      });
+      await groupCleanupBatch.commit();
+    }
+
+    // Meme principe pour les relations d'amitie (friendships/{pairId}, un seul
+    // document par paire) - meme requete bornee (par uidA puis par uidB) que celle
+    // deja utilisee par refreshFriendsData(), jamais un scan complet de la collection.
+    const [friendsAsA, friendsAsB] = await Promise.all([
+      db.collection('friendships').where('uidA', '==', uid).get(),
+      db.collection('friendships').where('uidB', '==', uid).get(),
+    ]);
+    if (friendsAsA.size + friendsAsB.size > 0) {
+      const friendshipCleanupBatch = db.batch();
+      friendsAsA.forEach((d) => friendshipCleanupBatch.delete(d.ref));
+      friendsAsB.forEach((d) => friendshipCleanupBatch.delete(d.ref));
+      await friendshipCleanupBatch.commit();
+    }
 
     // Supprime tous les documents de données de l'utilisateur (kv store)
     const snap = await db.collection('users').doc(uid).collection('kv').get();
@@ -1287,7 +1339,19 @@ function selectProfileLevel(level) {
 
 function profileNext() {
   if (profileStep === 0) {
-    // Écran de bienvenue : rien à valider, on passe simplement à la suite
+    // Écran de bienvenue : rien à valider, on passe simplement à la suite -> écran
+    // de présentation de Kilito. Étape 0.5 (volontairement non entière) plutôt que
+    // de renuméroter 1/2/3/4 (age/sexe/mensurations/niveau) : ces étapes sont
+    // référencées par leur numéro exact à des dizaines d'endroits (tests, dots de
+    // progression) - une étape "entre les deux" ne touche à AUCUNE d'entre elles.
+    profileStep = 0.5;
+    render(true);
+    return;
+  } else if (profileStep === 0.5) {
+    // Écran de présentation de Kilito : rien à valider non plus
+    profileStep = 1;
+    render(true);
+    return;
   } else if (profileStep === 1) {
     const val = getWheelPickerValue('pfAge');
     if (isNaN(val) || val < 12 || val > 100) {
@@ -1326,7 +1390,13 @@ function profileNext() {
 }
 
 function profilePrev() {
-  if (profileStep > 0) {
+  if (profileStep === 1) {
+    profileStep = 0.5; // retour vers l'ecran Kilito, pas directement la bienvenue
+    render(true);
+  } else if (profileStep === 0.5) {
+    profileStep = 0;
+    render(true);
+  } else if (profileStep > 0) {
     profileStep--;
     render(true);
   }
@@ -2835,6 +2905,25 @@ async function loadGroupDetail(groupId) {
   render();
 }
 
+// Bug reel signale : apres un tap sur une notification (nouveau defi de groupe,
+// attaque Boulet...) qui ramene l'app au premier plan, l'ecran de detail groupe
+// (et la progression liee sur la fiche d'exercice, voir
+// loadActiveExerciseGroupChallenges() plus bas) restaient figes sur les donnees
+// chargees AVANT la notification - ce sont de simples lectures ponctuelles
+// (.get()), jamais des listeners temps reel. Seule une navigation manuelle
+// (quitter l'ecran puis y revenir) redeclenchait un fetch frais. Recharge
+// desormais automatiquement des que l'app redevient visible, SI l'ecran
+// concerne est toujours affiche (jamais de fetch pour un ecran quitte entre
+// temps).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (openGroupId !== null) loadGroupDetail(openGroupId);
+  if (currentChallengeId !== null) {
+    const c = getChallenge();
+    if (c && c.slug) loadActiveExerciseGroupChallenges(c.slug);
+  }
+});
+
 // Pure (aucune donnee supplementaire a charger : deja dans groupDetailMembers,
 // rollups mis a jour par closeExpiredGroupChallenges()) - Hall of Fame a 5 titres :
 // Le Mecene (le plus souvent payeur), Le Roi des Repets (volume cumule le plus
@@ -3686,7 +3775,7 @@ function buildPopupInnerHtml(next) {
   // Mascotte Kilo (retour utilisateur "effet waouh") : si next.kiloState est fourni,
   // remplace l'icone emoji par Kilo dans la pose/expression correspondante -
   // reutilise le meme composant que partout ailleurs (accueil, etc.).
-  const iconHtml = next.kiloState ? renderKilo(next.kiloState, { size: 84, clickable: true }) : next.icon;
+  const iconHtml = next.kiloState ? renderKilo(next.kiloState, { size: 118, clickable: true }) : next.icon;
   return `
     <div class="app-popup-card${next.epic ? ' epic' : ''}">
       ${next.closable ? `<button class="app-popup-close-x" id="appPopupCloseX" aria-label="${t('common.close')}">✕</button>` : ''}
@@ -4483,26 +4572,47 @@ function fireConfetti(variant) {
 // reglage Parametres) - jouait auparavant de facon INCONDITIONNELLE, sans aucun
 // moyen de la couper (voir soundEffectsEnabled plus haut pour le detail complet
 // de cette decouverte/correction).
+// Retour utilisateur : remplace l'ancien accord fixe de 3 notes (percu comme un
+// simple "bip") par un cri de felicitations dynamique type "Wouehhh !" - un
+// balayage de frequence montant rapide + vibrato, a l'image des sons de victoire
+// des applications ludiques/sportives (Duolingo, Strava...) plutot qu'un simple
+// accord. Reste du Web Audio API pur (aucun asset audio a heberger) : un
+// oscillateur en dents de scie (plus riche/moins "bip" qu'un sinus) balaye de
+// 220Hz a 660Hz (l'attaque du cri) puis redescend doucement (la retombee
+// naturelle d'une exclamation), avec un vibrato leger qui donne le cote "voix"
+// plutot que "synthe pur".
 function playSuccessSound() {
   if (!soundEffectsEnabled) return;
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     const ctx = new AudioCtx();
-    const notes = [523.25, 659.25, 783.99]; // do-mi-sol
-    notes.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      const start = ctx.currentTime + i * 0.09;
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(0.18, start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
-      osc.start(start);
-      osc.stop(start + 0.4);
-    });
+    const start = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, start);
+    osc.frequency.exponentialRampToValueAtTime(660, start + 0.14);
+    osc.frequency.exponentialRampToValueAtTime(520, start + 0.5);
+
+    const vibrato = ctx.createOscillator();
+    const vibratoGain = ctx.createGain();
+    vibrato.frequency.value = 7;
+    vibratoGain.gain.value = 14;
+    vibrato.connect(vibratoGain);
+    vibratoGain.connect(osc.frequency);
+
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.22, start + 0.05);
+    gain.gain.linearRampToValueAtTime(0.16, start + 0.2);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.55);
+
+    osc.start(start);
+    vibrato.start(start);
+    osc.stop(start + 0.6);
+    vibrato.stop(start + 0.6);
   } catch (e) { /* audio non disponible, tant pis */ }
 }
 
@@ -4720,26 +4830,6 @@ function renderDoubleTimerRingSVG(normalPct, hardcorePct, sizePx) {
       <circle class="timer-ring-fill${nClamped >= 1 ? ' complete' : ''}" id="timerRingFill"
         cx="110" cy="110" r="${TIMER_RING_INNER_RADIUS}"
         style="stroke-dasharray:${TIMER_RING_INNER_CIRCUMFERENCE}; stroke-dashoffset:${nOffset};"></circle>
-    </svg>
-  `;
-}
-
-// Retour utilisateur "effet waouh" : anneau SVG unique pour l'objectif du JOUR
-// des exercices en repetitions (reserve aux exercices 'reps' - les exercices en
-// secondes ont deja leur propre double-anneau riche via le chronometre
-// ci-dessus, un 2e anneau serait redondant). Meme technique que
-// renderDoubleTimerRingSVG() (stroke-dasharray/dashoffset), rayon/constantes
-// dedies pour rester independant du chronometre.
-const EXERCISE_PROGRESS_RING_RADIUS = 52;
-const EXERCISE_PROGRESS_RING_CIRCUMFERENCE = 2 * Math.PI * EXERCISE_PROGRESS_RING_RADIUS;
-function renderExerciseProgressRingSVG(pctFraction) {
-  const clamped = Math.min(1, Math.max(0, pctFraction));
-  const offset = EXERCISE_PROGRESS_RING_CIRCUMFERENCE * (1 - clamped);
-  return `
-    <svg class="exercise-progress-ring" viewBox="0 0 120 120" width="120" height="120">
-      <circle class="exercise-progress-ring-bg" cx="60" cy="60" r="${EXERCISE_PROGRESS_RING_RADIUS}"></circle>
-      <circle class="exercise-progress-ring-fill${clamped >= 1 ? ' complete' : ''}" cx="60" cy="60" r="${EXERCISE_PROGRESS_RING_RADIUS}"
-        style="stroke-dasharray:${EXERCISE_PROGRESS_RING_CIRCUMFERENCE}; stroke-dashoffset:${offset};"></circle>
     </svg>
   `;
 }
@@ -5222,6 +5312,11 @@ async function startGroupChallengeExercise(slug) {
   const c = CHALLENGE_LIBRARY.find((x) => x.slug === slug);
   if (!c) return;
   if (!activeToday.has(c.id)) await toggleActiveToday(c.id);
+  // Bug reel signale : sans ceci, le clic ne "faisait rien" visuellement - render()
+  // teste activeTab AVANT currentChallengeId (voir le dispatcheur principal), donc
+  // rester sur activeTab === 'groups' faisait simplement re-afficher l'ecran Groupes
+  // (currentChallengeId ignore), ce qui ressemblait a un simple rafraichissement.
+  activeTab = 'today';
   await pickChallenge(c.id);
 }
 
@@ -5661,7 +5756,7 @@ function render(animate) {
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
-        <div class="kilo-home-slot">${renderKilo(kiloHomeState, { size: 44, clickable: true })}</div>
+        <div class="kilo-home-slot">${renderKilo(kiloHomeState, { size: 72, clickable: true })}</div>
         <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>
       <h1 class="title">${t('today.title')}</h1>
@@ -5756,19 +5851,12 @@ function render(animate) {
               ${c.unit === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(target)})</span>` : ''}
               <button class="target-edit" onclick="editTarget()" aria-label="${t('exercise.editTargetAria')}">✏️</button>
             </div>
-            ${c.unit === 'sec' ? `<div class="progress-pct">${pct}%</div>` : ''}
+            <div class="progress-pct">${pct}%</div>
           </div>
 
-          ${c.unit === 'sec' ? `
           <div class="bar-track">
             <div class="bar-fill" style="width:${pct}%"></div>
           </div>
-          ` : `
-          <div class="progress-ring-wrap">
-            ${renderExerciseProgressRingSVG(pct / 100)}
-            <div class="progress-ring-pct">${pct}%</div>
-          </div>
-          `}
         ` : `
           <div class="normal-objective-recap">${t('exercise.normalObjectiveRecap', { target: formatTargetLabel(target, c.unit) })}</div>
           ${showMiniConfetti ? `<div class="exercise-mini-confetti">${renderConfettiBurst()}</div>` : ''}
@@ -6056,6 +6144,11 @@ function renderProfileProgressDots() {
 
 function renderProfileOnboardingScreen() {
   const isWelcome = profileStep === 0;
+  // Retour utilisateur : nouvel ecran de presentation de Kilito, juste apres la
+  // bienvenue et avant la 1ere question (age) - etape 0.5 volontairement non
+  // entiere (voir profileNext()/profilePrev()) pour ne renumeroter aucune des
+  // etapes existantes (1 a 4, referencees ailleurs par leur numero exact).
+  const isKiloIntro = profileStep === 0.5;
   const backBtn = profileStep > 0 ? `<button class="pf-back" onclick="profilePrev()">‹</button>` : '<div></div>';
 
   let stepHtml = '';
@@ -6091,6 +6184,16 @@ function renderProfileOnboardingScreen() {
       </div>
     `;
     ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">${t('onboarding.welcome.startBtn')}</button>`;
+  } else if (isKiloIntro) {
+    // Presentation de Kilito : maximiser le capital sympathie des le depart, avant
+    // meme la 1ere question - Kilito en tres grand (deja anime : flottement doux +
+    // halo neon, voir renderKilo('idle')), son nom en gros, message fun/humanisant.
+    stepHtml = `
+      <div class="onboarding-kilo-hero kilo-intro-hero">${renderKilo('idle', { size: 170, clickable: true })}</div>
+      <h1 class="kilo-intro-name">Kilito</h1>
+      <p class="pf-welcome-desc">${t('onboarding.kiloIntro.message')}</p>
+    `;
+    ctaHtml = `<button class="onboarding-cta" onclick="profileNext()">${t('onboarding.kiloIntro.ctaBtn')}</button>`;
   } else if (profileStep === 1) {
     stepHtml = `
       ${coachBadgeHtml}
@@ -6163,7 +6266,7 @@ function renderProfileOnboardingScreen() {
     <div class="profile-onboarding onboarding-screen">
       <div class="pf-header">
         ${backBtn}
-        ${isWelcome ? '<div></div>' : renderProfileProgressDots()}
+        ${(isWelcome || isKiloIntro) ? '<div></div>' : renderProfileProgressDots()}
         <div></div>
       </div>
       <div class="onboarding-content">
@@ -7921,7 +8024,12 @@ function renderGroupDetailScreen() {
     challengeHtml = renderGroupsEmptyState('🏁', t('groups.noChallenge'),
       `<button class="groups-empty-btn" onclick="creatingGroupChallenge = true; render(true);">${t('groups.createChallengeBtn')}</button>`);
   } else if (groupDetailChallenge.status === 'active') {
-    const total = groupDetailChallenge.participants.reduce((s, p) => s + (p.totalAmount || 0), 0);
+    // Bug reel signale : sommait le totalAmount BRUT de chaque participant, sans
+    // tenir compte du handicap Boulet - le compteur/pourcentage en haut de la carte
+    // hero desynchronisait alors du classement juste en dessous (qui, lui, utilise
+    // deja computeGroupParticipantDisplayAmount() net du handicap). Meme formule
+    // partout desormais.
+    const total = groupDetailChallenge.participants.reduce((s, p) => s + computeGroupParticipantDisplayAmount(p), 0);
     const target = groupDetailChallenge.targetTotal || 0;
     // Defi "Mode infini" (targetTotal:0) : aucune cible chiffree, donc ni
     // pourcentage ni barre de progression n'ont de sens - le classement se fait
@@ -8260,7 +8368,6 @@ function renderTabBar() {
     <nav class="tab-bar" role="tablist">
       ${tabs.map(t => `
         <button class="tab-btn${activeTab === t.id ? ' active' : ''}" onclick="switchTab('${t.id}')" role="tab" aria-selected="${activeTab === t.id}">
-          ${activeTab === t.id ? '<span class="tab-active-indicator"></span>' : ''}
           <span class="tab-icon">${t.icon}</span>
           <span class="tab-label">${t.label}</span>
         </button>
@@ -8291,7 +8398,15 @@ function initPullToRefresh() {
     // render(true) en pleine saisie, ce qui réinitialisait les roulettes à leurs valeurs
     // par défaut (voir onWheelPickerScroll). refreshApp() ne concerne de toute façon que
     // les données déjà chargées, pas l'onboarding : aucune raison de l'autoriser ici.
-    if (ptrRefreshing || showProfileOnboarding) return;
+    // Bug reel signale : glisser vers le bas pour fermer une bottom sheet (info
+    // groupe, profil ami, palier de niveau - voir attachSheetBehavior()) declenchait
+    // EN MEME TEMPS le pull-to-refresh de la page en arriere-plan, puisque ce
+    // listener est pose au niveau du document et ne verifiait pas si une feuille
+    // etait ouverte par-dessus. Les 3 feuilles partagent la meme classe
+    // '.level-roadmap-overlay' (voir attachSheetBehavior()) - un seul selecteur
+    // suffit a couvrir les 3, et toute future feuille qui reutiliserait la meme
+    // fonction partagee.
+    if (ptrRefreshing || showProfileOnboarding || document.querySelector('.level-roadmap-overlay')) return;
     if (window.scrollY <= 0 && !timerRunning) {
       ptrStartY = e.touches[0].clientY;
       ptrCurrentY = e.touches[0].clientY; // reset : un tap sans touchmove ne doit jamais hériter d'une ancienne valeur

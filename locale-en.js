@@ -275,7 +275,7 @@ const LOCALE_EN = {
     noChallenge: 'No challenge yet in this group.',
     createChallengeBtn: '+ New collective challenge',
     challengeProgress: '{{current}} / {{target}}',
-    doExerciseBtn: 'Train: {{exercise}}',
+    doExerciseBtn: 'Do {{exercise}}',
     targetReachedAwaitingSettlement: '🎉 Target reached! The settlement (Ledger + Hall of Fame) will update automatically within 15 minutes.',
     cancelChallengeBtn: 'Cancel this challenge',
     cancelChallengeConfirmTitle: 'Cancel this challenge?',
@@ -407,6 +407,10 @@ const LOCALE_EN = {
       feature2: 'Push yourself every day',
       feature3: 'Track your progress in real time',
       startBtn: 'Get started',
+    },
+    kiloIntro: {
+      message: "Hey! I'm Kilito, and I'll be your virtual AI coach on this whole adventure :)",
+      ctaBtn: "Let's go together!",
     },
     age: {
       coachBadge: 'AI Virtual Coach',
