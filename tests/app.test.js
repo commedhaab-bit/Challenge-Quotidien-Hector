@@ -662,6 +662,16 @@ dbSet = __dbSet;
 // un utilisateur factice des le debut, avant meme le premier test (plusieurs tests le
 // re-assignent plus loin avec la meme forme, sans jamais lire .uid eux-memes).
 currentUser = { uid: 'test-uid', displayName: 'Test', email: 't@test.com', photoURL: '' };
+// Garde-fou anti-spam humoristique (Kilito, retour utilisateur) : neutralise par
+// defaut pour TOUTE la suite - le harnais enchaine legitimement de tres nombreux
+// addSet() rapproches sur le meme exercice (bien plus vite qu un humain), ce qui
+// declencherait a tort confirmModal() SANS jamais rien cliquer dessus (aucun test
+// existant ne s attend a cette popup) et bloquerait la suite entiere en attente
+// d une Promise jamais resolue. Reference d origine conservee
+// (__realMaybeInterceptSpammyTaps) pour la restaurer ponctuellement dans le test
+// dedie qui verifie le VRAI comportement du garde-fou.
+const __realMaybeInterceptSpammyTaps = maybeInterceptSpammyTaps;
+maybeInterceptSpammyTaps = async () => true;
 // Depuis la fusion CSS (#4), les regles de style ne sont plus dans __rawHtml (index.html)
 // mais dans styles.css (__cssSource) : les tests qui verifient du texte CSS doivent
 // chercher dans cssText plutot que dans __rawHtml seul.
@@ -2742,7 +2752,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v86'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v87'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -2975,14 +2985,14 @@ const cssText = __rawHtml + __cssSource;
   // par simple recherche de texte — la preuve la plus fiable est le comptage positif
   // exact des 4 remplacements, deja verifie fonctionnellement pour deleteChallenge au
   // test 11 plus haut). ---
-  // 13 depuis l ajout de la suppression de groupe (retour utilisateur,
-  // deleteGroupConfirm()) : compte x2, defi, suggestion d objectif, import de
+  // 14 depuis l ajout du garde-fou anti-spam (retour utilisateur, Kilito -
+  // maybeInterceptSpammyTaps()) : compte x2, defi, suggestion d objectif, import de
   // donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami
   // depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un
   // defi de groupe, 2x confirmation de joker (Doublon/Immunite et Boulet),
-  // + supprimer un groupe.
+  // supprimer un groupe, + le garde-fou anti-spam.
   const confirmModalCallCount = (__rawHtml.match(/await confirmModal\\(\\{/g) || []).length;
-  __assertEq(confirmModalCallCount, 13, 'les 13 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un defi de groupe, 2x confirmation de joker, supprimer un groupe) doivent utiliser confirmModal');
+  __assertEq(confirmModalCallCount, 14, 'les 14 sites (compte x2, defi, suggestion objectif, import de donnees, forcer la mise a jour, retirer un ami, accepter une demande d ami depuis sa popup, accepter une invitation de groupe depuis sa popup, annuler un defi de groupe, 2x confirmation de joker, supprimer un groupe, garde-fou anti-spam) doivent utiliser confirmModal');
   console.log('OK: les 4 anciens confirm() natifs (compte x2, defi, suggestion objectif) passent par confirmModal');
 
   // --- 99. Ecran Parametres dedie : navigation (ouverture/fermeture) + regroupe le
@@ -6773,6 +6783,69 @@ const cssText = __rawHtml + __cssSource;
   const tabClickBlock = cssText.slice(tabClickIdx, cssText.indexOf('}', tabClickIdx));
   __assertOk(tabClickIdx !== -1 && tabClickBlock.includes('transform: none'), 'le clic sur un onglet ne doit plus provoquer de scale/secousse visuelle de l ecran');
   console.log('OK: la secousse visuelle au clic sur les onglets du bas est desactivee (transform: none, specificite CSS suffisante pour dominer le retour tactile generalise)');
+
+  // --- Garde-fou anti-spam humoristique (retour utilisateur, mascotte Kilito) ---
+  // Restaure ICI (uniquement) le VRAI maybeInterceptSpammyTaps() - neutralise par
+  // defaut en tete de ce fichier pour ne pas bloquer les tres nombreux addSet()
+  // rapproches deja exerces ailleurs dans cette suite (bien plus vite qu un humain,
+  // ce qui declencherait sinon la popup a tort - voir le commentaire au tout debut
+  // du testDriver).
+  maybeInterceptSpammyTaps = __realMaybeInterceptSpammyTaps;
+  recentQuickAddTaps = [];
+  popupQueue = []; popupOpen = false;
+  state = emptyDayState();
+  activeToday = new Set([pompes.id]);
+  await pickChallenge(pompes.id);
+
+  // 2 premiers taps rapides (30+30=60) : sous le seuil (90), aucune interception -
+  // l ajout doit se derouler normalement, sans aucune popup.
+  await addSet(30);
+  await addSet(30);
+  __assertEq(getTotal(), 60, 'les 2 premiers taps rapproches, sous le seuil, doivent s ajouter normalement');
+  currentConfirmModalEl = null;
+
+  // 3e tap consecutif (30 de plus = 90 cumules en quelques millisecondes reelles,
+  // tres largement sous les 6 secondes de la fenetre) : doit intercepter l ajout
+  // AVANT toute ecriture Firestore et afficher la popup Kilito (etat 'warning').
+  const spammyAddPromise = addSet(30);
+  __assertOk(currentConfirmModalEl !== null, 'le 3e tap rapide (90 cumules en quelques ms) doit declencher la popup de Kilito, AVANT toute validation Firebase');
+  __assertOk(currentConfirmModalHtml.includes('kilo-warning'), 'Kilito doit etre affiche dans son etat/mood "warning" (tete suspicieuse)');
+  __assertOk(currentConfirmModalHtml.includes('90') && currentConfirmModalHtml.includes(t('exercises.' + pompes.slug + '.name')), 'le message doit etre dynamise avec le nombre EXACT de repetitions tentees et l exercice concerne');
+  __assertOk(currentConfirmModalHtml.includes(t('popups.spamGuard.confirmLabel')) && currentConfirmModalHtml.includes(t('popups.spamGuard.cancelLabel')), 'les 2 boutons ("Oups, mon doigt a glisse" / "Je suis vraiment une machine") doivent etre proposes');
+  __assertEq(getTotal(), 60, 'tant que la popup n a pas ete refermee, le 3e tap ne doit PAS encore avoir ete comptabilise');
+
+  // "Oups, mon doigt a glisse" (bouton principal/confirmLabel) -> annule CE tap
+  // precis, aucune perte des 60 deja legitimement ajoutes avant le seuil.
+  currentConfirmModalEl.querySelector('#confirmModalConfirmBtn').onclick();
+  await spammyAddPromise;
+  __assertEq(getTotal(), 60, '"Oups, mon doigt a glisse" doit annuler le tap suspect, sans jamais toucher aux repetitions deja ajoutees avant');
+  console.log('OK: "Oups, mon doigt a glisse" annule le tap suspect sans perdre les repetitions deja ajoutees');
+
+  // Nouveau cycle, exercice remis a zero : reproduit le meme scenario de 3 taps
+  // rapides, mais choisit cette fois "Je suis vraiment une machine" (bouton
+  // secondaire/cancelLabel) -> l appli reste basee sur la confiance, les points sont
+  // quand meme valides (le 3e tap n est PAS perdu, contrairement au scenario precedent).
+  recentQuickAddTaps = [];
+  state = emptyDayState();
+  await pickChallenge(pompes.id);
+  await addSet(30);
+  await addSet(30);
+  currentConfirmModalEl = null;
+  const spammyAddPromise2 = addSet(30); // 3e tap : 90 cumules, franchit de nouveau le seuil
+  __assertOk(currentConfirmModalEl !== null, 'le nouveau franchissement du seuil doit de nouveau declencher la popup');
+  currentConfirmModalEl.querySelector('#confirmModalCancelBtn').onclick();
+  await spammyAddPromise2;
+  __assertEq(getTotal(), 90, '"Je suis vraiment une machine" doit valider quand meme les points dans Firestore (appli basee sur la confiance), le 3e tap n est pas perdu');
+  console.log('OK: "Je suis vraiment une machine" valide quand meme les points malgre le message d avertissement');
+
+  // Neutralise de nouveau pour la fin de fichier (aucun autre test ne doit en tenir compte).
+  maybeInterceptSpammyTaps = async () => true;
+  recentQuickAddTaps = [];
+  currentConfirmModalEl = null;
+  state = emptyDayState();
+  activeToday = new Set();
+  currentChallengeId = null;
+  console.log('OK: garde-fou anti-spam humoristique (Kilito) - detection temporelle + interception avant Firebase + retour haptique');
 
   activeTab = 'today';
 

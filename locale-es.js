@@ -608,6 +608,12 @@ const LOCALE_ES = {
       subtitle: 'Ya no será visible en tu feed de actividad y él tampoco verá el tuyo.',
       confirmLabel: 'Eliminar',
     },
+    spamGuard: {
+      title: '🚨 Alerta antitrampas',
+      subtitle: '¿{{amount}} {{exercise}} en {{seconds}} segundos? O eres el hijo de Schwarzenegger, o se te resbaló el dedo en la pantalla. Lo cuento, pero te vigilo... 👀',
+      confirmLabel: 'Ups, se me resbaló el dedo',
+      cancelLabel: 'De verdad soy una máquina',
+    },
     bossBattleVictory: {
       title: '¡Objetivo comunitario alcanzado!',
       subtitle: '¡La comunidad ha completado {{amount}} {{name}} esta semana!',

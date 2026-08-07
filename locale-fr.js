@@ -610,6 +610,12 @@ const LOCALE_FR = {
       subtitle: "Il ne sera plus visible dans ton fil d'activité et ne verra plus le tien.",
       confirmLabel: 'Retirer',
     },
+    spamGuard: {
+      title: '🚨 Alerte anti-triche',
+      subtitle: "{{amount}} {{exercise}} en {{seconds}} secondes ? Soit tu es le fils de Schwarzenegger, soit ton doigt a glissé sur l'écran. Je valide, mais je te surveille... 👀",
+      confirmLabel: 'Oups, mon doigt a glissé',
+      cancelLabel: 'Je suis vraiment une machine',
+    },
     bossBattleVictory: {
       title: 'Objectif communautaire atteint !',
       subtitle: 'La communauté a validé {{amount}} {{name}} cette semaine !',

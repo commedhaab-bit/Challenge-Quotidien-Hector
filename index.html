@@ -3945,15 +3945,21 @@ function drainPopupQueue() {
 // (.app-popup-overlay/.app-popup-card) pour rester cohérent avec le reste de l'appli.
 let currentConfirmModalHtml = ''; // dernier contenu affiché (introspection/tests, même principe que currentPopupHtml)
 let currentConfirmModalEl = null; // dernier élément popup créé (introspection/tests, pour vérifier la portée de querySelector)
-function confirmModal({ icon = '⚠️', title = '', subtitle = '', confirmLabel = t('common.confirm'), cancelLabel = t('common.cancel'), danger = false } = {}) {
+// kiloState (optionnel, retour utilisateur - garde-fou anti-spam) : remplace l'icone
+// emoji par la mascotte Kilo dans la pose/expression correspondante (ex: 'warning'),
+// meme convention que buildPopupInnerHtml()/enqueuePopup() - classe .kilo-icon
+// necessaire pour le meme correctif de centrage (un SVG display:block ignore
+// text-align, voir CLAUDE.md).
+function confirmModal({ icon = '⚠️', kiloState = null, title = '', subtitle = '', confirmLabel = t('common.confirm'), cancelLabel = t('common.cancel'), danger = false } = {}) {
   return new Promise((resolve) => {
     const el = document.createElement('div');
     el.className = 'app-popup-overlay';
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-modal', 'true');
+    const confirmIconHtml = kiloState ? renderKilo(kiloState, { size: 118, clickable: true }) : icon;
     el.innerHTML = `
       <div class="app-popup-card">
-        <div class="app-popup-icon">${icon}</div>
+        <div class="app-popup-icon${kiloState ? ' kilo-icon' : ''}">${confirmIconHtml}</div>
         ${title ? `<div class="app-popup-title">${title}</div>` : ''}
         ${subtitle ? `<div class="app-popup-sub">${subtitle}</div>` : ''}
         <div class="app-popup-actions">
@@ -5436,8 +5442,62 @@ function renderExerciseSparkline(totals) {
   return `<svg class="exercise-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>`;
 }
 
+// ==== Garde-fou anti-spam humoristique (retour utilisateur) ====
+// But dissuasif/comique, PAS un vrai systeme anti-triche : un simple tableau en
+// memoire (timestamp + montant des derniers taps sur les boutons +5/+10/...),
+// purge a chaque appel - aucune persistance, aucune preuve envoyee nulle part.
+// Uniquement sur les defis a repetitions (unit 'reps') : un chrono represente du
+// temps REELLEMENT ecoule (stopTimer(), voir addSetInner()), impossible a
+// "spammer" de la meme facon qu'une suite de taps sur un bouton.
+let recentQuickAddTaps = []; // [{amount, at}]
+const SPAM_GUARD_WINDOW_MS = 6000;
+// Seuil calibre sur le scenario type retenu (retour utilisateur) : 3 taps
+// consecutifs sur le plus gros bouton +30 en moins de 6s = 90 repetitions,
+// physiologiquement peu credible pour de vrais taps un par un.
+const SPAM_GUARD_THRESHOLD_REPS = 90;
+
+// Retourne true si l'ajout doit se poursuivre normalement, false s'il doit etre
+// annule (voir addSet(), appelee AVANT toute ecriture Firestore - "intercepte
+// l'action avant la validation Firebase"). Reinitialise la fenetre a chaque
+// declenchement pour ne jamais reproposer la popup en boucle sur le tap suivant.
+async function maybeInterceptSpammyTaps(amount) {
+  const c = getChallenge();
+  if (!c || c.unit !== 'reps') return true;
+  const now = Date.now();
+  recentQuickAddTaps.push({ amount, at: now });
+  recentQuickAddTaps = recentQuickAddTaps.filter((tap) => now - tap.at <= SPAM_GUARD_WINDOW_MS);
+  const totalInWindow = recentQuickAddTaps.reduce((sum, tap) => sum + tap.amount, 0);
+  if (totalInWindow < SPAM_GUARD_THRESHOLD_REPS) return true;
+  const elapsedSec = Math.max(1, Math.round((now - recentQuickAddTaps[0].at) / 1000));
+  recentQuickAddTaps = [];
+  // Retour tactile (leger, distinct du simple tap ~8-10ms utilise ailleurs) : casse
+  // physiquement l'impulsion de spam en plus du blocage visuel de la popup.
+  if (navigator.vibrate) navigator.vibrate([30, 40, 30]);
+  const fingerSlipped = await confirmModal({
+    kiloState: 'warning',
+    title: t('popups.spamGuard.title'),
+    // exercise echappe explicitement : un defi personnalise a un nom LIBRE tape par
+    // l'utilisateur (contrairement aux defis de la bibliotheque, toujours traduits) -
+    // jamais interpoler du texte libre tel quel dans un innerHTML (confirmModal()
+    // n'echappe pas son subtitle, voir son implementation).
+    subtitle: t('popups.spamGuard.subtitle', {
+      amount: totalInWindow,
+      exercise: escapeHtml(challengeDisplayName(c)),
+      seconds: elapsedSec,
+    }),
+    confirmLabel: t('popups.spamGuard.confirmLabel'),
+    cancelLabel: t('popups.spamGuard.cancelLabel'),
+  });
+  // "Oups, mon doigt a glisse" (bouton principal, mis en avant) -> annule CETTE
+  // serie. "Je suis vraiment une machine" (bouton secondaire, discret) -> valide
+  // quand meme - appli basee sur la confiance, le message suffit a marquer les
+  // esprits.
+  return !fingerSlipped;
+}
+
 async function addSet(amount) {
   if (amount <= 0) return;
+  if (!(await maybeInterceptSpammyTaps(amount))) return;
   beginAppDataBatch(); // stats/lastCompleted/dailyActivity/badges/xpTotal/xpWeeklyData/streakData : un seul aller-retour Firestore pour tout ce qui suit, voir saveAppField()
   try {
     await addSetInner(amount);

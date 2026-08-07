@@ -606,6 +606,12 @@ const LOCALE_EN = {
       subtitle: "They won't be visible in your activity feed anymore, and won't see yours either.",
       confirmLabel: 'Remove',
     },
+    spamGuard: {
+      title: '🚨 Cheat alert',
+      subtitle: "{{amount}} {{exercise}} in {{seconds}} seconds? Either you're Schwarzenegger's son, or your finger slipped on the screen. I'll count it, but I'm watching you... 👀",
+      confirmLabel: 'Oops, my finger slipped',
+      cancelLabel: 'I really am a machine',
+    },
     bossBattleVictory: {
       title: 'Community goal reached!',
       subtitle: 'The community completed {{amount}} {{name}} this week!',

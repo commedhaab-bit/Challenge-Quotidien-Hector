@@ -3782,3 +3782,68 @@ CACHE_NAME -> v86 (nouvelles cles `friends.groupInvitesLabel`/
 remplissage cote service worker). Aucun changement de regles Firestore/
 Cloud Functions - modification 100% cote client (`index.html` +
 `locale-*.js`), aucune touche a `functions/**`.
+
+
+## Garde-fou anti-spam humoristique (mascotte Kilito, "anti-triche" ludique)
+
+**But explicitement dissuasif/comique, PAS un vrai systeme anti-triche** :
+rien n est envoye a un serveur, rien n est stocke, rien ne bloque
+definitivement l utilisateur - juste un signal client qui casse un
+enchainement de taps compulsifs sur les boutons +5/+10/.../+30 (fiche
+d exercice), avec une popup Kilito ironique.
+
+**Detection (`maybeInterceptSpammyTaps(amount)`, appelee tout en tete de
+`addSet()`, avant meme `beginAppDataBatch()`)** : fenetre glissante en
+memoire (`recentQuickAddTaps`, `[{amount, at}]`, jamais persistee) sur
+`SPAM_GUARD_WINDOW_MS` (6000ms). Des que la somme des montants dans la
+fenetre atteint `SPAM_GUARD_THRESHOLD_REPS` (90 - calibre sur le scenario
+type retenu : 3 taps consecutifs sur le plus gros bouton +30 en moins de 6s),
+la fenetre est immediatement reinitialisee (evite de reproposer la popup en
+boucle sur le tap suivant) et la popup se declenche. **Uniquement sur les
+defis a repetitions** (`c.unit === 'reps'`) : un chrono represente du temps
+REELLEMENT ecoule (`stopTimer()`), pas une suite de taps repetes -
+impossible/absurde a "spammer" de la meme facon.
+
+**Interception AVANT Firebase** : `addSet()` fait
+`if (!(await maybeInterceptSpammyTaps(amount))) return;` en tout premier -
+si la popup renvoie "annule", aucune ecriture Firestore n a lieu pour CE tap
+precis (les taps precedents, deja legitimement ajoutes avant que le seuil
+soit franchi, restent intacts - rien n est retire retroactivement).
+
+**Popup** : `confirmModal()` etendue d un parametre optionnel `kiloState`
+(retro-compatible, `null` par defaut) qui, comme `enqueuePopup()`, remplace
+l icone emoji par la mascotte Kilo dans l etat demande - ici `'warning'`
+(tete suspicieuse, deja existante). Texte dynamise avec le nombre EXACT de
+repetitions cumulees dans la fenetre, le nom de l exercice concerne
+(`escapeHtml(challengeDisplayName(c))` - **echappement necessaire** : un
+defi personnalise a un nom LIBRE tape par l utilisateur, contrairement aux
+defis de la bibliotheque toujours traduits, et `confirmModal()` n echappe
+jamais son `subtitle` lui-meme) et le nombre de secondes ecoulees. 2 boutons,
+volontairement inverses par rapport a la semantique naturelle "confirmer/
+annuler" de `confirmModal()` (documente en commentaire pour ne pas piloter a
+tort dans le mauvais sens a une prochaine modification) :
+- **"Oups, mon doigt a glissé"** (bouton PRINCIPAL, style plein/`confirmLabel`)
+  -> annule ce tap precis.
+- **"Je suis vraiment une machine"** (bouton secondaire discret/`cancelLabel`)
+  -> valide quand meme les points (appli basee sur la confiance).
+
+Retour tactile (`navigator.vibrate([30, 40, 30])`, motif distinct du simple
+tap ~8-10ms utilise ailleurs) au declenchement, en plus du blocage visuel
+plein ecran deja garanti par l habillage `.app-popup-overlay` existant
+(`position:fixed; inset:0`, reutilise tel quel).
+
+**Piege de test rencontre et corrige** : le harnais de test enchaine de tres
+nombreux `addSet()` sur le meme exercice, bien plus vite qu un humain
+(souvent >90 repetitions cumulees en quelques millisecondes reelles) - sans
+garde, `confirmModal()` aurait cree une popup jamais cliquee dans des
+DIZAINES de tests existants qui n en ont jamais entendu parler, bloquant
+indefiniment sur une `Promise` jamais resolue (toute la suite figee).
+Neutralise par defaut pour l ensemble du fichier (`maybeInterceptSpammyTaps
+= async () => true;`, juste apres le chargement de `appCode`, reference
+d origine conservee dans `__realMaybeInterceptSpammyTaps`), restaure
+ponctuellement UNIQUEMENT dans le test dedie a cette fonctionnalite (qui
+clique reellement les 2 boutons via `currentConfirmModalEl.querySelector(...)`,
+meme pattern que les autres tests bases sur `confirmModal()`).
+
+CACHE_NAME -> v87. Aucun changement de regles Firestore/Cloud Functions -
+modification 100% cote client, aucune touche a `functions/**`.
