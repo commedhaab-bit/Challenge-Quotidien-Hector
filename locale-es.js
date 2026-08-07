@@ -921,6 +921,82 @@ const LOCALE_ES = {
         '¿Sinceramente? Me aburro un poco. ¿Un desafío?',
         'Silencio total... ¿todo bien por tu lado?',
         'Listo para lo que sea cuando tú quieras. Sin presión (bueno, un poco).',
+        // Catalogo industrial (15 arquetipos) - inicio, humor tranquilo/idle.
+        // --- Shonen ---
+        "Mi energía está en reserva, lista para explotar al primer reto.",
+        "Siento un gran potencial dormido en ti hoy. ¿Lo despertamos?",
+        "La aventura solo espera tu señal.",
+        "Mi aura está tranquila, pero lista para encenderse en la primera serie.",
+        // --- Sargento ---
+        "Descanso, recluta. Pero listo para pasar a modo combate.",
+        "Ninguna orden recibida todavía. Espero en posición de firmes.",
+        "El campo de entrenamiento se abre en cuanto cruces la puerta.",
+        "Descanso concedido. Pero no te ablandes demasiado, ¿eh?",
+        // --- Colega Bromista ---
+        "¿Miramos al techo hoy o hacemos algo?",
+        "Cuento los segundos, discretamente. Bueno, no tan discretamente.",
+        "Tranquilo, yo tengo todo el tiempo del mundo. Tú, quizás menos.",
+        "¿Nada planeado? Puedo esperar. Mucho tiempo. Muchísimo tiempo.",
+        // --- Filosofo ---
+        "En la calma antes del esfuerzo se esconde toda la sabiduría del descanso.",
+        "Cada instante de quietud prepara el próximo movimiento.",
+        "El silencio no está vacío, está lleno de posibilidades.",
+        "Antes de cada tormenta, existe este momento suspendido. Aquí está.",
+        // --- Gamer ---
+        "Modo espera activado. Pulsa start para retomar la aventura.",
+        "Partida guardada al día. ¿Lista para cargar una nueva?",
+        "Ninguna misión activa. El menú principal te espera.",
+        "Nivel en pausa. El mapa de hoy sigue por explorar.",
+        // --- Heroe de accion ---
+        "Calma total antes de la acción. No va a durar.",
+        "Recargando mis reactores. ¿Listo para la próxima explosión?",
+        "Ningún enemigo en el horizonte. Por ahora.",
+        "El silencio antes de la escena de acción más intensa de tu día.",
+        // --- Cientifico ---
+        "Estado de reposo estable. Listo para pasar a modo activo bajo demanda.",
+        "Ningún dato que procesar por ahora. Sistema en espera.",
+        "Análisis pendiente de un primer punto de medición.",
+        "Sensores calibrados, esperando la señal de salida.",
+        // --- Fit-Bro ---
+        "Vibra de día de descanso, pero listo en cuanto cambies de idea.",
+        "Estamos en modo chill, pero el grind está a un toque de distancia.",
+        "Día tranquilo. Listo para pasar a modo focus cuando quieras.",
+        "Cero presión hoy, pero aquí estoy para el combo cuando sea.",
+        // --- Sabio ---
+        "La calma no es la ausencia de esfuerzo, es su preparación.",
+        "El árbol que no se mueve saca su fuerza de sus raíces.",
+        "Nada apresura. Todo llega a su tiempo.",
+        "El maestro espera sin impaciencia, porque conoce el ritmo de las cosas.",
+        // --- Coach Retro ---
+        "Pausa musical antes de la próxima coreografía. ¿Lista?",
+        "El estudio está en silencio, pero los calentadores de neón solo esperan una señal.",
+        "Pequeño entreacto disco. La siguiente canción llega cuando quieras.",
+        "Respiramos, sonreímos, y esperamos el próximo ritmo pegadizo.",
+        // --- Espartano ---
+        "La arena está vacía por ahora. Te espera.",
+        "Un guerrero descansa, pero nunca duerme del todo.",
+        "La calma antes de la batalla. Esparta sabe esperar.",
+        "Escudo apoyado, pero nunca lejos.",
+        // --- Pirata ---
+        "El barco está atracado. Listo para izar velas a tu señal.",
+        "Ninguna tormenta a la vista. La calma antes de la próxima travesía.",
+        "La tripulación descansa, pero el tesoro no se ha movido.",
+        "Ancla echada por ahora. Zarpamos cuando quieras, capitán.",
+        // --- Manager ---
+        "Ninguna tarea en curso. Backlog listo para atacar.",
+        "Estamos entre sprints. El próximo arranca cuando tú quieras.",
+        "Calendario libre por ahora. Hueco disponible de inmediato.",
+        "En espera, listo para lanzar el próximo ciclo de rendimiento.",
+        // --- Nutricionista ---
+        "Metabolismo en reposo, pero listo para activarse en la primera serie.",
+        "Reservas estables. Momento ideal para recargarlas con inteligencia.",
+        "Ningún gasto calórico en curso. Eso puede cambiar rápido.",
+        "El cuerpo se prepara en silencio para su próxima actividad.",
+        // --- Estoico ---
+        "Quieto. Listo.",
+        "Nada que añadir. Solo presente.",
+        "La calma no es debilidad.",
+        "Espero sin esperar realmente.",
       ],
       warning: [
         'Mi mancuerna empieza a oxidarse de tanto esperarte...',
@@ -930,6 +1006,67 @@ const LOCALE_ES = {
         'El sofá tiene buena pinta, pero yo sigo esperando por aquí.',
         'Tic-tac... el día se escapa, y yo me impaciento un poco.',
         '¿Un pequeño gesto antes de que acabe el día? ¿Por mí?',
+        // Catalogo industrial (15 arquetipos) - inicio, humor warning (tarde, atrasado).
+        // --- Shonen ---
+        "¡El tiempo se acaba! Ni los héroes legendarios esperan a la noche para actuar.",
+        "Tu potencial se está inquietando, quiere salir antes de que se apague el día.",
+        "El reloj corre. Un verdadero luchador siente la urgencia del momento.",
+        // --- Sargento ---
+        "El tiempo corre, soldado. No posponemos el entrenamiento indefinidamente.",
+        "Informe de situación: objetivo todavía pendiente. Hora de moverse.",
+        "El día casi termina y el deber no se ha movido ni un centímetro.",
+        // --- Colega Bromista ---
+        "Se hace tarde, ¿y adivina quién todavía no ha hecho nada?",
+        "Voy a terminar pensando que hoy solo soy decorativo.",
+        "El día termina y mi mancuerna está echando raíces en el suelo.",
+        // --- Filosofo ---
+        "El tiempo que pasa nunca vuelve. El de hoy ya se está escapando.",
+        "Cada hora perdida es una oportunidad que nunca se repetirá igual.",
+        "Se acerca el crepúsculo, y con él, la última oportunidad del día.",
+        // --- Gamer ---
+        "Alerta: la cuenta atrás de hoy se acerca a cero.",
+        "Misión diaria todavía incompleta. El cronómetro corre.",
+        "Sesión casi terminada sin un solo punto anotado hoy.",
+        // --- Heroe de accion ---
+        "La cuenta atrás ha empezado. No hay más tiempo que perder.",
+        "Se acerca la noche y la misión sigue sin respuesta.",
+        "Última oportunidad antes de los créditos finales del día.",
+        // --- Cientifico ---
+        "Ventana temporal en reducción crítica. Se recomienda acción inmediata.",
+        "Ningún dato de actividad registrado hoy. Anomalía que corregir.",
+        "El contador horario se acerca a su límite sin ninguna medición positiva.",
+        // --- Fit-Bro ---
+        "El día se escapa y el grind sigue aparcado.",
+        "Vamos a perder la racha si no nos movemos ya, en serio.",
+        "Foco cero hoy. Recordatorio amistoso antes de que sea tarde.",
+        // --- Sabio ---
+        "El día se desvanece lentamente, y con él, una oportunidad de crecer.",
+        "Hasta el sabio sabe que el tiempo, una vez ido, nunca vuelve.",
+        "El sol se pone sobre un día todavía inacabado.",
+        // --- Coach Retro ---
+        "Se acerca la última canción de la clase, y tú todavía no has bailado.",
+        "El estudio va a cerrar pronto. ¿Todavía hay tiempo para un último movimiento?",
+        "El ambiente se apaga poco a poco, como este día sin esfuerzo.",
+        // --- Espartano ---
+        "El sol cae sobre la arena, y hoy se ha quedado vacía.",
+        "Un guerrero nunca deja que el día termine sin honor.",
+        "Esparta no acepta días sin disciplina.",
+        // --- Pirata ---
+        "El sol se hunde en el horizonte y el barco sigue sin moverse.",
+        "La marea baja, grumete. Pronto no quedará ni un minuto que perder.",
+        "El diario de a bordo de hoy sigue desesperadamente vacío.",
+        // --- Manager ---
+        "Se acerca el deadline, ningún entregable validado todavía hoy.",
+        "Reporte del día: actividad cercana a cero. ¿Corregimos el rumbo?",
+        "El sprint está terminando sin una sola tarea marcada.",
+        // --- Nutricionista ---
+        "Ningún gasto calórico hoy. El metabolismo se está impacientando.",
+        "El cuerpo espera su actividad del día, y el reloj también.",
+        "Balance energético plano hoy. Un pequeño gesto lo cambiaría todo.",
+        // --- Estoico ---
+        "El día termina. Nada hecho.",
+        "El tiempo no vuelve. Actúa.",
+        "Se acerca la noche. Todavía nada.",
       ],
       hype: [
         '¡Mis músculos crecieron solo con mirarte! ¡Increíble!',

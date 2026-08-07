@@ -916,6 +916,82 @@ const LOCALE_EN = {
         "I'm a little bored, honestly. Fancy a challenge?",
         'Radio silence... everything okay on your end?',
         "Ready to go whenever you are. No pressure (well, a little).",
+        // Industrial catalog (15 archetypes) - home screen, idle mood.
+        // --- Shonen ---
+        "My energy is in reserve, ready to explode at the first challenge.",
+        "I sense great potential sleeping in you today. Shall we wake it up?",
+        "Adventure is just waiting for your signal.",
+        "My aura is calm, but ready to ignite at the first set.",
+        // --- Drill Sergeant ---
+        "At ease, recruit. But ready to switch to combat mode.",
+        "No orders received yet. Standing by at attention.",
+        "Boot camp is open the moment you walk through the door.",
+        "Rest granted. But don't get too soft, alright.",
+        // --- Teasing Buddy ---
+        "So, staring at the ceiling today or doing something?",
+        "I'm counting the seconds, quietly. Well, not that quietly.",
+        "No rush for me, I've got all the time. You, maybe less.",
+        "Nothing planned? I can wait. A long time. A very long time.",
+        // --- Philosopher ---
+        "In the calm before effort hides all the wisdom of rest.",
+        "Every moment of stillness prepares the next movement.",
+        "Silence isn't empty, it's full of possibility.",
+        "Before every storm, there's this suspended moment. Here it is.",
+        // --- Gamer ---
+        "Standby mode active. Press start to resume the adventure.",
+        "Save up to date. Ready to load a new game?",
+        "No active quest. The main menu is waiting.",
+        "Level paused. Today's map is still there to explore.",
+        // --- 80s Action Hero ---
+        "Dead calm before the action. It won't last.",
+        "Recharging my reactors. Ready for the next explosion?",
+        "No enemy on the horizon. For now.",
+        "The silence before the most intense action scene of your day.",
+        // --- Scientist ---
+        "Stable resting state. Ready to switch to active mode on command.",
+        "No data to process right now. System on standby.",
+        "Analysis pending an initial measurement point.",
+        "Sensors calibrated, waiting for the start signal.",
+        // --- Fit-Bro ---
+        "Rest day vibes, but I'm ready the second you change your mind.",
+        "We're in chill mode, but the grind is one tap away.",
+        "Quiet day. Ready to switch to focus mode whenever you want.",
+        "Zero pressure today, but I'm here for the combo whenever.",
+        // --- Sage ---
+        "Calm is not the absence of effort, it's its preparation.",
+        "The tree that does not sway draws its strength from its roots.",
+        "Nothing rushes. Everything comes in its own time.",
+        "The master waits without impatience, for he knows the rhythm of things.",
+        // --- Retro Coach ---
+        "Musical break before the next routine. Ready?",
+        "The studio is quiet, but the neon leg warmers just need a signal.",
+        "A little disco intermission. The next track's whenever you want.",
+        "We breathe, we smile, and we wait for the next catchy beat.",
+        // --- Spartan ---
+        "The arena is empty for now. It's waiting for you.",
+        "A warrior rests, but never truly sleeps.",
+        "The calm before the battle. Sparta knows how to wait.",
+        "Shield set down, but never far away.",
+        // --- Pirate ---
+        "The ship is docked. Ready to hoist the sails on your signal.",
+        "No storm in sight. The calm before the next crossing.",
+        "The crew is resting, but the treasure hasn't moved.",
+        "Anchor down for now. We sail again whenever you want, captain.",
+        // --- Corporate Manager ---
+        "No task in progress. Backlog ready to be tackled.",
+        "We're between sprints. The next one kicks off whenever you're ready.",
+        "Calendar's clear for now. Slot available immediately.",
+        "On standby, ready to launch the next performance cycle.",
+        // --- Nutritionist ---
+        "Metabolism at rest, but ready to fire up on the first set.",
+        "Reserves stable. Perfect time to refuel them wisely.",
+        "No calorie burn in progress. That can change fast.",
+        "The body is quietly preparing for its next activity.",
+        // --- Stoic ---
+        "Still. Ready.",
+        "Nothing to add. Just present.",
+        "Calm is not weakness.",
+        "I wait without really waiting.",
       ],
       warning: [
         "You know, my dumbbell is starting to rust from waiting...",
@@ -925,6 +1001,67 @@ const LOCALE_EN = {
         'That couch looks comfy, but I\'m still waiting over here.',
         "Tick-tock... the day is slipping away, and I'm getting a little impatient.",
         'Come on, one small move before the day ends? For me?',
+        // Industrial catalog (15 archetypes) - home screen, warning mood (late, behind schedule).
+        // --- Shonen ---
+        "Time's running out! Even legendary heroes don't wait for nightfall to act.",
+        "Your potential is getting restless, it wants out before the day fades.",
+        "The clock is ticking. A true fighter feels the urgency of the moment.",
+        // --- Drill Sergeant ---
+        "Time's ticking, soldier. We don't postpone training indefinitely.",
+        "Status report: objective still pending. Time to move.",
+        "The day is almost over and duty hasn't budged an inch.",
+        // --- Teasing Buddy ---
+        "It's getting late, and guess who still hasn't done anything?",
+        "I'm starting to think I'm just decorative today.",
+        "The day is ending and my dumbbell is taking root on the floor.",
+        // --- Philosopher ---
+        "Time that passes never returns. Today's is already slipping away.",
+        "Every lost hour is a chance that will never present itself quite the same way again.",
+        "Dusk approaches, and with it, the day's last chance.",
+        // --- Gamer ---
+        "Alert: today's countdown timer is nearing zero.",
+        "Daily quest still incomplete. The timer is running.",
+        "Session almost over without a single point scored today.",
+        // --- 80s Action Hero ---
+        "The countdown has started. No more time to waste.",
+        "Night is falling and the mission still has no answer.",
+        "Last chance before today's end credits roll.",
+        // --- Scientist ---
+        "Time window shrinking critically. Immediate action recommended.",
+        "No activity data logged today. Anomaly requiring correction.",
+        "The hourly counter is nearing its limit with no positive measurement.",
+        // --- Fit-Bro ---
+        "The day's slipping by and the grind is still parked.",
+        "We're going to lose the streak if we don't move now, seriously.",
+        "Zero focus today. Friendly reminder before it's too late.",
+        // --- Sage ---
+        "The day fades slowly, and with it, a chance to grow.",
+        "Even the sage knows that once time is gone, it never returns.",
+        "The sun sets on a day still unfinished.",
+        // --- Retro Coach ---
+        "The last song of class is coming up, and you still haven't danced.",
+        "The studio's about to close. Still time for one last move?",
+        "The vibe is fading slowly, just like this effort-free day.",
+        // --- Spartan ---
+        "The sun sets over the arena, and it's stayed empty today.",
+        "A warrior never lets the day end without honor.",
+        "Sparta does not accept days without discipline.",
+        // --- Pirate ---
+        "The sun dips below the horizon and the ship still hasn't moved.",
+        "The tide is going out, matey. Soon there won't be a minute to spare.",
+        "Today's ship log remains hopelessly empty.",
+        // --- Corporate Manager ---
+        "Deadline approaching, no deliverable validated yet today.",
+        "Today's report: activity near zero. Time to course-correct?",
+        "The sprint is ending without a single task checked off.",
+        // --- Nutritionist ---
+        "No calorie burn today. The metabolism is getting restless.",
+        "The body is waiting for its daily activity, and so is the clock.",
+        "Flat energy balance today. One small move would change everything.",
+        // --- Stoic ---
+        "The day is ending. Nothing done.",
+        "Time doesn't come back. Act.",
+        "Night is near. Still nothing.",
       ],
       hype: [
         'My muscles grew just watching you! Incredible!',

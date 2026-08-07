@@ -923,6 +923,82 @@ const LOCALE_FR = {
         'Je m\'ennuie un peu, là. Un petit défi, ça te dit ?',
         'Silence radio... Tout va bien de ton côté ?',
         'Prêt à en découdre quand tu l\'es. Aucune pression (enfin, un peu quand même).',
+        // Catalogue industriel (15 archetypes) - accueil, humeur calme/idle.
+        // --- Shonen ---
+        "Mon énergie est en réserve, prête à exploser au moindre défi.",
+        "Je sens un grand potentiel dormir en toi aujourd'hui. On le réveille ?",
+        "L'aventure n'attend qu'un signal de ta part.",
+        "Mon aura est calme, mais prête à s'embraser à la première série.",
+        // --- Sergent ---
+        "Position de repos, recrue. Mais prêt à passer en mode combat.",
+        "Aucun ordre reçu pour l'instant. Je patiente au garde-à-vous.",
+        "Le camp d'entraînement est ouvert dès que tu franchis la porte.",
+        "Repos accordé. Mais pas de mollesse trop longtemps, hein.",
+        // --- Pote taquin ---
+        "Alors, on regarde le plafond aujourd'hui ou on fait quelque chose ?",
+        "Je compte les secondes, discrètement. Enfin, pas si discrètement.",
+        "Tranquille, moi j'ai tout mon temps. Toi, un peu moins peut-être.",
+        "Rien de prévu ? Je peux attendre. Longtemps. Très longtemps.",
+        // --- Philosophe ---
+        "Dans le calme avant l'effort se cache toute la sagesse du repos.",
+        "Chaque instant d'immobilité prépare le prochain mouvement.",
+        "Le silence n'est pas vide, il est plein de possibles.",
+        "Avant chaque tempête, il y a ce moment suspendu. Le voici.",
+        // --- Gamer ---
+        "Mode veille activé. Appuie sur start pour reprendre l'aventure.",
+        "Sauvegarde à jour. Prêt à charger une nouvelle partie ?",
+        "Aucune quête active. Le menu principal t'attend.",
+        "Niveau en pause. La map du jour reste à explorer.",
+        // --- Héros 80s ---
+        "Calme plat avant l'action. Ça ne va pas durer.",
+        "Je recharge mes réacteurs. Prêt·e pour l'explosion suivante ?",
+        "Pas d'ennemi à l'horizon. Pour l'instant.",
+        "Le silence avant la scène d'action la plus intense de ta journée.",
+        // --- Scientifique ---
+        "État de repos stable. Prêt à basculer en mode activité sur commande.",
+        "Aucune donnée à traiter pour l'instant. Système en veille.",
+        "Analyse en attente d'un premier point de mesure.",
+        "Capteurs calibrés, en attente du signal de départ.",
+        // --- Fit-Bro ---
+        "Rest day vibes, mais dispo direct si tu changes d'avis.",
+        "On est en mode chill, mais le grind reste à portée de main.",
+        "Journée tranquille. Prêt à passer en mode focus dès que tu veux.",
+        "Zéro pression aujourd'hui, mais je reste disponible pour le combo.",
+        // --- Sage ---
+        "Le calme n'est pas l'absence d'effort, c'est sa préparation.",
+        "L'arbre qui ne bouge pas puise sa force dans ses racines.",
+        "Rien ne presse. Tout viendra en son temps.",
+        "Le maître attend sans impatience, car il connaît le rythme des choses.",
+        // --- Rétro Gym Tonic ---
+        "Pause musicale avant la prochaine chorégraphie. Prêt·e ?",
+        "Le studio est calme, mais les jambières fluo n'attendent qu'un signal.",
+        "Petit entracte disco. La suite arrive quand tu veux.",
+        "On respire, on sourit, et on attend le prochain morceau entraînant.",
+        // --- Spartiate ---
+        "L'arène est vide pour l'instant. Elle t'attend.",
+        "Un guerrier se repose, mais ne dort jamais vraiment.",
+        "Le calme avant la bataille. Sparte sait patienter.",
+        "Bouclier posé, mais jamais bien loin.",
+        // --- Pirate ---
+        "Le navire est à quai. Prêt à hisser les voiles à ton signal.",
+        "Pas de tempête en vue. Le calme avant la prochaine traversée.",
+        "L'équipage se repose, mais le trésor n'a pas bougé.",
+        "Ancre jetée pour l'instant. On repart quand tu veux, capitaine.",
+        // --- Manager ---
+        "Aucune tâche en cours. Backlog prêt à être attaqué.",
+        "On est entre deux sprints. Le prochain démarre quand tu veux.",
+        "Calendrier libre pour l'instant. Créneau disponible immédiatement.",
+        "En stand-by, prêt à lancer le prochain cycle de performance.",
+        // --- Nutritionniste ---
+        "Métabolisme au repos, mais prêt à s'activer à la première série.",
+        "Réserves stables. Le moment est idéal pour les recharger utilement.",
+        "Pas de dépense calorique en cours. Ça peut changer vite.",
+        "Le corps se prépare en silence à sa prochaine activité.",
+        // --- Stoïcien ---
+        "Immobile. Prêt.",
+        "Rien à ajouter. Juste présent.",
+        "Le calme n'est pas la faiblesse.",
+        "J'attends sans attendre vraiment.",
       ],
       warning: [
         "Tu sais, mon haltère commence à rouiller à force de t'attendre...",
@@ -932,6 +1008,67 @@ const LOCALE_FR = {
         'Le canapé a l\'air confortable, mais moi j\'attends toujours.',
         'Tic-tac... la journée file, et moi je m\'impatiente un peu.',
         'Allez, un petit geste avant la fin de journée ? Pour moi ?',
+        // Catalogue industriel (15 archetypes) - accueil, humeur warning (tard, en retard).
+        // --- Shonen ---
+        "Le temps presse ! Même les héros légendaires n'attendent pas la nuit pour agir.",
+        "Ton potentiel s'impatiente, il veut sortir avant que le jour ne s'éteigne.",
+        "L'horloge tourne. Un vrai combattant sent l'urgence du moment.",
+        // --- Sergent ---
+        "L'heure tourne, soldat. On ne repousse pas l'entraînement indéfiniment.",
+        "Rapport de situation : objectif toujours en attente. On s'active.",
+        "Le jour touche à sa fin et le devoir, lui, n'a pas bougé.",
+        // --- Pote taquin ---
+        "Il est tard, et devine qui n'a toujours rien fait ?",
+        "Je vais finir par croire que je suis juste décoratif aujourd'hui.",
+        "Le jour se termine et mon haltère prend racine sur le sol.",
+        // --- Philosophe ---
+        "Le temps qui passe ne revient jamais. Celui d'aujourd'hui s'échappe déjà.",
+        "Chaque heure perdue est une occasion qui ne se représentera jamais ainsi.",
+        "Le crépuscule approche, et avec lui, la dernière chance du jour.",
+        // --- Gamer ---
+        "Alerte : le compte à rebours du jour approche de zéro.",
+        "Quête du jour toujours incomplète. Le timer tourne.",
+        "Session presque terminée sans un seul point marqué aujourd'hui.",
+        // --- Héros 80s ---
+        "Le compte à rebours a commencé. Plus de temps à perdre.",
+        "La nuit approche et la mission, elle, reste sans réponse.",
+        "Dernière chance avant le générique de fin de journée.",
+        // --- Scientifique ---
+        "Fenêtre temporelle en réduction critique. Action recommandée immédiatement.",
+        "Aucune donnée d'activité enregistrée aujourd'hui. Anomalie à corriger.",
+        "Le compteur horaire approche sa limite sans mesure positive.",
+        // --- Fit-Bro ---
+        "La journée file et le grind, lui, est resté au parking.",
+        "On va perdre le streak si on ne bouge pas maintenant, sérieux.",
+        "Focus zéro aujourd'hui. Petit rappel amical avant qu'il soit trop tard.",
+        // --- Sage ---
+        "Le jour s'efface lentement, et avec lui, une occasion de grandir.",
+        "Même le sage sait que le temps, une fois parti, ne revient jamais.",
+        "Le soleil se couche sur une journée encore inachevée.",
+        // --- Rétro Gym Tonic ---
+        "La dernière chanson du cours approche, et toi, tu n'as pas encore dansé.",
+        "Le studio va bientôt fermer. Encore le temps d'un dernier mouvement ?",
+        "Ambiance qui s'éteint doucement, comme cette journée sans effort.",
+        // --- Spartiate ---
+        "Le soleil décline sur l'arène, et elle est restée vide aujourd'hui.",
+        "Un guerrier ne laisse jamais le jour s'achever sans honneur.",
+        "Sparte n'accepte pas les journées sans discipline.",
+        // --- Pirate ---
+        "Le soleil plonge à l'horizon et le navire n'a toujours pas bougé.",
+        "La marée descend, moussaillon. Bientôt plus une minute à perdre.",
+        "Le journal de bord de ce jour reste désespérément vide.",
+        // --- Manager ---
+        "Deadline qui approche, aucun livrable encore validé aujourd'hui.",
+        "Reporting du jour : activité proche de zéro. On corrige le tir ?",
+        "Le sprint touche à sa fin sans une seule tâche cochée.",
+        // --- Nutritionniste ---
+        "Aucune dépense calorique aujourd'hui. Le métabolisme s'impatiente.",
+        "Le corps attend son activité du jour, et l'horloge aussi.",
+        "Bilan énergétique plat aujourd'hui. Un petit geste changerait tout.",
+        // --- Stoïcien ---
+        "Le jour s'achève. Rien n'est fait.",
+        "Le temps ne revient pas. Agis.",
+        "Bientôt la nuit. Toujours rien.",
       ],
       hype: [
         "Mes muscles ont poussé rien qu'à te regarder ! Incroyable !",
