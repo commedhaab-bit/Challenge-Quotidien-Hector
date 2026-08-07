@@ -129,21 +129,38 @@ const LOCALE_ES = {
         notStarted: [
           '¿Listo? {{target}} es pan comido para ti.',
           'Vamos allá. Objetivo: {{target}}. No me muevo de aquí.',
+          '{{target}}. No pain, no gain, ya sabes la canción.',
+          '¿Miramos al techo o empezamos con los {{target}}?',
+          'Cero excusas hoy. {{target}}, y no se habla más del tema.',
+          'Presiento que vas a arrasar con estos {{target}}. Vamos, demuéstramelo.',
+          '{{target}} por hacer. Yo miro, tú curras. ¿Trato hecho?',
         ],
         started: [
           '{{current}}/{{target}}, ¡vas avanzando! Sigue así.',
           'Nada mal para empezar: {{current}}/{{target}}. ¿Y ahora?',
           '{{current}}/{{target}}... calentando motores, me gusta.',
           'Ya estamos en marcha: {{current}}/{{target}}. Un esfuerzo más.',
+          '¿{{current}}/{{target}}? Es un comienzo, pero espero más.',
+          'No pain no gain: {{current}}/{{target}} y el ardor está al caer.',
+          '{{current}}/{{target}}... ¿ya sin aliento o me lo parece?',
+          'Esto se mueve, ¡{{current}}/{{target}}! Mantén ese ritmo.',
         ],
         almostThere: [
           '¿{{current}}/{{target}}? ¡Ya casi!',
           'Un poco más, ¡ya {{current}}/{{target}}!',
           '{{current}}/{{target}}... ¡siento la meta muy cerca!',
+          '{{current}}/{{target}}, hora de sacar los colmillos.',
+          'Un empujón más y {{current}}/{{target}} será historia antigua.',
+          '{{current}}/{{target}}... ¿sientes ese ardor? Buena señal.',
+          'No aflojes ahora: {{current}}/{{target}}, la meta está cerca.',
         ],
         done: [
           'Objetivo cumplido, ¡{{current}}/{{target}}! Lo tienes controlado.',
           '{{current}}/{{target}}, misión cumplida. ¡Bien hecho, campeón!',
+          '¡Ya hecho, {{current}}/{{target}}! Apareciste y lo diste todo.',
+          '{{current}}/{{target}}, limpio y perfecto. No esperaba menos de ti.',
+          'Mira ese {{current}}/{{target}}. Sinceramente, chapó.',
+          '{{current}}/{{target}}, objetivo marcado. ¿Vuelves por gusto o por el Modo Hardcore?',
         ],
       },
       tapPunchline: [
@@ -153,6 +170,12 @@ const LOCALE_ES = {
         '+{{amount}} más. Yo lo apunto todo, ¿eh?',
         '¡+{{amount}}! Sigue así, creo en ti.',
         '+{{amount}}... ¡nada mal!',
+        '+{{amount}} más. ¿No tienes botón de pausa o qué?',
+        '+{{amount}}... no pain no gain, y eso escuece un poco, ¿verdad?',
+        '¡+{{amount}}! En serio, deja de impresionarme así.',
+        '+{{amount}}, bonito. Pero quiero más.',
+        '+{{amount}} más para la leyenda. Qué tranquilo tú.',
+        '+{{amount}}... ¿vas a por mi puesto de mascota o qué?',
       ],
       // Idea extra #4: frases diferenciadas por TIPO de ejercicio (ver
       // computeKiloExerciseFamily()), usadas en lugar de tapPunchline arriba
@@ -164,20 +187,49 @@ const LOCALE_ES = {
           '+{{amount}} más de flexiones. Tus brazos lo recordarán mañana.',
           '¡+{{amount}}! Sigue así y batirás tu propio récord de flexiones.',
           '+{{amount}} flexiones... te estás convirtiendo en una máquina de empujar.',
+          '+{{amount}} flexiones más. No pain no gain, ya lo sientes, ¿eh?',
+          '¡+{{amount}} flexiones! A este ritmo voy a tener que apuntarme al gimnasio yo también.',
+          '+{{amount}}... tus tríceps te lo agradecen o te maldicen, no sabría decir.',
+          '+{{amount}} flexiones. Limpio, constante, justo lo que me gusta ver.',
         ],
         core: [
           '¡+{{amount}}! Tu abdomen empieza a parecer una tableta de chocolate.',
           '+{{amount}} de plancha. Tu centro ya es de hormigón armado.',
           '¡+{{amount}}! El core es la base de todo. Tú ya lo sabes.',
           '+{{amount}}... aguanta, tu abdomen te lo agradece.',
+          '+{{amount}} de plancha. No pain no gain: el abdomen sufre, pero te lo agradecerá.',
+          '¡+{{amount}}! Tu ombligo debe estar tocando tu columna ya mismo.',
+          '+{{amount}}... la plancha es el deporte de los humildes. Respeto.',
+          '+{{amount}} más. Tu core se está volviendo una fortaleza.',
         ],
         squats: [
           '¡+{{amount}} sentadillas! Tus piernas te maldecirán mañana por la mañana.',
           '+{{amount}} más. Tus glúteos acaban de recibir el memo.',
           '¡+{{amount}}! Mañana te va a costar sentarte.',
           '+{{amount}} sentadillas... tus muslos arden, y me encanta.',
+          '+{{amount}} sentadillas. No pain no gain: mañana bajarás las escaleras de espaldas.',
+          '+{{amount}}... tus isquiotibiales te tienen preparada una sorpresa para mañana.',
+          '¡+{{amount}} sentadillas! El día en que saltes más alto que yo se acerca.',
+          '+{{amount}} más, piernas ardiendo. Me encanta esta energía.',
         ],
       },
+      // Objetivo completado y llamada al Modo Hardcore (retorno de usuario):
+      // reemplaza tapPunchline/tapPunchlineFamily en el momento PRECISO en que
+      // se alcanza el objetivo normal del día (willComplete, ver addSetInner())
+      // - no en cada toque posterior una vez ya terminado. Felicita Y invita
+      // explícitamente al Modo Hardcore, con tonos variados (directo/motivador/humorístico).
+      hardcoreInvite: [
+        '¡Objetivo cumplido, +{{amount}} en el marcador! El Modo Hardcore te espera, si tienes agallas.',
+        '¡Bien, terminado! Ahora... ¿te atreves con el Modo Hardcore, o recoges y te vas?',
+        '¡Terminado! No pain no gain: el verdadero dolor solo empieza con el Hardcore.',
+        'GG, objetivo cumplido. El Modo Hardcore es para los valientes. ¿Te apuntas?',
+        '¡Lo bordaste! Pasa al Hardcore, a ver de qué estás hecho de verdad.',
+        '¡Objetivo marcado! El Modo Hardcore te espera... bueno, si tuviera los brazos libres.',
+        '¡Y ya está, hecho! El Hardcore solo espera un poquito más de sufrimiento.',
+        'Misión cumplida. Sinceramente, ¿te quedas ahí o vamos a por el Hardcore?',
+        '+{{amount}}, objetivo en el bolsillo. El Modo Hardcore, en cambio, no se dejará vencer tan fácil.',
+        '¡Buen trabajo! Ahora que lo más difícil está hecho... ¿y si decimos que lo REALMENTE difícil empieza ahora: Modo Hardcore?',
+      ],
       // Idea extra #6: reemplaza ocasionalmente la burbuja de apertura,
       // nombra explícitamente el día Y el ejercicio ({{day}}/{{exercise}},
       // ver pickChallenge()).
@@ -186,6 +238,10 @@ const LOCALE_ES = {
         '{{day}}, un día como cualquier otro para darlo todo con {{exercise}}.',
         'Aunque sea {{day}}, {{exercise}} no espera.',
         'Sea {{day}} o no, {{exercise}} no se hará solo·a.',
+        '{{day}}, {{exercise}} no tiene ningún día de descanso previsto.',
+        'Es {{day}}. No pain no gain, {{exercise}} te espera.',
+        '{{day}}: el día perfecto para demostrar que {{exercise}} no te da miedo.',
+        '{{day}}... ¿y sabes qué? {{exercise}} sigue en el programa.',
       ],
       // Idea extra #7 ("estadísticas convertidas en frases delirantes"):
       // reemplaza ocasionalmente la burbuja de apertura con una comparación
@@ -198,6 +254,10 @@ const LOCALE_ES = {
         'Con {{lifetime}} acumulados en {{exercise}}, casi podrías alimentar una pequeña ciudad.',
         '{{lifetime}}. Esa cifra por sí sola merece su propia estatua.',
         'Solo en {{exercise}}, ya acumulas {{lifetime}}. Los científicos todavía no tienen una palabra para eso.',
+        '{{lifetime}} en {{exercise}}. A este nivel, ya rozamos la leyenda urbana.',
+        '{{lifetime}}... si cada repetición valiera un céntimo, casi serías rico.',
+        '{{lifetime}} de {{exercise}} acumulados. Las otras mascotas me envidian, ¿sabes?',
+        '{{lifetime}}. Sinceramente, se me están acabando los superlativos para ti.',
       ],
     },
     // Motor de humor global de la pantalla de inicio (Fase 2 de gamificacion,
@@ -209,21 +269,37 @@ const LOCALE_ES = {
       idle: [
         'Listo cuando tú quieras, no me muevo de aquí.',
         'Un día a la vez. ¿Vamos?',
+        'No pain no gain, pero bueno, primero hay que empezar.',
+        '¿Sinceramente? Me aburro un poco. ¿Un desafío?',
+        'Silencio total... ¿todo bien por tu lado?',
+        'Listo para lo que sea cuando tú quieras. Sin presión (bueno, un poco).',
       ],
       warning: [
         'Mi mancuerna empieza a oxidarse de tanto esperarte...',
         'Se hace tarde y todavía queda trabajo. ¿Nos movemos?',
         'Sigo esperando por aquí. Con paciencia. Mucha paciencia.',
+        "No pain no gain, pero ahora mismo vamos más por 'sin esfuerzo, sin nada'.",
+        'El sofá tiene buena pinta, pero yo sigo esperando por aquí.',
+        'Tic-tac... el día se escapa, y yo me impaciento un poco.',
+        '¿Un pequeño gesto antes de que acabe el día? ¿Por mí?',
       ],
       hype: [
         '¡Mis músculos crecieron solo con mirarte! ¡Increíble!',
         '¡Modo Full Músculo activado! Nada puede detenerte hoy.',
         '¿Esa serie? Legendaria. Lo anoto en los anales.',
+        '¿No pain no gain? Tú fuiste directo al gain.',
+        '¡Alerta de rendimiento! Todavía vibro con lo que acabo de ver.',
+        'Hoy estás en llamas, literalmente. ¡Sigue así!',
+        'Voy a tener que subir mis expectativas contigo.',
       ],
       teasing: [
         'Vaya, vaya... ¿todavía te acuerdas de mí?',
         'Cuánto tiempo. Mi mancuerna está criando polvo.',
         'Estaba a punto de pedir ayuda. Qué bueno verte de nuevo.',
+        '¿Encontraste algo mejor que hacer que estar conmigo? Ofensivo, pero te perdono.',
+        'No pain, no gain, ni tú... eso ya son muchos "no" últimamente.',
+        'Mi mancuerna ya se pregunta si sigues existiendo.',
+        'No digo nada, pero mi silencio lo dice todo.',
       ],
       tapEncouragement: [
         '¡Venga, vamos!',
@@ -232,6 +308,10 @@ const LOCALE_ES = {
         'Un poco más de esfuerzo y te guiño un ojo.',
         'Eres más fuerte de lo que crees.',
         '¿Sabes que creo en ti?',
+        'No pain no gain, recuérdalo.',
+        'Me haces sonreír, literalmente (bueno, si pudiera sonreír más).',
+        'Venga, demuéstrame de qué estás hecho.',
+        'Un pequeño toque, una gran motivación. Me encanta esta energía.',
       ],
       // Idea extra #8 (easter egg al tocar repetidamente): se muestra en
       // lugar de tapEncouragement al alcanzar el umbral de toques rápidos
@@ -242,6 +322,9 @@ const LOCALE_ES = {
         'Cinco toques en 3 segundos... nuevo récord no oficial.',
         '¿Buscas un botón secreto o de verdad me quieres tanto?',
         '¡Vale, abrazo aceptado. Ahora, a trabajar!',
+        'Vale, vale, tranquilo, no voy a ninguna parte.',
+        '¿Cuentas los toques o ya he perdido la cuenta yo?',
+        'Un poco más y voy a cobrar horas extra.',
       ],
       // Ideas extra #9/#10: reacciones puntuales encoladas via
       // kiloPendingSocialReaction, consumidas UNA VEZ en el proximo
@@ -250,11 +333,17 @@ const LOCALE_ES = {
         '¡{{name}} te acaba de enviar un kudo! Siempre sienta bien, ¿verdad?',
         '¡Un kudo de {{name}}! Te estás haciendo fans.',
         '¡{{name}} te ha aplaudido! Bien merecido.',
+        'Un kudo se celebra. ¡Gracias {{name}}, apuntado!',
+        '{{name}} está pensando en ti. Se siente bien, ¿no?',
+        'Kudo recibido de {{name}}. La comunidad vela por ti.',
       ],
       friendBigMove: [
         '¡Vaya, {{name}} acaba de reventar su objetivo en {{exercise}}!',
         '{{name}} está en llamas con {{exercise}} ahora mismo. ¿Vas a dejarlo pasar?',
         '¡Buen golpe de {{name}} en {{exercise}}! Esto huele a competencia amistosa.',
+        '{{name}} acaba de subir el listón en {{exercise}}. Te toca a ti.',
+        'No pain no gain para {{name}} también, por lo visto, viendo su marca en {{exercise}}.',
+        '{{name}} le está dando duro a {{exercise}}. ¿Te apetece un poco de competencia amistosa?',
       ],
       // Idea extra #18: recordatorio de aniversario de cuenta - {{yearsLabel}}
       // ya pluralizado via accountAnniversaryYears (tn()).
@@ -266,6 +355,8 @@ const LOCALE_ES = {
         '¡Ya son {{yearsLabel}} entrenando juntos! Feliz aniversario de cuenta.',
         '{{yearsLabel}} con Kilito a tu lado. El tiempo vuela cuando levantas cosas.',
         'Aniversario de cuenta: ¡{{yearsLabel}}! ¿Seguimos con esta racha?',
+        '{{yearsLabel}} ya. El tiempo vuela cuando levantamos cosas juntos.',
+        'Aniversario de cuenta: {{yearsLabel}}. Gracias por aguantarme tanto tiempo.',
       ],
       // Idea extra #16: frase de bienvenida en el primer lanzamiento del día
       // (ver maybeShowKiloDailyIntro()).
@@ -273,6 +364,9 @@ const LOCALE_ES = {
         '¡Nuevo día, nueva oportunidad de darlo todo! ¿Listo?',
         '¡Hola! Kilito está despierto y ya motivado para hoy.',
         'Empieza un nuevo día. ¿Vamos juntos?',
+        'No pain no gain, y hoy no será la excepción.',
+        '¡Arriba, que empezamos! Un nuevo día, un nuevo reto.',
+        'Sale el sol, y yo también estoy que me salgo. ¿Y tú?',
       ],
     },
     // Cosmeticos de Kilo (Fase 3 de gamificacion) - id = clave en

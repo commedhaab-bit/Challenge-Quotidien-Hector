@@ -1796,6 +1796,50 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(kiloHomeBubbleText, firstHomeBubbleText, 'la bulle ne doit pas se re-randomiser sur un re-rendu qui ne change pas l humeur');
   console.log('OK: bulle d accueil de Kilo (replique valide pour l humeur actuelle, stable tant que l humeur ne change pas)');
 
+  // Retour utilisateur (UI) : la bulle d accueil doit desormais vivre dans le
+  // MEME conteneur que Kilo (.kilo-home-wrap, "bulle de BD connectee" comme sur
+  // la fiche d exercice) - plus un frere pleine largeur du header. Le header
+  // de l accueil ne doit plus avoir de ligne de demarcation (classe today-header).
+  __assertOk(kiloHomeAppHtml.includes('kilo-home-wrap'), 'Kilo et sa bulle doivent partager un conteneur commun (kilo-home-wrap)');
+  const kiloWrapIdx = kiloHomeAppHtml.indexOf('kilo-home-wrap');
+  const kiloSlotIdxInWrap = kiloHomeAppHtml.indexOf('kilo-home-slot', kiloWrapIdx);
+  const kiloBubbleIdxInWrap = kiloHomeAppHtml.indexOf('kilo-home-bubble', kiloWrapIdx);
+  __assertOk(kiloSlotIdxInWrap > kiloWrapIdx && kiloBubbleIdxInWrap > kiloSlotIdxInWrap, 'dans le HTML, kilo-home-wrap doit envelopper le slot PUIS la bulle, dans cet ordre');
+  __assertOk(kiloHomeAppHtml.includes('today-header'), 'le header de l accueil doit porter la classe today-header (suppression de la ligne de demarcation)');
+  __assertOk(cssText.includes('.header.today-header') && cssText.includes('border-bottom: none'), 'la regle CSS qui supprime la ligne de demarcation doit exister, scopee a today-header uniquement');
+  __assertOk(cssText.includes('.kilo-home-bubble::before') && cssText.includes('.kilo-home-bubble::after'), 'la bulle d accueil doit avoir une pointe triangulaire, comme la bulle de la fiche d exercice');
+  __assertOk(cssText.includes('min-height: 58px'), 'la bulle d accueil doit avoir une hauteur minimale FIXE (empeche les cartes en dessous de bouger quand le texte change de longueur - "effet cascade")');
+  console.log('OK: bulle d accueil restylee (conteneur commun avec Kilo, triangle, hauteur fixe, header sans ligne de demarcation)');
+
+  // Retour utilisateur (UI) : les cartes de defis de l accueil ne doivent plus
+  // JAMAIS rejouer leur entree en cascade (card-pop-in), y compris sur un
+  // simple tap sur Kilo qui ne change pourtant rien a la liste des defis.
+  activeToday = new Set([pompes.id]);
+  render(false);
+  const todayCardsHtml = document.getElementById('app').innerHTML;
+  __assertOk(todayCardsHtml.includes('no-anim'), 'les cartes de l accueil doivent toujours porter la classe no-anim (jamais d effet cascade sur cet ecran)');
+  console.log('OK: effet cascade desactive en permanence sur les cartes de l accueil');
+
+  // Retour utilisateur (UI) : GIF reduit d environ 10% + marges nulles pour
+  // les defis chronometres uniquement (les defis en repetitions gardent leurs
+  // marges actuelles).
+  __assertOk(cssText.includes('max-height: 198px'), 'le GIF de demonstration doit etre reduit d environ 10% (220px -> 198px)');
+  __assertOk(cssText.includes('.active-card.timed-hero') && cssText.includes('padding-top: 0'), 'les defis chronometres doivent avoir une regle CSS dediee a marges nulles');
+  const plancheForTimedHero = CHALLENGE_LIBRARY.find((c) => c.slug === 'planche');
+  activeToday = new Set([plancheForTimedHero.id]);
+  state = emptyDayState();
+  await pickChallenge(plancheForTimedHero.id);
+  render(false); // pickChallenge() rend deja via render(true), qui differe son swap DOM de 140ms (setTimeout) - force le rendu synchrone avant de lire innerHTML (meme piege deja documente ailleurs dans ce fichier)
+  __assertOk(document.getElementById('app').innerHTML.includes('timed-hero'), 'un defi chronometre (unit sec) doit recevoir la classe timed-hero sur sa carte');
+  currentChallengeId = null;
+  activeToday = new Set([pompes.id]);
+  state = emptyDayState();
+  await pickChallenge(pompes.id);
+  render(false);
+  __assertOk(!document.getElementById('app').innerHTML.includes('timed-hero'), 'un defi en repetitions ne doit jamais recevoir la classe timed-hero');
+  currentChallengeId = null;
+  console.log('OK: GIF reduit ~10% + marges nulles reservees aux defis chronometres uniquement');
+
   // Tap sur Kilo (accueil, "effet Tamagotchi") : rebond (classe .tapped,
   // pilotee par horodatage - jamais une manipulation DOM directe, voir
   // kiloHomeTap()) + nouvelle phrase d encouragement dans la bulle, par-dessus
@@ -3110,7 +3154,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v97'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v98'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -5796,6 +5840,46 @@ const cssText = __rawHtml + __cssSource;
   const afterFlashKiloIdx = afterFlashHtml.indexOf('kilo-exercise-slot');
   __assertOk(afterFlashHtml.slice(afterFlashKiloIdx, afterFlashKiloIdx + 400).includes('kilo-idle'), 'une fois le flash expire, Kilo doit revenir a l humeur stable (idle, objectif encore loin - 10/110)');
   console.log('OK: chaque tap declenche un flash motive de Kilo + une punchline dynamisee, qui retombe sur l humeur stable une fois le flash expire');
+
+  // Retour utilisateur (UI) : la transition de RETOUR (success -> idle) doit
+  // etre aussi douce que l entree - renderKilo({extraClass}) est le point
+  // d integration (fonction pure, testee directement), exerciseKiloUnflashUntil
+  // pilote sa fenetre d activation (voir addSetInner()).
+  __assertOk(renderKilo('idle', { extraClass: 'kilo-unflash' }).includes('kilo-idle kilo-unflash'), 'renderKilo({extraClass}) doit ajouter la classe supplementaire a cote de la classe d etat');
+  __assertOk(!renderKilo('idle').includes('kilo-unflash'), 'sans extraClass, aucune classe supplementaire ne doit apparaitre');
+  exerciseKiloUnflashUntil = Date.now() + 450;
+  render(false);
+  const unflashHtml = document.getElementById('app').innerHTML;
+  const unflashKiloIdx = unflashHtml.indexOf('kilo-exercise-slot');
+  __assertOk(unflashHtml.slice(unflashKiloIdx, unflashKiloIdx + 400).includes('kilo-unflash'), 'pendant la fenetre de transition de retour, la classe kilo-unflash doit etre presente');
+  exerciseKiloUnflashUntil = 0; // simule l expiration (sans attendre reellement 450ms)
+  render(false);
+  const afterUnflashHtml = document.getElementById('app').innerHTML;
+  const afterUnflashKiloIdx = afterUnflashHtml.indexOf('kilo-exercise-slot');
+  __assertOk(!afterUnflashHtml.slice(afterUnflashKiloIdx, afterUnflashKiloIdx + 400).includes('kilo-unflash'), 'une fois la fenetre de transition expiree, la classe kilo-unflash ne doit plus apparaitre');
+  console.log('OK: transition de retour douce (success -> idle) via renderKilo({extraClass}) + exerciseKiloUnflashUntil, meme fondu/zoom que l entree');
+
+  // Fin de defi & appel au Mode Hardcore (retour utilisateur) : le tap qui
+  // fait PRECISEMENT franchir l objectif du jour (willComplete) doit afficher
+  // une punchline dediee kilo.exercise.hardcoreInvite - jamais le pool
+  // generique/par famille utilise pour les taps qui n achevent pas encore
+  // l objectif.
+  state.challenges[pompes.id] = { sets: [90], targetOverride: 100, done: false, hardcoreDone: false, hardcoreAnnounced: false };
+  await pickChallenge(pompes.id);
+  await addSet(10); // 90 + 10 = 100 = target -> willComplete
+  const expectedHardcoreInviteVariants = t('kilo.exercise.hardcoreInvite').map((v) => interpolate(v, { amount: 10 }));
+  __assertOk(expectedHardcoreInviteVariants.includes(exerciseKiloBubbleText), 'le tap qui complete l objectif du jour doit afficher une punchline dediee invitant au Mode Hardcore');
+  const pushupsVariantsForHardcoreCheck = t('kilo.exercise.tapPunchlineFamily.pushups').map((v) => interpolate(v, { amount: 10 }));
+  __assertOk(!pushupsVariantsForHardcoreCheck.includes(exerciseKiloBubbleText), 'au moment de la completion, la punchline ne doit PAS venir du pool par famille (reserve aux taps qui n achevent pas encore l objectif)');
+
+  // Un tap SUIVANT (objectif deja marque done, entry.done=true) ne doit plus
+  // re-declencher la punchline "invitation Hardcore" - willComplete redevient
+  // faux des que entry.done est deja vrai, retombe donc sur le pool par
+  // famille comme n'importe quel tap normal.
+  await addSet(5);
+  const pushupsVariantsAfterCompletion = t('kilo.exercise.tapPunchlineFamily.pushups').map((v) => interpolate(v, { amount: 5 }));
+  __assertOk(pushupsVariantsAfterCompletion.includes(exerciseKiloBubbleText), 'un tap APRES la completion doit retomber sur le pool par famille normal, pas redeclencher l invitation Hardcore');
+  console.log('OK: fin de defi - punchline dediee felicitant et invitant au Mode Hardcore, uniquement au moment precis de la completion');
 
   // Idee bonus #4 (retour utilisateur) : computeKiloExerciseFamily() - fonction
   // PURE, testee independamment de la punchline aleatoire.

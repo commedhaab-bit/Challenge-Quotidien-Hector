@@ -127,21 +127,38 @@ const LOCALE_EN = {
         notStarted: [
           "Ready? {{target}} is nothing for you.",
           "Let's do this. Target: {{target}}. I'm not going anywhere.",
+          "{{target}}. No pain, no gain, you know the drill.",
+          "Are we staring at the ceiling or starting these {{target}}?",
+          "Zero excuses today. {{target}}, and that's the end of it.",
+          "I've got a feeling you'll crush these {{target}}. Show me.",
+          "{{target}} to go. I watch, you work. Deal?",
         ],
         started: [
           "{{current}}/{{target}}, making progress! Keep going.",
           "Not bad for a start: {{current}}/{{target}}. What's next?",
           "{{current}}/{{target}}... warming up, I like it.",
           "We're rolling: {{current}}/{{target}}. One more push.",
+          "{{current}}/{{target}}? A start, but I expect more.",
+          "No pain no gain: {{current}}/{{target}} and the burn is coming soon.",
+          "{{current}}/{{target}}... already out of breath, or am I dreaming?",
+          "It's moving, {{current}}/{{target}}! Keep that pace.",
         ],
         almostThere: [
           "{{current}}/{{target}}? Almost there!",
           "Just a little more, already {{current}}/{{target}}!",
           "{{current}}/{{target}}... I can feel the finish line!",
+          "{{current}}/{{target}}, time to show your teeth.",
+          "One more push and {{current}}/{{target}} is ancient history.",
+          "{{current}}/{{target}}... feel that burn? That's a good sign.",
+          "Don't let up now: {{current}}/{{target}}, the finish line is close.",
         ],
         done: [
           "Target reached, {{current}}/{{target}}! You've got this.",
           "{{current}}/{{target}}, mission accomplished. Nice one, champ!",
+          "Already done, {{current}}/{{target}}! You showed up and gave it everything.",
+          "{{current}}/{{target}}, clean and neat. I expected nothing less from you.",
+          "Look at that {{current}}/{{target}}. Honestly, hats off.",
+          "{{current}}/{{target}}, target checked off. Back for fun, or for Hardcore Mode?",
         ],
       },
       tapPunchline: [
@@ -151,6 +168,12 @@ const LOCALE_EN = {
         "+{{amount}} more. I'm keeping track, you know.",
         "+{{amount}}! Keep going, I believe in you.",
         "+{{amount}}... not bad at all!",
+        "+{{amount}} more. Don't you have a pause button?",
+        "+{{amount}}... no pain no gain, and that stings a bit, doesn't it?",
+        "+{{amount}}! Seriously, stop impressing me like that.",
+        "+{{amount}}, nice. But I want more.",
+        "+{{amount}} more toward the legend. So chill about it.",
+        "+{{amount}}... are you after my mascot job or what?",
       ],
       // Bonus idea #4: punchlines differentiated by TYPE of exercise (see
       // computeKiloExerciseFamily()), used instead of tapPunchline above when
@@ -162,20 +185,49 @@ const LOCALE_EN = {
           "+{{amount}} more push-ups. Your arms will remember this tomorrow.",
           "+{{amount}}! Keep going and you'll beat your own push-up record.",
           "+{{amount}} push-ups... you're turning into a pushing machine.",
+          "+{{amount}} more push-ups. No pain no gain, you can already feel it, huh?",
+          "+{{amount}} push-ups! At this rate I'll need to join a gym myself.",
+          "+{{amount}}... your triceps are thanking you or cursing you, hard to tell.",
+          "+{{amount}} push-ups. Clean, consistent, exactly what I like to see.",
         ],
         core: [
           "+{{amount}}! Your abs are starting to look like a chocolate bar.",
           "+{{amount}} of core work. Your center is solid as concrete now.",
           "+{{amount}}! The core is the base of everything. You know that.",
           "+{{amount}}... hang in there, your abs thank you.",
+          "+{{amount}} of core work. No pain no gain: your abs are suffering, but they'll thank you.",
+          "+{{amount}}! Your belly button must be touching your spine right about now.",
+          "+{{amount}}... core work is the sport of the humble. Respect.",
+          "+{{amount}} more. Your core is becoming a fortress.",
         ],
         squats: [
           "+{{amount}} squats! Your legs are going to curse you tomorrow morning.",
           "+{{amount}} more. Your glutes just got the memo.",
           "+{{amount}}! You're going to have trouble sitting down tomorrow.",
           "+{{amount}} squats... your thighs are on fire, and I love it.",
+          "+{{amount}} squats. No pain no gain: tomorrow you'll be walking downstairs backwards.",
+          "+{{amount}}... your hamstrings have a nice surprise waiting for you tomorrow.",
+          "+{{amount}} squats! The day you jump higher than me is coming.",
+          "+{{amount}} more, legs on fire. I love this energy.",
         ],
       },
+      // Objective completed & Hardcore Mode call (retour utilisateur): replaces
+      // tapPunchline/tapPunchlineFamily at the EXACT moment the daily objective
+      // is first reached (willComplete, see addSetInner()) - not on every tap
+      // afterward once already done. Celebrates AND explicitly invites the
+      // player into Hardcore Mode, mixing tones (direct/motivating/funny).
+      hardcoreInvite: [
+        "Target reached, +{{amount}} on the board! Hardcore Mode is waiting, if you've got the nerve.",
+        "Nice, done! Now... are you brave enough for Hardcore Mode, or calling it a day?",
+        "Finished! No pain no gain - the real pain only starts with Hardcore.",
+        "GG, target filled. Hardcore Mode is for the bold. You in?",
+        "Nailed it! Switch to Hardcore, see what you're REALLY made of.",
+        "Target checked off! Hardcore Mode is calling... well, if I had free arms to wave.",
+        "And there it is, done! Hardcore is waiting for a little extra suffering.",
+        "Mission accomplished. Honestly, stopping there or going for Hardcore?",
+        "+{{amount}}, target in the bag. Hardcore Mode won't go down that easily though.",
+        "Great work! Now that the hard part is done... how about the REAL hard part: Hardcore Mode?",
+      ],
       // Bonus idea #6: occasionally replaces the opening bubble, explicitly
       // names the day AND the exercise ({{day}}/{{exercise}}, see pickChallenge()).
       dayPunchline: [
@@ -183,6 +235,10 @@ const LOCALE_EN = {
         "{{day}}, just another day to grind on {{exercise}}.",
         "Even on a {{day}}, {{exercise}} doesn't wait.",
         "{{day}} or not, {{exercise}} won't do itself.",
+        "{{day}}, {{exercise}} has no rest day scheduled.",
+        "It's {{day}}. No pain no gain, {{exercise}} is waiting.",
+        "{{day}}: the perfect day to prove {{exercise}} doesn't scare you.",
+        "{{day}}... and guess what? {{exercise}} is still on the agenda.",
       ],
       // Bonus idea #7 ("stats turned into ridiculous punchlines"): occasionally
       // replaces the opening bubble with an absurd comparison of the lifetime
@@ -194,6 +250,10 @@ const LOCALE_EN = {
         "With {{lifetime}} racked up on {{exercise}}, you could almost power a small city.",
         "{{lifetime}}. That number alone deserves its own statue.",
         "Just on {{exercise}} alone, you've stacked up {{lifetime}}. Scientists don't have a word for that yet.",
+        "{{lifetime}} on {{exercise}}. At this point we're bordering on urban legend.",
+        "{{lifetime}}... if every rep were worth a penny, you'd almost be rich.",
+        "{{lifetime}} of {{exercise}} racked up. The other mascots are jealous, honestly.",
+        "{{lifetime}}. Honestly, I'm running out of superlatives for you.",
       ],
     },
     // Global home-screen mood engine (gamification Phase 2, see computeKiloMood()) -
@@ -205,21 +265,37 @@ const LOCALE_EN = {
       idle: [
         "Ready whenever you are, I'm not going anywhere.",
         'One day at a time. Shall we?',
+        'No pain no gain, but first things first, I guess.',
+        "I'm a little bored, honestly. Fancy a challenge?",
+        'Radio silence... everything okay on your end?',
+        "Ready to go whenever you are. No pressure (well, a little).",
       ],
       warning: [
         "You know, my dumbbell is starting to rust from waiting...",
         "It's getting late and there's still work to do. Let's move?",
         'Still waiting over here. Patiently. Very patiently.',
+        "No pain no gain, but right now we're more on 'no effort, no anything'.",
+        'That couch looks comfy, but I\'m still waiting over here.',
+        "Tick-tock... the day is slipping away, and I'm getting a little impatient.",
+        'Come on, one small move before the day ends? For me?',
       ],
       hype: [
         'My muscles grew just watching you! Incredible!',
         'Full Muscle Mode activated! Nothing can stop you today.',
         'That set? Legendary. Writing it down in the history books.',
+        "No pain no gain? You went straight for the gain.",
+        "Performance alert! I'm still buzzing from what I just saw.",
+        "You're on fire today, literally. Keep it up!",
+        'I might need to raise my expectations for you.',
       ],
       teasing: [
         'Well, well... you still remember me?',
         "It's been a while. My dumbbell's gathering dust.",
         'I was about to call for help. Good to see you again.',
+        'Found something better to do than hang out with me? Rude, but forgiven.',
+        'No pain, no gain, no you... that\'s a lot of "no"s lately.',
+        'My dumbbell is starting to wonder if you still exist.',
+        "I'm not saying anything, but my silence speaks volumes.",
       ],
       tapEncouragement: [
         "Come on, let's go!",
@@ -228,6 +304,10 @@ const LOCALE_EN = {
         "A little more effort and I'll give you a wink.",
         "You're stronger than you think.",
         'I believe in you, you know that?',
+        'No pain no gain, remember that.',
+        "You're making me smile, literally (well, if I could smile more).",
+        'Come on, show me what you\'ve got.',
+        'One little tap, one big boost of motivation. I love this energy.',
       ],
       // Bonus idea #8 (easter egg on repeated taps): shown instead of
       // tapEncouragement once the rapid-tap threshold is reached (see kiloHomeTap()).
@@ -237,6 +317,9 @@ const LOCALE_EN = {
         'Five taps in 3 seconds... unofficial record right there.',
         'Are you looking for a hidden button or do you really love me that much?',
         'Alright, hug accepted. Now, back to work!',
+        "Okay, okay, calm down, I'm not going anywhere.",
+        "Are you counting the taps, or have I lost count myself?",
+        "A little more and I'm charging overtime.",
       ],
       // Bonus ideas #9/#10: one-off reactions queued via kiloPendingSocialReaction,
       // consumed ONCE the next time the home screen renders (see render()).
@@ -244,11 +327,17 @@ const LOCALE_EN = {
         '{{name}} just sent you a kudo! Always feels good, right?',
         "A kudo from {{name}}! You're building a fan club.",
         '{{name}} just cheered you on! Well deserved.',
+        "A kudo deserves a celebration. Thanks {{name}}, noted!",
+        '{{name}} is thinking of you. That feels nice, right?',
+        'Kudo received from {{name}}. The community is watching out for you.',
       ],
       friendBigMove: [
         'Whoa, {{name}} just crushed their goal on {{exercise}}!',
         '{{name}} is on fire with {{exercise}} right now. Gonna let that slide?',
         'Big move from {{name}} on {{exercise}}! Feels like friendly competition.',
+        '{{name}} just raised the bar on {{exercise}}. Your move.',
+        'No pain no gain for {{name}} too, apparently, given that {{exercise}} performance.',
+        '{{name}} is grinding on {{exercise}}. Fancy a little friendly competition?',
       ],
       // Bonus idea #18: account anniversary reminder - {{yearsLabel}} already
       // pluralized via accountAnniversaryYears (tn()).
@@ -260,6 +349,8 @@ const LOCALE_EN = {
         "It's been {{yearsLabel}} of us grinding together! Happy account anniversary.",
         "{{yearsLabel}} with Kilito by your side. Time flies when you're lifting things.",
         'Account anniversary: {{yearsLabel}}! Shall we keep the streak going?',
+        "{{yearsLabel}} already. Time flies when we're lifting things together.",
+        "Account anniversary: {{yearsLabel}}. Thanks for putting up with me this long.",
       ],
       // Bonus idea #16: welcome line shown on the very first launch of the
       // day (see maybeShowKiloDailyIntro()).
@@ -267,6 +358,9 @@ const LOCALE_EN = {
         'New day, new chance to give it your all! Ready?',
         "Hey! Kilito's awake and already pumped for today.",
         'A new day begins. Shall we go for it together?',
+        "No pain no gain, and today won't be the exception.",
+        "Up and at it! A new day, a new challenge.",
+        "The sun's up, and so am I. How about you?",
       ],
     },
     // Kilo cosmetics (gamification Phase 3) - id = key in ACCESSORY_DEFS/

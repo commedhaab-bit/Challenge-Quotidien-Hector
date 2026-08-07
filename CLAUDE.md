@@ -4443,3 +4443,104 @@ repete (#8), reaction sur un gros coup d'ami (#9), reaction aux kudos recus
 (#10), accessoires saisonniers (#13), petite intro au premier lancement du
 jour (#16), rappel du soir si rien fait (#17), rappel d'anniversaire de
 compte (#18). Voir chaque lot ci-dessus pour le detail technique complet.
+
+## Passe UX "optimisations visuelles, textuelles et logiques" - contenu Kilo + corrections CSS/animations
+
+**Demande explicite de l'utilisateur**, 3 volets appliques directement (pas de
+plan intermediaire, corrections directes et robustes).
+
+**1. Contenu/dialogues de Kilo** :
+- **Stock de punchlines multiplie** (2-4x selon les pools) sur les 3 langues,
+  tous les pools `kilo.exercise.*`/`kilo.home.*` deja etablis
+  (`opening.{notStarted,started,almostThere,done}`, `tapPunchline`,
+  `tapPunchlineFamily.{pushups,core,squats}`, `dayPunchline`,
+  `statComparison`, `home.{idle,warning,hype,teasing,tapEncouragement,
+  tapEasterEgg,kudoReceived,friendBigMove,accountAnniversary,dailyGreeting}`)
+  - tons volontairement varies (taquin/drole/amical/coach "no pain no gain")
+  au lieu d'un seul registre repete. Aucun changement de mecanisme (toujours
+  `pickKiloLine()`, tableaux de variantes) - uniquement plus de contenu.
+- **Nouveau pool `kilo.exercise.hardcoreInvite`** (fr/en/es, 10 variantes,
+  tons direct/motivant/humoristique) : `addSetInner()` bascule desormais sur
+  ce pool AU LIEU de `tapPunchline`/`tapPunchlineFamily` au moment PRECIS ou
+  `willComplete` est vrai (l'objectif normal du jour vient d'etre atteint par
+  CE tap precis, deja calcule plus haut dans la fonction) - felicite ET
+  invite explicitement au Mode Hardcore. Un tap SUIVANT (une fois
+  `entry.done` deja vrai) retombe naturellement sur le pool normal, puisque
+  `willComplete` redevient faux des que `entry.done` est deja vrai - aucune
+  garde supplementaire necessaire, le comportement existant de `willComplete`
+  suffit deja.
+
+**2. Interface graphique (UI)** :
+- **Bulle d'accueil restylee** : nouveau conteneur `.kilo-home-wrap` (flex
+  colonne, `align-self:center`, deplace depuis `.kilo-home-slot`) enveloppe
+  desormais Kilo ET sa bulle ensemble - avant ce correctif, la bulle etait un
+  FRERE du `.header` en pleine largeur, sans lien visuel avec Kilo (au milieu
+  d'une ligne a 3 elements en `justify-content:space-between`, sa position
+  horizontale exacte n'etait pas assez fiable pour y ancrer un triangle).
+  `.kilo-home-bubble` reprend desormais EXACTEMENT le meme habillage que
+  `.kilo-exercise-bubble` (petite carte ~220px, pointe triangulaire
+  `::before`/`::after` pointant vers Kilo) - **plus une "carte pleine
+  largeur"**. **`min-height: 58px` FIXE** (pas juste un padding) : le texte
+  varie en longueur (1-3 lignes selon la replique piochee) SANS jamais faire
+  varier la hauteur reelle de la bulle - c'est ce qui regle "l'effet cascade"
+  au clic sur Kilo (les cartes de defis en dessous ne bougent plus jamais,
+  contrairement a l'ancien format pleine largeur dont la hauteur suivait
+  fidelement la longueur du texte).
+- **Ligne de demarcation retiree, scopee a l'accueil uniquement** : nouvelle
+  classe `.header.today-header { border-bottom: none; }` - `.header` seule
+  (partagee par Communaute/Groupes/Profil) reste inchangee, aucune regression
+  sur ces 3 autres ecrans.
+- **GIF de demonstration reduit d'environ 10%** : `.exercise-hero-apng
+  max-height` `220px -> 198px`.
+- **Marges nulles pour les defis chronometres** : nouvelle classe
+  `.active-card.timed-hero` (posee cote client si `c.unit === 'sec'`) -
+  `padding-top:0` sur la carte + `margin-bottom:0` sur le GIF lui-meme. Les
+  defis en repetitions gardent leurs marges actuelles, aucun changement pour
+  eux.
+- **Effet cascade desactive EN PERMANENCE sur l'accueil** : `renderChallengeCard(c,
+  'today', idx, false)` - `animate` force a `false` a cet unique site d'appel
+  (au lieu du defaut `true`), donc `.no-anim` est desormais TOUJOURS applique
+  aux cartes de l'accueil. Avant ce correctif, `animate` restait a sa valeur
+  par defaut (`true`) sur CET ecran precis (contrairement a la Bibliotheque,
+  deja corrigee via `libraryAnimatingCat`/`shouldAnimate` il y a longtemps) -
+  chaque `render()` (y compris un simple tap sur Kilo, un fidget, une
+  reaction sociale...) rejouait donc l'entree en cascade de TOUTES les
+  cartes, un "effet cascade" visible en continu et pas seulement au
+  changement d'onglet. Demande explicite de l'utilisateur d'aller plus loin
+  que la Bibliotheque : ici, aucune animation d'entree du tout, jamais - pas
+  juste une gate plus fine sur "un vrai changement".
+
+**3. Logique du Journal & transitions** :
+- **Transition de retour douce (success -> idle) sur la fiche d'exercice** :
+  `renderKilo(state, options)` gagne un nouveau parametre optionnel
+  `opts.extraClass`, ajoute a cote de la classe d'etat sur la racine `<svg>`
+  (`class="kilo-svg kilo-${state}${extraClass}"`). Nouvelle fenetre
+  `exerciseKiloUnflashUntil` (meme principe horodatage->render() que
+  `kiloHomeTapBounceUntil`/`kiloHomeFidgetUntil`) posee dans le `setTimeout()`
+  qui termine deja la fenetre de flash (`addSetInner()`, 1650ms) - pendant
+  cette fenetre (450ms), la fiche d'exercice passe `extraClass:'kilo-unflash'`
+  au `renderKilo()` de l'etat stable. **CSS `.kilo-idle.kilo-unflash`** :
+  combine `kilo-pop-in` (le MEME fondu+zoom 0.4s deja utilise a l'ENTREE en
+  `success`) et `kilo-idle-bounce` (respiration continue) sur le meme
+  element via un `animation-delay` egal a la duree de `kilo-pop-in` -
+  **piege evite** : les 2 animations ciblent toutes les deux `transform`,
+  donc les lister simplement en parallele les aurait fait s'ecraser l'une
+  l'autre (seule la derniere de la liste s'appliquerait, jamais un melange) ;
+  le delai les SEQUENCE a la place (`kilo-pop-in` joue seule les 0.4
+  premieres secondes, `kilo-idle-bounce` prend le relais ensuite sans a-coup
+  car `kilo-pop-in` finit a `scale(1)` et `kilo-idle-bounce` demarre a
+  `translateY(0)`, deux etats visuellement neutres). Specificite (2 classes)
+  suffit a dominer `.kilo-idle` seule, aucun `!important` necessaire - et
+  `prefers-reduced-motion` continue de tout desactiver correctement SANS
+  ajout necessaire a la liste d'exclusion existante (le `!important` deja
+  present sur `.kilo-idle` dans ce bloc l'emporte de toute facon sur
+  n'importe quelle regle non-important, quelle que soit sa specificite).
+
+CACHE_NAME -> v98 (`styles.css` + contenu des `locale-*.js` modifies -
+dizaines de nouvelles variantes de punchlines + nouvelle cle
+`kilo.exercise.hardcoreInvite`). Aucun changement de regles Firestore/Cloud
+Functions - modification 100% cote client, aucune touche a `functions/**`.
+Meme limite de verification que le reste des chantiers UI de ce projet :
+valide par tests structurels (classes CSS, presence de regles, gating
+logique) + lint, **pas visuellement dans un vrai navigateur** - a confirmer
+par l'utilisateur.
