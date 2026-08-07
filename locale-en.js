@@ -184,6 +184,17 @@ const LOCALE_EN = {
         "Even on a {{day}}, {{exercise}} doesn't wait.",
         "{{day}} or not, {{exercise}} won't do itself.",
       ],
+      // Bonus idea #7 ("stats turned into ridiculous punchlines"): occasionally
+      // replaces the opening bubble with an absurd comparison of the lifetime
+      // total ({{lifetime}}, already formatted with thousands separators - same
+      // convention as exercise.lifetimeTotal, no unit in the text). Only
+      // triggers if the lifetime total is already non-zero (see pickChallenge()).
+      statComparison: [
+        "{{lifetime}} on {{exercise}} so far... if those were grains of sand, we could build a beach.",
+        "With {{lifetime}} racked up on {{exercise}}, you could almost power a small city.",
+        "{{lifetime}}. That number alone deserves its own statue.",
+        "Just on {{exercise}} alone, you've stacked up {{lifetime}}. Scientists don't have a word for that yet.",
+      ],
     },
     // Global home-screen mood engine (gamification Phase 2, see computeKiloMood()) -
     // one key per mood ('idle'/'warning'/'hype'/'teasing'), each an ARRAY of
@@ -217,6 +228,15 @@ const LOCALE_EN = {
         "A little more effort and I'll give you a wink.",
         "You're stronger than you think.",
         'I believe in you, you know that?',
+      ],
+      // Bonus idea #8 (easter egg on repeated taps): shown instead of
+      // tapEncouragement once the rapid-tap threshold is reached (see kiloHomeTap()).
+      tapEasterEgg: [
+        'Okay okay, I get it, you love me!',
+        "Careful, I'm getting dizzy!",
+        'Five taps in 3 seconds... unofficial record right there.',
+        'Are you looking for a hidden button or do you really love me that much?',
+        'Alright, hug accepted. Now, back to work!',
       ],
     },
     // Kilo cosmetics (gamification Phase 3) - id = key in ACCESSORY_DEFS/

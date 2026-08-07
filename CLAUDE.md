@@ -4192,3 +4192,31 @@ CACHE_NAME -> v92 (contenu des `locale-*.js` modifie - nouvelles cles
 `kilo.exercise.tapPunchlineFamily.*`/`kilo.exercise.dayPunchline`). Aucun
 changement de regles Firestore/Cloud Functions - modification 100% cote
 client, aucune touche a `functions/**`.
+
+## Idees bonus Kilo, lot 3/7 (#7 comparaisons delirantes du cumul a vie + #8 easter egg au tap repete)
+
+**#7 - `kilo.exercise.statComparison`** : partage desormais un SEUL tirage
+aleatoire avec l'idee #6 (`kiloOpeningRoll`, `pickChallenge()`) plutot que
+2 tirages independants - probabilites simples et additives : **15%**
+comparaison delirante du cumul a vie, **25%** jour de la semaine (idee #6,
+bande suivante), **60%** replique de palier standard (par defaut). Ne se
+declenche QUE si un cumul existe deja (`stats[c.id]?.lifetimeTotal > 0`) -
+rien d'absurde a comparer sur un exercice jamais fait. `{{lifetime}}` est
+deja formate avec separateurs de milliers (`toLocaleString(LOCALE_TO_INTL[...])`,
+meme convention que l'affichage existant `exercise.lifetimeTotal` - AUCUNE
+unite dans le texte, meme partie pris que l'existant).
+
+**#8 - `recentKiloHomeTaps`/`KILO_EASTER_EGG_WINDOW_MS`/`KILO_EASTER_EGG_TAP_THRESHOLD`** :
+easter egg au tap repete sur Kilo (accueil) - **meme fenetre glissante en
+memoire** que le garde-fou anti-spam (`maybeInterceptSpammyTaps()`,
+`recentQuickAddTaps`/`SPAM_GUARD_WINDOW_MS`), jamais persistee. 5 taps en
+moins de 3s declenchent une reaction dediee (`kilo.home.tapEasterEgg`,
+vibration a motif distinct `[30,40,30,40,30]`) a la place de l'encouragement
+habituel (`kilo.home.tapEncouragement`) - la fenetre se **reinitialise
+immediatement** des le seuil atteint, pour ne pas redeclencher a CHAQUE tap
+suivant (meme piege deja evite pour le garde-fou anti-spam).
+
+CACHE_NAME -> v93 (contenu des `locale-*.js` modifie - nouvelles cles
+`kilo.exercise.statComparison`/`kilo.home.tapEasterEgg`). Aucun changement
+de regles Firestore/Cloud Functions - modification 100% cote client,
+aucune touche a `functions/**`.

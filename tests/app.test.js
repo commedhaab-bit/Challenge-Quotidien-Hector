@@ -1759,6 +1759,23 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!kiloHomeAppHtml.slice(kiloSlotIdxHomeAfter, kiloSlotIdxHomeAfter + 60).includes('tapped'), 'le rebond doit disparaitre une fois expire');
   console.log('OK: tap sur Kilo (accueil) declenche le rebond + une phrase d encouragement aleatoire dans la bulle');
 
+  // Idee bonus #8 (retour utilisateur, easter egg au tap repete) : 5 taps
+  // rapproches (fenetre glissante, meme principe que le garde-fou anti-spam)
+  // doivent declencher une reaction dediee, differente de tapEncouragement.
+  recentKiloHomeTaps = []; // etat propre, independant des taps du test precedent
+  kiloHomeTap();
+  kiloHomeTap();
+  kiloHomeTap();
+  kiloHomeTap();
+  const tapEasterEggVariants = t('kilo.home.tapEasterEgg').map((v) => interpolate(v, {}));
+  __assertOk(!tapEasterEggVariants.includes(kiloHomeBubbleText), 'sous le seuil (4 taps), la bulle ne doit pas encore basculer sur l easter egg');
+  kiloHomeTap(); // 5eme tap dans la fenetre -> franchit le seuil
+  __assertOk(tapEasterEggVariants.includes(kiloHomeBubbleText), 'des le 5eme tap rapproche, la bulle doit afficher une reaction easter egg dediee');
+  __assertEq(recentKiloHomeTaps.length, 0, 'la fenetre glissante doit se reinitialiser des le seuil atteint, pour ne pas redeclencher au tap suivant');
+  kiloHomeTap();
+  __assertOk(tapEncouragementVariants.includes(kiloHomeBubbleText), 'le tap juste apres l easter egg (fenetre reinitialisee) doit repartir sur un encouragement normal');
+  console.log('OK: idee bonus #8 - easter egg au tap repete sur Kilo (fenetre glissante, reinitialisee des le seuil atteint)');
+
   // Idee bonus #1 (retour utilisateur) : reglage "Faire taire Kilo" - coupe
   // ses bulles de dialogue (accueil + fiche d exercice), le reste (SVG,
   // animations, humeur, popups) doit continuer de s afficher normalement.
@@ -2985,7 +3002,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v92'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v93'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -5579,14 +5596,40 @@ const cssText = __rawHtml + __cssSource;
   Math.random = originalMathRandomKiloOpening;
   console.log('OK: bulle d ouverture de Kilo basee sur la progression (variantes dynamisees avec les nombres exacts)');
 
-  // Idee bonus #6 (retour utilisateur) : sous le seuil de declenchement,
-  // pickChallenge() doit remplacer la bulle par une replique qui nomme le
-  // jour ET l'exercice, quel que soit le palier de progression.
-  Math.random = () => 0.1; // < 0.4 -> declenche systematiquement
+  // Idee bonus #7 (retour utilisateur) : sous la bande basse du tirage
+  // partage (< 0.15) ET un cumul a vie deja non nul, la bulle doit devenir
+  // une comparaison delirante du cumul. stats[pompes.id] force explicitement
+  // (plutot que de dependre d un cumul accumule par des tests precedents,
+  // fragile) pour un test deterministe.
+  stats[pompes.id] = { lifetimeTotal: 1234, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  Math.random = () => 0.05; // < 0.15 -> bande "comparaison delirante"
+  await pickChallenge(pompes.id);
+  const expectedLifetimeStr = (1234).toLocaleString(LOCALE_TO_INTL[currentLocale]);
+  const expectedStatVariants = t('kilo.exercise.statComparison').map((v) => interpolate(v, { lifetime: expectedLifetimeStr, exercise: challengeDisplayName(pompes) }));
+  __assertOk(expectedStatVariants.includes(exerciseKiloBubbleText), 'sous la bande basse du tirage avec un cumul a vie non nul, la bulle doit afficher une comparaison delirante');
+  console.log('OK: idee bonus #7 - comparaison delirante du cumul a vie (bande basse du tirage partage, jamais sur un cumul nul)');
+
+  // Sur un exercice SANS aucun cumul a vie (lifetimeTotal 0), la bande
+  // "comparaison delirante" ne doit jamais se declencher, meme avec un
+  // tirage qui la ciblerait normalement (rien d absurde a comparer sur un
+  // exercice jamais fait) - doit retomber sur la bande suivante (jour).
+  const freshExerciseForStat = CHALLENGE_LIBRARY.find((ch) => ch.slug === 'dips');
+  stats[freshExerciseForStat.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  activeToday.add(freshExerciseForStat.id);
+  state.challenges[freshExerciseForStat.id] = { sets: [], targetOverride: 100, done: false, hardcoreDone: false, hardcoreAnnounced: false };
+  await pickChallenge(freshExerciseForStat.id);
+  __assertOk(!exerciseKiloBubbleText.includes('1 234') && !exerciseKiloBubbleText.includes('1,234'), 'aucune comparaison delirante ne doit apparaitre sur un exercice au cumul a vie nul');
+  console.log('OK: idee bonus #7 - jamais de comparaison delirante sur un cumul a vie nul');
+
+  // Idee bonus #6 (retour utilisateur) : dans la bande "jour" du tirage
+  // partage (0.15-0.4), pickChallenge() doit remplacer la bulle par une
+  // replique qui nomme le jour ET l'exercice, quel que soit le palier de
+  // progression.
+  Math.random = () => 0.2; // dans la bande 0.15-0.4 -> jour de la semaine
   await pickChallenge(pompes.id);
   const expectedDayName = t('dates.daysFull')[new Date().getDay()].toLowerCase();
   const expectedDayVariants = t('kilo.exercise.dayPunchline').map((v) => interpolate(v, { day: expectedDayName, exercise: challengeDisplayName(pompes) }));
-  __assertOk(expectedDayVariants.includes(exerciseKiloBubbleText), 'sous le seuil de declenchement, la bulle doit nommer le jour (en minuscule en FR) et l exercice');
+  __assertOk(expectedDayVariants.includes(exerciseKiloBubbleText), 'dans la bande "jour" du tirage, la bulle doit nommer le jour (en minuscule en FR) et l exercice');
   Math.random = originalMathRandomKiloOpening;
   console.log('OK: idee bonus #6 - replique occasionnelle qui nomme explicitement le jour de la semaine et l exercice en cours');
 

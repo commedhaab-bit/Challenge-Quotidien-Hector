@@ -189,6 +189,18 @@ const LOCALE_FR = {
         "Même un {{day}}, {{exercise}} n'attend pas.",
         "{{day}} ou pas, {{exercise}} ne se fera pas tout·e seul·e.",
       ],
+      // Idee bonus #7 (retour utilisateur, "statistiques transformees en
+      // punchlines delirantes") : remplace occasionnellement la bulle
+      // d'ouverture par une comparaison absurde du cumul a vie
+      // ({{lifetime}}, deja formate avec separateurs de milliers - meme
+      // convention que exercise.lifetimeTotal, aucune unite dans le texte).
+      // Ne se declenche que si le cumul est deja non nul (voir pickChallenge()).
+      statComparison: [
+        "{{lifetime}} de {{exercise}} depuis le début... si c'était des grains de sable, on pourrait construire une plage.",
+        "Avec {{lifetime}} en cumulé sur {{exercise}}, tu pourrais presque alimenter une petite centrale.",
+        "{{lifetime}}. Ce chiffre à lui seul mériterait sa propre statue.",
+        "Rien que sur {{exercise}}, tu cumules {{lifetime}}. Les scientifiques n'ont pas encore de mot pour ça.",
+      ],
     },
     // Moteur d'humeur global de l'accueil (chantier gamification Phase 2, voir
     // computeKiloMood()) - une cle par humeur possible ('idle'/'warning'/'hype'/
@@ -222,6 +234,16 @@ const LOCALE_FR = {
         "Encore un peu d'effort et je te fais un clin d'œil.",
         "T'es plus fort·e que tu ne le crois.",
         'Je crois en toi, tu le sais ça ?',
+      ],
+      // Idee bonus #8 (retour utilisateur, easter egg au tap repete) : affichee
+      // a la place de tapEncouragement des que le seuil de taps rapproches est
+      // atteint (voir kiloHomeTap()).
+      tapEasterEgg: [
+        "Ok ok, j'ai compris, tu m'aimes !",
+        'Arrête, je vais avoir le vertige !',
+        'Cinq taps en 3 secondes... nouveau record officieux.',
+        "Tu cherches un bouton caché ou tu m'aimes vraiment autant ?",
+        'Bon, câlin accepté. Maintenant, au travail !',
       ],
     },
     // Cosmetiques de Kilo (chantier gamification Phase 3) - id = cle dans

@@ -187,6 +187,18 @@ const LOCALE_ES = {
         'Aunque sea {{day}}, {{exercise}} no espera.',
         'Sea {{day}} o no, {{exercise}} no se hará solo·a.',
       ],
+      // Idea extra #7 ("estadísticas convertidas en frases delirantes"):
+      // reemplaza ocasionalmente la burbuja de apertura con una comparación
+      // absurda del acumulado histórico ({{lifetime}}, ya formateado con
+      // separadores de miles - misma convención que exercise.lifetimeTotal,
+      // sin unidad en el texto). Solo se activa si el acumulado ya es
+      // distinto de cero (ver pickChallenge()).
+      statComparison: [
+        '{{lifetime}} en {{exercise}} hasta ahora... si fueran granos de arena, podríamos construir una playa.',
+        'Con {{lifetime}} acumulados en {{exercise}}, casi podrías alimentar una pequeña ciudad.',
+        '{{lifetime}}. Esa cifra por sí sola merece su propia estatua.',
+        'Solo en {{exercise}}, ya acumulas {{lifetime}}. Los científicos todavía no tienen una palabra para eso.',
+      ],
     },
     // Motor de humor global de la pantalla de inicio (Fase 2 de gamificacion,
     // ver computeKiloMood()) - una clave por humor ('idle'/'warning'/'hype'/
@@ -220,6 +232,16 @@ const LOCALE_ES = {
         'Un poco más de esfuerzo y te guiño un ojo.',
         'Eres más fuerte de lo que crees.',
         '¿Sabes que creo en ti?',
+      ],
+      // Idea extra #8 (easter egg al tocar repetidamente): se muestra en
+      // lugar de tapEncouragement al alcanzar el umbral de toques rápidos
+      // (ver kiloHomeTap()).
+      tapEasterEgg: [
+        'Vale vale, ya lo entendí, ¡me quieres!',
+        '¡Cuidado, me estoy mareando!',
+        'Cinco toques en 3 segundos... nuevo récord no oficial.',
+        '¿Buscas un botón secreto o de verdad me quieres tanto?',
+        '¡Vale, abrazo aceptado. Ahora, a trabajar!',
       ],
     },
     // Cosmeticos de Kilo (Fase 3 de gamificacion) - id = clave en

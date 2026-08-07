@@ -5407,6 +5407,12 @@ let kiloHomeTapBounceUntil = 0;
 // bas). Purement cosmetique - ne change jamais l'humeur/la bulle affichee,
 // juste un petit signe de vie meme sans interaction.
 let kiloHomeFidgetUntil = 0;
+// Idee bonus #8 (retour utilisateur, easter egg au tap repete sur Kilo) :
+// meme fenetre glissante en memoire que maybeInterceptSpammyTaps()
+// (recentQuickAddTaps/SPAM_GUARD_WINDOW_MS), jamais persistee.
+let recentKiloHomeTaps = []; // [horodatages]
+const KILO_EASTER_EGG_WINDOW_MS = 3000;
+const KILO_EASTER_EGG_TAP_THRESHOLD = 5;
 
 function emptyDayState() {
   return { challenges: {} };
@@ -5500,14 +5506,23 @@ async function pickChallenge(id) {
     'kilo.exercise.opening.' + computeKiloExerciseProgressBucket(getTotal(), getTarget(), entry.done),
     { current: getTotal(), target: getTarget() }
   );
-  // Idee bonus #6 (retour utilisateur, avec reference EXPLICITE au jour de la
-  // semaine demandee dans l'exemple fourni : "C'est dimanche mais pas de repos
-  // pour les abdos") : remplace OCCASIONNELLEMENT (pas a chaque ouverture, pour
-  // ne pas lasser) la replique de palier ci-dessus par une phrase qui nomme le
-  // jour ET l'exercice en cours. {{day}}/{{exercise}} en parametres plutot
-  // qu'un pool par jour x famille x palier (explosion combinatoire) - un seul
-  // pool de variantes reutilisable pour N'IMPORTE QUEL exercice/jour.
-  if (c && Math.random() < 0.4) {
+  // Idees bonus #6/#7 (retour utilisateur) : un SEUL tirage partage decide si
+  // la replique de palier ci-dessus est remplacee par une variante "fun" -
+  // comparaison delirante du cumul a vie (#7, bande basse, ne se declenche
+  // que si un cumul existe deja - rien d'absurde a comparer sur un exercice
+  // jamais fait) OU reference explicite au jour de la semaine (#6, exemple
+  // fourni par l'utilisateur : "C'est dimanche mais pas de repos pour les
+  // abdos"). Un seul Math.random() (pas un tirage independant par idee) pour
+  // garder des probabilites simples/additives : 15% comparaison, 25% jour,
+  // 60% palier standard (par defaut, deja pose ci-dessus).
+  const kiloLifetimeTotal = c ? (stats[c.id]?.lifetimeTotal || 0) : 0;
+  const kiloOpeningRoll = c ? Math.random() : 1;
+  if (kiloLifetimeTotal > 0 && kiloOpeningRoll < 0.15) {
+    exerciseKiloBubbleText = pickKiloLine('kilo.exercise.statComparison', {
+      lifetime: kiloLifetimeTotal.toLocaleString(LOCALE_TO_INTL[currentLocale]),
+      exercise: challengeDisplayName(c),
+    });
+  } else if (kiloOpeningRoll < 0.4) {
     // t('dates.daysFull') est capitalise (reutilise ailleurs pour des libelles
     // de date autonomes, ex. formatDateLabel()) - le FR/ES ecrivent
     // conventionnellement les jours en minuscule en milieu de phrase (l'exemple
@@ -8190,9 +8205,22 @@ function kiloTap(el) {
 // exerciseKiloFlashUntil (Phase 1). Met AUSSI a jour la bulle avec un
 // encouragement aleatoire, par-dessus le rebond - exactement comme demande.
 function kiloHomeTap() {
-  if (navigator.vibrate) navigator.vibrate(8);
   kiloHomeTapBounceUntil = Date.now() + 400;
-  kiloHomeBubbleText = pickKiloLine('kilo.home.tapEncouragement', {});
+  // Idee bonus #8 (retour utilisateur) : easter egg si on tapote Kilo en
+  // rafale - meme fenetre glissante que maybeInterceptSpammyTaps() (filtre
+  // puis pousse l'horodatage courant), reinitialisee des le seuil atteint
+  // pour ne pas redeclencher a CHAQUE tap suivant.
+  const nowTap = Date.now();
+  recentKiloHomeTaps = recentKiloHomeTaps.filter((at) => nowTap - at <= KILO_EASTER_EGG_WINDOW_MS);
+  recentKiloHomeTaps.push(nowTap);
+  if (recentKiloHomeTaps.length >= KILO_EASTER_EGG_TAP_THRESHOLD) {
+    recentKiloHomeTaps = [];
+    if (navigator.vibrate) navigator.vibrate([30, 40, 30, 40, 30]); // motif distinct du simple tap (voir garde-fou anti-spam)
+    kiloHomeBubbleText = pickKiloLine('kilo.home.tapEasterEgg', {});
+  } else {
+    if (navigator.vibrate) navigator.vibrate(8);
+    kiloHomeBubbleText = pickKiloLine('kilo.home.tapEncouragement', {});
+  }
   render();
   setTimeout(() => render(), 450);
 }
