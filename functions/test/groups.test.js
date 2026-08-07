@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { __testables } = require('../index.js');
 const {
   computeSettlementPairs, detectClutchWin, shouldSettleChallenge, computeCreditedAmount,
-  rankForSettlement, applyDoublonMultiplier, computeDueReminderThresholds,
+  rankForSettlement, computeGroupTotalProgress, applyDoublonMultiplier, computeDueReminderThresholds,
 } = __testables;
 
 // Ces tests couvrent uniquement la logique PURE de reglement (aucun acces
@@ -210,6 +210,36 @@ test('rankForSettlement() : un effectiveAmount negatif se classe quand meme corr
 test('rankForSettlement() : le totalAmount BRUT (stats Hall of Fame) n est jamais modifie par le handicap', () => {
   const ranked = [{ uid: 'a', totalAmount: 80, handicap: 30 }];
   assert.equal(rankForSettlement(ranked)[0].totalAmount, 80, 'le vrai totalAmount doit rester intact, seul effectiveAmount change');
+});
+
+// Retour utilisateur : le total COLLECTIF du groupe (carte hero cote client,
+// seuil de reglement + plafond de credit cote Cloud Function) ne doit jamais
+// devenir negatif a cause du malus Boulet d une seule personne - chaque
+// contribution individuelle NETTE est plafonnee a 0 avant d etre sommee.
+// Distinct de rankForSettlement() ci-dessus (classement du reglement, qui LUI
+// autorise a dessein un effectiveAmount negatif).
+test('computeGroupTotalProgress() : un malus non compense (net negatif) contribue 0 au total, jamais un total negatif', () => {
+  assert.equal(computeGroupTotalProgress([{ uid: 'a', totalAmount: 10, handicap: 20 }]), 0);
+});
+
+test('computeGroupTotalProgress() : le malus d une personne ne doit jamais reduire la contribution des AUTRES membres', () => {
+  const total = computeGroupTotalProgress([
+    { uid: 'a', totalAmount: 10, handicap: 20 }, // net -10, plafonne a 0
+    { uid: 'b', totalAmount: 15 },
+  ]);
+  assert.equal(total, 15, 'seule la contribution du malus est neutralisee (0), jamais soustraite du total des autres (qui donnerait 5 au lieu de 15)');
+});
+
+test('computeGroupTotalProgress() : une fois le malus compense (net positif), la contribution reelle (nette) est comptee normalement', () => {
+  assert.equal(computeGroupTotalProgress([{ uid: 'a', totalAmount: 21, handicap: 20 }]), 1, 'des que le malus est compense (21 - 20 = 1 > 0), le total recommence a grimper - exactement le comportement demande ("des que Bob fait sa 21eme pompe")');
+});
+
+test('computeGroupTotalProgress() : sans aucun handicap, identique a une simple somme des totalAmount', () => {
+  assert.equal(computeGroupTotalProgress([{ uid: 'a', totalAmount: 40 }, { uid: 'b', totalAmount: 60 }]), 100);
+});
+
+test('computeGroupTotalProgress() : aucun participant -> total a 0', () => {
+  assert.equal(computeGroupTotalProgress([]), 0);
 });
 
 test('applyDoublonMultiplier() : fenetre active (doublonActiveUntil dans le futur) -> montant double', () => {

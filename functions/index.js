@@ -192,6 +192,26 @@ function detectClutchWin(rankedParticipants, contributionEvents, startDate, endD
   return winnerEarlyTotal <= (runnerUp.totalAmount || 0) ? winner.uid : null;
 }
 
+// Pure (aucun acces Firestore) : progression COLLECTIVE du groupe vers la cible
+// chiffree - retour utilisateur explicite : un malus Boulet en tout debut de
+// defi (net totalAmount-handicap negatif) affichait un total de groupe negatif
+// (ex: -20, soit -40% de la cible), ce qui n'a pas de sens pour un objectif
+// collectif. Chaque contribution INDIVIDUELLE nette est desormais plafonnee a 0
+// avant d'etre sommee : un handicap de depart neutralise juste la contribution
+// de cette personne (jamais un total de groupe negatif), et le total ne
+// recommence a grimper qu'une fois son propre handicap compense par ses propres
+// repetitions (net redevenu positif). Utilisee PARTOUT ou "le total du groupe"
+// doit avoir un sens coherent : l'affichage client (carte hero), le seuil de
+// reglement automatique (shouldSettleChallenge) ET le plafond de credit d'une
+// contribution (computeCreditedAmount, logGroupChallengeContribution) - les 3
+// doivent toujours s'accorder sur LA MEME definition, sinon l'affichage et le
+// comportement reel divergent silencieusement. Distincte de rankForSettlement()
+// ci-dessous (classement du REGLEMENT financier, qui LUI autorise a dessein un
+// effectiveAmount negatif - qui doit quoi a qui reste vrai meme sous zero).
+function computeGroupTotalProgress(ranked) {
+  return ranked.reduce((sum, p) => sum + Math.max(0, (p.totalAmount || 0) - (p.handicap || 0)), 0);
+}
+
 // Pure (aucun acces Firestore) : un defi doit-il etre regle des ce passage ? Soit
 // l'objectif chiffre est deja atteint (peu importe l'echeance - un groupe qui finit
 // "125/100" en avance ne doit pas attendre la date de fin pour voir son Ardoise/
@@ -251,7 +271,7 @@ async function settleChallengeIfNeeded(db, challengeRef) {
   const ranked = participantsSnap.docs
     .map((d) => ({ uid: d.id, ...d.data() }))
     .sort((a, b) => (b.totalAmount || 0) - (a.totalAmount || 0));
-  const totalProgress = ranked.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+  const totalProgress = computeGroupTotalProgress(ranked);
   if (!shouldSettleChallenge(totalProgress, challenge.targetTotal, challenge.endDate, now)) return false;
   // Distingue une VRAIE victoire collective (objectif chiffre atteint) d'un simple
   // reglement par expiration d'echeance sans objectif atteint - embarque dans la
@@ -470,7 +490,12 @@ exports.logGroupChallengeContribution = onCall(async (request) => {
     }
     const challenge = challengeSnap.data();
     const participantsSnap = await tx.get(challengeRef.collection('participants'));
-    const currentProgress = participantsSnap.docs.reduce((sum, d) => sum + (d.data().totalAmount || 0), 0);
+    // Meme definition du total collectif que settleChallengeIfNeeded() (voir
+    // computeGroupTotalProgress()) : sinon le plafond de credit ci-dessous
+    // (computeCreditedAmount) et le seuil de reglement divergeraient - un
+    // handicap non compense laisserait a tort "moins de place" pour les
+    // contributions des autres membres du groupe.
+    const currentProgress = computeGroupTotalProgress(participantsSnap.docs.map((d) => d.data()));
     const myDoc = participantsSnap.docs.find((d) => d.id === uid);
     // Joker "Le Doublon" (Phase 4) : double le montant BRUT avant tout plafonnage,
     // tant que la fenetre de 2h (doublonActiveUntil) est active.
@@ -797,6 +822,7 @@ module.exports.__testables = {
   dateKeyUTC,
   computeSettlementPairs,
   detectClutchWin,
+  computeGroupTotalProgress,
   shouldSettleChallenge,
   computeCreditedAmount,
   rankForSettlement,

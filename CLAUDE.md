@@ -3429,3 +3429,58 @@ source (verification de presence/ordre dans le texte du fichier) : le mock
 `onAuthStateChanged` ("pilote manuellement depuis le test") - meme limite deja
 rencontree pour les autres ecouteurs `document`/`window.addEventListener`.
 
+
+## Total du groupe plafonne a 0 (malus Boulet non compense) + Ardoise integree/cumulee
+
+**1. Le total collectif du groupe ne doit jamais devenir negatif.** Le
+classement individuel (`computeGroupParticipantDisplayAmount()` cote client,
+`rankForSettlement()` cote Cloud Function) affiche a raison une valeur nette
+NEGATIVE pour la victime d'un malus Boulet non compense (ex: -20 avant d'avoir
+fait une seule repetition) - c'est le comportement voulu, ca montre qu'elle
+est "en dette". Mais le TOTAL COLLECTIF du groupe (carte hero, seuil de
+reglement, plafond de credit d'une contribution) reprenait bêtement la somme
+de ces valeurs nettes, pouvant lui aussi devenir negatif (-20, soit -40% de la
+cible) - absurde pour un objectif partage. Nouvelle fonction pure
+`computeGroupTotalProgress(participants)` (dupliquee cote client et cote
+Cloud Function, comme `computeGroupParticipantDisplayAmount()`/
+`rankForSettlement()` avant elle - aucun import possible entre index.html et
+functions/index.js) : plafonne CHAQUE contribution individuelle nette a 0
+AVANT de sommer. Un malus neutralise donc juste la contribution de cette
+personne (jamais un total de groupe negatif), qui ne recommence a grimper que
+lorsque son propre malus est compense par ses propres repetitions (net
+redevenu positif) - exactement le comportement demande ("des que Bob fait sa
+21eme pompe").
+
+**Trouve en 3 emplacements distincts qui doivent rester coherents entre eux**
+(la vraie raison d'avoir factorise une fonction partagee plutot que de
+corriger un seul endroit) :
+- Client : `renderGroupDetailScreen()` (carte hero) ET `loadActiveExerciseGroupChallenges()`
+  (mini-barre de progression liee, sur la fiche d'exercice) - ces 2 affichaient
+  auparavant des totaux CALCULES DIFFEREMMENT pour le MEME defi (l'un net du
+  handicap, l'autre totalAmount brut) : desormais unifies sur la meme fonction.
+- Cloud Function : `settleChallengeIfNeeded()` (`totalProgress`, decide si la
+  cible est atteinte) ET `logGroupChallengeContribution()` (`currentProgress`,
+  plafond exact de ce qu'une contribution peut encore crediter avant la
+  cible - `computeCreditedAmount()`). Sans cet alignement, le total affiche a
+  l'ecran et le seuil de reglement REEL cote serveur auraient pu diverger
+  silencieusement (l'un montrant "80%, pas encore atteint" pendant que l'autre
+  regle deja le defi a 100%, ou l'inverse empechant a tort de nouvelles
+  contributions alors que la cible affichee n'est pas encore atteinte).
+
+**2. Ardoise : le nom du gage integre dans la phrase, plus une ligne isolee
+en dessous.** "{{from}} doit un gage à {{to}}" + une ligne separee
+`rank-bar-hint` en dessous (deja regroupee/pluralisee via
+`groupLedgerEntriesForDisplay()`/`tn()`, ex: "🍺 2 bières") devient
+"{{from}} doit 2 bières à {{to}}" en une seule phrase (nouvelle cle
+`ledgerLineWithStake`). Le regroupement/cumul EXISTAIT deja (rien a changer
+cote logique) - seul le RENDU change : `beerLabel` perd son emoji prefixe
+(un emoji en plein milieu de phrase casserait la lecture), `renderLedgerRow()`
+compose desormais une seule phrase integrale au lieu d'un titre generique +
+sous-ligne separee. Nouvelle cle `stakeFallback` ("un gage"/"a stake"/"una
+apuesta") : repli tres rare pour un gage personnalise historique cree avant
+que le champ vide soit refuse a la validation.
+
+CACHE_NAME -> v82. **Changement touchant `functions/**` (2 fonctions) -
+deploiement `deploy-functions.yml` confirme explicitement avec l'utilisateur
+avant tout push**, conformement a la politique d'autonomie du projet (voir
+memoire dediee) qui exclut ce dossier de la zone de confiance automatique.

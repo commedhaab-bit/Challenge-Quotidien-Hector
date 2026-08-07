@@ -301,16 +301,22 @@ const LOCALE_ES = {
     stakeTypes: {
       beerOption: '🍺 Una cerveza',
       customOption: 'Otra...',
+      // Sin emoji (a diferencia de beerOption arriba): se integra directamente
+      // en la frase de la Ardoise (ledgerLineWithStake) - un emoji en medio de
+      // la frase quedaria raro.
       beerLabel: {
-        one: '🍺 Una cerveza',
-        other: '🍺 {{n}} cervezas',
+        one: 'una cerveza',
+        other: '{{n}} cervezas',
       },
     },
     stakeCustomCount: '{{desc}} (x{{n}})',
     createChallengeSubmitBtn: 'Lanzar el reto',
     bilanTitle: 'Balance: {{name}}',
     ledgerTitle: 'Quién le debe qué a quién',
-    ledgerLine: '{{from}} le debe una apuesta a {{to}}',
+    ledgerLineWithStake: '{{from}} le debe {{stake}} a {{to}}',
+    // Repliegue muy raro: apuesta personalizada antigua creada antes de que se
+    // rechazara la descripcion vacia en la validacion.
+    stakeFallback: 'una apuesta',
     honored: '✓ Honrado',
     honorBtn: '¡Apuesta honrada!',
     noStakes: 'Sin apuestas para este reto (modo amistoso, o empate).',

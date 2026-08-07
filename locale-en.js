@@ -300,16 +300,21 @@ const LOCALE_EN = {
     stakeTypes: {
       beerOption: '🍺 A beer',
       customOption: 'Other...',
+      // No emoji (unlike beerOption above): plugged directly into the ledger
+      // sentence (ledgerLineWithStake) - an emoji mid-sentence would read oddly.
       beerLabel: {
-        one: '🍺 A beer',
-        other: '🍺 {{n}} beers',
+        one: 'a beer',
+        other: '{{n}} beers',
       },
     },
     stakeCustomCount: '{{desc}} (x{{n}})',
     createChallengeSubmitBtn: 'Launch the challenge',
     bilanTitle: 'Report: {{name}}',
     ledgerTitle: 'Who owes what to whom',
-    ledgerLine: '{{from}} owes a stake to {{to}}',
+    ledgerLineWithStake: '{{from}} owes {{stake}} to {{to}}',
+    // Very rare fallback: legacy custom stake created before empty descriptions
+    // were rejected at validation.
+    stakeFallback: 'a stake',
     honored: '✓ Honored',
     honorBtn: 'Stake honored!',
     noStakes: 'No stakes for this challenge (friendly mode, or a tie).',

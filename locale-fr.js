@@ -303,16 +303,22 @@ const LOCALE_FR = {
     stakeTypes: {
       beerOption: '🍺 Une bière',
       customOption: 'Autre...',
+      // Sans emoji (contrairement a beerOption ci-dessus) : integree directement
+      // dans la phrase du fil de l Ardoise (ledgerLineWithStake), un emoji en
+      // plein milieu de phrase casserait la lecture.
       beerLabel: {
-        one: '🍺 Une bière',
-        other: '🍺 {{n}} bières',
+        one: 'une bière',
+        other: '{{n}} bières',
       },
     },
     stakeCustomCount: '{{desc}} (x{{n}})',
     createChallengeSubmitBtn: 'Lancer le défi',
     bilanTitle: 'Bilan : {{name}}',
     ledgerTitle: 'Qui doit quoi à qui',
-    ledgerLine: '{{from}} doit un gage à {{to}}',
+    ledgerLineWithStake: '{{from}} doit {{stake}} à {{to}}',
+    // Repli tres rare : gage custom historique cree avant que le champ vide
+    // soit refuse a la validation.
+    stakeFallback: 'un gage',
     honored: '✓ Honoré',
     honorBtn: 'Gage honoré !',
     noStakes: 'Aucun gage pour ce défi (mode amical, ou personne à égalité).',

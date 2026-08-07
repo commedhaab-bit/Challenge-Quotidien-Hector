@@ -2717,7 +2717,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v81'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v82'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -6218,11 +6218,30 @@ const cssText = __rawHtml + __cssSource;
   // participant, au lieu de la valeur NETTE (deja utilisee par le classement juste
   // en dessous depuis le correctif precedent) - desynchronisant visuellement le haut
   // de la carte du classement qui la suit immediatement.
-  const expectedNetHeroTotal = groupDetailChallenge.participants.reduce((s, p) => s + computeGroupParticipantDisplayAmount(p), 0);
+  const netUnflooredHeroTotal = groupDetailChallenge.participants.reduce((s, p) => s + computeGroupParticipantDisplayAmount(p), 0);
   const rawHeroTotal = groupDetailChallenge.participants.reduce((s, p) => s + (p.totalAmount || 0), 0);
-  __assertOk(expectedNetHeroTotal !== rawHeroTotal, 'ce scenario (handicap actif) doit avoir un total net different du total brut, sinon le test ne prouve rien');
-  __assertOk(bouletHtml.includes(t('groups.challengeProgress', { current: expectedNetHeroTotal, target: groupDetailChallenge.targetTotal })), 'le compteur global de la carte hero doit refleter le total NET (avec handicap), pas le total brut de repetitions');
-  console.log('OK: le compteur global de la carte hero du defi actif reflete lui aussi le handicap du Boulet (pas seulement le classement en dessous)');
+  __assertOk(netUnflooredHeroTotal !== rawHeroTotal, 'ce scenario (handicap actif) doit avoir un total net different du total brut, sinon le test ne prouve rien');
+
+  // Bug reel signale (3e ronde) : la ou le classement individuel PEUT (a raison)
+  // afficher une valeur nette negative pour la victime du Boulet, le total
+  // COLLECTIF du groupe, lui, devenait aussi negatif des que personne d autre ne
+  // compensait suffisamment - absurde pour un objectif partage. Chaque
+  // contribution individuelle nette doit desormais etre plafonnee a 0 AVANT
+  // d etre sommee (computeGroupTotalProgress()). Fixtures ISOLEES (pas l etat
+  // accumule du scenario Boulet ci-dessus, ou Bob a deja 30 grace a un test
+  // precedent - le total NET y reste positif malgre le malus de Moi, ce qui ne
+  // prouverait rien ici) :
+  const soloMalusFixture = [{ totalAmount: 10, handicap: 20 }]; // net = -10
+  __assertEq(soloMalusFixture.reduce((s, p) => s + computeGroupParticipantDisplayAmount(p), 0), -10, 'sanity check de la fixture isolee : le net non plafonne doit bien etre negatif');
+  __assertEq(computeGroupTotalProgress(soloMalusFixture), 0, 'le total du groupe ne doit jamais devenir negatif a cause du malus d une seule personne - il reste bloque a 0 tant que ce malus n est pas compense');
+  const mixedMalusFixture = [{ totalAmount: 10, handicap: 20 }, { totalAmount: 15, handicap: 0 }]; // -10 (plafonne a 0) + 15
+  __assertEq(computeGroupTotalProgress(mixedMalusFixture), 15, 'le malus d une personne ne doit jamais faire baisser la contribution des AUTRES membres (contribution individuelle plafonnee a 0, jamais un total global "compense" en negatif)');
+  // Verifie aussi que la carte hero REELLEMENT affichee suit bien cette formule
+  // (pas seulement la fonction pure isolee) - valeur attendue calculee
+  // dynamiquement depuis l etat courant, jamais supposee a l avance.
+  const expectedHeroTotal = computeGroupTotalProgress(groupDetailChallenge.participants);
+  __assertOk(bouletHtml.includes(t('groups.challengeProgress', { current: expectedHeroTotal, target: groupDetailChallenge.targetTotal })), 'le compteur global de la carte hero affiche doit correspondre exactement a computeGroupTotalProgress()');
+  console.log('OK: le total du groupe ne devient jamais negatif a cause d un malus Boulet non compense (reste bloque a 0, sans jamais penaliser les autres membres)');
 
   // Bug reel signale en prod : le nombre affiche pour la victime du Boulet restait
   // le totalAmount BRUT (10 repetitions reellement faites), sans jamais refleter
@@ -6237,6 +6256,19 @@ const cssText = __rawHtml + __cssSource;
   await loadGroupDetail(createdGroupId);
   __assertEq(groupDetailChallenge.participants[0].uid, 'bob-uid', 'Bob (0 repetition, aucun handicap = 0 net) doit desormais devancer la victime du Boulet (10 repetitions mais -20 = -10 net) dans le classement EN DIRECT, pas seulement au reglement final');
   console.log('OK: le classement en direct et le nombre affiche refletent desormais le handicap du Boulet (bug reel corrige)');
+
+  // Une fois le malus COMPENSE par ses propres repetitions (net redevenu positif),
+  // le total du groupe doit recommencer a grimper normalement - exactement le
+  // comportement decrit par l utilisateur ("des que Bob fait sa 21eme pompe").
+  // Etat actuel : bob-uid=0 (aucun handicap), me-uid=10 avec handicap=20 (net=-10).
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid')
+    .set({ totalAmount: 21 }, { merge: true }); // net = 21 - 20 = 1 (positif)
+  await loadGroupDetail(createdGroupId);
+  const recoveredHtml = renderGroupDetailScreen();
+  const recoveredTotal = computeGroupTotalProgress(groupDetailChallenge.participants);
+  __assertEq(recoveredTotal, 1, 'une fois le malus compense (net positif), le total du groupe doit refleter exactement ce depassement (21 - 20 = 1, bob-uid contribuant 0), pas plafonne a 0');
+  __assertOk(recoveredHtml.includes(t('groups.challengeProgress', { current: recoveredTotal, target: groupDetailChallenge.targetTotal })), 'le total du groupe doit recommencer a grimper des que le malus est compense');
+  console.log('OK: le total du groupe recommence a grimper des que la personne penalisee compense son propre malus par ses propres repetitions');
 
   // Regression d un bug reel signale en prod : "je clique sur Le Boulet, rien ne se
   // passe" - en realite le picker s ouvrait bien mais restait VIDE des que
@@ -6421,6 +6453,13 @@ const cssText = __rawHtml + __cssSource;
   const aggregatedHtml = renderGroupDetailScreen();
   __assertOk(aggregatedHtml.includes(tn('groups.stakeTypes.beerLabel', 2)), 'l Ardoise doit afficher "2 bieres" (pluralise), pas 2 lignes separees');
   __assertOk(!aggregatedHtml.includes(tn('groups.stakeTypes.beerLabel', 1)), 'ne doit jamais afficher "1 biere" en plus du total agrege');
+  // Retour utilisateur : le nom du gage doit etre integre DANS la phrase ("doit
+  // 2 bieres a"), pas affiche sur une ligne separee en dessous comme avant -
+  // rank-bar-hint (l ancienne ligne isolee) ne doit plus jamais apparaitre sur
+  // cet ecran (Ardoise), la seule autre chose qui l utilise (par-personne, mode
+  // infini) vit sur l onglet "Defi", pas "Ardoise".
+  __assertOk(aggregatedHtml.includes('doit ' + tn('groups.stakeTypes.beerLabel', 2) + ' à'), 'le libelle du gage doit etre integre directement dans la phrase ("doit 2 bieres a"), pas isole en dessous');
+  __assertOk(!aggregatedHtml.includes('rank-bar-hint'), 'l ancienne ligne isolee sous chaque gage (rank-bar-hint) ne doit plus jamais apparaitre dans l Ardoise');
 
   // honorLedgerEntries() honore les 2 gages agreges EN UN SEUL geste (1 clic honore
   // tout le "paquet" de bieres identiques).

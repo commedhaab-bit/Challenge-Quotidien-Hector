@@ -5234,7 +5234,10 @@ async function loadActiveExerciseGroupChallenges(slug) {
   try {
     const results = await Promise.all(matches.map(async (m) => {
       const participantsSnap = await db.collection('groups').doc(m.groupId).collection('challenges').doc(m.challengeId).collection('participants').get();
-      const currentTotal = participantsSnap.docs.reduce((sum, d) => sum + (d.data().totalAmount || 0), 0);
+      // Meme definition du total collectif que la carte hero de l ecran Groupes
+      // (computeGroupTotalProgress()) - sinon cette mini-barre (fiche exercice)
+      // et la carte hero afficheraient 2 totaux differents pour le MEME defi.
+      const currentTotal = computeGroupTotalProgress(participantsSnap.docs.map((d) => d.data()));
       const group = myGroups.find((g) => g.groupId === m.groupId);
       return { groupId: m.groupId, challengeId: m.challengeId, groupName: group ? group.name : '', targetTotal: m.targetTotal || 0, currentTotal };
     }));
@@ -7666,6 +7669,21 @@ function computeGroupParticipantDisplayAmount(p) {
   return (p.totalAmount || 0) - (p.handicap || 0);
 }
 
+// Retour utilisateur : un malus Boulet en tout debut de defi (net negatif)
+// affichait un total de GROUPE negatif (ex: -20, soit -40% de la cible), ce qui
+// n'a pas de sens pour un objectif collectif. Chaque contribution individuelle
+// NETTE est desormais plafonnee a 0 avant d'etre sommee : un handicap de depart
+// neutralise juste la contribution de cette personne (jamais un total de
+// groupe negatif), qui ne recommence a grimper qu'une fois son propre handicap
+// compense par ses propres repetitions. Distincte de
+// computeGroupParticipantDisplayAmount() ci-dessus (classement individuel, qui
+// LUI reste negatif a dessein - on veut voir que Bob est "en dette"). Meme
+// formule que computeGroupTotalProgress() cote Cloud Function (volontairement
+// dupliquee : aucun import possible entre index.html et functions/index.js).
+function computeGroupTotalProgress(participants) {
+  return participants.reduce((sum, p) => sum + Math.max(0, computeGroupParticipantDisplayAmount(p)), 0);
+}
+
 // Ligne d'un participant a un defi de groupe (classement OU bilan) : PAS de bouton
 // kudos (contrairement a renderLeaderboardRow(), sans rapport avec cette fonctionnalite).
 function renderGroupParticipantRow(p, rank, highlight) {
@@ -7796,9 +7814,14 @@ function groupLedgerEntriesForDisplay(entries) {
   return order.map((key) => groups.get(key));
 }
 
-// Rendu partage d'une ligne de gage groupe (from doit un gage a to, + libelle
-// du gage) - utilise par la liste detaillee (avec bouton "honorer") ET par le
-// resume des soldes nets ci-dessous (sans action, purement informatif).
+// Rendu partage d'une ligne de gage groupe - utilise par la liste detaillee
+// (avec bouton "honorer") ET par le resume des soldes nets ci-dessous (sans
+// action, purement informatif). Retour utilisateur : le nom du gage est
+// desormais integre directement dans la phrase ("Hector doit une bière à
+// Bob") plutot qu'affiche a part en dessous - et cumule intelligemment
+// ("Hector doit 2 bières à Bob" si 2 gages identiques en attente, deja
+// regroupes par groupLedgerEntriesForDisplay()/computeGroupNetBalances()
+// avant meme d'arriver ici, voir g.count).
 function renderLedgerRow(nameById, g, actionHtml) {
   const fromName = escapeHtml(nameById[g.fromUid] || '?');
   const toName = escapeHtml(nameById[g.toUid] || '?');
@@ -7807,12 +7830,17 @@ function renderLedgerRow(nameById, g, actionHtml) {
   const stakeLabel = g.stakeType === 'beer'
     ? tn('groups.stakeTypes.beerLabel', g.count)
     : (g.count > 1 ? t('groups.stakeCustomCount', { desc: g.stakeDescription, n: g.count }) : g.stakeDescription);
+  // Repli tres rare (gage custom historique, cree avant que le champ vide soit
+  // refuse a la validation - voir "gage custom vide refuse" plus haut dans le
+  // code) : garde une phrase grammaticalement correcte plutot qu un trou vide.
+  const sentence = t('groups.ledgerLineWithStake', {
+    from: fromName, to: toName, stake: escapeHtml(stakeLabel || t('groups.stakeFallback')),
+  });
   return `
     <div class="leaderboard-row">
-      <span class="leaderboard-name">${t('groups.ledgerLine', { from: fromName, to: toName })}</span>
+      <span class="leaderboard-name">${sentence}</span>
       ${actionHtml || ''}
     </div>
-    ${stakeLabel ? `<div class="rank-bar-hint">${escapeHtml(stakeLabel)}</div>` : ''}
   `;
 }
 
@@ -7945,12 +7973,13 @@ function renderGroupDetailScreen() {
     challengeHtml = renderGroupsEmptyState('🏁', t('groups.noChallenge'),
       `<button class="groups-empty-btn" onclick="creatingGroupChallenge = true; render(true);">${t('groups.createChallengeBtn')}</button>`);
   } else if (groupDetailChallenge.status === 'active') {
-    // Bug reel signale : sommait le totalAmount BRUT de chaque participant, sans
-    // tenir compte du handicap Boulet - le compteur/pourcentage en haut de la carte
-    // hero desynchronisait alors du classement juste en dessous (qui, lui, utilise
-    // deja computeGroupParticipantDisplayAmount() net du handicap). Meme formule
-    // partout desormais.
-    const total = groupDetailChallenge.participants.reduce((s, p) => s + computeGroupParticipantDisplayAmount(p), 0);
+    // Bug reel signale (2e ronde) : le total plafonnait deja au net du handicap
+    // (voir computeGroupParticipantDisplayAmount()), mais un handicap non
+    // compense en debut de defi rendait ce total NEGATIF (-20, soit -40% de la
+    // cible) - absurde pour une progression collective. Chaque contribution
+    // individuelle nette est desormais plafonnee a 0 avant d'etre sommee, voir
+    // computeGroupTotalProgress().
+    const total = computeGroupTotalProgress(groupDetailChallenge.participants);
     const target = groupDetailChallenge.targetTotal || 0;
     // Defi "Mode infini" (targetTotal:0) : aucune cible chiffree, donc ni
     // pourcentage ni barre de progression n'ont de sens - le classement se fait
