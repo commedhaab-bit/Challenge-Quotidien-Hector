@@ -4281,3 +4281,67 @@ CACHE_NAME -> v94 (contenu des `locale-*.js` modifie - nouvelles cles
 `kilo.home.kudoReceived`/`kilo.home.friendBigMove`). Aucun changement de
 regles Firestore/Cloud Functions - modification 100% cote client, aucune
 touche a `functions/**`.
+
+## Idees bonus Kilo, lot 5/7 (#13 accessoires saisonniers + #18 rappel d'anniversaire de compte)
+
+**#13 - `computeSeasonalAccessory(date, accountCreatedAt)`** : 3 nouveaux
+accessoires (`santa_hat`/`summer_sunglasses`/`birthday_hat`, ajoutes a
+`KILO_ACCESSORY_SVG` - formes simples/couleurs en dur, meme style que
+medal/belt/cape) **deliberement HORS de `ACCESSORY_DEFS`/`unlockedAccessories`** :
+pas un deblocage permanent a ceremonie (popup) une seule fois dans la vie du
+compte, juste un signe des temps porte automatiquement pendant la periode
+concernee - recalcule a CHAQUE affichage, jamais persiste. Fonction PURE
+(dates en parametres, jamais `new Date()` en interne). Priorite documentee (un
+seul accessoire saisonnier a la fois) : anniversaire de compte (evenement
+personnel, le plus rare) > Noel (20-31 decembre) > ete (juin-aout). **Purement
+additif a l'accessoire PERMANENT deja equipe** (`[kiloHomeEquipped,
+kiloHomeSeasonal].filter(Boolean)`, `render()`) - jamais un remplacement : les
+2 occupent des zones visuelles differentes (tete pour les 3 nouveaux vs
+torse/dos pour medal/belt/cape), peuvent donc se superposer sans collision.
+
+**#18 - `computeAccountAnniversaryYears(date, accountCreatedAt)`** +
+`maybeQueueAccountAnniversaryReaction()` : reutilise TEL QUEL le mecanisme
+`kiloPendingSocialReaction` deja etabli pour les idees #9/#10 (voir lot 4/7) -
+si aujourd'hui est le jour anniversaire du compte (meme mois/jour qu'
+`currentUser.metadata.creationTime`, JAMAIS le jour de creation lui-meme -
+annee differente exigee), met en file `{key:'kilo.home.accountAnniversary',
+params:{yearsLabel}}`. **Implementation 100% client-side** (pas de 2e Cloud
+Function) : `currentUser.metadata.creationTime` (champ standard Firebase
+Auth) est deja disponible sans aucune lecture Firestore supplementaire -
+evite d'etendre `functions/**` pour un simple rappel. Appelee UNE FOIS par
+demarrage (`continueStartApp()`, juste avant le `render()` final) - **aucune
+garde "deja affiche aujourd'hui" persistee** (simplification volontaire
+assumee) : un simple message dans une bulle d'accueil, pas un popup
+bloquant, sans consequence reelle si l'utilisateur rouvre l'appli plusieurs
+fois le jour J.
+
+**`{{yearsLabel}}` deja pluralise AVANT interpolation** (`tn('kilo.home.accountAnniversaryYears',
+years, {n: years})`, ex. "1 an"/"3 ans") : `pickKiloLine()` n'interpole que
+des chaines DEJA resolues (`t()`, jamais `tn()`) - aucun support natif de
+pluralisation `{one,other}` a l'interieur d'une variante de punchline
+existant deja, donc la pluralisation est faite en amont, une seule fois,
+plutot que d'etendre `pickKiloLine()` pour ce seul besoin.
+
+**`currentUser?.metadata?.creationTime`** (optional chaining) - les objets
+utilisateur factices du harnais de test (`{uid, displayName, email,
+photoURL}`, partout dans `tests/app.test.js`) n'ont jamais de champ
+`metadata` : deja verifie implicitement par l'ensemble de la suite existante
+(des dizaines de rendus de l'accueil sans jamais planter), et explicitement
+par un test dedie de `maybeQueueAccountAnniversaryReaction()`.
+
+**Piege de test evite (deja documente ailleurs pour `computeKiloMood()`/
+`today.getHours()`)** : `today` (la date reelle du jour, lue dans `render()`)
+n'est pas mockable depuis le harnais de test - les tests de
+`computeSeasonalAccessory()`/`computeAccountAnniversaryYears()` restent donc
+scopes aux fonctions PURES elles-memes (dates fixes en parametres,
+deterministe), jamais a travers un vrai `render()` de l'accueil. Le test de
+`maybeQueueAccountAnniversaryReaction()`, lui, CONSTRUIT sa date de creation
+de compte **en relatif a `new Date()` au moment du test** (ex. "il y a
+exactement 3 ans, jour pour jour") plutot qu'une date calendaire fixe -
+reste deterministe quel que soit le jour reel d'execution du test, sans
+avoir besoin de mocker `Date`.
+
+CACHE_NAME -> v95 (contenu des `locale-*.js` modifie - nouvelles cles
+`kilo.home.accountAnniversary`/`kilo.home.accountAnniversaryYears`). Aucun
+changement de regles Firestore/Cloud Functions - modification 100% cote
+client, aucune touche a `functions/**`.

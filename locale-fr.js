@@ -258,6 +258,17 @@ const LOCALE_FR = {
         '{{name}} est en feu sur {{exercise}} en ce moment. Tu vas laisser passer ça ?',
         'Gros coup de {{name}} sur {{exercise}} ! Ça sent la compétition amicale.',
       ],
+      // Idee bonus #18 (retour utilisateur) : rappel d'anniversaire de compte
+      // - {{yearsLabel}} deja pluralise via accountAnniversaryYears (tn()).
+      accountAnniversaryYears: {
+        one: '1 an',
+        other: '{{n}} ans',
+      },
+      accountAnniversary: [
+        "Déjà {{yearsLabel}} qu'on trime ensemble, toi et moi ! Joyeux anniversaire de compte.",
+        "{{yearsLabel}} avec Kilito à tes côtés. Le temps passe vite quand on soulève des trucs.",
+        'Anniversaire de compte : {{yearsLabel}} ! On continue sur cette lancée ?',
+      ],
     },
     // Cosmetiques de Kilo (chantier gamification Phase 3) - id = cle dans
     // ACCESSORY_DEFS/KILO_ACCESSORY_SVG, texte canonique francais repris via

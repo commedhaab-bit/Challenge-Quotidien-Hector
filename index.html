@@ -4762,6 +4762,43 @@ function computeEquippedAccessory(unlocked) {
   return null;
 }
 
+// Idee bonus #13 (retour utilisateur, accessoires saisonniers) : 3 accessoires
+// TEMPORAIRES, delibrement HORS de ACCESSORY_DEFS/unlockedAccessories - pas un
+// deblocage permanent a ceremonie (popup) une seule fois dans la vie du
+// compte, juste un signe des temps porte automatiquement pendant la periode
+// concernee, recalcule a chaque fois (jamais persiste). Fonction PURE :
+// toutes les dates sont des parametres, jamais new Date() lu en interne -
+// testable de facon deterministe. `accountCreatedAt` peut etre absent/invalide
+// (voir currentUser.metadata, absent des objets utilisateur factices des
+// tests) : traite alors simplement comme "pas d'anniversaire aujourd'hui".
+// Priorite documentee (un seul accessoire saisonnier a la fois) :
+// anniversaire de compte (evenement personnel, le plus rare) > Noel > ete.
+function computeSeasonalAccessory(date, accountCreatedAt) {
+  if (
+    accountCreatedAt &&
+    date.getMonth() === accountCreatedAt.getMonth() &&
+    date.getDate() === accountCreatedAt.getDate() &&
+    date.getFullYear() !== accountCreatedAt.getFullYear()
+  ) {
+    return 'birthday_hat';
+  }
+  if (date.getMonth() === 11 && date.getDate() >= 20) return 'santa_hat'; // 20-31 decembre
+  if (date.getMonth() >= 5 && date.getMonth() <= 7) return 'summer_sunglasses'; // juin-aout
+  return null;
+}
+
+// Idee bonus #18 (retour utilisateur, rappel d'anniversaire de compte) :
+// nombre d'annees pleines ecoulees si AUJOURD'HUI est le jour anniversaire de
+// creation du compte (meme mois/jour, annee differente - jamais le jour de
+// creation lui-meme), sinon null. Fonction PURE, meme convention que
+// computeSeasonalAccessory() ci-dessus (dates en parametres).
+function computeAccountAnniversaryYears(date, accountCreatedAt) {
+  if (!accountCreatedAt) return null;
+  if (date.getMonth() !== accountCreatedAt.getMonth() || date.getDate() !== accountCreatedAt.getDate()) return null;
+  const years = date.getFullYear() - accountCreatedAt.getFullYear();
+  return years > 0 ? years : null;
+}
+
 function showToast(html, duration = 2600) {
   let el = document.getElementById('toast');
   if (!el) {
@@ -6260,10 +6297,18 @@ function render(animate) {
     // cette 1ere version (le mecanisme accessories de renderKilo() peut etre
     // reutilise ailleurs plus tard, ex: la fiche d'exercice, sans changement).
     const kiloHomeEquipped = computeEquippedAccessory(unlockedAccessories);
+    // Idee bonus #13 (retour utilisateur, accessoires saisonniers) : purement
+    // additif a l'accessoire permanent ci-dessus (jamais un remplacement) -
+    // les 2 occupent des zones visuelles differentes (torse/dos vs tete), voir
+    // KILO_ACCESSORY_SVG. currentUser.metadata est absent sur les faux
+    // utilisateurs de test (voir computeSeasonalAccessory()) : accede en toute
+    // securite via l'optional chaining, jamais de throw si absent.
+    const kiloHomeSeasonal = computeSeasonalAccessory(today, currentUser?.metadata?.creationTime ? new Date(currentUser.metadata.creationTime) : null);
+    const kiloHomeAccessories = [kiloHomeEquipped, kiloHomeSeasonal].filter(Boolean);
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
-        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}${Date.now() < kiloHomeFidgetUntil ? ' fidgeting' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMoodDisplay, { size: 72, accessories: kiloHomeEquipped ? [kiloHomeEquipped] : [] })}</div>
+        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}${Date.now() < kiloHomeFidgetUntil ? ' fidgeting' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMoodDisplay, { size: 72, accessories: kiloHomeAccessories })}</div>
         <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>
       ${!kiloMuted && kiloHomeBubbleTextDisplay ? `<div class="kilo-home-bubble" onclick="kiloHomeTap()">${escapeHtml(kiloHomeBubbleTextDisplay)}</div>` : ''}
@@ -8198,6 +8243,34 @@ const KILO_ACCESSORY_SVG = {
       '<path d="M -50 -25 Q 0 -45 50 -25 L 65 60 Q 0 40 -65 60 Z" fill="#ef4444" stroke="#b91c1c" stroke-width="2"/>' +
       '<path d="M -50 -25 Q 0 -45 50 -25 L 46 -12 Q 0 -28 -46 -12 Z" fill="#fbbf24"/>',
   },
+  // Idee bonus #13 (accessoires saisonniers, retour utilisateur) : 3
+  // accessoires supplementaires, memes formes simples/couleurs en dur que les
+  // 3 ci-dessus (pas de gradient). Coordonnees calees sur la tete des etats
+  // les plus courants (idle/success, tete ~ x:-48..48, y:-20..20 - meme
+  // limite deja assumee/documentee pour medal/belt/cape : leger decalage
+  // possible sur les etats au torse/tete deplace, non verifiable par le
+  // harnais de test, a confirmer visuellement).
+  santa_hat: {
+    behindBody: false,
+    markup:
+      '<path d="M -35 -18 L 8 -56 L 40 -20 Z" fill="#dc2626" stroke="#991b1b" stroke-width="1.5"/>' +
+      '<rect x="-38" y="-23" width="76" height="10" rx="5" fill="#f8fafc"/>' +
+      '<circle cx="8" cy="-56" r="7" fill="#f8fafc"/>',
+  },
+  summer_sunglasses: {
+    behindBody: false,
+    markup:
+      '<rect x="-27" y="-2" width="54" height="14" rx="7" fill="#0f172a" stroke="#facc15" stroke-width="2"/>' +
+      '<line x1="-3" y1="5" x2="3" y2="5" stroke="#facc15" stroke-width="2"/>',
+  },
+  birthday_hat: {
+    behindBody: false,
+    markup:
+      '<path d="M -25 -18 L 0 -58 L 25 -18 Z" fill="#a855f7" stroke="#7e22ce" stroke-width="1.5"/>' +
+      '<path d="M -18 -34 L 18 -34 L 13 -20 L -13 -20 Z" fill="#facc15"/>' +
+      '<rect x="-28" y="-21" width="56" height="8" rx="4" fill="#f8fafc"/>' +
+      '<circle cx="0" cy="-58" r="6" fill="#f472b6"/>',
+  },
 };
 
 function renderKilo(state, options) {
@@ -9475,10 +9548,38 @@ async function continueStartApp() {
   // Rattrapage natif inclus : les notifications non lues reçues hors ligne se
   // déclenchent exactement comme celles reçues en direct, dès ce premier instantané.
   startNotificationsListener();
+  // Idee bonus #18 (retour utilisateur) : verification client-side, une seule
+  // fois par demarrage - voir maybeQueueAccountAnniversaryReaction() plus bas.
+  // Simplification volontaire assumee : pas de garde "deja affiche aujourd'hui"
+  // persistee - un simple message dans une bulle (pas un popup bloquant), sans
+  // consequence reelle si l'utilisateur rouvre l'appli plusieurs fois le jour J.
+  maybeQueueAccountAnniversaryReaction();
   // loadState() se termine par un render() interne, mais avec l'ancien activeToday
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).
   render();
+}
+
+// Idee bonus #18 (retour utilisateur, rappel d'anniversaire de compte) :
+// calcule via computeAccountAnniversaryYears() (fonction pure, testee
+// separement) et met en file la reaction correspondante, reutilisant TEL
+// QUEL le mecanisme deja etabli pour les idees #9/#10 (kiloPendingSocialReaction,
+// consomme une fois par le prochain render() de l'accueil). Choix
+// d'implementation client-side pur (currentUser.metadata.creationTime, deja
+// disponible sans lecture Firestore supplementaire) plutot qu'une 2e Cloud
+// Function dediee, pour ne pas etendre `functions/**` pour un simple rappel.
+function maybeQueueAccountAnniversaryReaction() {
+  if (!currentUser?.metadata?.creationTime) return;
+  const years = computeAccountAnniversaryYears(new Date(), new Date(currentUser.metadata.creationTime));
+  if (years) {
+    // yearsLabel deja pluralise (tn(), "1 an" vs "{{n}} ans") - pickKiloLine()
+    // n'interpole que des chaines deja resolues, aucun support de pluralisation
+    // {one,other} a l'interieur d'une variante de punchline.
+    kiloPendingSocialReaction = {
+      key: 'kilo.home.accountAnniversary',
+      params: { yearsLabel: tn('kilo.home.accountAnniversaryYears', years, { n: years }) },
+    };
+  }
 }
 
 // Micro-interaction : légère vibration sur chaque tap d'élément interactif

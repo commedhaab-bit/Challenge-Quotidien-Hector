@@ -256,6 +256,17 @@ const LOCALE_ES = {
         '{{name}} está en llamas con {{exercise}} ahora mismo. ¿Vas a dejarlo pasar?',
         '¡Buen golpe de {{name}} en {{exercise}}! Esto huele a competencia amistosa.',
       ],
+      // Idea extra #18: recordatorio de aniversario de cuenta - {{yearsLabel}}
+      // ya pluralizado via accountAnniversaryYears (tn()).
+      accountAnniversaryYears: {
+        one: '1 año',
+        other: '{{n}} años',
+      },
+      accountAnniversary: [
+        '¡Ya son {{yearsLabel}} entrenando juntos! Feliz aniversario de cuenta.',
+        '{{yearsLabel}} con Kilito a tu lado. El tiempo vuela cuando levantas cosas.',
+        'Aniversario de cuenta: ¡{{yearsLabel}}! ¿Seguimos con esta racha?',
+      ],
     },
     // Cosmeticos de Kilo (Fase 3 de gamificacion) - id = clave en
     // ACCESSORY_DEFS/KILO_ACCESSORY_SVG, texto canonico frances retomado via

@@ -1659,6 +1659,48 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(computeEquippedAccessory(['cape', 'medal']), 'cape', 'l ordre du tableau ne doit pas influencer le resultat, seul le prestige compte');
   console.log('OK: computeEquippedAccessory() (equipement v1 - le plus prestigieux parmi les accessoires debloques)');
 
+  // Idee bonus #13 (retour utilisateur, accessoires saisonniers) :
+  // computeSeasonalAccessory() - fonction PURE, 3 accessoires TEMPORAIRES
+  // (jamais dans ACCESSORY_DEFS/unlockedAccessories), priorite documentee
+  // anniversaire > Noel > ete.
+  __assertEq(computeSeasonalAccessory(new Date(2024, 11, 25), null), 'santa_hat', '25 decembre -> bonnet de Noel');
+  __assertEq(computeSeasonalAccessory(new Date(2024, 11, 20), null), 'santa_hat', '20 decembre (borne basse incluse) -> bonnet de Noel');
+  __assertEq(computeSeasonalAccessory(new Date(2024, 11, 19), null), null, '19 decembre (juste avant la borne) -> aucun accessoire saisonnier');
+  __assertEq(computeSeasonalAccessory(new Date(2024, 5, 1), null), 'summer_sunglasses', '1er juin (borne basse incluse) -> lunettes d ete');
+  __assertEq(computeSeasonalAccessory(new Date(2024, 7, 31), null), 'summer_sunglasses', '31 aout (borne haute incluse) -> lunettes d ete');
+  __assertEq(computeSeasonalAccessory(new Date(2024, 8, 1), null), null, '1er septembre (juste apres la borne) -> aucun accessoire saisonnier');
+  __assertEq(computeSeasonalAccessory(new Date(2024, 2, 15), null), null, '15 mars sans date de creation de compte -> aucun accessoire saisonnier');
+  __assertEq(computeSeasonalAccessory(new Date(2024, 2, 15), new Date(2020, 2, 15)), 'birthday_hat', 'meme mois/jour qu une annee de creation anterieure -> chapeau d anniversaire');
+  __assertEq(computeSeasonalAccessory(new Date(2020, 2, 15), new Date(2020, 2, 15)), null, 'le jour de creation LUI-MEME (meme annee) ne doit jamais compter comme un anniversaire');
+  __assertEq(computeSeasonalAccessory(new Date(2024, 11, 25), new Date(2020, 11, 25)), 'birthday_hat', 'anniversaire de compte le jour de Noel -> priorite au chapeau d anniversaire, pas au bonnet de Noel');
+  console.log('OK: computeSeasonalAccessory() (idee bonus #13 - Noel/ete/anniversaire de compte, priorite documentee)');
+
+  // Idee bonus #18 (retour utilisateur, rappel d'anniversaire de compte) :
+  // computeAccountAnniversaryYears() - fonction PURE.
+  __assertEq(computeAccountAnniversaryYears(new Date(2024, 2, 15), new Date(2020, 2, 15)), 4, '4 annees pleines ecoulees, meme mois/jour -> 4');
+  __assertEq(computeAccountAnniversaryYears(new Date(2020, 2, 15), new Date(2020, 2, 15)), null, 'le jour de creation lui-meme (meme annee) ne doit jamais renvoyer d annee');
+  __assertEq(computeAccountAnniversaryYears(new Date(2024, 2, 16), new Date(2020, 2, 15)), null, 'un jour de decalage (16 au lieu de 15) ne doit jamais declencher');
+  __assertEq(computeAccountAnniversaryYears(new Date(2024, 2, 15), null), null, 'sans date de creation, jamais d anniversaire');
+  console.log('OK: computeAccountAnniversaryYears() (idee bonus #18)');
+
+  // maybeQueueAccountAnniversaryReaction() : integration reelle, construite en
+  // RELATIF a "maintenant" (jamais une date calendaire fixe) pour rester
+  // deterministe quel que soit le jour reel d execution du test.
+  const nowForAnniversaryTest = new Date();
+  const anniversaryCreationDate = new Date(nowForAnniversaryTest.getFullYear() - 3, nowForAnniversaryTest.getMonth(), nowForAnniversaryTest.getDate());
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '', metadata: { creationTime: anniversaryCreationDate.toISOString() } };
+  kiloPendingSocialReaction = null;
+  maybeQueueAccountAnniversaryReaction();
+  __assertEq(kiloPendingSocialReaction, { key: 'kilo.home.accountAnniversary', params: { yearsLabel: tn('kilo.home.accountAnniversaryYears', 3, { n: 3 }) } }, 'un compte cree il y a exactement 3 ans (jour pour jour) doit mettre en file le rappel d anniversaire');
+  kiloPendingSocialReaction = null;
+
+  // Sans metadata (objets utilisateur factices des tests, comme currentUser
+  // l est ailleurs dans ce fichier) : ne doit jamais planter, ni rien mettre en file.
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  maybeQueueAccountAnniversaryReaction();
+  __assertEq(kiloPendingSocialReaction, null, 'sans metadata.creationTime (objet utilisateur factice), aucune reaction ne doit etre mise en file, sans jamais planter');
+  console.log('OK: maybeQueueAccountAnniversaryReaction() (idee bonus #18 - integration reelle, jamais de crash sans metadata)');
+
   // renderKilo({accessories}) : chaque accessoire est une couche SVG
   // independante, dans le bon ordre de peinture (la cape DERRIERE le corps,
   // la medaille/ceinture DEVANT).
@@ -1673,6 +1715,18 @@ const cssText = __rawHtml + __cssSource;
   const svgWithAll = renderKilo('idle', { accessories: ['medal', 'belt', 'cape'] });
   __assertOk(svgWithAll.includes('kilo-accessory-medal') && svgWithAll.includes('kilo-accessory-belt') && svgWithAll.includes('kilo-accessory-cape'), 'plusieurs accessoires doivent pouvoir etre superposes simultanement');
   console.log('OK: renderKilo({accessories}) superpose les accessoires en couches independantes, dans le bon ordre de peinture');
+
+  // Idee bonus #13 : les 3 nouveaux accessoires saisonniers doivent aussi se
+  // rendre correctement (memes garanties que les 3 accessoires permanents),
+  // et pouvoir se combiner avec un accessoire permanent (zones visuelles
+  // differentes - tete vs torse/dos).
+  for (const seasonalId of ['santa_hat', 'summer_sunglasses', 'birthday_hat']) {
+    const svgSeasonal = renderKilo('idle', { accessories: [seasonalId] });
+    __assertOk(svgSeasonal.includes('kilo-accessory-' + seasonalId), 'l accessoire saisonnier ' + seasonalId + ' doit apparaitre comme couche dediee');
+  }
+  const svgWithPermanentAndSeasonal = renderKilo('idle', { accessories: ['cape', 'santa_hat'] });
+  __assertOk(svgWithPermanentAndSeasonal.includes('kilo-accessory-cape') && svgWithPermanentAndSeasonal.includes('kilo-accessory-santa_hat'), 'un accessoire permanent et un accessoire saisonnier doivent pouvoir se combiner');
+  console.log('OK: les 3 accessoires saisonniers (santa_hat/summer_sunglasses/birthday_hat) se rendent et se combinent avec un accessoire permanent');
 
   // Integration reelle : debloquer un badge de serie via le VRAI flux
   // addSetInner() (n importe lequel des 3 points d appel existants de
@@ -3027,7 +3081,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v94'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v95'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');

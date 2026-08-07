@@ -250,6 +250,17 @@ const LOCALE_EN = {
         '{{name}} is on fire with {{exercise}} right now. Gonna let that slide?',
         'Big move from {{name}} on {{exercise}}! Feels like friendly competition.',
       ],
+      // Bonus idea #18: account anniversary reminder - {{yearsLabel}} already
+      // pluralized via accountAnniversaryYears (tn()).
+      accountAnniversaryYears: {
+        one: '1 year',
+        other: '{{n}} years',
+      },
+      accountAnniversary: [
+        "It's been {{yearsLabel}} of us grinding together! Happy account anniversary.",
+        "{{yearsLabel}} with Kilito by your side. Time flies when you're lifting things.",
+        'Account anniversary: {{yearsLabel}}! Shall we keep the streak going?',
+      ],
     },
     // Kilo cosmetics (gamification Phase 3) - id = key in ACCESSORY_DEFS/
     // KILO_ACCESSORY_SVG, canonical French text mirrored via accessoryLabel()
