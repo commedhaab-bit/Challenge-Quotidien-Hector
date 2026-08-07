@@ -115,6 +115,43 @@ const LOCALE_ES = {
     unitSecLabelLower: 'seg',
     unitRepsLabel: 'reps',
   },
+  // Kilo, coach en tiempo real (retorno de usuario, chantier de gamificacion
+  // Fase 1) - frases en 1a persona. Cada clave resuelve a un ARRAY de
+  // variantes (pickKiloExerciseLine() elige una al azar) - nunca una simple
+  // cadena, incluso con solo 1-2 variantes por ahora.
+  kilo: {
+    exercise: {
+      opening: {
+        notStarted: [
+          '¿Listo? {{target}} es pan comido para ti.',
+          'Vamos allá. Objetivo: {{target}}. No me muevo de aquí.',
+        ],
+        started: [
+          '{{current}}/{{target}}, ¡vas avanzando! Sigue así.',
+          'Nada mal para empezar: {{current}}/{{target}}. ¿Y ahora?',
+          '{{current}}/{{target}}... calentando motores, me gusta.',
+          'Ya estamos en marcha: {{current}}/{{target}}. Un esfuerzo más.',
+        ],
+        almostThere: [
+          '¿{{current}}/{{target}}? ¡Ya casi!',
+          'Un poco más, ¡ya {{current}}/{{target}}!',
+          '{{current}}/{{target}}... ¡siento la meta muy cerca!',
+        ],
+        done: [
+          'Objetivo cumplido, ¡{{current}}/{{target}}! Lo tienes controlado.',
+          '{{current}}/{{target}}, misión cumplida. ¡Bien hecho, campeón!',
+        ],
+      },
+      tapPunchline: [
+        '¡+{{amount}}! Mis músculos crecieron solo con mirarte.',
+        '+{{amount}}, directo a las estadísticas. ¡Otra vez!',
+        '¿+{{amount}}? Intentas impresionarme, admítelo.',
+        '+{{amount}} más. Yo lo apunto todo, ¿eh?',
+        '¡+{{amount}}! Sigue así, creo en ti.',
+        '+{{amount}}... ¡nada mal!',
+      ],
+    },
+  },
   card: {
     hardcoreDone: '🔥 Hardcore completado',
     doneToday: '✓ Completado hoy',

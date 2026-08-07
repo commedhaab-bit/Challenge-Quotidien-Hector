@@ -114,6 +114,42 @@ const LOCALE_EN = {
     unitSecLabelLower: 'sec',
     unitRepsLabel: 'reps',
   },
+  // Kilo, real-time coach (user feedback, gamification Phase 1) - 1st-person
+  // lines. Every key resolves to an ARRAY of variants (pickKiloExerciseLine()
+  // picks one at random) - never a plain string, even with only 1-2 variants.
+  kilo: {
+    exercise: {
+      opening: {
+        notStarted: [
+          "Ready? {{target}} is nothing for you.",
+          "Let's do this. Target: {{target}}. I'm not going anywhere.",
+        ],
+        started: [
+          "{{current}}/{{target}}, making progress! Keep going.",
+          "Not bad for a start: {{current}}/{{target}}. What's next?",
+          "{{current}}/{{target}}... warming up, I like it.",
+          "We're rolling: {{current}}/{{target}}. One more push.",
+        ],
+        almostThere: [
+          "{{current}}/{{target}}? Almost there!",
+          "Just a little more, already {{current}}/{{target}}!",
+          "{{current}}/{{target}}... I can feel the finish line!",
+        ],
+        done: [
+          "Target reached, {{current}}/{{target}}! You've got this.",
+          "{{current}}/{{target}}, mission accomplished. Nice one, champ!",
+        ],
+      },
+      tapPunchline: [
+        "+{{amount}}! My muscles grew just watching you.",
+        "+{{amount}}, straight into the stats. Again!",
+        "+{{amount}}? Trying to impress me, aren't you.",
+        "+{{amount}} more. I'm keeping track, you know.",
+        "+{{amount}}! Keep going, I believe in you.",
+        "+{{amount}}... not bad at all!",
+      ],
+    },
+  },
   card: {
     hardcoreDone: '🔥 Hardcore completed',
     doneToday: '✓ Done today',

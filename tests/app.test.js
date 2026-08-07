@@ -2752,7 +2752,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v87'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v88'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -5309,6 +5309,62 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(customAddBtnCssBlock.includes('rgba(255, 255, 255, 0.08)'), 'le bouton "Ajouter" doit devenir une action secondaire discrete (ghost)');
   __assertOk(!customAddBtnCssBlock.includes('var(--accent)'), 'le bouton "Ajouter" ne doit plus utiliser le vert plein var(--accent) (reserve au CTA principal +5/+10)');
   console.log('OK: hierarchie visuelle ecran execution (+5/+10 CTA principal vert neon, "Ajouter" relegue en action secondaire ghost)');
+
+  // --- Kilo, coach temps reel sur la fiche d'exercice (retour utilisateur,
+  // chantier gamification Phase 1) : paliers de progression (fonction PURE). ---
+  __assertEq(computeKiloExerciseProgressBucket(0, 100, false), 'notStarted', 'aucune repetition encore faite -> notStarted');
+  __assertEq(computeKiloExerciseProgressBucket(30, 100, false), 'started', 'moins de la moitie -> started');
+  __assertEq(computeKiloExerciseProgressBucket(50, 100, false), 'almostThere', 'exactement la moitie -> deja almostThere (borne incluse)');
+  __assertEq(computeKiloExerciseProgressBucket(95, 110, false), 'almostThere', 'scenario type du cahier des charges (95/110)');
+  __assertEq(computeKiloExerciseProgressBucket(100, 100, false), 'done', 'objectif atteint pile -> done');
+  __assertEq(computeKiloExerciseProgressBucket(50, 100, true), 'done', 'entry.done doit l emporter meme si total < target (objectif reduit apres coup)');
+  __assertEq(computeKiloExerciseMood(0, 100, false), 'idle', 'humeur idle tant que l objectif n est pas atteint');
+  __assertEq(computeKiloExerciseMood(100, 100, false), 'success', 'humeur success des que l objectif est atteint');
+  __assertEq(computeKiloExerciseMood(50, 100, true), 'success', 'humeur success si done, meme total < target');
+  console.log('OK: computeKiloExerciseProgressBucket()/computeKiloExerciseMood() (paliers purs, testes independamment de la replique aleatoire)');
+
+  // --- Bulle d'ouverture : replique basee sur la progression, choisie parmi les
+  // variantes de la cle du bon palier (voir pickKiloExerciseLine()). ---
+  activeToday = new Set([pompes.id]);
+  state.challenges[pompes.id] = { sets: [], targetOverride: 110, done: false, hardcoreDone: false, hardcoreAnnounced: false };
+  await pickChallenge(pompes.id);
+  let expectedVariants = t('kilo.exercise.opening.notStarted').map((v) => interpolate(v, { current: 0, target: 110 }));
+  __assertOk(expectedVariants.includes(exerciseKiloBubbleText), 'a l ouverture sans aucune repetition, la bulle doit afficher une variante "notStarted" avec le bon objectif');
+
+  state.challenges[pompes.id] = { sets: [95], targetOverride: 110, done: false, hardcoreDone: false, hardcoreAnnounced: false };
+  await pickChallenge(pompes.id);
+  expectedVariants = t('kilo.exercise.opening.almostThere').map((v) => interpolate(v, { current: 95, target: 110 }));
+  __assertOk(expectedVariants.includes(exerciseKiloBubbleText), 'a 95/110 (exemple du cahier des charges), la bulle doit afficher une variante "almostThere" avec les nombres exacts');
+  render(false);
+  const exerciseScreenHtmlForKilo = document.getElementById('app').innerHTML;
+  __assertOk(exerciseScreenHtmlForKilo.includes('active-header-row') && exerciseScreenHtmlForKilo.includes('kilo-exercise-slot') && exerciseScreenHtmlForKilo.includes('kilo-exercise-bubble'), 'Kilo et sa bulle doivent bien apparaitre dans le bloc titre de la fiche d exercice');
+  __assertOk(exerciseScreenHtmlForKilo.includes(escapeHtml(exerciseKiloBubbleText)), 'le texte affiche doit correspondre exactement a la replique resolue');
+  console.log('OK: bulle d ouverture de Kilo basee sur la progression (variantes dynamisees avec les nombres exacts)');
+
+  // --- A chaque tap (+5/+10/...), Kilo flashe en 'success' et la bulle se met a
+  // jour avec une punchline dynamisee par le montant ajoute - independamment de
+  // l objectif du jour (une serie qui n acheve pas encore l objectif merite quand
+  // meme une reaction). ---
+  state.challenges[pompes.id] = { sets: [], targetOverride: 110, done: false, hardcoreDone: false, hardcoreAnnounced: false };
+  await pickChallenge(pompes.id);
+  await addSet(10);
+  expectedVariants = t('kilo.exercise.tapPunchline').map((v) => interpolate(v, { amount: 10 }));
+  __assertOk(expectedVariants.includes(exerciseKiloBubbleText), 'apres un tap +10, la bulle doit afficher une punchline dynamisee avec le montant exact ajoute');
+  render(false);
+  const flashHtml = document.getElementById('app').innerHTML;
+  const flashKiloIdx = flashHtml.indexOf('kilo-exercise-slot');
+  __assertOk(flashHtml.slice(flashKiloIdx, flashKiloIdx + 400).includes('kilo-success'), 'juste apres un tap, Kilo doit flasher en etat "success" (motive), meme si l objectif du jour est encore loin');
+
+  // Simule l expiration de la fenetre de flash (sans attendre reellement 1.6s) :
+  // l humeur doit alors retomber sur celle calculee par computeKiloExerciseMood().
+  exerciseKiloFlashUntil = 0;
+  render(false);
+  const afterFlashHtml = document.getElementById('app').innerHTML;
+  const afterFlashKiloIdx = afterFlashHtml.indexOf('kilo-exercise-slot');
+  __assertOk(afterFlashHtml.slice(afterFlashKiloIdx, afterFlashKiloIdx + 400).includes('kilo-idle'), 'une fois le flash expire, Kilo doit revenir a l humeur stable (idle, objectif encore loin - 10/110)');
+  console.log('OK: chaque tap declenche un flash motive de Kilo + une punchline dynamisee, qui retombe sur l humeur stable une fois le flash expire');
+
+  currentChallengeId = null;
 
   // --- 160. i18n batch 2/7 : navigation (tab-bar) + ecran Parametres + selecteur de
   // langue -- 1er ecran migre bout-en-bout pour valider le mecanisme en conditions

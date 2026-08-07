@@ -117,6 +117,43 @@ const LOCALE_FR = {
     unitSecLabelLower: 'sec',
     unitRepsLabel: 'reps',
   },
+  // Kilo, coach temps reel (retour utilisateur, chantier gamification Phase 1) -
+  // repliques a la 1ere personne. Chaque cle resout vers un TABLEAU de variantes
+  // (pickKiloExerciseLine() en pioche une au hasard) - jamais une simple chaine,
+  // meme quand il n'y a qu'1-2 variantes pour l'instant.
+  kilo: {
+    exercise: {
+      opening: {
+        notStarted: [
+          "Alors, on s'y met ? {{target}}, c'est du gâteau pour toi.",
+          "Prêt·e ? Objectif : {{target}}. Je ne bouge pas d'ici.",
+        ],
+        started: [
+          "{{current}}/{{target}}, ça avance ! Continue comme ça.",
+          "Pas mal pour un début : {{current}}/{{target}}. La suite ?",
+          "{{current}}/{{target}}... tu chauffes les moteurs, j'aime ça.",
+          "On est lancés : {{current}}/{{target}}. Encore un effort.",
+        ],
+        almostThere: [
+          "{{current}}/{{target}} ? On y est presque !",
+          "Plus qu'un petit effort, {{current}}/{{target}} déjà !",
+          "{{current}}/{{target}}... je sens l'objectif tout proche !",
+        ],
+        done: [
+          "Objectif atteint, {{current}}/{{target}} ! Tu gères.",
+          "{{current}}/{{target}}, mission accomplie. Bravo, champion !",
+        ],
+      },
+      tapPunchline: [
+        "+{{amount}} ! Mes muscles ont poussé rien qu'en te regardant.",
+        "+{{amount}}, direct dans les stats. Encore !",
+        "+{{amount}} ? Tu essaies de m'impressionner, avoue.",
+        "+{{amount}} de plus. Je note tout, moi.",
+        "+{{amount}} ! Continue, je crois en toi.",
+        "+{{amount}}... pas mal du tout !",
+      ],
+    },
+  },
   card: {
     hardcoreDone: '🔥 Hardcore complété',
     doneToday: "✓ Terminé aujourd'hui",

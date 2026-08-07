@@ -3847,3 +3847,76 @@ meme pattern que les autres tests bases sur `confirmModal()`).
 
 CACHE_NAME -> v87. Aucun changement de regles Firestore/Cloud Functions -
 modification 100% cote client, aucune touche a `functions/**`.
+
+
+## Kilo, coach temps reel sur la fiche d'exercice (chantier gamification, Phase 1)
+
+Premiere etape d'un chantier plus large (moteur d'humeur global, bulles de
+dialogue sur l'accueil, cosmetiques debloquables - voir le plan
+`generic-riding-gizmo.md` pour les Phases 2/3, feuille de route non
+construite pour l'instant). Cette Phase 1 place Kilo comme "coach temps reel"
+sur la fiche d'exercice, a droite du bloc titre/stats.
+
+**Layout** : `.active-name`/`.weight-row`/`.arm-mode-sentence`/`.stats-row`
+(inchanges) sont desormais enveloppes dans `.active-header-text`, frere de
+`.active-header-kilo` (Kilo + sa bulle) au sein d'un nouveau
+`.active-header-row` (`display:flex`). Aucune largeur fixe sur
+`.active-header-kilo` : elle s'ajuste au plus large de ses 2 enfants (le SVG
+72px ou la bulle, jusqu'a `max-width:160px`) - `.active-header-text`
+(`flex:1`) se retracte d'autant, ce qui equilibre naturellement l'espace
+sans calcul manuel. **Meme piege deja rencontre et corrige sur
+`.kilo-home-slot`** (accueil) : un item flex garde sa taille intrinseque pour
+le calcul de la hauteur de ligne meme avec `align-self:center` -
+`.kilo-exercise-slot` reprend le meme correctif (hauteur fixe 40px,
+`overflow:visible`, marge negative `-16px 0` sur `.kilo-svg`) pour ne jamais
+gonfler la ligne du titre.
+
+**Bulle sous Kilo, pas a cote** (decision assumee, documentee dans le plan) :
+ce projet n'a **aucun** breakpoint `@media` existant, et sur mobile
+`.active-header-text` en `flex:1` ne laisse pas assez de place a gauche de
+Kilo pour une bulle sans la cramer - `.kilo-exercise-bubble` s'affiche donc
+toujours EN DESSOUS de `.kilo-exercise-slot` (pointe triangulaire vers le
+haut, `::before`/`::after`), plutot que d'introduire une bascule
+gauche/bas conditionnelle sans aucun precedent dans le reste du code.
+
+**Logique (index.html)** :
+- `computeKiloExerciseProgressBucket(total, target, done)` (fonction PURE) :
+  4 paliers - `notStarted` (0), `started` (<50%), `almostThere` (>=50%),
+  `done` (objectif atteint OU `done` deja vrai, meme si `total < target`
+  apres une reduction manuelle de l'objectif).
+- `computeKiloExerciseMood(total, target, done)` : `'success'` si palier
+  `done`, sinon `'idle'` - **aucun nouvel etat SVG dans cette Phase 1**, les
+  etats existants suffisent (le flex/lunettes de `'success'` sert deja de
+  "motive/flash").
+- `pickKiloExerciseLine(key, params)` : resout une cle i18n vers une replique
+  **deja interpolee**, en piochant au hasard si la cle resout vers un
+  TABLEAU de variantes (voir `locale-*.js`, namespace `kilo.exercise.*`) -
+  `t()` lui-meme n'interpole que si la valeur resolue est directement une
+  chaine, l'interpolation `{{}}` est donc refaite ici a la main une fois la
+  variante choisie (`interpolate()`, deja existante).
+- **Bulle d'ouverture** : `pickChallenge()` calcule et fige
+  `exerciseKiloBubbleText` UNE SEULE FOIS a l'ouverture d'un exercice (jamais
+  recalcule dans `render()` lui-meme, pour ne jamais faire clignoter/
+  re-randomiser la replique sur un re-rendu sans rapport pendant que la
+  fiche reste affichee).
+- **Flash au tap** : `addSetInner()` pose `exerciseKiloFlashUntil = Date.now()
+  + 1600` et une nouvelle punchline (`kilo.exercise.tapPunchline`,
+  interpolee avec `{{amount}}`) a CHAQUE serie loguee, independamment de
+  `willComplete` (une serie qui n'acheve pas encore l'objectif merite quand
+  meme une reaction immediate). `render()` affiche `'success'` tant que
+  `Date.now() < exerciseKiloFlashUntil`, sinon retombe sur
+  `computeKiloExerciseMood(...)`. Un `setTimeout(() => render(), 1650)` force
+  un rendu a l'expiration du flash, meme si l'utilisateur ne retape pas
+  entre-temps (sinon Kilo resterait affiche "success" indefiniment jusqu'au
+  prochain tap).
+
+**i18n** : nouveau namespace `kilo.exercise.*` (fr/en/es) - chaque cle
+resout vers un TABLEAU de variantes (jamais une simple chaine, meme avec
+seulement 1-2 variantes pour l'instant) : `opening.{notStarted,started,
+almostThere,done}` (interpolees avec `{{current}}`/`{{target}}`) et
+`tapPunchline` (interpolee avec `{{amount}}`). Repliques a la 1ere personne,
+ton coach/parfois taquin, comme demande.
+
+CACHE_NAME -> v88 (nouvelles cles `locale-*.js`). Aucun changement de regles
+Firestore/Cloud Functions - modification 100% cote client, aucune touche a
+`functions/**`.

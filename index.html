@@ -5233,6 +5233,20 @@ let currentChallengeId = null;
 // confettis localisee) - jamais rejoue sur un re-rendu ulterieur du meme etat.
 let justCompletedDailyObjective = false;
 
+// Kilo, coach temps reel sur la fiche d'exercice (retour utilisateur, chantier
+// gamification Phase 1). exerciseKiloFlashUntil : horodatage jusqu'auquel Kilo
+// doit afficher son etat 'success' (flash motive) suite a un tap +5/+10/...,
+// independamment de l'humeur "stable" calculee par computeKiloExerciseMood() -
+// voir addSetInner() (qui le pose) et render() (qui le consulte, sans jamais
+// recalculer lui-meme). exerciseKiloBubbleText : texte DEJA RESOLU (pas juste
+// une cle) de la bulle actuelle - resolu UNE FOIS par pickChallenge() (ouverture)
+// puis par addSetInner() (a chaque serie), jamais recalcule dans render() lui-
+// meme pour ne jamais faire clignoter/re-randomiser la replique sur un re-rendu
+// sans rapport (ex: une donnee arrivant en arriere-plan pendant que cette fiche
+// reste affichee).
+let exerciseKiloFlashUntil = 0;
+let exerciseKiloBubbleText = '';
+
 function emptyDayState() {
   return { challenges: {} };
 }
@@ -5314,8 +5328,16 @@ function getTotal() {
 async function pickChallenge(id) {
   clearTimerState();
   currentChallengeId = id;
-  getEntry(id); // s'assure qu'une entrée existe (reprend celle du jour si déjà commencée)
+  const entry = getEntry(id); // s'assure qu'une entrée existe (reprend celle du jour si déjà commencée)
   activeExerciseGroupChallenges = []; // évite d'afficher la progression du PRÉCÉDENT exercice le temps du chargement
+  // Kilo, coach temps reel (retour utilisateur) : nouvelle replique d'ouverture
+  // et flash remis a zero a chaque nouvel exercice choisi - jamais la replique
+  // ou le flash motive d'un exercice PRECEDENT qui trainerait visuellement.
+  exerciseKiloFlashUntil = 0;
+  exerciseKiloBubbleText = pickKiloExerciseLine(
+    'kilo.exercise.opening.' + computeKiloExerciseProgressBucket(getTotal(), getTarget(), entry.done),
+    { current: getTotal(), target: getTarget() }
+  );
   pushNavState();
   render(true);
   const c = getChallenge();
@@ -5542,6 +5564,16 @@ async function addSetInner(amount) {
   const total = getTotal();
   const target = getTarget();
   const willComplete = total >= target && !entry.done;
+
+  // Kilo, coach temps reel (retour utilisateur) : flash motive + nouvelle
+  // punchline a CHAQUE serie loguee, quel que soit son montant - independant de
+  // willComplete (une serie qui n'acheve pas encore l'objectif merite quand
+  // meme une reaction immediate). setTimeout() force un nouveau rendu quand la
+  // fenetre de flash se termine, meme si l'utilisateur ne retape pas entre-temps
+  // (sinon Kilo resterait affiche en 'success' indefiniment jusqu'au prochain tap).
+  exerciseKiloFlashUntil = Date.now() + 1600;
+  exerciseKiloBubbleText = pickKiloExerciseLine('kilo.exercise.tapPunchline', { amount });
+  setTimeout(() => render(), 1650);
 
   // Records & totaux à vie
   if (!stats[currentChallengeId]) {
@@ -5972,26 +6004,38 @@ function render(animate) {
     // ex: revenir sur cette fiche plus tard dans la journee).
     const showMiniConfetti = justCompletedDailyObjective;
     justCompletedDailyObjective = false;
+    // Kilo, coach temps reel (retour utilisateur) : le flash motive (voir
+    // exerciseKiloFlashUntil, addSetInner()) prend temporairement le pas sur
+    // l'humeur stable calculee a partir de la progression du jour.
+    const kiloExerciseMood = Date.now() < exerciseKiloFlashUntil ? 'success' : computeKiloExerciseMood(total, target, entry.done);
 
     html += `
       <button class="nav-back-btn floating" onclick="history.back()" aria-label="${t('common.back')}">‹</button>
       <div class="active-card${entry.done ? ' hardcore-engaged' : ''}">
         ${heroImgHtml}
-        <div class="active-name">${escapeHtml(challengeDisplayName(c))}</div>
+        <div class="active-header-row">
+          <div class="active-header-text">
+            <div class="active-name">${escapeHtml(challengeDisplayName(c))}</div>
 
-        ${c.cat === 'Haltères' ? `
-          <div class="weight-row">
-            <div class="weight-pill">
-              🏋️ ${weights[c.id] ?? 8} kg
-              <button onclick="editWeight()" aria-label="${t('exercise.editWeightAria')}">✏️</button>
+            ${c.cat === 'Haltères' ? `
+              <div class="weight-row">
+                <div class="weight-pill">
+                  🏋️ ${weights[c.id] ?? 8} kg
+                  <button onclick="editWeight()" aria-label="${t('exercise.editWeightAria')}">✏️</button>
+                </div>
+              </div>
+              ${armModeSentence(target, c.unit, c.armMode) ? `<div class="arm-mode-sentence"><span class="arm-mode-sentence-icon">💪</span><span>${armModeSentence(target, c.unit, c.armMode)}</span></div>` : ''}
+            ` : ''}
+
+            <div class="stats-row">
+              <div class="stat-chip">${t('exercise.recordPrefix', { value: stats[c.id] ? stats[c.id].bestDay.total : 0, unit: unitLabel === 'sec' ? 's' : '' })}</div>
+              <div class="stat-chip">${t('exercise.lifetimeTotal', { value: (stats[c.id] ? stats[c.id].lifetimeTotal : 0).toLocaleString(LOCALE_TO_INTL[currentLocale]) })}${renderExerciseSparkline(exerciseSparklineCache[c.id])}</div>
             </div>
           </div>
-          ${armModeSentence(target, c.unit, c.armMode) ? `<div class="arm-mode-sentence"><span class="arm-mode-sentence-icon">💪</span><span>${armModeSentence(target, c.unit, c.armMode)}</span></div>` : ''}
-        ` : ''}
-
-        <div class="stats-row">
-          <div class="stat-chip">${t('exercise.recordPrefix', { value: stats[c.id] ? stats[c.id].bestDay.total : 0, unit: unitLabel === 'sec' ? 's' : '' })}</div>
-          <div class="stat-chip">${t('exercise.lifetimeTotal', { value: (stats[c.id] ? stats[c.id].lifetimeTotal : 0).toLocaleString(LOCALE_TO_INTL[currentLocale]) })}${renderExerciseSparkline(exerciseSparklineCache[c.id])}</div>
+          <div class="active-header-kilo">
+            <div class="kilo-exercise-slot">${renderKilo(kiloExerciseMood, { size: 72, clickable: true })}</div>
+            ${exerciseKiloBubbleText ? `<div class="kilo-exercise-bubble">${escapeHtml(exerciseKiloBubbleText)}</div>` : ''}
+          </div>
         </div>
 
         ${!entry.done ? `
@@ -7800,6 +7844,39 @@ function computeKiloHomeState(activeIds, stateChallenges, hour) {
   const allDone = activeIds.every((id) => stateChallenges[id] && stateChallenges[id].done);
   if (allDone) return 'idle';
   return hour >= 19 ? 'warning' : 'idle';
+}
+
+// ==== Kilo, coach temps reel sur la fiche d'exercice (retour utilisateur) ====
+// Palier de progression - fonction PURE (aucun Math.random() ici), testable
+// independamment du choix aleatoire de la replique exacte (voir
+// pickKiloExerciseLine() plus bas). 4 paliers : rien encore fait, en cours
+// (moins de la moitie), presque termine (moitie ou plus), objectif atteint.
+function computeKiloExerciseProgressBucket(total, target, done) {
+  if (done || (target > 0 && total >= target)) return 'done';
+  if (target <= 0 || total <= 0) return 'notStarted';
+  return (total / target) < 0.5 ? 'started' : 'almostThere';
+}
+
+// Etat visuel "stable" de Kilo sur cette fiche : 'success' des que l'objectif
+// du jour est atteint (ou deja marque done), sinon 'idle'. Le flash motive au
+// tap (exerciseKiloFlashUntil, voir addSetInner()) prend temporairement le
+// relais par-dessus cette valeur, independamment de cette fonction.
+function computeKiloExerciseMood(total, target, done) {
+  return computeKiloExerciseProgressBucket(total, target, done) === 'done' ? 'success' : 'idle';
+}
+
+// Resout une cle i18n vers une replique DEJA interpolee, en piochant au hasard
+// si la cle resout vers un tableau de variantes (voir locale-fr.js/-en.js/-es.js,
+// namespace kilo.exercise.*) - t() lui-meme ne fait l'interpolation {{}} que
+// lorsque la valeur resolue est DIRECTEMENT une chaine (voir sa doc), donc
+// l'interpolation est refaite ici a la main une fois la variante choisie.
+// Purement cosmetique : aucun besoin de determinisme testable au-dela de "une
+// variante valide de la cle est retournee".
+function pickKiloExerciseLine(key, params) {
+  const resolved = t(key);
+  const list = Array.isArray(resolved) ? resolved : [resolved];
+  const chosen = list[Math.floor(Math.random() * list.length)];
+  return interpolate(chosen, params || {});
 }
 
 function renderGroupsScreen() {
