@@ -387,6 +387,11 @@ const sandbox = {
     // pour simuler le mode standalone.
     matchMedia(query) { return { matches: false, media: query, addListener(){}, removeListener(){} }; },
     AudioContext: function(){ return { createOscillator(){ return { connect(){}, start(){}, stop(){}, frequency:{} }; }, createGain(){ return { connect(){}, gain:{ setValueAtTime(){}, linearRampToValueAtTime(){}, exponentialRampToValueAtTime(){} } }; }, currentTime: 0, state: 'running', resume(){} }; },
+    // Element <audio> natif (playSuccessSound()) : inerte par defaut (play() resout
+    // immediatement, jamais de vrai chargement/decodage reseau dans les tests) - les
+    // tests qui doivent verifier un appel reel remplacent temporairement window.Audio,
+    // meme pattern que window.AudioContext ci-dessus.
+    Audio: function (src) { this.src = src; this.play = () => Promise.resolve(); },
     speechSynthesis: {
       cancel(){ /* no-op : le log ne garde que les phrases reellement prononcees */ },
       // simule une utterance reelle : onend se declenche un court instant plus tard
@@ -1494,24 +1499,24 @@ const cssText = __rawHtml + __cssSource;
   // utilisateurs existants qui l'entendent deja), la vraie nouveaute est de
   // pouvoir la desactiver.
   __assertEq(soundEffectsEnabled, true, 'le son de reussite (deja existant) doit rester ACTIVE par defaut - ne pas couper silencieusement un comportement deja en place');
-  let audioContextCalls = 0;
-  const originalAudioContext = window.AudioContext;
-  window.AudioContext = function () { audioContextCalls++; return originalAudioContext(); };
+  let audioPlayCalls = [];
+  const originalAudio = window.Audio;
+  window.Audio = function (src) { audioPlayCalls.push(src); this.play = () => Promise.resolve(); };
   playSuccessSound();
-  __assertEq(audioContextCalls, 1, 'par defaut (active), playSuccessSound() doit reellement synthetiser un son (Web Audio)');
+  __assertEq(audioPlayCalls, ['./assets/sounds/success.mp3'], 'par defaut (active), playSuccessSound() doit jouer le vrai fichier audio enregistre (plus de synthese Web Audio)');
   await toggleSoundEffects();
   __assertEq(soundEffectsEnabled, false, 'toggleSoundEffects doit inverser l etat');
   __assertEq(__appDataStore.data.soundEffectsEnabled, false, 'le nouvel etat doit etre persiste dans le document consolide appData');
-  __assertEq(audioContextCalls, 1, 'desactiver le reglage ne doit jouer aucun apercu (rien a previsualiser en le coupant)');
+  __assertEq(audioPlayCalls.length, 1, 'desactiver le reglage ne doit jouer aucun apercu (rien a previsualiser en le coupant)');
   playSuccessSound();
-  __assertEq(audioContextCalls, 1, 'une fois desactive, playSuccessSound() ne doit plus jouer aucun son');
+  __assertEq(audioPlayCalls.length, 1, 'une fois desactive, playSuccessSound() ne doit plus jouer aucun son');
   await toggleSoundEffects();
   __assertEq(soundEffectsEnabled, true, 'un second toggle doit reactiver');
-  __assertEq(audioContextCalls, 2, 'reactiver le reglage doit jouer un apercu immediat du son');
-  window.AudioContext = originalAudioContext;
+  __assertEq(audioPlayCalls.length, 2, 'reactiver le reglage doit jouer un apercu immediat du son');
+  window.Audio = originalAudio;
   const settingsHtmlSound = renderSettingsSection();
   __assertOk(settingsHtmlSound.includes('onclick="toggleSoundEffects()"'), 'le reglage doit etre visible dans Parametres');
-  console.log('OK: son de reussite (deja existant) rendu optionnel - actif par defaut, desactivable, apercu immediat a la reactivation');
+  console.log('OK: son de reussite (fichier audio reel .mp3, plus de synthese Web Audio) rendu optionnel - actif par defaut, desactivable, apercu immediat a la reactivation');
 
   // Retour utilisateur "effet waouh" : mascotte "Kilo" (halterophile humanise),
   // composant SVG reutilisable a 6 etats (idle/success/warning/beer/lost/level_up).
@@ -2713,7 +2718,8 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v79'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v80'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
   console.log('OK: service worker alimente desormais son cache pour les images (auparavant aucun gain)');

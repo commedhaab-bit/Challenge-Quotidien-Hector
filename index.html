@@ -4572,48 +4572,18 @@ function fireConfetti(variant) {
 // reglage Parametres) - jouait auparavant de facon INCONDITIONNELLE, sans aucun
 // moyen de la couper (voir soundEffectsEnabled plus haut pour le detail complet
 // de cette decouverte/correction).
-// Retour utilisateur : remplace l'ancien accord fixe de 3 notes (percu comme un
-// simple "bip") par un cri de felicitations dynamique type "Wouehhh !" - un
-// balayage de frequence montant rapide + vibrato, a l'image des sons de victoire
-// des applications ludiques/sportives (Duolingo, Strava...) plutot qu'un simple
-// accord. Reste du Web Audio API pur (aucun asset audio a heberger) : un
-// oscillateur en dents de scie (plus riche/moins "bip" qu'un sinus) balaye de
-// 220Hz a 660Hz (l'attaque du cri) puis redescend doucement (la retombee
-// naturelle d'une exclamation), avec un vibrato leger qui donne le cote "voix"
-// plutot que "synthe pur".
+// Retour utilisateur : remplace la synthese Web Audio (oscillateurs) par un
+// vrai fichier audio enregistre, pour un rendu plus humain/gratifiant qu'un son
+// genere. Nouvelle instance a chaque appel (jamais reutilisee) : rejoue toujours
+// depuis le debut meme en cas de declenchements rapproches (completion normale
+// puis Hardcore dans la foulee), sans logique de reset manuel. .catch() discret
+// sur .play() : une PWA peut voir l'autoplay bloque par le navigateur tant
+// qu'aucune interaction utilisateur n'a encore eu lieu dans la page - ne doit
+// jamais remonter en erreur non geree pour autant.
 function playSuccessSound() {
   if (!soundEffectsEnabled) return;
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioCtx();
-    const start = ctx.currentTime;
-
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(220, start);
-    osc.frequency.exponentialRampToValueAtTime(660, start + 0.14);
-    osc.frequency.exponentialRampToValueAtTime(520, start + 0.5);
-
-    const vibrato = ctx.createOscillator();
-    const vibratoGain = ctx.createGain();
-    vibrato.frequency.value = 7;
-    vibratoGain.gain.value = 14;
-    vibrato.connect(vibratoGain);
-    vibratoGain.connect(osc.frequency);
-
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    gain.gain.setValueAtTime(0, start);
-    gain.gain.linearRampToValueAtTime(0.22, start + 0.05);
-    gain.gain.linearRampToValueAtTime(0.16, start + 0.2);
-    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.55);
-
-    osc.start(start);
-    vibrato.start(start);
-    osc.stop(start + 0.6);
-    vibrato.stop(start + 0.6);
-  } catch (e) { /* audio non disponible, tant pis */ }
+  const successAudio = new window.Audio('./assets/sounds/success.mp3');
+  successAudio.play().catch((error) => console.log('Audio play blocked:', error));
 }
 
 function getLifetimeSummary() {

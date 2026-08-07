@@ -3335,3 +3335,36 @@ ce qui touche au rendu visuel reel (tailles/centrage de Kilito, son synthetise,
 disparition de la barre glissante) - valide par tests structurels + lint,
 jamais par un rendu reel sur appareil dans cet environnement.
 
+## Son de reussite : fichier audio reel (`assets/sounds/success.mp3`) a la place de la synthese Web Audio
+
+Demande explicite de l'utilisateur, avec le fichier MP3 deja fourni (place par
+ses soins dans `assets/sounds/success.mp3`) : remplacer la synthese
+`playSuccessSound()` (oscillateurs Web Audio, plusieurs iterations au fil de
+cette session) par un vrai enregistrement, pour un rendu plus humain que
+n'importe quel son genere.
+
+`playSuccessSound()` reduite a l'essentiel : instancie un `new window.Audio(...)`
+a CHAQUE appel (jamais une instance reutilisee) et appelle `.play()` avec un
+`.catch()` discret - une PWA peut voir l'autoplay bloque par le navigateur tant
+qu'aucune interaction utilisateur n'a encore eu lieu dans la page, ne doit
+jamais remonter en erreur non geree pour autant. Une NOUVELLE instance a chaque
+fois (plutot qu'un seul `<audio>` reutilise avec `.currentTime = 0`) evite toute
+logique de reset manuel en cas de declenchements rapproches (completion normale
+puis Hardcore dans la foulee, par exemple) - chaque instance rejoue toujours
+depuis le debut independamment des autres. Toujours gardee par
+`soundEffectsEnabled` (reglage Parametres, inchange) - aucun des 3 points
+d'appel existants (completion normale, Hardcore, victoire Boss Battle) n'a
+besoin d'etre modifie, seul le contenu de la fonction change.
+
+`window.Audio` (prefixe explicite, pas juste `Audio`) - meme convention que
+`window.AudioContext || window.webkitAudioContext` deja utilisee ailleurs dans
+le fichier, necessaire pour que le mock de test (`vm.createContext`, ou les
+identifiants globaux resolvent contre l'objet sandbox lui-meme, pas contre un
+`window` imbrique) puisse intercepter l'appel proprement.
+
+Fichier precache dans le service worker (`ASSETS`) comme les icones/manifest -
+disponible hors ligne des le tout premier lancement, pas seulement apres une
+1ere lecture reseau qui l'aurait mis en cache "a la volee".
+
+CACHE_NAME -> v80. Aucun changement de regles Firestore/Cloud Functions.
+

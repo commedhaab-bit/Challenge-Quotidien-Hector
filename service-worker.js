@@ -1,10 +1,11 @@
-const CACHE_NAME = 'defi-du-jour-v79';
+const CACHE_NAME = 'defi-du-jour-v80';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icon-192.png',
-  './icon-512.png'
+  './icon-512.png',
+  './assets/sounds/success.mp3'
 ];
 
 // Notifications push (Phase B) : un service worker a son propre scope global,
