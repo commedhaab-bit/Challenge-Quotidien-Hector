@@ -243,6 +243,19 @@ const LOCALE_ES = {
         '¿Buscas un botón secreto o de verdad me quieres tanto?',
         '¡Vale, abrazo aceptado. Ahora, a trabajar!',
       ],
+      // Ideas extra #9/#10: reacciones puntuales encoladas via
+      // kiloPendingSocialReaction, consumidas UNA VEZ en el proximo
+      // renderizado de la pantalla de inicio (ver render()).
+      kudoReceived: [
+        '¡{{name}} te acaba de enviar un kudo! Siempre sienta bien, ¿verdad?',
+        '¡Un kudo de {{name}}! Te estás haciendo fans.',
+        '¡{{name}} te ha aplaudido! Bien merecido.',
+      ],
+      friendBigMove: [
+        '¡Vaya, {{name}} acaba de reventar su objetivo en {{exercise}}!',
+        '{{name}} está en llamas con {{exercise}} ahora mismo. ¿Vas a dejarlo pasar?',
+        '¡Buen golpe de {{name}} en {{exercise}}! Esto huele a competencia amistosa.',
+      ],
     },
     // Cosmeticos de Kilo (Fase 3 de gamificacion) - id = clave en
     // ACCESSORY_DEFS/KILO_ACCESSORY_SVG, texto canonico frances retomado via

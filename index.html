@@ -2433,6 +2433,13 @@ let groupDetailLedgerHistory = []; // Ardoise Globale : TOUTES les entrees ledge
 // (état vide géré explicitement, voir renderActivityFeedSection()).
 let communityActivityFeed = [];
 let communityActivityFeedUnsub = null;
+// Idee bonus #9 (retour utilisateur) : garde-fou "1er snapshot" pour la
+// reaction Kilo sur un gros coup d'ami (voir startActivityFeedListener()) -
+// null tant qu'aucun snapshot n'a encore ete recu pour l'abonnement EN
+// COURS (reinitialise a chaque (re)abonnement). Sans cette garde, la toute
+// premiere lecture (activite d'amis potentiellement vieille de plusieurs
+// jours) declencherait a tort une reaction sur du contenu deja ancien.
+let communityActivityFeedSeenIds = null;
 
 // ==== KUDOS 👏 ====
 // 2 formes selon ce qui est "kudos-able" :
@@ -2605,6 +2612,11 @@ async function processUnreadNotifications(snap) {
         subtitle: t('popups.notifications.kudoSubtitle', { name: data.fromName }),
         btnLabel: t('popups.notifications.kudoBtn'),
       });
+      // Idee bonus #10 (retour utilisateur, "comme #9, commente en disant le
+      // nom de la personne qui a envoye le kudo") : en plus du popup
+      // existant ci-dessus, met en file une reaction Kilo sur l'accueil qui
+      // nomme explicitement l'expediteur - voir kiloPendingSocialReaction.
+      kiloPendingSocialReaction = { key: 'kilo.home.kudoReceived', params: { name: data.fromName } };
     } else if (data.type === 'friend_request') {
       const accepted = await confirmModal({
         icon: '🤝',
@@ -3382,6 +3394,28 @@ async function refreshFriendsData() {
   }
 }
 
+// Idee bonus #9 (retour utilisateur, "Kilo commente les gros coups des potes,
+// en nommant la personne") : fonction PURE, extraite du callback onSnapshot
+// de startActivityFeedListener() pour rester testable independamment du
+// mecanisme temps reel lui-meme. `seenIds` null (pas encore de 1er snapshot
+// pour cet abonnement) -> jamais de reaction, sinon la toute premiere lecture
+// (activite d'amis potentiellement vieille de plusieurs jours) declencherait
+// a tort une reaction sur du contenu deja ancien. Renvoie le descripteur de
+// reaction ({key, params}) de la 1ere entree NOUVELLE (pas dans seenIds,
+// jamais la mienne) trouvee, ou null s'il n'y en a aucune.
+function computeFriendBigMoveReaction(seenIds, entries, myUid) {
+  if (!seenIds) return null;
+  const newEntry = entries.find((e) => !seenIds.has(e.id) && e.uid !== myUid);
+  if (!newEntry) return null;
+  return {
+    key: 'kilo.home.friendBigMove',
+    params: {
+      name: newEntry.displayName,
+      exercise: newEntry.exerciseSlug ? t('exercises.' + newEntry.exerciseSlug + '.name') : (newEntry.challengeName || ''),
+    },
+  };
+}
+
 // Filtré par la liste d'amis courante (myFriends, déjà résolue par refreshFriendsData()) :
 // Firestore refuse un where(...,'in',[]) avec un tableau vide, donc on n'interroge même
 // pas Firestore tant qu'aucun ami n'est ajouté — état vide explicite côté rendu.
@@ -3398,13 +3432,22 @@ function startActivityFeedListener() {
     communityActivityFeed = [];
     return;
   }
+  // Idee bonus #9 : reinitialise a chaque (re)abonnement (nouvel ami ajoute/
+  // retire) - le prochain snapshot recu est donc traite comme un "premier
+  // batch", jamais reagi (voir la garde ci-dessous et le commentaire sur la
+  // declaration de communityActivityFeedSeenIds).
+  communityActivityFeedSeenIds = null;
   // Limite Firestore : au plus 30 valeurs dans un where('in', ...) — largement
   // suffisant pour une liste d'amis personnelle, cf. discussion produit.
   communityActivityFeedUnsub = db.collection('activityFeed')
     .where('uid', 'in', friendUids.slice(0, 30))
     .orderBy('at', 'desc').limit(30)
     .onSnapshot((snap) => {
-      communityActivityFeed = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const socialReaction = computeFriendBigMoveReaction(communityActivityFeedSeenIds, entries, currentUser.uid);
+      if (socialReaction) kiloPendingSocialReaction = socialReaction;
+      communityActivityFeedSeenIds = new Set(entries.map((e) => e.id));
+      communityActivityFeed = entries;
       render();
     });
 }
@@ -5394,6 +5437,13 @@ let kiloHomeHugeSetUntil = 0;
 const KILO_HUGE_SET_WINDOW_MS = 5 * 60 * 1000;
 let kiloHomeBubbleText = '';
 let kiloHomeBubbleMood = null;
+// Idees bonus #9/#10 (retour utilisateur) : emplacement UNIQUE pour une
+// reaction sociale ponctuelle de Kilo (gros coup d'un ami sur le fil
+// d'activite / kudo recu), nommant la personne concernee - {key, params}
+// consomme (et remis a null) par le PROCHAIN render() de l'accueil (voir
+// render()), jamais persiste, jamais accumule (un seul slot : la reaction
+// la plus recente remplace silencieusement une reaction pas encore vue).
+let kiloPendingSocialReaction = null;
 // Horodatage du dernier tap sur Kilo (accueil) - pilote la classe CSS
 // '.tapped' (rebond, memes keyframes que .kilo-tapped) sur .kilo-home-slot,
 // PAS une manipulation DOM directe (voir kiloHomeTap()) : render() remplace
@@ -6188,6 +6238,21 @@ function render(animate) {
       kiloHomeBubbleMood = kiloHomeMood;
       kiloHomeBubbleText = pickKiloLine('kilo.home.' + kiloHomeMood, {});
     }
+    // Idees bonus #9/#10 (retour utilisateur) : reaction sociale ponctuelle
+    // (kudos recu / gros coup d'un ami, voir kiloPendingSocialReaction plus
+    // haut dans le fichier) consommee UNE SEULE FOIS par CE render() -
+    // remplace l'affichage (texte + humeur) SANS jamais toucher
+    // kiloHomeBubbleMood (le cache de l'humeur "normale" ci-dessus), pour
+    // que le prochain changement de mood reel soit toujours detecte
+    // correctement au render() suivant, meme principe que
+    // justCompletedDailyObjective (consomme une fois, jamais rejoue).
+    let kiloHomeMoodDisplay = kiloHomeMood;
+    let kiloHomeBubbleTextDisplay = kiloHomeBubbleText;
+    if (kiloPendingSocialReaction) {
+      kiloHomeBubbleTextDisplay = pickKiloLine(kiloPendingSocialReaction.key, kiloPendingSocialReaction.params);
+      kiloHomeMoodDisplay = 'hype';
+      kiloPendingSocialReaction = null;
+    }
     // Chantier gamification Phase 3 (cosmetiques) : Kilo "porte" toujours
     // l'accessoire debloque le plus prestigieux sur l'accueil (equipement v1
     // volontairement simple, voir computeEquippedAccessory()) - null si rien
@@ -6198,10 +6263,10 @@ function render(animate) {
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
-        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}${Date.now() < kiloHomeFidgetUntil ? ' fidgeting' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMood, { size: 72, accessories: kiloHomeEquipped ? [kiloHomeEquipped] : [] })}</div>
+        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}${Date.now() < kiloHomeFidgetUntil ? ' fidgeting' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMoodDisplay, { size: 72, accessories: kiloHomeEquipped ? [kiloHomeEquipped] : [] })}</div>
         <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>
-      ${!kiloMuted && kiloHomeBubbleText ? `<div class="kilo-home-bubble" onclick="kiloHomeTap()">${escapeHtml(kiloHomeBubbleText)}</div>` : ''}
+      ${!kiloMuted && kiloHomeBubbleTextDisplay ? `<div class="kilo-home-bubble" onclick="kiloHomeTap()">${escapeHtml(kiloHomeBubbleTextDisplay)}</div>` : ''}
       <h1 class="title">${t('today.title')}</h1>
     `;
     // Défis BRUTS (non résolus) : renderChallengeCard() appelle déjà resolveChallenge()

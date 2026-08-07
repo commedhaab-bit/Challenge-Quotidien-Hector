@@ -4220,3 +4220,64 @@ CACHE_NAME -> v93 (contenu des `locale-*.js` modifie - nouvelles cles
 `kilo.exercise.statComparison`/`kilo.home.tapEasterEgg`). Aucun changement
 de regles Firestore/Cloud Functions - modification 100% cote client,
 aucune touche a `functions/**`.
+
+## Idees bonus Kilo, lot 4/7 (#9 reaction sur un gros coup d'ami + #10 reaction aux kudos recus)
+
+**Mecanisme partage : `kiloPendingSocialReaction`** (`{key, params} | null`) -
+emplacement UNIQUE pour une reaction sociale ponctuelle, consomme (et remis a
+`null`) par le PROCHAIN `render()` de l'accueil. Dans `render()`, juste apres
+le calcul de l'humeur "normale" (`kiloHomeMood`/`kiloHomeBubbleMood`),
+2 nouvelles variables locales `kiloHomeMoodDisplay`/`kiloHomeBubbleTextDisplay`
+(defaut = les valeurs normales) sont ecrasees SI une reaction est en attente
+(texte de la reaction + humeur forcee `'hype'`) - **jamais** `kiloHomeMood`/
+`kiloHomeBubbleMood` eux-memes, qui restent le cache de l'humeur "reelle" :
+sans cette separation, le prochain VRAI changement d'humeur ne serait plus
+detecte correctement par le garde `kiloHomeMood !== kiloHomeBubbleMood`. Ce
+sont ces 2 variables `*Display` (pas les valeurs normales) qui alimentent
+desormais `renderKilo(...)` et la bulle - meme principe que
+`justCompletedDailyObjective` (consomme une fois, jamais rejoue).
+
+**#10 - kudos recu** : `processUnreadNotifications()`, branche `'kudo'` -
+en plus du popup deja existant (inchange), pose desormais aussi
+`kiloPendingSocialReaction = { key: 'kilo.home.kudoReceived', params: { name:
+data.fromName } }`. Aucune nouvelle donnee necessaire (`data.fromName` deja
+present a l'ecriture de la notification).
+
+**#9 - gros coup d'un ami** : `computeFriendBigMoveReaction(seenIds, entries,
+myUid)` (fonction PURE, extraite du callback `onSnapshot` de
+`startActivityFeedListener()` pour rester testable independamment du
+mecanisme temps reel lui-meme) - renvoie le descripteur de reaction de la
+1ere entree NOUVELLE (absente de `seenIds`, jamais `myUid`) trouvee, ou
+`null`. **`seenIds` (nouveau `communityActivityFeedSeenIds`, un `Set`
+d'ids) doit valoir `null` pour ne JAMAIS reagir** - c'est le garde-fou
+"1er snapshot" : reinitialise a chaque (re)abonnement
+(`startActivityFeedListener()`, nouvel ami ajoute/retire), sans lui la
+toute premiere lecture (activite d'amis potentiellement vieille de
+plusieurs jours) declencherait a tort une reaction sur du contenu deja
+ancien des la 1ere ouverture de l'onglet Communaute. Nomme l'exercice via
+le meme repli deja etabli pour le rendu du fil (`exerciseSlug` traduit si
+present, sinon `challengeName` litteral).
+
+**Limite deja documentee, acceptee** (voir Phase 2/section "Fil d'activite
+global") : le listener `activityFeed` est suspendu hors de l'onglet
+Communaute (optimisation quota deja en place) - la reaction #9 ne peut donc
+se declencher que si l'utilisateur se trouve deja sur cet onglet au moment
+ou l'ami termine son defi, pas un scope etendu pour ce chantier.
+
+**Piege de test rencontre et corrige en cours de route** : le mock
+Firestore generique de ce depot a un `onSnapshot()` de REQUETE (pas de
+document individuel) qui ne fait qu'un seul `.get().then(cb)` - il ne se
+redeclenche JAMAIS sur une ecriture posterieure a l'abonnement
+(contrairement au mock `onSnapshot()` d'un document individuel, deja
+temps-reel). Extraire la logique de detection dans
+`computeFriendBigMoveReaction()` (fonction pure, appelable directement avec
+des `Set`/tableaux fabriques a la main) a permis de la tester sans
+dependre de cette limite du mock - **a retenir pour tout futur test
+touchant un `onSnapshot()` de requete (`where`/`orderBy`/`limit`) : ne pas
+supposer qu'une 2e ecriture re-declenche le callback, extraire la logique
+metier en fonction pure si elle a besoin d'etre testee independamment.**
+
+CACHE_NAME -> v94 (contenu des `locale-*.js` modifie - nouvelles cles
+`kilo.home.kudoReceived`/`kilo.home.friendBigMove`). Aucun changement de
+regles Firestore/Cloud Functions - modification 100% cote client, aucune
+touche a `functions/**`.

@@ -238,6 +238,18 @@ const LOCALE_EN = {
         'Are you looking for a hidden button or do you really love me that much?',
         'Alright, hug accepted. Now, back to work!',
       ],
+      // Bonus ideas #9/#10: one-off reactions queued via kiloPendingSocialReaction,
+      // consumed ONCE the next time the home screen renders (see render()).
+      kudoReceived: [
+        '{{name}} just sent you a kudo! Always feels good, right?',
+        "A kudo from {{name}}! You're building a fan club.",
+        '{{name}} just cheered you on! Well deserved.',
+      ],
+      friendBigMove: [
+        'Whoa, {{name}} just crushed their goal on {{exercise}}!',
+        '{{name}} is on fire with {{exercise}} right now. Gonna let that slide?',
+        'Big move from {{name}} on {{exercise}}! Feels like friendly competition.',
+      ],
     },
     // Kilo cosmetics (gamification Phase 3) - id = key in ACCESSORY_DEFS/
     // KILO_ACCESSORY_SVG, canonical French text mirrored via accessoryLabel()

@@ -245,6 +245,19 @@ const LOCALE_FR = {
         "Tu cherches un bouton caché ou tu m'aimes vraiment autant ?",
         'Bon, câlin accepté. Maintenant, au travail !',
       ],
+      // Idees bonus #9/#10 (retour utilisateur) : reactions ponctuelles mises
+      // en file via kiloPendingSocialReaction, consommees UNE FOIS par le
+      // prochain affichage de l'accueil (voir render()).
+      kudoReceived: [
+        "{{name}} vient de t'envoyer un kudo ! Ça fait toujours plaisir, non ?",
+        'Un kudo de {{name}} ! Tu commences à te faire des fans.',
+        "{{name}} t'a applaudi·e ! Bien mérité.",
+      ],
+      friendBigMove: [
+        "Whoa, {{name}} vient d'exploser son objectif sur {{exercise}} !",
+        '{{name}} est en feu sur {{exercise}} en ce moment. Tu vas laisser passer ça ?',
+        'Gros coup de {{name}} sur {{exercise}} ! Ça sent la compétition amicale.',
+      ],
     },
     // Cosmetiques de Kilo (chantier gamification Phase 3) - id = cle dans
     // ACCESSORY_DEFS/KILO_ACCESSORY_SVG, texte canonique francais repris via

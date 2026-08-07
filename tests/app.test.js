@@ -1566,7 +1566,7 @@ const cssText = __rawHtml + __cssSource;
   // Bugs reels signales : Kilito n etait ni assez visible sur l accueil, ni centre
   // horizontalement dans les popups (SVG en display:block, ignore le text-align du
   // popup contrairement aux icones emoji).
-  __assertOk(__rawHtml.includes("renderKilo(kiloHomeMood, { size: 72, accessories:"), 'Kilito doit etre nettement plus grand sur l accueil (etait a peine visible a 44px)');
+  __assertOk(__rawHtml.includes("renderKilo(kiloHomeMoodDisplay, { size: 72, accessories:"), 'Kilito doit etre nettement plus grand sur l accueil (etait a peine visible a 44px)');
   __assertOk(__rawHtml.includes("renderKilo(next.kiloState, { size: 118, clickable: true, accessories:"), 'Kilito doit aussi etre agrandi dans les popups');
   __assertOk(cssText.includes('.app-popup-icon.kilo-icon') && cssText.includes('justify-content: center'), 'Kilito doit etre explicitement centre horizontalement dans les popups (un SVG display:block ignore le text-align du parent)');
   console.log('OK: Kilito agrandi sur l accueil + dans les popups, et correctement centre (bugs reels corriges)');
@@ -1828,6 +1828,31 @@ const cssText = __rawHtml + __cssSource;
   popupOpen = false;
   Math.random = originalMathRandomFidget;
   console.log('OK: micro-fidget d inactivite (idee bonus #2) - fenetre temporisee, gate sur accueil idle/popup, probabiliste');
+
+  // Idees bonus #9/#10 (retour utilisateur) : une reaction sociale en attente
+  // (kiloPendingSocialReaction) doit remplacer l affichage (texte + humeur
+  // hype) du PROCHAIN render() de l accueil, une seule fois, sans jamais
+  // corrompre le cache d humeur normal (kiloHomeBubbleMood).
+  activeToday = new Set();
+  currentChallengeId = null;
+  kiloHomeBubbleMood = null;
+  render(false); // pose l humeur/la bulle "normales" (idle, aucun defi actif)
+  const kiloHomeBubbleMoodBeforeReaction = kiloHomeBubbleMood;
+  __assertEq(kiloHomeBubbleMoodBeforeReaction, 'idle', 'pre-requis : aucun defi actif doit garantir idle, independamment de l heure reelle');
+  kiloPendingSocialReaction = { key: 'kilo.home.friendBigMove', params: { name: 'Amie B.', exercise: 'Pompes' } };
+  render(false);
+  let kiloReactionAppHtml = document.getElementById('app').innerHTML;
+  const expectedFriendMoveVariants = t('kilo.home.friendBigMove').map((v) => interpolate(v, { name: 'Amie B.', exercise: 'Pompes' }));
+  __assertOk(expectedFriendMoveVariants.some((v) => kiloReactionAppHtml.includes(escapeHtml(v))), 'une reaction sociale en attente doit remplacer la bulle d accueil, nommant la personne');
+  const kiloReactionSlotIdx = kiloReactionAppHtml.indexOf('kilo-home-slot');
+  __assertOk(kiloReactionAppHtml.slice(kiloReactionSlotIdx, kiloReactionSlotIdx + 400).includes('kilo-hype'), 'une reaction sociale doit afficher Kilo en humeur hype');
+  __assertEq(kiloPendingSocialReaction, null, 'la reaction doit se consommer (redevenir null) une fois affichee');
+  __assertEq(kiloHomeBubbleMood, kiloHomeBubbleMoodBeforeReaction, 'le cache d humeur normal ne doit jamais etre corrompu par une reaction ponctuelle');
+  render(false); // re-rendu sans nouvelle reaction en attente -> doit revenir a l affichage normal
+  kiloReactionAppHtml = document.getElementById('app').innerHTML;
+  const kiloReactionSlotIdxAfter = kiloReactionAppHtml.indexOf('kilo-home-slot');
+  __assertOk(!kiloReactionAppHtml.slice(kiloReactionSlotIdxAfter, kiloReactionSlotIdxAfter + 400).includes('kilo-hype'), 'sans reaction en attente, l affichage doit revenir a l humeur normale (idle)');
+  console.log('OK: idees bonus #9/#10 - reaction sociale ponctuelle sur l accueil (consommee une fois, humeur hype, cache normal preserve)');
 
   // --- 35. Compte a rebours de preparation : 3, 2, 1, puis "C'est parti !" et demarrage reel du chrono ---
   voiceCoachEnabled = true;
@@ -3002,7 +3027,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v93'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v94'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -4572,6 +4597,24 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(communityActivityFeed.length, 1, 'une fois amis, son activite doit apparaitre dans mon fil');
   __assertEq(communityActivityFeed[0].challengeName, 'Squats', 'le fil doit refleter le bon defi complete par mon amie');
 
+  // Idee bonus #9 (retour utilisateur, "Kilo commente les gros coups des
+  // potes, en nommant la personne") : computeFriendBigMoveReaction() est une
+  // fonction PURE (extraite du callback onSnapshot pour rester testable
+  // independamment du mecanisme temps reel lui-meme, que le mock de test ne
+  // re-declenche jamais reellement sur une ecriture posterieure a
+  // l abonnement - voir le mock generique onSnapshot()).
+  __assertEq(computeFriendBigMoveReaction(null, [{ id: 'x', uid: 'amie-uid', displayName: 'Amie B.' }], 'me-uid'), null, 'seenIds null (tout premier snapshot) ne doit jamais declencher de reaction, quel que soit le contenu');
+  const seenIdsAfterFirstSnapshot = new Set(['existing-1']);
+  __assertEq(computeFriendBigMoveReaction(seenIdsAfterFirstSnapshot, [{ id: 'existing-1', uid: 'amie-uid', displayName: 'Amie B.' }], 'me-uid'), null, 'une entree deja vue (presente dans seenIds) ne doit jamais declencher de reaction');
+  __assertEq(
+    computeFriendBigMoveReaction(seenIdsAfterFirstSnapshot, [{ id: 'nouvelle-1', uid: 'amie-uid', displayName: 'Amie B.', exerciseSlug: pompes.slug }, { id: 'existing-1', uid: 'amie-uid', displayName: 'Amie B.' }], 'me-uid'),
+    { key: 'kilo.home.friendBigMove', params: { name: 'Amie B.', exercise: t('exercises.' + pompes.slug + '.name') } },
+    'une NOUVELLE entree (absente de seenIds) doit renvoyer une reaction nommant l amie et l exercice traduit'
+  );
+  __assertEq(computeFriendBigMoveReaction(seenIdsAfterFirstSnapshot, [{ id: 'nouvelle-2', uid: 'me-uid', displayName: 'Moi A.' }], 'me-uid'), null, 'ma propre activite ne doit jamais declencher une reaction "sur moi-meme", meme si elle est nouvelle');
+  __assertEq(computeFriendBigMoveReaction(seenIdsAfterFirstSnapshot, [{ id: 'nouvelle-3', uid: 'amie-uid', displayName: 'Amie B.', exerciseSlug: null, challengeName: 'Défi perso' }], 'me-uid'), { key: 'kilo.home.friendBigMove', params: { name: 'Amie B.', exercise: 'Défi perso' } }, 'sans exerciseSlug (defi personnalise), doit retomber sur challengeName tel quel');
+  console.log('OK: idee bonus #9 - computeFriendBigMoveReaction() (jamais au 1er snapshot, jamais sur ma propre activite, exerciseSlug traduit ou repli sur challengeName)');
+
   // Etat "amis mais rien de recent" distinct de "aucun ami" (message different, pas le
   // meme CTA).
   communityActivityFeed = [];
@@ -4738,6 +4781,20 @@ const cssText = __rawHtml + __cssSource;
   unread = await notificationsCollRef('me-uid').where('read', '==', false).get();
   __assertEq(unread.size, 0, 'les 2 notifications de kudos traitees doivent etre marquees lues (plus aucune non-lue)');
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
+
+  // Idee bonus #10 (retour utilisateur, "comme #9, commente en disant le nom
+  // de la personne qui a envoye le kudo") : en plus du popup deja existant
+  // ci-dessus, un kudo doit mettre en file une reaction Kilo nommant
+  // explicitement l expediteur (kiloPendingSocialReaction).
+  __resetCommunityMocks();
+  kiloPendingSocialReaction = null;
+  await notificationsCollRef('me-uid').doc().set({ type: 'kudo', fromUid: 'amie-uid', fromName: 'Amie B.', read: false, createdAt: Date.now() });
+  const kudoSnapForKilo = await notificationsCollRef('me-uid').where('read', '==', false).get();
+  await processUnreadNotifications(kudoSnapForKilo);
+  __assertEq(kiloPendingSocialReaction, { key: 'kilo.home.kudoReceived', params: { name: 'Amie B.' } }, 'un kudo recu doit mettre en file une reaction Kilo nommant l expediteur');
+  kiloPendingSocialReaction = null;
+  popupQueue = []; popupOpen = false;
+  console.log('OK: idee bonus #10 - reaction Kilo en file d attente sur l accueil, nommant l expediteur du kudo');
 
   // B. Rattrapage demande d ami : "Accepter" cree l amitie directement depuis la popup.
   __resetCommunityMocks();
