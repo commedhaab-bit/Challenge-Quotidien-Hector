@@ -7280,6 +7280,7 @@ function renderCommunityScreen() {
     ${renderBossBattleSection()}
     ${renderActivityFeedSection()}
     ${renderHallOfFameSection()}
+    <div class="section-label">${t('community.leaderboardSectionLabel')}</div>
     <div class="leaderboard-tabs">
       ${views.map(v => `<button class="leaderboard-tab-btn${communityLeaderboardView === v.id ? ' active' : ''}" onclick="switchCommunityLeaderboardView('${v.id}')">${v.label}</button>`).join('')}
     </div>

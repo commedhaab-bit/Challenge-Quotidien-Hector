@@ -2742,7 +2742,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v83'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v84'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -4624,6 +4624,15 @@ const cssText = __rawHtml + __cssSource;
   const communityHtml = renderCommunityScreen();
   __assertOk(communityHtml.includes('leaderboard-tabs') && communityHtml.includes('leaderboard-row'), 'l ecran Communaute doit afficher les onglets et les lignes de classement');
   __assertOk(communityHtml.includes('#1') && communityHtml.includes('#3'), 'chaque ligne doit afficher un rang numerique EXACT (gratuit, simple index du tableau precalcule) - plus de badge approximatif');
+
+  // Retour utilisateur : sous le fil d activite (amis), les boutons de filtre du
+  // classement (serie/hebdo/legende) s enchainaient sans transition, illisible comme
+  // une section distincte. Un titre section-label (meme composant que "Temple de la
+  // renommee"/"Fil d activite" juste au-dessus) annonce desormais explicitement le
+  // debut du classement, juste avant les onglets de filtre.
+  __assertOk(communityHtml.includes(t('community.leaderboardSectionLabel')), 'un titre de section doit annoncer explicitement le debut du classement');
+  __assertOk(communityHtml.indexOf(t('community.leaderboardSectionLabel')) < communityHtml.indexOf('leaderboard-tabs'), 'ce titre doit se trouver juste au-dessus des boutons de filtre serie/hebdo/legende');
+  console.log('OK: titre de section "Classement communautaire" separe visuellement le fil d activite des filtres de classement');
   // Ici, "Moi" est deja dans le Top N affiche -> aucun appel a getMyRank ne doit
   // avoir ete declenche (pas seulement son resultat ignore : l appel lui-meme doit
   // etre evite, voir loadCommunityLeaderboard()).
@@ -6568,6 +6577,41 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!infiniDetailHtml.includes('group-challenge-hero-track'), 'aucune barre de progression n a de sens sans cible chiffree en Mode infini');
   __assertOk(!infiniDetailHtml.includes(t('groups.targetReachedAwaitingSettlement')), 'le Mode infini ne peut jamais afficher "objectif atteint" (seule l echeance declenche le reglement, voir shouldSettleChallenge cote Cloud Function)');
   console.log('OK: defi de groupe "Mode infini" (targetTotal:0, classement par volume total cumule, aucune barre/pourcentage, reglement uniquement a l echeance)');
+
+  // Retour utilisateur : Kilito agrandi sur l accueil (size:72) gonflait la hauteur
+  // de toute la ligne .header (align-items:baseline, un flex item garde son
+  // "hypothetical cross size" meme avec align-self:center), rendant le bandeau
+  // Date/Streak anormalement grand. Kilito garde sa taille visuelle mais son
+  // calage (.kilo-home-slot) est reduit a un gabarit compact, avec une marge
+  // negative sur le SVG lui-meme pour deborder sans agrandir la ligne.
+  const kiloSlotIdx = cssText.indexOf('.kilo-home-slot {');
+  const kiloSlotBlock = cssText.slice(kiloSlotIdx, cssText.indexOf('}', kiloSlotIdx));
+  __assertOk(kiloSlotIdx !== -1 && kiloSlotBlock.includes('height: 36px') && kiloSlotBlock.includes('overflow: visible'), 'le calage de Kilito doit retrouver une hauteur compacte independante de la taille visuelle du SVG');
+  __assertOk(cssText.includes('.kilo-home-slot .kilo-svg { margin: -18px 0; }'), 'une marge negative doit compenser le debordement visuel de Kilito sans jamais agrandir la ligne .header qui le contient');
+  console.log('OK: Kilito garde sa grande taille sur l accueil sans gonfler le bandeau Date/Streak (marge negative de compensation)');
+
+  // Retour utilisateur : l aplat "pilule" (fond uni + bords arrondis nets) derriere
+  // l onglet actif lisait comme un rectangle aux frontieres trop nettes - remplace
+  // par un halo diffus (radial-gradient qui s estompe jusqu a transparent + flou).
+  const tabActiveIdx = cssText.indexOf('.tab-btn.active {');
+  const tabActiveBlock = cssText.slice(tabActiveIdx, cssText.indexOf('}', tabActiveIdx));
+  __assertOk(tabActiveIdx !== -1 && !tabActiveBlock.includes('background:'), 'l ancien aplat uni aux bords nets ne doit plus exister directement sur .tab-btn.active (deplace vers un halo en pseudo-element)');
+  __assertOk(cssText.includes('.tab-btn.active::before'), 'un halo diffus (pseudo-element) doit desormais signaler l onglet actif');
+  const tabHaloIdx = cssText.indexOf('.tab-btn.active::before {');
+  const tabHaloBlock = cssText.slice(tabHaloIdx, cssText.indexOf('}', tabHaloIdx));
+  __assertOk(tabHaloIdx !== -1 && tabHaloBlock.includes('radial-gradient') && tabHaloBlock.includes('rgba(57, 233, 122, 0) 78%') && tabHaloBlock.includes('filter: blur(6px)'), 'le halo doit etre un degrade radial qui s estompe jusqu a transparent, flou, sans aucune frontiere nette');
+  console.log('OK: halo diffus (degrade radial flou) remplace l aplat aux bords nets sur l onglet actif');
+
+  // Retour utilisateur : depuis le retour tactile generalise (button:active { transform:
+  // scale(0.96) } tout en haut de styles.css), cliquer un onglet du bas provoquait une
+  // secousse visuelle genante. Neutralise specifiquement sur les onglets (le fond
+  // .bg-card au clic suffit comme retour visuel) - selecteur volontairement plus
+  // specifique que la regle generale (voir commentaire dans styles.css), sinon le
+  // "transform: none" perdrait silencieusement le bras de fer de specificite CSS.
+  const tabClickIdx = cssText.indexOf('.tab-bar button.tab-btn:active {');
+  const tabClickBlock = cssText.slice(tabClickIdx, cssText.indexOf('}', tabClickIdx));
+  __assertOk(tabClickIdx !== -1 && tabClickBlock.includes('transform: none'), 'le clic sur un onglet ne doit plus provoquer de scale/secousse visuelle de l ecran');
+  console.log('OK: la secousse visuelle au clic sur les onglets du bas est desactivee (transform: none, specificite CSS suffisante pour dominer le retour tactile generalise)');
 
   activeTab = 'today';
 

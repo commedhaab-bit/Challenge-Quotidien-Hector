@@ -181,6 +181,7 @@ const LOCALE_ES = {
     streakValue: '🔥 {{n}} d',
     xpValue: '⚡ {{n}} XP',
     rankOutOfTotal: 'de {{total}} participantes',
+    leaderboardSectionLabel: 'Clasificación comunitaria',
     views: {
       streaks: 'Rachas',
       weekly: 'Semanal',

@@ -183,6 +183,7 @@ const LOCALE_FR = {
     streakValue: '🔥 {{n}} j',
     xpValue: '⚡ {{n}} XP',
     rankOutOfTotal: 'sur {{total}} participants',
+    leaderboardSectionLabel: 'Classement communautaire',
     views: {
       streaks: 'Séries',
       weekly: 'Hebdo',

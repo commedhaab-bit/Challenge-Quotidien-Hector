@@ -180,6 +180,7 @@ const LOCALE_EN = {
     streakValue: '🔥 {{n}}d',
     xpValue: '⚡ {{n}} XP',
     rankOutOfTotal: 'out of {{total}} participants',
+    leaderboardSectionLabel: 'Community leaderboard',
     views: {
       streaks: 'Streaks',
       weekly: 'Weekly',

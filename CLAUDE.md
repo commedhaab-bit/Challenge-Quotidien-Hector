@@ -3548,3 +3548,66 @@ cumulees" se debloque et s'affiche immediatement (`badges.unlocked` +
 
 CACHE_NAME -> v83. Aucun changement de regles Firestore/Cloud Functions -
 modification 100% cote client (`index.html`), aucune touche a `functions/**`.
+
+
+## 4 retouches de detail (mascotte, halo d onglet, secousse au clic, separation Classement)
+
+**1. Marges de Kilito sur l accueil (bug reel, pas une preference).**
+`renderKilo(kiloHomeState, {size: 72})` (agrandi lors d une session precedente,
+non documentee ici) gonflait toute la ligne `.header` (Date/Streak) bien
+au-dela de son gabarit d origine. Cause reelle, verifiee en lisant le CSS
+(pas supposee) : `.header` utilise `align-items: baseline` ; meme avec
+`align-self: center` pose sur `.kilo-home-slot` (deja en place, precisement
+pour ne pas casser l alignement baseline de `.date`/`.streak`), un flex item
+conserve sa "hypothetical cross size" pour le calcul de la hauteur de LIGNE -
+un SVG de 72px continuait donc de forcer toute la ligne a ~72px de haut,
+meme non aligne sur la baseline. Corrige sans reduire Kilito lui-meme :
+`.kilo-home-slot` a desormais une hauteur fixe compacte (36px, `overflow:
+visible`) et son SVG interne recoit une marge verticale negative (-18px de
+chaque cote) pour deborder visuellement au-dessus/en dessous de ce calage
+sans jamais agrandir la ligne flex qui le contient - Kilito garde exactement
+la meme taille visuelle, mais son "poids layout" retombe a 36px.
+
+**2. Halo diffus sur l onglet actif (retouche esthetique).** L aplat "pilule"
+(`background: rgba(57,233,122,0.12)` + `border-radius: 12px` plein) derriere
+l onglet actif lisait comme un rectangle aux bords trop nets. Remplace par un
+`::before` en `radial-gradient(ellipse at center, ...)` qui s estompe
+jusqu a `rgba(57,233,122,0) 78%` + `filter: blur(6px)` - aucune frontiere
+nette, un vrai halo. `.tab-btn` recoit `z-index: 0` (cree un contexte
+d empilement LOCAL a chaque bouton) pour que le `::before` en `z-index: -1`
+reste confine derriere l icone/le libelle de CET onglet uniquement, sans
+jamais deborder visuellement sur les onglets voisins ni passer sous le fond
+de `.tab-bar` (fixed, deja son propre contexte d empilement).
+
+**3. Secousse visuelle au clic sur les onglets du bas (bug reel).** Le retour
+tactile GENERALISE (`button:not(:disabled):active { transform: scale(0.96);
+}`, tout en haut de `styles.css`, ajoute lors d une session precedente pour
+un "effet waouh" sur TOUT element interactif) s appliquait aussi aux onglets,
+ressenti comme une secousse d ecran genante. **Piege de specificite CSS
+rencontre en le corrigeant** : un simple `.tab-btn:active { transform: none;
+}` (specificite 0,0,2,0) est en realite moins specifique que la regle
+generale `button:not(:disabled):active` (0,0,2,1 - le `:not()` compte la
+specificite de son argument `:disabled`, PLUS le type `button` lui-meme) et
+aurait donc perdu ce bras de fer silencieusement, sans aucune erreur visible
+- le clic aurait continue de secouer l ecran malgre l override apparent.
+Corrige avec un selecteur volontairement plus specifique,
+`.tab-bar button.tab-btn:active` (0,0,3,1), qui domine sans ambiguite. Le
+fond `.bg-card` au clic reste seul retour visuel ; le retour haptique
+(`navigator.vibrate`, deja en place ailleurs) n est pas concerne par ce
+correctif, purement visuel.
+
+**4. Separation visuelle du Classement (ecran Communaute).** Les boutons de
+filtre du classement (Serie/Hebdo/Legendes) s enchainaient sans transition
+juste sous le fil d activite (amis), illisibles comme une section a part
+entiere. Un `.section-label` (meme composant deja utilise pour "Temple de la
+renommee"/"Fil d activite" juste au-dessus dans le meme ecran - convention
+existante reutilisee, pas un nouveau composant) avec la nouvelle cle
+`community.leaderboardSectionLabel` ("Classement communautaire"/"Community
+leaderboard"/"Clasificacion comunitaria") est insere juste avant
+`.leaderboard-tabs` dans `renderCommunityScreen()`.
+
+CACHE_NAME -> v84 (styles.css + les 3 fichiers `locale-*.js`, tous
+cache-first avec remplissage cote service worker - voir la regle "RECIDIVE
+deja vecue" plus haut, qui s applique aussi aux fichiers de traduction).
+Aucun changement de regles Firestore/Cloud Functions - modification 100%
+cote client, aucune touche a `functions/**`.

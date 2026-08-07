@@ -127,6 +127,7 @@
   }
   .tab-btn {
     position: relative;
+    z-index: 0;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -143,9 +144,20 @@
     border-radius: 12px;
     transition: color 0.15s ease;
   }
-  .tab-btn:active {
+  /* Retour utilisateur : le "push"/tressautement genere par le retour tactile
+     generalise (button:not(:disabled):active { transform: scale(0.96); } tout
+     en haut de ce fichier) etait ressenti comme une secousse d'ecran genante
+     sur les onglets - annule specifiquement ici (le fond .bg-card au clic
+     suffit comme retour visuel, sans aucun mouvement de scale/translation).
+     Selecteur volontairement `.tab-bar button.tab-btn:active` (pas juste
+     `.tab-btn:active`) : la regle generale plus haut est deja
+     `button:not(:disabled):active` (specificite 0,0,2,1 - le `:not()` compte
+     la specificite de :disabled) - un simple `.tab-btn:active` (0,0,2,0)
+     perdrait silencieusement ce bras de fer de specificite CSS et le
+     `transform: none` n'aurait jamais eu d'effet. */
+  .tab-bar button.tab-btn:active {
     background: var(--bg-card);
-    transform: scale(0.96);
+    transform: none;
   }
   .tab-icon {
     font-size: 21px;
@@ -153,14 +165,29 @@
     transition: transform 0.15s ease;
   }
   /* Retour utilisateur : la barre verte glissante en haut de l'onglet actif
-     ("pas esthetique, plutot genante") a ete retiree. A la place, un fond en
-     "pilule" discret (meme teinte que .coach-badge/.group-card-badge ailleurs
-     dans l'app) derriere l'onglet actif, en plus du halo deja existant sur
-     l'icone - 2 signaux doux plutot qu'une barre criarde. */
+     ("pas esthetique, plutot genante") a ete retiree. A la place, un halo
+     diffus (radial-gradient flou, aucune bordure/aplat net) derriere l'onglet
+     actif, en plus du halo deja existant sur l'icone - 2 signaux doux plutot
+     qu'une barre criarde. Corrige a nouveau (retour utilisateur) : la pilule
+     pleine (fond uni + border-radius) lisait comme un rectangle aux bords
+     trop nets - remplacee par un ::before radial-gradient qui s'estompe
+     jusqu'a transparent + filter:blur(), sans aucune frontiere visible.
+     z-index:0 sur .tab-btn (ci-dessus) cree un contexte d'empilement local
+     pour que ce ::before (z-index:-1) reste bien DERRIERE l'icone/le libelle
+     de CET onglet, sans jamais deborder sur les onglets voisins. */
   .tab-btn.active {
     color: var(--accent);
-    background: rgba(57, 233, 122, 0.12);
-    transition: color 0.15s ease, background 0.2s ease;
+    transition: color 0.15s ease;
+  }
+  .tab-btn.active::before {
+    content: '';
+    position: absolute;
+    inset: -6px 0px;
+    z-index: -1;
+    border-radius: 999px;
+    background: radial-gradient(ellipse at center, rgba(57, 233, 122, 0.26) 0%, rgba(57, 233, 122, 0.12) 45%, rgba(57, 233, 122, 0) 78%);
+    filter: blur(6px);
+    pointer-events: none;
   }
   .tab-btn.active .tab-icon {
     transform: scale(1.18);
@@ -3769,7 +3796,27 @@
      journee, warning des 19h si l'objectif du jour n'est pas encore valide -
      voir computeKiloHomeState()). align-self:center plutot que de toucher
      .header (align-items:baseline, partagee par 3 autres ecrans) - Kilo est le
-     seul element de cette ligne qui a besoin d'un centrage vertical propre. */
-  .kilo-home-slot { flex-shrink: 0; align-self: center; }
+     seul element de cette ligne qui a besoin d'un centrage vertical propre.
+     Bug reel signale (retour utilisateur, "Modif #26") : meme avec
+     align-self:center, la taille intrinseque de 72px du SVG (voir
+     renderKilo(kiloHomeState, {size:72}) dans index.html) continue de
+     dicter la hauteur de toute la ligne flex .header (un flex item garde son
+     "hypothetical cross size" pour le calcul de la hauteur de ligne, meme
+     hors alignement de baseline) - le bandeau Date/Streak devenait donc
+     anormalement haut. Hauteur de calage reduite a 36px (~gabarit d'origine
+     avant l'agrandissement de Kilo) avec overflow visible + marge verticale
+     negative de -18px sur le SVG lui-meme pour compenser : Kilo garde ses
+     72px visuels (deborde symetriquement au-dessus/en dessous du calage) sans
+     jamais agrandir la ligne flex qui le contient. */
+  .kilo-home-slot {
+    flex-shrink: 0;
+    align-self: center;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+  }
+  .kilo-home-slot .kilo-svg { margin: -18px 0; }
 
   ::-webkit-scrollbar { display: none; }
