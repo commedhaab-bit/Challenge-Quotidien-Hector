@@ -1071,6 +1071,67 @@ const LOCALE_EN = {
         "Performance alert! I'm still buzzing from what I just saw.",
         "You're on fire today, literally. Keep it up!",
         'I might need to raise my expectations for you.',
+        // Industrial catalog (15 archetypes) - home screen, hype mood (huge set/streak milestone).
+        // --- Shonen ---
+        "Your power level just broke through the ceiling! Incredible!",
+        "That aura I'm seeing right now... I've never witnessed that from you before!",
+        "The ultimate awakening just happened, and I got to witness it!",
+        // --- Drill Sergeant ---
+        "Exceptional performance reported, high command is impressed!",
+        "That level of discipline deserves a medal, soldier. Truly.",
+        "Official report: expectations completely blown away today.",
+        // --- Teasing Buddy ---
+        "Okay, you actually surprised me there. Seriously, well done.",
+        "I was going to make a joke, but honestly, hats off.",
+        "Alert: someone had a performance magnet for breakfast this morning.",
+        // --- Philosopher ---
+        "What you just achieved goes beyond mere performance, it's a revelation.",
+        "A moment like this stays carved in memory long after the effort fades.",
+        "You just proved that limits are nothing but temporary ideas.",
+        // --- Gamer ---
+        "CRITICAL! Massive damage dealt to your own records!",
+        "Legendary score logged. The leaderboard is shaking.",
+        "Ultra-rare achievement unlocked: 'Performance of the Century'.",
+        // --- 80s Action Hero ---
+        "What I just witnessed deserves its own movie trailer.",
+        "Explosion of talent confirmed. The audience wants more.",
+        "No stunt double could have done that better. Hats off, star.",
+        // --- Scientist ---
+        "Positive anomaly detected: performance far exceeding the average.",
+        "The data speaks for itself: statistical outlier confirmed.",
+        "Analysis complete: this result redefines your own baseline.",
+        // --- Fit-Bro ---
+        "That performance, seriously, deserves a pinned story right now.",
+        "The mindset was clearly maxed out today, you can feel it.",
+        "Big up, that energy today was on a completely different level.",
+        // --- Sage ---
+        "This rare moment of grace deserves to be honored in silence.",
+        "Mind and body aligned perfectly today.",
+        "Harmony like this is never forced. It's celebrated.",
+        // --- Retro Coach ---
+        "Standing ovation in the studio! What a sensational performance!",
+        "Crowd going wild, sequins ablaze, what an energy!",
+        "This moment will go down in retro fitness club history.",
+        // --- Spartan ---
+        "A performance worthy of being carved on the temple's columns.",
+        "Even Sparta would have stood to applaud a feat like that.",
+        "The gods themselves are watching this moment in admiration.",
+        // --- Pirate ---
+        "A treasure like that doesn't turn up every day, matey!",
+        "The whole crew is celebrating this victory tonight!",
+        "One more legend just got written across the seas.",
+        // --- Corporate Manager ---
+        "Exceptional performance. Capitalizing on this immediately.",
+        "This result blows well past the initial forecast. Well done.",
+        "A genuine game changer for the rest of the program.",
+        // --- Nutritionist ---
+        "That energy expenditure was off the charts today, honestly.",
+        "Your metabolism must have been running at full throttle for that.",
+        "A performance like that deserves a champion's dinner tonight.",
+        // --- Stoic ---
+        "Rare. Powerful. Done.",
+        "No words needed. The result speaks.",
+        "Exceptional. Quietly earned.",
       ],
       teasing: [
         'Well, well... you still remember me?',
@@ -1080,6 +1141,67 @@ const LOCALE_EN = {
         'No pain, no gain, no you... that\'s a lot of "no"s lately.',
         'My dumbbell is starting to wonder if you still exist.',
         "I'm not saying anything, but my silence speaks volumes.",
+        // Industrial catalog (15 archetypes) - home, teasing mood (inactivity >= 2 days).
+        // --- Shonen coach ---
+        "Your power level... has it dropped to zero? Two days of silence detected.",
+        "I sense no aura from you. None. Absolutely none.",
+        "Is this a training arc, or did you just quit the story?",
+        // --- Drill sergeant ---
+        "Two days AWOL, soldier. Report for duty immediately.",
+        "Is this a vacation? Nobody told me about a vacation.",
+        "My push-up count for you: still zero, and so is your excuse.",
+        // --- Teasing/ironic buddy ---
+        "Oh look who remembered the app exists.",
+        "Two days. I counted. I have nothing else to do, apparently.",
+        "Should I start seeing other users? Just checking.",
+        // --- Fitness philosopher ---
+        "Silence is a language too, and yours has spoken for two days.",
+        "Every day you skip is a brick unlaid in your own monument.",
+        "The river of progress waits for no one, yet here we sit, still.",
+        // --- Gamer/geek ---
+        "Your streak XP is decaying. Log in before the debuff sticks.",
+        "Two days offline. Server status: you, disconnected.",
+        "Achievement unlocked: Ghost Mode. Not the one we wanted.",
+        // --- 80s action hero ---
+        "I'll be back... but will you?",
+        "Two days of silence. Even the villain shows up more often.",
+        "Get to the gym!",
+        // --- Scientist/engineer ---
+        "Data shows zero activity for 48 hours. Hypothesis: motivation failure.",
+        "Entropy always increases without input. So does your dust layer.",
+        "Current efficiency reading: 0%. Recalibration recommended.",
+        // --- Fit-bro influencer ---
+        "Bro. Two days no grind. That's not the shape we talked about.",
+        "Your gains are on pause, and honestly, so is my patience.",
+        "Consistency check: failed. Let's get that streak back, bro.",
+        // --- Old sage ---
+        "Patience is a muscle. Yours has rested two days too long.",
+        "The mountain does not move, yet you have not climbed either.",
+        "Stillness has its place. This is not that place.",
+        // --- Retro Gym Tonic coach ---
+        "And a one, and a two... where did you GO?",
+        "The neon leotard misses you. Two days of silence, darling.",
+        "The cassette's still spinning, but you're nowhere on the tape.",
+        // --- Spartan ---
+        "Sparta trains daily. You have trained... never, this week.",
+        "Even Leonidas rested less than you have.",
+        "The phalanx has a gap where you should be standing.",
+        // --- Pirate captain ---
+        "Shiver me timbers, two days adrift with no rowing!",
+        "The ship sails without ye, matey. Come aboard.",
+        "Treasure don't dig itself, and neither do abs.",
+        // --- Corporate manager ---
+        "Your engagement KPI has flatlined for 48 hours. Let's circle back.",
+        "I need to flag a deliverable gap in your workout pipeline.",
+        "Quarterly review: zero synergy detected with the gym this week.",
+        // --- Obsessive nutritionist ---
+        "Two days without training, but I bet the macros still happened.",
+        "Your metabolism is asking where you went.",
+        "Chicken and rice are ready. Are you?",
+        // --- Minimalist stoic ---
+        "Two days of silence. Still waiting.",
+        "No complaints. Just absence.",
+        "Time passes. I remain.",
       ],
       tapEncouragement: [
         "Come on, let's go!",

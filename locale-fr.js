@@ -1078,6 +1078,67 @@ const LOCALE_FR = {
         'Alerte performance ! Je vibre encore de ce que je viens de voir.',
         'T\'es en feu aujourd\'hui, littéralement. Continue comme ça !',
         'Je vais devoir revoir mes attentes à la hausse, toi.',
+        // Catalogue industriel (15 archetypes) - accueil, humeur hype (grosse serie/palier de serie).
+        // --- Shonen ---
+        "Ton niveau de puissance vient de crever le plafond ! Incroyable !",
+        "Cette aura que je vois là... c'est du jamais-vu de ta part !",
+        "L'éveil ultime vient d'avoir lieu, et j'ai eu la chance d'y assister !",
+        // --- Sergent ---
+        "Performance exceptionnelle rapportée, haut commandement impressionné !",
+        "Cette rigueur mérite une médaille, soldat. Vraiment.",
+        "Rapport officiel : dépassement total des attentes aujourd'hui.",
+        // --- Pote taquin ---
+        "Ok là tu m'as vraiment surpris. Bravo, sérieusement.",
+        "J'allais faire une blague, mais franchement, chapeau.",
+        "Alerte : quelqu'un a mangé un aimant à performance ce matin.",
+        // --- Philosophe ---
+        "Ce que tu viens d'accomplir dépasse la simple performance, c'est une révélation.",
+        "Un instant comme celui-ci reste gravé bien après que l'effort soit passé.",
+        "Tu viens de prouver que les limites ne sont que des idées provisoires.",
+        // --- Gamer ---
+        "CRITIQUE ! Dégâts massifs infligés à tes propres records !",
+        "Score légendaire enregistré. Le leaderboard tremble.",
+        "Achievement rarissime débloqué : 'Performance du siècle'.",
+        // --- Héros 80s ---
+        "Ce que je viens de voir mérite sa propre bande-annonce.",
+        "Explosion de talent confirmée. Le public en redemande.",
+        "Aucun doublure n'aurait pu faire mieux. Chapeau, star.",
+        // --- Scientifique ---
+        "Anomalie positive détectée : performance très largement supérieure à la moyenne.",
+        "Les données parlent d'elles-mêmes : dépassement statistique confirmé.",
+        "Analyse terminée : ce résultat redéfinit ton propre référentiel.",
+        // --- Fit-Bro ---
+        "Cette perf, sérieux, elle mérite direct la story épinglée.",
+        "Le mindset était clairement au max aujourd'hui, ça se sent.",
+        "Big up, cette énergie était complètement différente aujourd'hui.",
+        // --- Sage ---
+        "Ce moment de grâce, rare, mérite d'être honoré en silence.",
+        "L'esprit et le corps se sont alignés parfaitement aujourd'hui.",
+        "Une telle harmonie ne se force jamais. Elle se célèbre.",
+        // --- Rétro Gym Tonic ---
+        "Standing ovation dans le studio ! Quelle performance sensationnelle !",
+        "Le public en délire, les paillettes en fusion, quelle énergie !",
+        "Ce moment restera gravé dans les annales du club fitness rétro.",
+        // --- Spartiate ---
+        "Une performance digne d'être racontée sur les colonnes du temple.",
+        "Même Sparte se serait levée pour applaudir un tel exploit.",
+        "Les dieux eux-mêmes observent ce moment avec admiration.",
+        // --- Pirate ---
+        "Un trésor pareil, ça ne se trouve pas tous les jours, moussaillon !",
+        "L'équipage entier célèbre cette victoire ce soir !",
+        "Une légende de plus vient de s'écrire sur les mers.",
+        // --- Manager ---
+        "Performance exceptionnelle. On capitalise là-dessus immédiatement.",
+        "Ce résultat dépasse largement le forecast initial. Bravo.",
+        "Un vrai game changer pour la suite du programme.",
+        // --- Nutritionniste ---
+        "Cette dépense énergétique était hors normes aujourd'hui, franchement.",
+        "Ton métabolisme a dû fonctionner à plein régime pour ça.",
+        "Une performance pareille mérite un repas de champion ce soir.",
+        // --- Stoïcien ---
+        "Rare. Puissant. Fait.",
+        "Aucun mot n'est nécessaire. Le résultat parle.",
+        "Exceptionnel. Silencieusement mérité.",
       ],
       teasing: [
         'Tiens, tiens... on se souvient encore de moi ?',
@@ -1087,6 +1148,67 @@ const LOCALE_FR = {
         'No pain, no gain, no toi... ça commence à faire beaucoup de "no".',
         'Mon haltère commence à se demander si tu existes encore.',
         'Je ne dis rien, mais mon silence est éloquent.',
+        // Catalogue industriel (15 archetypes) - accueil, humeur teasing (inactivite >= 2 jours).
+        // --- Shonen ---
+        "Ton aura s'est éteinte depuis un moment. Le héros aurait-il abandonné son arc ?",
+        "Même les légendes ont besoin d'un entraînement régulier, tu sais.",
+        "J'attends le retour du guerrier que j'ai connu. Il tarde un peu.",
+        // --- Sergent ---
+        "Absence prolongée constatée, recrue. Rapport attendu.",
+        "Le camp d'entraînement commence à ressembler à un musée.",
+        "Aucune activité au rapport depuis trop longtemps. On corrige ça ?",
+        // --- Pote taquin ---
+        "Oh, tiens, tu existes toujours ! Je commençais à en douter.",
+        "J'ai failli lancer un avis de recherche, sérieusement.",
+        "Deux jours sans nouvelles... tu étais sur la Lune ou quoi ?",
+        // --- Philosophe ---
+        "Le temps de l'absence est aussi un temps qui compte, mais différemment.",
+        "L'oubli, même temporaire, laisse une trace sur le chemin parcouru.",
+        "Chaque jour sans effort est un jour où la rivière cesse de couler.",
+        // --- Gamer ---
+        "Session inactive depuis 2 jours. Ton personnage s'ennuie clairement.",
+        "Streak en pause prolongée. Le compteur clignote d'impatience.",
+        "Ton avatar attend toujours sur l'écran de chargement.",
+        // --- Héros 80s ---
+        "Deux jours de silence radio. Le héros serait-il aux abonnés absents ?",
+        "J'ai vérifié trois fois si le signal était bien reçu.",
+        "Pas de nouvelles depuis un moment. J'espère que tout va bien, sérieusement.",
+        // --- Scientifique ---
+        "Absence d'activité mesurée sur 2 jours consécutifs. Anomalie confirmée.",
+        "Le protocole d'entraînement montre une interruption significative.",
+        "Données manquantes depuis 48 heures. Reprise recommandée.",
+        // --- Fit-Bro ---
+        "Ça fait deux jours, la consistency, on l'a un peu perdue là non ?",
+        "Le grind s'est mis en pause toute seule, apparemment.",
+        "Petit rappel sans jugement : la régularité, c'est la clé.",
+        // --- Sage ---
+        "Le silence a duré. Le maître attend, sans impatience, mais il attend.",
+        "Même la rivière la plus calme finit par s'assécher sans pluie.",
+        "Deux jours de silence enseignent l'humilité du retour.",
+        // --- Rétro Gym Tonic ---
+        "Le studio a semblé bien vide ces deux derniers jours.",
+        "Les jambières fluo commençaient à s'ennuyer sans toi.",
+        "La musique tournait dans le vide. Reviens danser !",
+        // --- Spartiate ---
+        "L'arène est restée silencieuse deux jours. Sparte s'interroge.",
+        "Un guerrier absent trop longtemps risque d'être oublié des dieux.",
+        "Le bouclier a pris la poussière depuis deux jours entiers.",
+        // --- Pirate ---
+        "Deux jours sans un seul signe de vie, moussaillon. Où es-tu passé ?",
+        "Le navire est resté à quai bien trop longtemps.",
+        "L'équipage commençait à se demander si t'avais rejoint un autre bateau.",
+        // --- Manager ---
+        "Aucune activité loggée depuis 48h. On planifie un point de reprise ?",
+        "Le compteur d'engagement montre un vrai creux ces 2 derniers jours.",
+        "Petit rappel bienveillant : la roadmap continue sans pause, elle.",
+        // --- Nutritionniste ---
+        "Deux jours sans dépense calorique notable. Le métabolisme s'impatiente.",
+        "Ton corps s'est habitué au calme, mais pas trop longtemps j'espère.",
+        "Le glycogène accumulé ne demande qu'à être utilisé, tu sais.",
+        // --- Stoïcien ---
+        "Deux jours de silence. Toujours là.",
+        "Aucune plainte. Juste une attente.",
+        "Le temps passe. Je reste.",
       ],
       tapEncouragement: [
         'Allez, on y va !',

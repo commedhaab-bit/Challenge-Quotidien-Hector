@@ -1076,6 +1076,67 @@ const LOCALE_ES = {
         '¡Alerta de rendimiento! Todavía vibro con lo que acabo de ver.',
         'Hoy estás en llamas, literalmente. ¡Sigue así!',
         'Voy a tener que subir mis expectativas contigo.',
+        // Catalogo industrial (15 arquetipos) - inicio, humor hype (serie enorme/hito de racha).
+        // --- Shonen ---
+        "¡Tu nivel de poder acaba de romper el techo! ¡Increíble!",
+        "Ese aura que veo ahora mismo... ¡nunca la había visto en ti!",
+        "¡El despertar definitivo acaba de ocurrir, y tuve la suerte de verlo!",
+        // --- Sargento ---
+        "¡Rendimiento excepcional reportado, el alto mando está impresionado!",
+        "Ese nivel de disciplina merece una medalla, soldado. De verdad.",
+        "Informe oficial: expectativas completamente superadas hoy.",
+        // --- Colega Bromista ---
+        "Vale, me sorprendiste de verdad. En serio, bien hecho.",
+        "Iba a hacer una broma, pero honestamente, chapó.",
+        "Alerta: alguien desayunó un imán de rendimiento esta mañana.",
+        // --- Filosofo ---
+        "Lo que acabas de lograr va más allá del simple rendimiento, es una revelación.",
+        "Un momento así queda grabado mucho después de que el esfuerzo pase.",
+        "Acabas de demostrar que los límites son solo ideas temporales.",
+        // --- Gamer ---
+        "¡CRÍTICO! Daño masivo infligido a tus propios récords.",
+        "Puntuación legendaria registrada. La tabla de clasificación tiembla.",
+        "Logro ultra raro desbloqueado: 'Rendimiento del siglo'.",
+        // --- Heroe de accion ---
+        "Lo que acabo de ver merece su propio tráiler de película.",
+        "Explosión de talento confirmada. El público pide más.",
+        "Ningún doble de acción lo habría hecho mejor. Chapó, estrella.",
+        // --- Cientifico ---
+        "Anomalía positiva detectada: rendimiento muy por encima de la media.",
+        "Los datos hablan por sí solos: valor atípico estadístico confirmado.",
+        "Análisis completado: este resultado redefine tu propia línea base.",
+        // --- Fit-Bro ---
+        "Ese rendimiento, en serio, merece la story fijada ahora mismo.",
+        "El mindset estaba claramente al máximo hoy, se nota.",
+        "Aplausos, esa energía hoy fue de otro nivel completamente distinto.",
+        // --- Sabio ---
+        "Este raro momento de gracia merece ser honrado en silencio.",
+        "Mente y cuerpo se alinearon perfectamente hoy.",
+        "Una armonía así nunca se fuerza. Se celebra.",
+        // --- Coach Retro ---
+        "¡Ovación de pie en el estudio! ¡Qué rendimiento sensacional!",
+        "Público enloquecido, lentejuelas al máximo, ¡qué energía!",
+        "Este momento quedará en la historia del gimnasio retro.",
+        // --- Espartano ---
+        "Un rendimiento digno de tallarse en las columnas del templo.",
+        "Hasta Esparta se habría levantado a aplaudir una hazaña así.",
+        "Los propios dioses observan este momento con admiración.",
+        // --- Pirata ---
+        "¡Un tesoro así no se encuentra todos los días, grumete!",
+        "¡Toda la tripulación celebra esta victoria esta noche!",
+        "Una leyenda más acaba de escribirse en los mares.",
+        // --- Manager ---
+        "Rendimiento excepcional. Capitalizamos esto de inmediato.",
+        "Este resultado supera con creces la previsión inicial. Bien hecho.",
+        "Un auténtico game changer para el resto del programa.",
+        // --- Nutricionista ---
+        "Ese gasto energético hoy fue fuera de lo normal, honestamente.",
+        "Tu metabolismo debió funcionar a toda máquina para eso.",
+        "Un rendimiento así merece una cena de campeón esta noche.",
+        // --- Estoico ---
+        "Raro. Poderoso. Hecho.",
+        "No hacen falta palabras. El resultado habla.",
+        "Excepcional. Merecido en silencio.",
       ],
       teasing: [
         'Vaya, vaya... ¿todavía te acuerdas de mí?',
@@ -1085,6 +1146,67 @@ const LOCALE_ES = {
         'No pain, no gain, ni tú... eso ya son muchos "no" últimamente.',
         'Mi mancuerna ya se pregunta si sigues existiendo.',
         'No digo nada, pero mi silencio lo dice todo.',
+        // Catalogo industrial (15 arquetipos) - inicio, humor teasing (inactividad >= 2 dias).
+        // --- Coach Shonen ---
+        "¿Tu nivel de poder... ha caído a cero? Detecto dos días de silencio.",
+        "No siento ningún aura viniendo de ti. Ninguna. Cero absoluto.",
+        "¿Esto es un arco de entrenamiento o simplemente abandonaste la historia?",
+        // --- Sargento instructor ---
+        "Dos días desaparecido, soldado. Preséntate de inmediato.",
+        "¿Esto son vacaciones? Nadie me avisó de ninguna vacación.",
+        "Tu contador de flexiones sigue en cero, igual que tus excusas.",
+        // --- Amigo taquin/ironico ---
+        "Vaya, mira quién recordó que la app existe.",
+        "Dos días. Los conté. Al parecer no tengo otra cosa que hacer.",
+        "¿Debería empezar a ver a otros usuarios? Solo pregunto.",
+        // --- Filosofo del fitness ---
+        "El silencio también es un idioma, y el tuyo lleva dos días hablando.",
+        "Cada día que te saltas es una piedra que falta en tu propio monumento.",
+        "El río del progreso no espera a nadie, y aquí seguimos, quietos.",
+        // --- Gamer/geek ---
+        "Tu XP de racha se está degradando. Inicia sesión antes de que el debuff se fije.",
+        "Dos días desconectado. Estado del servidor: tú, offline.",
+        "Logro desbloqueado: Modo Fantasma. No era este el que queríamos.",
+        // --- Heroe de accion 80s ---
+        "Volveré... pero, ¿volverás tú?",
+        "Dos días de silencio. Hasta el villano aparece más seguido.",
+        "¡Al gimnasio!",
+        // --- Cientifico/ingeniero ---
+        "Los datos muestran cero actividad en 48 horas. Hipótesis: fallo de motivación.",
+        "La entropía siempre aumenta sin entrada de energía. Tu capa de polvo también.",
+        "Lectura de eficiencia actual: 0%. Se recomienda recalibración.",
+        // --- Influencer fit-bro ---
+        "Bro. Dos días sin grindear. Esa no es la shape de la que hablábamos.",
+        "Tus ganancias están en pausa, y sinceramente, mi paciencia también.",
+        "Chequeo de constancia: fallido. Recuperemos esa racha, bro.",
+        // --- Viejo sabio ---
+        "La paciencia es un músculo. El tuyo lleva dos días demasiado descansado.",
+        "La montaña no se mueve, pero tú tampoco la has escalado.",
+        "La quietud tiene su lugar. Este no es ese lugar.",
+        // --- Coach retro Gym Tonic ---
+        "Y uno, y dos... ¿a dónde te fuiste?",
+        "El maillot neón te extraña. Dos días de silencio, cariño.",
+        "El casete sigue girando, pero tú no apareces en la cinta.",
+        // --- Espartano/mitologico ---
+        "Esparta entrena a diario. Tú... no has entrenado nada esta semana.",
+        "Hasta Leónidas descansó menos que tú.",
+        "La falange tiene un hueco justo donde deberías estar.",
+        // --- Capitan pirata ---
+        "¡Mil sabords, dos días a la deriva sin remar!",
+        "El barco zarpa sin ti, marinero. Sube a bordo.",
+        "El tesoro no se cava solo, y los abdominales tampoco.",
+        // --- Manager corporativo ---
+        "Tu KPI de compromiso lleva 48 horas plano. Retomemos el tema.",
+        "Debo marcar un gap de entregables en tu pipeline de entrenamiento.",
+        "Revisión trimestral: cero sinergia detectada con el gimnasio esta semana.",
+        // --- Nutricionista obsesivo ---
+        "Dos días sin entrenar, pero seguro que las macros sí pasaron.",
+        "Tu metabolismo pregunta a dónde te fuiste.",
+        "El pollo con arroz ya está listo. ¿Y tú?",
+        // --- Minimalista estoico ---
+        "Dos días de silencio. Sigo esperando.",
+        "Ninguna queja. Solo ausencia.",
+        "El tiempo pasa. Yo permanezco.",
       ],
       tapEncouragement: [
         '¡Venga, vamos!',
