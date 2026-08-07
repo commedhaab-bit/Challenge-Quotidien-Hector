@@ -4544,3 +4544,68 @@ Meme limite de verification que le reste des chantiers UI de ce projet :
 valide par tests structurels (classes CSS, presence de regles, gating
 logique) + lint, **pas visuellement dans un vrai navigateur** - a confirmer
 par l'utilisateur.
+
+## Optimisation globale du layout vertical de la fiche d'exercice
+
+**Demande explicite de l'utilisateur** : sur mobile, le bas de la fiche
+d'exercice etait souvent tronque (scroll necessaire pour atteindre les
+boutons +5/+10 ou le chrono). 3 correctifs cibles pour condenser l'ecran,
+tous scopes a cette seule fiche.
+
+**1. Titre de police DYNAMIQUE (tous exercices)** : `computeExerciseTitleFontSize(name)`
+(fonction PURE, `index.html`, juste apres `challengeDisplayName()`) - 3
+paliers : 26px par defaut, **20px des que le nom depasse 20 caracteres OU
+contient une parenthese** (meme un nom COURT avec parentheses, ex. "Chaise
+(wall sit)", bascule au palier reduit - la simple presence de `(` suffit,
+independamment de la longueur), **17px au-dela de 30 caracteres**. Seuils
+calibres sur les noms les plus longs du catalogue dans les 3 langues (jusqu'a
+~38 caracteres, ex. "Pompes declinees (pieds sureleves)"/"Flexiones
+declinadas (pies elevados)"). Opere sur le texte DEJA resolu par
+`challengeDisplayName(c)` (`activeNameText`, calcule une seule fois et
+reutilise pour le style ET le contenu escaped) - la longueur doit porter sur
+le texte REELLEMENT affiche (deja traduit), jamais sur une valeur figee.
+Applique en **style inline** (`style="font-size: ${size}px"`) sur
+`.active-name`, qui garde sa regle CSS `font-size: 26px` comme simple repli
+par defaut (toujours ecrase par le style inline en pratique, mais inoffensif
+a laisser).
+
+**2. Bandeau "Mode Hardcore verrouille" retire DEFINITIVEMENT (tous
+exercices)** : l'IIFE qui calcule `hcTarget`/`hcRange`/`hcProgress`/`hcPct`
+reste inchangee (ces valeurs restent necessaires pour la branche
+`entry.done` - affichage du Hardcore une fois l'objectif normal atteint) -
+seule la branche `if (!entry.done)` change : au lieu de retourner le markup
+`<div class="hardcore-locked">...</div>`, elle retourne desormais une chaine
+vide. Classe CSS `.hardcore-locked` et cle i18n `exercise.hardcoreLocked`
+(fr/en/es) **supprimees entierement** (code mort, jamais laisse trainer) -
+aucune autre reference trouvee ailleurs dans le code/les tests avant
+suppression.
+
+**3. Bloc chronometre condense (exercices "sec" uniquement)** : le libelle
+`<div class="add-label">${t('exercise.timerLabel')}</div>` ("Chronometrer une
+serie"/"Time a set"/"Cronometrar una serie"), juste au-dessus du cadran,
+**retire entierement** - cadran + bouton play deja auto-explicatifs. Cle i18n
+`exercise.timerLabel` (fr/en/es) supprimee (code mort). **`.add-label` (la
+classe CSS elle-meme) reste INCHANGEE** - c'est un SECOND site d'usage
+partage (le libelle "Ajouter une serie" du bloc de saisie personnalisee des
+exercices en repetitions, `exercise.addSetLabel`, toujours present) qui
+continue de s'en servir ; seule la ligne de markup specifique au chrono a ete
+retiree, jamais la classe/regle CSS partagee. `.timer-box` (la grande carte
+sombre qui enveloppe le chrono) : `padding` vertical fortement reduit
+(`24px 20px` -> `8px 20px`, horizontal inchange) + `margin-bottom` reduit
+(`12px` -> `8px`).
+
+**Regression i18n reelle rencontree et corrigee** : un test existant du
+batch i18n 3/7 verifiait la presence du libelle traduit
+`'Cronometrar una serie'` sur la fiche d'un exercice chronometre en espagnol
+- **cassé par construction** par le retrait du point 3 ci-dessus (texte qui
+n'existe plus, quelle que soit la langue). Corrige en retirant cette
+assertion precise (le texte a ete retire INTENTIONNELLEMENT, pas un bug) -
+l'assertion voisine sur l'unite traduite (`SEG`) reste, et continue de
+valider correctement le rendu i18n de cette fiche.
+
+CACHE_NAME -> v99 (`styles.css` modifie - `.timer-box`/`.hardcore-locked`
+retiree). Aucun changement de regles Firestore/Cloud Functions - modification
+100% cote client, aucune touche a `functions/**`. Meme limite de verification
+que le reste des chantiers UI de ce projet : valide par tests structurels
+(classes CSS, style inline, presence/absence de regles) + lint, **pas
+visuellement dans un vrai navigateur** - a confirmer par l'utilisateur.

@@ -3154,7 +3154,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v98'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v99'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -5744,6 +5744,66 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!customAddBtnCssBlock.includes('var(--accent)'), 'le bouton "Ajouter" ne doit plus utiliser le vert plein var(--accent) (reserve au CTA principal +5/+10)');
   console.log('OK: hierarchie visuelle ecran execution (+5/+10 CTA principal vert neon, "Ajouter" relegue en action secondaire ghost)');
 
+  // --- Optimisation du layout vertical de la fiche d'exercice (retour utilisateur) :
+  // 1) taille de police dynamique du titre, 2) bandeau Hardcore verrouille retire, 3)
+  // libelle du chrono retire + padding vertical de sa carte reduit. ---
+
+  // 1) computeExerciseTitleFontSize() - fonction PURE, seuils testes independamment
+  // du rendu.
+  __assertEq(computeExerciseTitleFontSize('Pompes'), 26, 'un nom court sans parentheses doit garder la taille par defaut (26px)');
+  __assertEq(computeExerciseTitleFontSize('Chaise (wall sit)'), 20, 'un nom court AVEC parentheses doit deja etre reduit (20px), meme sous le seuil de longueur');
+  __assertEq(computeExerciseTitleFontSize('Développé épaules haltères'), 20, 'un nom de 21-30 caracteres sans parentheses doit etre reduit a 20px');
+  __assertEq(computeExerciseTitleFontSize('Pompes déclinées (pieds surélevés)'), 17, 'un nom de plus de 30 caracteres doit tomber au palier le plus reduit (17px)');
+  __assertEq(computeExerciseTitleFontSize(''), 26, 'un nom vide/absent ne doit jamais planter, repli sur la taille par defaut');
+  console.log('OK: computeExerciseTitleFontSize() (paliers purs : court=26px, long OU parentheses=20px, tres long=17px)');
+
+  // Integration reelle : le rendu de la fiche doit appliquer la taille calculee via
+  // un style inline sur .active-name.
+  const gainageLateral = CHALLENGE_LIBRARY.find((c) => c.slug === 'gainage_lateral'); // "Gainage latéral (2 côtés)"
+  activeToday = new Set([gainageLateral.id]);
+  state = emptyDayState();
+  await pickChallenge(gainageLateral.id);
+  render(false);
+  const longTitleHtml = document.getElementById('app').innerHTML;
+  __assertOk(longTitleHtml.includes('active-name" style="font-size: 20px"'), 'un titre avec parentheses (Gainage lateral) doit recevoir le style inline reduit (20px)');
+  currentChallengeId = null;
+
+  activeToday = new Set([pompes.id]);
+  state = emptyDayState();
+  await pickChallenge(pompes.id);
+  render(false);
+  const shortTitleHtml = document.getElementById('app').innerHTML;
+  __assertOk(shortTitleHtml.includes('active-name" style="font-size: 26px"'), 'un titre court sans parentheses (Pompes) doit garder la taille par defaut (26px) en style inline');
+  currentChallengeId = null;
+  console.log('OK: taille de police du titre appliquee en style inline sur .active-name, calculee sur le texte reellement affiche');
+
+  // 2) Bandeau Hardcore verrouille ("Mode Hardcore se debloque a partir de...")
+  // retire DEFINITIVEMENT de cet ecran - information secondaire pendant l effort.
+  activeToday = new Set([pompes.id]);
+  state = emptyDayState();
+  await pickChallenge(pompes.id);
+  render(false);
+  const lockedBannerHtml = document.getElementById('app').innerHTML;
+  __assertOk(!lockedBannerHtml.includes('hardcore-locked'), 'le bandeau "Mode Hardcore verrouille" ne doit plus jamais apparaitre, objectif normal non atteint');
+  __assertOk(!cssText.includes('.hardcore-locked'), 'la regle CSS .hardcore-locked doit etre entierement supprimee (code mort)');
+  currentChallengeId = null;
+  console.log('OK: bandeau "Mode Hardcore verrouille" retire definitivement de la fiche d exercice');
+
+  // 3) Libelle "Chronometrer une serie" retire (cadran + bouton play deja
+  // auto-explicatifs) + padding vertical de .timer-box fortement reduit.
+  activeToday = new Set([planche.id]);
+  state = emptyDayState();
+  await pickChallenge(planche.id);
+  render(false);
+  const timerScreenHtml = document.getElementById('app').innerHTML;
+  __assertOk(!timerScreenHtml.includes('Chronométrer une série') && !timerScreenHtml.includes('Time a set') && !timerScreenHtml.includes('Cronometrar una serie'), 'le libelle du chrono ne doit plus jamais apparaitre sur la fiche d exercice');
+  const timerBoxCssIdx = cssText.indexOf('.timer-box {');
+  __assertOk(timerBoxCssIdx !== -1, 'la regle .timer-box doit toujours exister');
+  const timerBoxCssBlock = cssText.slice(timerBoxCssIdx, cssText.indexOf('}', timerBoxCssIdx));
+  __assertOk(timerBoxCssBlock.includes('padding: 8px 20px'), 'le padding vertical de .timer-box doit etre fortement reduit (24px -> 8px)');
+  currentChallengeId = null;
+  console.log('OK: libelle du chrono retire + padding vertical de sa carte fortement reduit');
+
   // --- Kilo, coach temps reel sur la fiche d'exercice (retour utilisateur,
   // chantier gamification Phase 1) : paliers de progression (fonction PURE). ---
   __assertEq(computeKiloExerciseProgressBucket(0, 100, false), 'notStarted', 'aucune repetition encore faite -> notStarted');
@@ -5969,7 +6029,11 @@ const cssText = __rawHtml + __cssSource;
   currentLocale = 'es';
   render(false);
   const exerciseSecHtmlEs = document.getElementById('app').innerHTML;
-  __assertOk(exerciseSecHtmlEs.includes('Cronometrar una serie'), 'la fiche d exercice (unite sec) doit afficher le libelle traduit du chrono en espagnol');
+  // Retour utilisateur (UI, optimisation du layout vertical) : le libelle
+  // "Chronometrer une serie"/"Cronometrar una serie" a ete retire
+  // definitivement de cet ecran (cadran + bouton play deja auto-explicatifs) -
+  // l unite secondes traduite (SEG) reste le bon signal de traduction correcte
+  // sur cette fiche.
   __assertOk(exerciseSecHtmlEs.includes('progress-unit"> SEG</span>'), 'l unite secondes doit etre traduite (SEG) sur la fiche detail en espagnol');
 
   // Carte de defi (renderChallengeCard, partagee Aujourd hui/Defis) : etat "en cours".

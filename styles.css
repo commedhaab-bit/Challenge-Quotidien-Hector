@@ -3112,16 +3112,6 @@
   }
 
   /* HARDCORE MODE */
-  .hardcore-locked {
-    font-size: 12px;
-    color: var(--chalk-dim);
-    text-align: center;
-    padding: 10px;
-    background: var(--bg-raised);
-    border: 1px dashed var(--line);
-    border-radius: 10px;
-    margin-bottom: 20px;
-  }
   /* Objectif normal une fois terminé : mention discrète et secondaire (le Hardcore
      devient le compteur principal juste en dessous, cf. .hardcore-primary). */
   .normal-objective-recap {
@@ -3212,13 +3202,18 @@
   }
 
   /* TIMER */
+  /* Retour utilisateur (UI, optimisation du layout vertical) : padding
+     vertical fortement reduit (24px -> 8px haut/bas) - le label "Chronometrer
+     une serie" au-dessus a aussi ete retire (cadran + bouton play deja
+     auto-explicatifs), ce qui libere encore plus d'espace. Padding horizontal
+     inchange (20px). */
   .timer-box {
     background: var(--bg-raised);
     border: 1px solid var(--line);
     border-radius: 20px;
-    padding: 24px 20px;
+    padding: 8px 20px;
     text-align: center;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
   }
 
   /* DOUBLE ANNEAU DE PROGRESSION CIRCULAIRE — disque central cliquable (play/pause),

@@ -1703,6 +1703,23 @@ function challengeDisplayName(c) {
   return c.slug ? t('exercises.' + c.slug + '.name') : c.name;
 }
 
+// Optimisation du layout vertical de la fiche d'exercice (retour utilisateur) :
+// taille de police DYNAMIQUE du titre (.active-name) - un nom long ou avec
+// parentheses (ex: "Plancha lateral (2 lados)", "Gainage lateral (2 cotes)")
+// s'etalait jusqu'a 3 lignes a 26px, grignotant l'espace vertical precieux
+// sur mobile. Fonction PURE (aucun acces DOM/etat global) : prend le nom deja
+// resolu (challengeDisplayName(c), texte brut - AVANT escapeHtml, la longueur
+// doit porter sur le texte reellement affiche, pas sur des entites HTML).
+// Seuils calibres sur les noms les plus longs du catalogue, dans les 3
+// langues (jusqu'a ~38 caracteres, ex. "Pompes declinees (pieds sureleves)"/
+// "Flexiones declinadas (pies elevados)").
+function computeExerciseTitleFontSize(name) {
+  if (!name) return 26;
+  if (name.length > 30) return 17;
+  if (name.length > 20 || name.includes('(')) return 20;
+  return 26;
+}
+
 // Même principe que challengeDisplayName() ci-dessus, pour les 4 catégories fixes de
 // CHALLENGE_LIBRARY. Une catégorie de défi personnalisé (texte libre tapé par
 // l'utilisateur) ne matche aucune entrée ici : repli sur le texte brut tel quel, jamais
@@ -6455,13 +6472,17 @@ function render(animate) {
     // possible (voir .active-card.timed-hero dans styles.css). Les defis en
     // repetitions gardent leurs marges actuelles, inchangees.
     const timedHeroClass = c.unit === 'sec' ? ' timed-hero' : '';
+    // Retour utilisateur (UI) : titre de police reduite si long/parentheses -
+    // voir computeExerciseTitleFontSize() (fonction pure, testee separement).
+    const activeNameText = challengeDisplayName(c);
+    const activeNameFontSize = computeExerciseTitleFontSize(activeNameText);
     html += `
       <button class="nav-back-btn floating" onclick="history.back()" aria-label="${t('common.back')}">‹</button>
       <div class="active-card${entry.done ? ' hardcore-engaged' : ''}${timedHeroClass}">
         ${heroImgHtml}
         <div class="active-header-row">
           <div class="active-header-text">
-            <div class="active-name">${escapeHtml(challengeDisplayName(c))}</div>
+            <div class="active-name" style="font-size: ${activeNameFontSize}px">${escapeHtml(activeNameText)}</div>
 
             ${c.cat === 'Haltères' ? `
               <div class="weight-row">
@@ -6523,10 +6544,14 @@ function render(animate) {
           const hcRange = hcTarget - target;
           const hcProgress = Math.max(0, total - target);
           const hcPct = Math.min(100, Math.round((hcProgress / hcRange) * 100));
+          // Retour utilisateur (UI, optimisation du layout vertical) : le bandeau
+          // "Mode Hardcore se debloque a partir de..." est retire DEFINITIVEMENT
+          // de cet ecran - information secondaire pendant l'effort, coutait un
+          // bandeau entier d'espace vertical precieux sur mobile. hcTarget reste
+          // calcule ci-dessus (toujours necessaire pour la branche entry.done
+          // plus bas), seul cet affichage disparait.
           if (!entry.done) {
-            return `
-              <div class="hardcore-locked">${t('exercise.hardcoreLocked', { target, hcTarget, unit: unitDisplayLower })}</div>
-            `;
+            return '';
           }
           // Une fois l'objectif normal atteint, l'effort en cours concerne le Hardcore :
           // ce compteur devient le principal (grand, couleur Hardcore), l'objectif
@@ -6556,7 +6581,6 @@ function render(animate) {
           const { normalPct, hardcorePct } = computeTimerRingPct(projected, target, hcT);
           return `
             <div class="timer-box">
-              <div class="add-label">${t('exercise.timerLabel')}</div>
               <div class="timer-ring-wrap${entry.hardcoreDone ? ' done' : ''}" onclick="toggleTimer()">
                 ${renderDoubleTimerRingSVG(normalPct, hardcorePct, 220)}
                 <div class="timer-ring-center">
