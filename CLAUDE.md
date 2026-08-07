@@ -4147,3 +4147,48 @@ CACHE_NAME -> v91 (`styles.css` modifie - nouvelle animation
 `kilo-fidget-wiggle`, nouvelles regles `locale-*.js` `settings.kiloMuted.*`).
 Aucun changement de regles Firestore/Cloud Functions - modification 100%
 cote client, aucune touche a `functions/**`.
+
+## Idees bonus Kilo, lot 2/7 (#4 punchlines par type d'exploit + #6 punchlines nommant le jour de la semaine)
+
+**#4 - `SQUAT_FAMILY_IDS`/`computeKiloExerciseFamily(id)`** : troisieme
+famille d'exercices (`[14, 15, 1010, 1016]` - Squats, Fentes, Squat goblet,
+Fentes bulgares), a cote des 2 familles deja existantes pour les trophees
+cumulatifs (`PUSHUP_FAMILY_IDS`/`CORE_TIME_FAMILY_IDS`) - source de verite
+unique reutilisee, aucun seuil duplique. Volontairement scopee aux VRAIS
+mouvements de squat (exclut Chaise/id16 - isometrique, plus proche du
+gainage -, Mollets/id17 et Pont fessier/id1019 - patrons de mouvement
+differents). `computeKiloExerciseFamily(id)` (fonction PURE) renvoie
+`'pushups'`/`'core'`/`'squats'`/`null`. A CHAQUE tap (`addSetInner()`), si
+l'exercice appartient a une famille connue, la punchline vient desormais
+d'un pool DEDIE (`kilo.exercise.tapPunchlineFamily.<famille>`) plutot que
+du pool generique existant (`kilo.exercise.tapPunchline`, conserve tel
+quel comme repli pour tout exercice hors de ces 3 familles).
+
+**#6 - `kilo.exercise.dayPunchline`** : a l'ouverture d'un exercice
+(`pickChallenge()`), remplace OCCASIONNELLEMENT (40% de chance, pas a
+chaque fois - eviterait la lassitude) la replique de palier habituelle par
+une phrase qui nomme EXPLICITEMENT le jour de la semaine ET l'exercice en
+cours (ex. fourni par l'utilisateur : "C'est dimanche mais pas de repos
+pour les abdos"). **Decision de conception cle** : un seul pool de
+variantes parametrees par `{{day}}`/`{{exercise}}`, plutot qu'un pool par
+jour x famille x palier (explosion combinatoire x7 jours x3 familles x4
+paliers x3 langues) - fonctionne pour N'IMPORTE QUEL exercice/jour sans
+rien dupliquer. `{{exercise}}` vient de `challengeDisplayName(c)` (deja
+traduit). **Casse du jour adaptee par langue** : `t('dates.daysFull')` est
+capitalise (reutilise ailleurs pour des libelles de date autonomes, ex.
+`formatDateLabel()`) - le FR/ES ecrivent conventionnellement les jours en
+minuscule en milieu de phrase (comme l'exemple fourni), contrairement a
+l'EN qui capitalise toujours ses noms de jours ; `currentLocale === 'en'`
+bascule entre les deux, jamais un `.toLowerCase()` inconditionnel.
+
+**Piege de test evite** : la probabilite de 40% de l'idee #6 aurait rendu
+le test existant de la bulle d'ouverture (base sur les paliers de
+progression) non deterministe - `Math.random()` est temporairement forcee
+au-dessus du seuil (`0.9`) pendant ce test precis, restauree juste apres,
+meme pattern que les autres tests bases sur une pioche aleatoire dans ce
+fichier.
+
+CACHE_NAME -> v92 (contenu des `locale-*.js` modifie - nouvelles cles
+`kilo.exercise.tapPunchlineFamily.*`/`kilo.exercise.dayPunchline`). Aucun
+changement de regles Firestore/Cloud Functions - modification 100% cote
+client, aucune touche a `functions/**`.

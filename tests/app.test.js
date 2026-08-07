@@ -2985,7 +2985,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v91'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v92'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -5557,7 +5557,11 @@ const cssText = __rawHtml + __cssSource;
   console.log('OK: computeKiloExerciseProgressBucket()/computeKiloExerciseMood() (paliers purs, testes independamment de la replique aleatoire)');
 
   // --- Bulle d'ouverture : replique basee sur la progression, choisie parmi les
-  // variantes de la cle du bon palier (voir pickKiloExerciseLine()). ---
+  // variantes de la cle du bon palier (voir pickKiloExerciseLine()). Math.random()
+  // force au-dessus du seuil de l'idee bonus #6 (0.4) pour ne pas laisser la
+  // replique "jour de la semaine" (voir plus bas) perturber ces assertions. ---
+  const originalMathRandomKiloOpening = Math.random;
+  Math.random = () => 0.9;
   activeToday = new Set([pompes.id]);
   state.challenges[pompes.id] = { sets: [], targetOverride: 110, done: false, hardcoreDone: false, hardcoreAnnounced: false };
   await pickChallenge(pompes.id);
@@ -5572,17 +5576,30 @@ const cssText = __rawHtml + __cssSource;
   const exerciseScreenHtmlForKilo = document.getElementById('app').innerHTML;
   __assertOk(exerciseScreenHtmlForKilo.includes('active-header-row') && exerciseScreenHtmlForKilo.includes('kilo-exercise-slot') && exerciseScreenHtmlForKilo.includes('kilo-exercise-bubble'), 'Kilo et sa bulle doivent bien apparaitre dans le bloc titre de la fiche d exercice');
   __assertOk(exerciseScreenHtmlForKilo.includes(escapeHtml(exerciseKiloBubbleText)), 'le texte affiche doit correspondre exactement a la replique resolue');
+  Math.random = originalMathRandomKiloOpening;
   console.log('OK: bulle d ouverture de Kilo basee sur la progression (variantes dynamisees avec les nombres exacts)');
+
+  // Idee bonus #6 (retour utilisateur) : sous le seuil de declenchement,
+  // pickChallenge() doit remplacer la bulle par une replique qui nomme le
+  // jour ET l'exercice, quel que soit le palier de progression.
+  Math.random = () => 0.1; // < 0.4 -> declenche systematiquement
+  await pickChallenge(pompes.id);
+  const expectedDayName = t('dates.daysFull')[new Date().getDay()].toLowerCase();
+  const expectedDayVariants = t('kilo.exercise.dayPunchline').map((v) => interpolate(v, { day: expectedDayName, exercise: challengeDisplayName(pompes) }));
+  __assertOk(expectedDayVariants.includes(exerciseKiloBubbleText), 'sous le seuil de declenchement, la bulle doit nommer le jour (en minuscule en FR) et l exercice');
+  Math.random = originalMathRandomKiloOpening;
+  console.log('OK: idee bonus #6 - replique occasionnelle qui nomme explicitement le jour de la semaine et l exercice en cours');
 
   // --- A chaque tap (+5/+10/...), Kilo flashe en 'success' et la bulle se met a
   // jour avec une punchline dynamisee par le montant ajoute - independamment de
   // l objectif du jour (une serie qui n acheve pas encore l objectif merite quand
-  // meme une reaction). ---
+  // meme une reaction). Pompes appartient a la famille "pushups" (idee bonus #4)
+  // -> la punchline doit venir du pool differencie, pas du pool generique. ---
   state.challenges[pompes.id] = { sets: [], targetOverride: 110, done: false, hardcoreDone: false, hardcoreAnnounced: false };
   await pickChallenge(pompes.id);
   await addSet(10);
-  expectedVariants = t('kilo.exercise.tapPunchline').map((v) => interpolate(v, { amount: 10 }));
-  __assertOk(expectedVariants.includes(exerciseKiloBubbleText), 'apres un tap +10, la bulle doit afficher une punchline dynamisee avec le montant exact ajoute');
+  expectedVariants = t('kilo.exercise.tapPunchlineFamily.pushups').map((v) => interpolate(v, { amount: 10 }));
+  __assertOk(expectedVariants.includes(exerciseKiloBubbleText), 'apres un tap +10 sur un exercice de la famille pompes, la bulle doit afficher une punchline differenciee (pas le pool generique)');
   render(false);
   const flashHtml = document.getElementById('app').innerHTML;
   const flashKiloIdx = flashHtml.indexOf('kilo-exercise-slot');
@@ -5596,6 +5613,32 @@ const cssText = __rawHtml + __cssSource;
   const afterFlashKiloIdx = afterFlashHtml.indexOf('kilo-exercise-slot');
   __assertOk(afterFlashHtml.slice(afterFlashKiloIdx, afterFlashKiloIdx + 400).includes('kilo-idle'), 'une fois le flash expire, Kilo doit revenir a l humeur stable (idle, objectif encore loin - 10/110)');
   console.log('OK: chaque tap declenche un flash motive de Kilo + une punchline dynamisee, qui retombe sur l humeur stable une fois le flash expire');
+
+  // Idee bonus #4 (retour utilisateur) : computeKiloExerciseFamily() - fonction
+  // PURE, testee independamment de la punchline aleatoire.
+  __assertEq(computeKiloExerciseFamily(pompes.id), 'pushups', 'Pompes doit appartenir a la famille pushups');
+  __assertEq(computeKiloExerciseFamily(9), 'core', 'Planche (id 9, gainage chronometre) doit appartenir a la famille core');
+  __assertEq(computeKiloExerciseFamily(14), 'squats', 'Squats (id 14) doit appartenir a la famille squats');
+  __assertEq(computeKiloExerciseFamily(3), null, 'Dips (id 3, hors des 3 familles) ne doit appartenir a aucune famille');
+  console.log('OK: computeKiloExerciseFamily() (3 familles connues, null sinon - fonction pure)');
+
+  // Meme verification bout-en-bout que ci-dessus, mais pour la famille squats
+  // ET pour un exercice HORS de toute famille (repli sur le pool generique).
+  const squats = CHALLENGE_LIBRARY.find((c) => c.slug === 'squats');
+  const dips = CHALLENGE_LIBRARY.find((c) => c.slug === 'dips');
+  activeToday = new Set([squats.id, dips.id]);
+  state.challenges[squats.id] = { sets: [], targetOverride: 200, done: false, hardcoreDone: false, hardcoreAnnounced: false };
+  await pickChallenge(squats.id);
+  await addSet(10);
+  let expectedSquatsVariants = t('kilo.exercise.tapPunchlineFamily.squats').map((v) => interpolate(v, { amount: 10 }));
+  __assertOk(expectedSquatsVariants.includes(exerciseKiloBubbleText), 'un tap sur un exercice de la famille squats doit afficher une punchline squats differenciee');
+
+  state.challenges[dips.id] = { sets: [], targetOverride: 100, done: false, hardcoreDone: false, hardcoreAnnounced: false };
+  await pickChallenge(dips.id);
+  await addSet(10);
+  let expectedGenericVariants = t('kilo.exercise.tapPunchline').map((v) => interpolate(v, { amount: 10 }));
+  __assertOk(expectedGenericVariants.includes(exerciseKiloBubbleText), 'un tap sur un exercice hors des 3 familles connues doit retomber sur le pool generique existant');
+  console.log('OK: idee bonus #4 - punchline squats differenciee + repli sur le pool generique pour un exercice hors familles connues');
 
   currentChallengeId = null;
 

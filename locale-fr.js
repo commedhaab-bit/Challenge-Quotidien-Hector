@@ -156,6 +156,39 @@ const LOCALE_FR = {
         "+{{amount}} ! Continue, je crois en toi.",
         "+{{amount}}... pas mal du tout !",
       ],
+      // Idee bonus #4 (retour utilisateur) : punchlines differenciees par
+      // TYPE d'exploit (voir computeKiloExerciseFamily()), utilisees a la
+      // place de tapPunchline ci-dessus quand l'exercice appartient a l'une
+      // de ces 3 familles - repli sur tapPunchline sinon.
+      tapPunchlineFamily: {
+        pushups: [
+          "+{{amount}} pompes ! Mes bras tremblent rien que d'y penser.",
+          "+{{amount}} de plus sur les pompes. Tes bras vont s'en souvenir demain.",
+          "+{{amount}} ! Encore un peu et tu bats ton propre record de pompes.",
+          "+{{amount}} pompes... tu es en train de devenir une machine à pousser.",
+        ],
+        core: [
+          "+{{amount}} ! Tes abdos commencent à ressembler à une tablette de chocolat.",
+          "+{{amount}} de gainage. Ton centre est en béton armé maintenant.",
+          "+{{amount}} ! Le core, c'est la base de tout. Tu le sais, toi.",
+          "+{{amount}}... tiens bon, la sangle abdominale te dit merci.",
+        ],
+        squats: [
+          "+{{amount}} squats ! Tes jambes vont te maudire demain matin.",
+          "+{{amount}} de plus. Tes fessiers viennent de recevoir le mémo.",
+          "+{{amount}} ! On sent déjà que tu vas avoir du mal à t'asseoir demain.",
+          "+{{amount}} squats... tes cuisses sont en feu, et j'adore ça.",
+        ],
+      },
+      // Idee bonus #6 (retour utilisateur) : remplace occasionnellement la
+      // bulle d'ouverture, nomme explicitement le jour ET l'exercice
+      // ({{day}}/{{exercise}}, voir pickChallenge()).
+      dayPunchline: [
+        "C'est {{day}} mais pas de repos pour {{exercise}} !",
+        "{{day}}, jour comme un autre pour cravacher sur {{exercise}}.",
+        "Même un {{day}}, {{exercise}} n'attend pas.",
+        "{{day}} ou pas, {{exercise}} ne se fera pas tout·e seul·e.",
+      ],
     },
     // Moteur d'humeur global de l'accueil (chantier gamification Phase 2, voir
     // computeKiloMood()) - une cle par humeur possible ('idle'/'warning'/'hype'/

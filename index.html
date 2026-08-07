@@ -4567,6 +4567,14 @@ let unlockedAccessories = [];
 // des variantes de pompes (reps) et des exercices de gainage chronometres (sec).
 const PUSHUP_FAMILY_IDS = [1, 1001, 1002, 1003]; // Pompes, diamant, declinees, pike push-ups
 const CORE_TIME_FAMILY_IDS = [9, 11, 1012]; // Planche cumulee, gainage lateral, hollow hold
+// Idee bonus #4 (retour utilisateur, repliques de Kilo differenciees par type
+// d'exploit) : reutilise le meme decoupage "famille" que les trophees
+// cumulatifs ci-dessus, plus une 3e famille dediee aux squats/fentes -
+// volontairement scopee aux VRAIS mouvements de squat (exclut Chaise/id16,
+// isometrique - plus proche du gainage - Mollets/id17 et Pont fessier/id1019,
+// des patrons de mouvement differents), meme precision que les 2 familles
+// existantes.
+const SQUAT_FAMILY_IDS = [14, 15, 1010, 1016]; // Squats, fentes, squat goblet, fentes bulgares
 
 function sumLifetime(ids) {
   return ids.reduce((sum, id) => sum + (stats[id]?.lifetimeTotal || 0), 0);
@@ -5483,6 +5491,7 @@ async function pickChallenge(id) {
   currentChallengeId = id;
   const entry = getEntry(id); // s'assure qu'une entrée existe (reprend celle du jour si déjà commencée)
   activeExerciseGroupChallenges = []; // évite d'afficher la progression du PRÉCÉDENT exercice le temps du chargement
+  const c = getChallenge(); // remonté plus tôt (lecture pure) : réutilisé ci-dessous par l'idée bonus #6
   // Kilo, coach temps reel (retour utilisateur) : nouvelle replique d'ouverture
   // et flash remis a zero a chaque nouvel exercice choisi - jamais la replique
   // ou le flash motive d'un exercice PRECEDENT qui trainerait visuellement.
@@ -5491,9 +5500,27 @@ async function pickChallenge(id) {
     'kilo.exercise.opening.' + computeKiloExerciseProgressBucket(getTotal(), getTarget(), entry.done),
     { current: getTotal(), target: getTarget() }
   );
+  // Idee bonus #6 (retour utilisateur, avec reference EXPLICITE au jour de la
+  // semaine demandee dans l'exemple fourni : "C'est dimanche mais pas de repos
+  // pour les abdos") : remplace OCCASIONNELLEMENT (pas a chaque ouverture, pour
+  // ne pas lasser) la replique de palier ci-dessus par une phrase qui nomme le
+  // jour ET l'exercice en cours. {{day}}/{{exercise}} en parametres plutot
+  // qu'un pool par jour x famille x palier (explosion combinatoire) - un seul
+  // pool de variantes reutilisable pour N'IMPORTE QUEL exercice/jour.
+  if (c && Math.random() < 0.4) {
+    // t('dates.daysFull') est capitalise (reutilise ailleurs pour des libelles
+    // de date autonomes, ex. formatDateLabel()) - le FR/ES ecrivent
+    // conventionnellement les jours en minuscule en milieu de phrase (l'exemple
+    // fourni par l'utilisateur : "C'est dimanche..."), contrairement a l'EN qui
+    // capitalise toujours ses noms de jours.
+    const dayNameRaw = t('dates.daysFull')[new Date().getDay()];
+    exerciseKiloBubbleText = pickKiloLine('kilo.exercise.dayPunchline', {
+      day: currentLocale === 'en' ? dayNameRaw : dayNameRaw.toLowerCase(),
+      exercise: challengeDisplayName(c),
+    });
+  }
   pushNavState();
   render(true);
-  const c = getChallenge();
   if (c && c.slug) loadActiveExerciseGroupChallenges(c.slug); // fire-and-forget : re-rend dès que prêt, jamais bloquant pour la navigation
   if (!Object.prototype.hasOwnProperty.call(exerciseSparklineCache, id)) loadExerciseSparkline(id); // idem, mis en cache par exercice pour la session
 }
@@ -5725,7 +5752,15 @@ async function addSetInner(amount) {
   // fenetre de flash se termine, meme si l'utilisateur ne retape pas entre-temps
   // (sinon Kilo resterait affiche en 'success' indefiniment jusqu'au prochain tap).
   exerciseKiloFlashUntil = Date.now() + 1600;
-  exerciseKiloBubbleText = pickKiloLine('kilo.exercise.tapPunchline', { amount });
+  // Idee bonus #4 (retour utilisateur) : punchline differenciee par TYPE
+  // d'exploit (pompes/gainage/squats) quand l'exercice appartient a une
+  // famille connue (computeKiloExerciseFamily(), memes 3 familles que les
+  // trophees cumulatifs) - repli sur le pool generique existant sinon.
+  const kiloTapFamily = computeKiloExerciseFamily(currentChallengeId);
+  exerciseKiloBubbleText = pickKiloLine(
+    kiloTapFamily ? 'kilo.exercise.tapPunchlineFamily.' + kiloTapFamily : 'kilo.exercise.tapPunchline',
+    { amount }
+  );
   setTimeout(() => render(), 1650);
 
   // Chantier gamification Phase 2 : une serie "enorme" loguee d'un coup (au
@@ -8261,6 +8296,19 @@ function computeKiloExerciseProgressBucket(total, target, done) {
 // relais par-dessus cette valeur, independamment de cette fonction.
 function computeKiloExerciseMood(total, target, done) {
   return computeKiloExerciseProgressBucket(total, target, done) === 'done' ? 'success' : 'idle';
+}
+
+// Idee bonus #4 (retour utilisateur) : famille d'exploit d'un exercice, pour
+// piocher une punchline differenciee (pompes/gainage/squats) plutot qu'une
+// seule reserve generique - fonction PURE, reutilise directement les 3
+// constantes deja etablies pour les trophees cumulatifs (source de verite
+// unique, aucun seuil/liste duplique). Renvoie null pour tout exercice hors
+// de ces 3 familles (repos sur le pool generique 'kilo.exercise.tapPunchline').
+function computeKiloExerciseFamily(id) {
+  if (PUSHUP_FAMILY_IDS.includes(id)) return 'pushups';
+  if (CORE_TIME_FAMILY_IDS.includes(id)) return 'core';
+  if (SQUAT_FAMILY_IDS.includes(id)) return 'squats';
+  return null;
 }
 
 // Resout une cle i18n vers une replique DEJA interpolee, en piochant au hasard

@@ -154,6 +154,39 @@ const LOCALE_ES = {
         '¡+{{amount}}! Sigue así, creo en ti.',
         '+{{amount}}... ¡nada mal!',
       ],
+      // Idea extra #4: frases diferenciadas por TIPO de ejercicio (ver
+      // computeKiloExerciseFamily()), usadas en lugar de tapPunchline arriba
+      // cuando el ejercicio pertenece a una de estas 3 familias - si no,
+      // repliegue sobre tapPunchline.
+      tapPunchlineFamily: {
+        pushups: [
+          '¡+{{amount}} flexiones! Mis brazos tiemblan solo de pensarlo.',
+          '+{{amount}} más de flexiones. Tus brazos lo recordarán mañana.',
+          '¡+{{amount}}! Sigue así y batirás tu propio récord de flexiones.',
+          '+{{amount}} flexiones... te estás convirtiendo en una máquina de empujar.',
+        ],
+        core: [
+          '¡+{{amount}}! Tu abdomen empieza a parecer una tableta de chocolate.',
+          '+{{amount}} de plancha. Tu centro ya es de hormigón armado.',
+          '¡+{{amount}}! El core es la base de todo. Tú ya lo sabes.',
+          '+{{amount}}... aguanta, tu abdomen te lo agradece.',
+        ],
+        squats: [
+          '¡+{{amount}} sentadillas! Tus piernas te maldecirán mañana por la mañana.',
+          '+{{amount}} más. Tus glúteos acaban de recibir el memo.',
+          '¡+{{amount}}! Mañana te va a costar sentarte.',
+          '+{{amount}} sentadillas... tus muslos arden, y me encanta.',
+        ],
+      },
+      // Idea extra #6: reemplaza ocasionalmente la burbuja de apertura,
+      // nombra explícitamente el día Y el ejercicio ({{day}}/{{exercise}},
+      // ver pickChallenge()).
+      dayPunchline: [
+        '¡Es {{day}} pero no hay descanso para {{exercise}}!',
+        '{{day}}, un día como cualquier otro para darlo todo con {{exercise}}.',
+        'Aunque sea {{day}}, {{exercise}} no espera.',
+        'Sea {{day}} o no, {{exercise}} no se hará solo·a.',
+      ],
     },
     // Motor de humor global de la pantalla de inicio (Fase 2 de gamificacion,
     // ver computeKiloMood()) - una clave por humor ('idle'/'warning'/'hype'/

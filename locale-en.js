@@ -152,6 +152,38 @@ const LOCALE_EN = {
         "+{{amount}}! Keep going, I believe in you.",
         "+{{amount}}... not bad at all!",
       ],
+      // Bonus idea #4: punchlines differentiated by TYPE of exercise (see
+      // computeKiloExerciseFamily()), used instead of tapPunchline above when
+      // the exercise belongs to one of these 3 families - falls back to
+      // tapPunchline otherwise.
+      tapPunchlineFamily: {
+        pushups: [
+          "+{{amount}} push-ups! My arms are shaking just thinking about it.",
+          "+{{amount}} more push-ups. Your arms will remember this tomorrow.",
+          "+{{amount}}! Keep going and you'll beat your own push-up record.",
+          "+{{amount}} push-ups... you're turning into a pushing machine.",
+        ],
+        core: [
+          "+{{amount}}! Your abs are starting to look like a chocolate bar.",
+          "+{{amount}} of core work. Your center is solid as concrete now.",
+          "+{{amount}}! The core is the base of everything. You know that.",
+          "+{{amount}}... hang in there, your abs thank you.",
+        ],
+        squats: [
+          "+{{amount}} squats! Your legs are going to curse you tomorrow morning.",
+          "+{{amount}} more. Your glutes just got the memo.",
+          "+{{amount}}! You're going to have trouble sitting down tomorrow.",
+          "+{{amount}} squats... your thighs are on fire, and I love it.",
+        ],
+      },
+      // Bonus idea #6: occasionally replaces the opening bubble, explicitly
+      // names the day AND the exercise ({{day}}/{{exercise}}, see pickChallenge()).
+      dayPunchline: [
+        "It's {{day}} but no rest for {{exercise}}!",
+        "{{day}}, just another day to grind on {{exercise}}.",
+        "Even on a {{day}}, {{exercise}} doesn't wait.",
+        "{{day}} or not, {{exercise}} won't do itself.",
+      ],
     },
     // Global home-screen mood engine (gamification Phase 2, see computeKiloMood()) -
     // one key per mood ('idle'/'warning'/'hype'/'teasing'), each an ARRAY of
