@@ -134,6 +134,67 @@ const LOCALE_FR = {
           "Zéro excuse aujourd'hui. {{target}}, et on n'en parle plus.",
           "Je sens que tu vas assurer sur ces {{target}}. Vas-y, montre-moi.",
           "{{target}} à faire. Moi je regarde, toi tu bosses. Marché conclu ?",
+          // Catalogue industriel (15 archetypes) - ouverture d'exercice, palier "pas commence".
+          // --- Coach Shonen ---
+          "Nouvel objectif détecté : {{target}}. Ton pouvoir va bientôt exploser !",
+          "{{target}} à accomplir. Sens-tu cette aura monter en toi ?",
+          "C'est l'heure de l'entraînement ! {{target}}, et on ne recule pas !",
+          // --- Sergent instructeur ---
+          "Objectif du jour : {{target}}. Aucune excuse ne sera tolérée, soldat.",
+          "{{target}} à accomplir, et je veux voir de la discipline !",
+          "Debout ! {{target}} nous attendent, pas une minute à perdre.",
+          // --- Pote taquin ---
+          "{{target}} ? Facile, tu vas y arriver les yeux fermés. Enfin j'espère.",
+          "Alors, on regarde l'écran ou on fait les {{target}} ?",
+          "{{target}} à faire. Je compte sur toi pour ne pas me décevoir, hein.",
+          // --- Philosophe du fitness ---
+          "{{target}}. Chaque répétition sera une pierre posée sur le chemin.",
+          "Le voyage vers {{target}} commence par un premier geste.",
+          "{{target}} nous attend, comme la montagne attend le grimpeur.",
+          // --- Gamer/geek ---
+          "Nouvelle quête débloquée : {{target}}. Prêt·e pour le grind ?",
+          "Objectif : {{target}}. Barre de vie pleine, c'est parti !",
+          "{{target}} à farmer. XP en approche.",
+          // --- Héros de film d'action 80s ---
+          "{{target}}. Et cette fois, on ne recule devant rien.",
+          "Mission : {{target}}. Je serai avec toi jusqu'au bout.",
+          "{{target}}, prépare-toi, ça va chauffer.",
+          // --- Scientifique/ingénieur ---
+          "Objectif calculé : {{target}}. Protocole d'exécution en attente.",
+          "{{target}} unités à produire. Rendement optimal attendu.",
+          "Cible fixée : {{target}}. Toute variable d'échec est éliminée.",
+          // --- Influenceur Fit-Bro ---
+          "{{target}} aujourd'hui, bro. On grind, pas d'excuses.",
+          "Objectif {{target}}. Cette shape ne va pas se construire seule.",
+          "On vise {{target}}. Focus total, c'est parti.",
+          // --- Vieux sage ---
+          "{{target}}. La patience guide chaque pas de ce chemin.",
+          "Le chemin vers {{target}} se parcourt un geste à la fois.",
+          "{{target}} t'attend, sans hâte, sans peur.",
+          // --- Coach rétro Gym Tonic ---
+          "Objectif du jour : {{target}} ! On enfile le legging et on y va !",
+          "{{target}} à faire, en musique et avec le sourire !",
+          "Et un, et deux, {{target}} nous attendent !",
+          // --- Spartiate/mythologique ---
+          "{{target}}. Sparte n'a jamais reculé, toi non plus.",
+          "Objectif : {{target}}. La gloire se mérite.",
+          "{{target}} t'attendent, guerrier·ère. Prouve ta valeur.",
+          // --- Capitaine pirate ---
+          "{{target}} à l'horizon, moussaillon. En avant !",
+          "Objectif : {{target}}. Hissons les voiles !",
+          "{{target}}, le trésor est au bout de l'effort.",
+          // --- Manager corporate ---
+          "Objectif fixé : {{target}}. Alignons-nous sur cette roadmap.",
+          "{{target}} à livrer aujourd'hui. On avance en synergie.",
+          "KPI du jour : {{target}}. C'est parti pour un sprint productif.",
+          // --- Nutritionniste obsessionnel ---
+          "{{target}} à faire. Les macros suivront, promis.",
+          "Objectif {{target}}. Le poulet-riz t'attend après l'effort.",
+          "{{target}}, et n'oublie pas ton shaker après.",
+          // --- Minimaliste stoïcien ---
+          "{{target}}. Simple objectif. Simple exécution.",
+          "{{target}} devant toi. Aucun mot de plus nécessaire.",
+          "{{target}}. Commence.",
         ],
         started: [
           "{{current}}/{{target}}, ça avance ! Continue comme ça.",
@@ -144,6 +205,67 @@ const LOCALE_FR = {
           "No pain no gain : {{current}}/{{target}} et la douleur, c'est pour bientôt.",
           "{{current}}/{{target}}... déjà essoufflé·e ou c'est moi qui rêve ?",
           "Ça bouge, {{current}}/{{target}} ! Garde ce rythme.",
+          // Catalogue industriel (15 archetypes) - ouverture d'exercice, palier "commence".
+          // --- Coach Shonen ---
+          "{{current}}/{{target}} ! Ton énergie de combat grimpe en flèche !",
+          "Déjà {{current}}/{{target}} ? Cette détermination est légendaire !",
+          "{{current}}/{{target}}, l'aura du guerrier commence à briller !",
+          // --- Sergent instructeur ---
+          "{{current}}/{{target}}. Continue, soldat, pas de relâchement !",
+          "{{current}}/{{target}} ! C'est un début correct, mais j'en veux plus !",
+          "{{current}}/{{target}}, la discipline paie déjà.",
+          // --- Pote taquin ---
+          "{{current}}/{{target}} ? Pas mal, pour quelqu'un qui traînait des pieds.",
+          "Oh tiens, {{current}}/{{target}} ! Tu m'impressionnes presque.",
+          "{{current}}/{{target}}, continue comme ça et je serai fier·e de toi.",
+          // --- Philosophe du fitness ---
+          "{{current}}/{{target}}. Chaque pas compte dans ce voyage.",
+          "{{current}}/{{target}}, et le chemin se dessine sous tes pieds.",
+          "{{current}}/{{target}} : la constance forge la victoire.",
+          // --- Gamer/geek ---
+          "{{current}}/{{target}} ! XP en hausse, continue le grind.",
+          "Progression {{current}}/{{target}}, barre qui se remplit bien.",
+          "{{current}}/{{target}} : combo en cours, ne le casse pas !",
+          // --- Héros de film d'action 80s ---
+          "{{current}}/{{target}}. On tient bon, jusqu'au bout.",
+          "{{current}}/{{target}} ! Cette énergie, c'est du pur cinéma.",
+          "{{current}}/{{target}}, et on ne lâche rien.",
+          // --- Scientifique/ingénieur ---
+          "{{current}}/{{target}}. Rendement conforme aux prévisions.",
+          "Progression mesurée : {{current}}/{{target}}. Continue le protocole.",
+          "{{current}}/{{target}}, données encourageantes.",
+          // --- Influenceur Fit-Bro ---
+          "{{current}}/{{target}}, bro ! Cette grind commence à payer.",
+          "{{current}}/{{target}} ! Cette shape se construit devant mes yeux.",
+          "{{current}}/{{target}}, focus total, continue comme ça.",
+          // --- Vieux sage ---
+          "{{current}}/{{target}}. Le chemin se révèle à celui qui avance.",
+          "{{current}}/{{target}}, la patience porte déjà ses fruits.",
+          "{{current}}/{{target}} : chaque geste compte, continue.",
+          // --- Coach rétro Gym Tonic ---
+          "{{current}}/{{target}} ! On garde le rythme, et un, et deux !",
+          "{{current}}/{{target}}, cette énergie synthwave me transporte !",
+          "{{current}}/{{target}} ! On continue en musique !",
+          // --- Spartiate/mythologique ---
+          "{{current}}/{{target}} ! La phalange avance, ne rompt pas les rangs.",
+          "{{current}}/{{target}}, digne d'un vrai guerrier de Sparte.",
+          "{{current}}/{{target}} : la gloire approche, continue.",
+          // --- Capitaine pirate ---
+          "{{current}}/{{target}} ! On navigue vers le trésor, moussaillon.",
+          "{{current}}/{{target}}, continue de ramer !",
+          "{{current}}/{{target}} ! Le vent est avec toi.",
+          // --- Manager corporate ---
+          "{{current}}/{{target}}. Bonne progression sur le sprint du jour.",
+          "{{current}}/{{target}}, on est aligné sur l'objectif.",
+          "{{current}}/{{target}} : momentum positif détecté.",
+          // --- Nutritionniste obsessionnel ---
+          "{{current}}/{{target}}. Les macros suivent parfaitement.",
+          "{{current}}/{{target}}, ton métabolisme te remercie déjà.",
+          "{{current}}/{{target}} : continue, la collation attend.",
+          // --- Minimaliste stoïcien ---
+          "{{current}}/{{target}}. Continue.",
+          "{{current}}/{{target}}. Simple progression.",
+          "{{current}}/{{target}}. Pas de mots inutiles.",
         ],
         almostThere: [
           "{{current}}/{{target}} ? On y est presque !",
@@ -153,6 +275,67 @@ const LOCALE_FR = {
           "Encore un petit push et {{current}}/{{target}} devient de l'histoire ancienne.",
           "{{current}}/{{target}}... tu sens cette brûlure ? C'est bon signe.",
           "On ne lâche RIEN maintenant : {{current}}/{{target}}, la ligne d'arrivée approche.",
+          // Catalogue industriel (15 archetypes) - ouverture d'exercice, palier "presque".
+          // --- Coach Shonen ---
+          "{{current}}/{{target}} ! Ton pouvoir explose, la victoire est proche !",
+          "Presque là, {{current}}/{{target}} ! Sens cette énergie ultime !",
+          "{{current}}/{{target}}, le dernier boost avant le triomphe !",
+          // --- Sergent instructeur ---
+          "{{current}}/{{target}} ! Dernière ligne droite, soldat, tiens bon !",
+          "{{current}}/{{target}}, ne relâche RIEN maintenant !",
+          "{{current}}/{{target}} ! La victoire est à portée de main.",
+          // --- Pote taquin ---
+          "{{current}}/{{target}} ? Tu vas y arriver, même si tu traînes un peu.",
+          "Presque fini, {{current}}/{{target}} ! Ne me déçois pas maintenant.",
+          "{{current}}/{{target}}, encore un effort et je serai bluffé·e.",
+          // --- Philosophe du fitness ---
+          "{{current}}/{{target}}. Le sommet se dessine à l'horizon.",
+          "{{current}}/{{target}}, la dernière pierre attend d'être posée.",
+          "{{current}}/{{target}} : la fin du chemin illumine tes pas.",
+          // --- Gamer/geek ---
+          "{{current}}/{{target}} ! Boss final en vue, ne lâche pas la manette.",
+          "{{current}}/{{target}}, barre presque pleine, dernier push !",
+          "{{current}}/{{target}} : achievement à portée de clic.",
+          // --- Héros de film d'action 80s ---
+          "{{current}}/{{target}} ! On y est presque, tiens bon jusqu'au bout.",
+          "{{current}}/{{target}}, la fin approche, ne relâche rien.",
+          "{{current}}/{{target}} ! Le générique de victoire approche.",
+          // --- Scientifique/ingénieur ---
+          "{{current}}/{{target}}. Convergence quasi complète vers l'objectif.",
+          "{{current}}/{{target}}, marge d'erreur minimale restante.",
+          "{{current}}/{{target}} : dernière itération avant le succès total.",
+          // --- Influenceur Fit-Bro ---
+          "{{current}}/{{target}}, bro ! On termine ce grind en beauté.",
+          "{{current}}/{{target}}, la shape finale est presque là.",
+          "{{current}}/{{target}} ! Dernier effort, focus total.",
+          // --- Vieux sage ---
+          "{{current}}/{{target}}. La fin du chemin approche, reste centré·e.",
+          "{{current}}/{{target}}, la sagesse dit : persévère encore un peu.",
+          "{{current}}/{{target}} : le calme avant la victoire.",
+          // --- Coach rétro Gym Tonic ---
+          "{{current}}/{{target}} ! Le refrain final approche, donne tout !",
+          "{{current}}/{{target}}, presque au bout du disco du jour !",
+          "{{current}}/{{target}} ! On termine sur une note haute !",
+          // --- Spartiate/mythologique ---
+          "{{current}}/{{target}} ! Les portes de la gloire s'ouvrent.",
+          "{{current}}/{{target}}, la victoire spartiate est proche.",
+          "{{current}}/{{target}} : tiens la ligne jusqu'au bout.",
+          // --- Capitaine pirate ---
+          "{{current}}/{{target}} ! Le trésor est en vue, moussaillon !",
+          "{{current}}/{{target}}, terre en vue, continue de ramer !",
+          "{{current}}/{{target}} ! Presque au port, tiens bon.",
+          // --- Manager corporate ---
+          "{{current}}/{{target}}. Livrable presque finalisé, dernière ligne droite.",
+          "{{current}}/{{target}}, objectif quasi atteint, on ne lâche rien.",
+          "{{current}}/{{target}} : clôture du sprint imminente.",
+          // --- Nutritionniste obsessionnel ---
+          "{{current}}/{{target}}. Presque fini, ta collation post-effort t'attend.",
+          "{{current}}/{{target}}, dernier effort, les macros vont être parfaites.",
+          "{{current}}/{{target}} : le métabolisme accélère, continue.",
+          // --- Minimaliste stoïcien ---
+          "{{current}}/{{target}}. Presque. Continue.",
+          "{{current}}/{{target}}. La fin approche.",
+          "{{current}}/{{target}}. Un dernier geste.",
         ],
         done: [
           "Objectif atteint, {{current}}/{{target}} ! Tu gères.",
@@ -161,6 +344,67 @@ const LOCALE_FR = {
           "{{current}}/{{target}}, propre et net. J'attendais rien de moins de toi.",
           "Regarde-moi ce {{current}}/{{target}}. Franchement, chapeau.",
           "{{current}}/{{target}}, objectif coché. Tu reviens pour le plaisir ou pour le Mode Hardcore ?",
+          // Catalogue industriel (15 archetypes) - ouverture d'exercice, palier "termine".
+          // --- Coach Shonen ---
+          "{{current}}/{{target}} ! Objectif écrasé, ton niveau de puissance explose !",
+          "Victoire totale, {{current}}/{{target}} ! Tu es passé·e au niveau supérieur !",
+          "{{current}}/{{target}}, mission accomplie avec la fougue d'un héros !",
+          // --- Sergent instructeur ---
+          "{{current}}/{{target}} ! Mission accomplie, soldat, repos mérité !",
+          "{{current}}/{{target}}, objectif rempli. Discipline exemplaire.",
+          "{{current}}/{{target}} ! Rapport positif, félicitations.",
+          // --- Pote taquin ---
+          "{{current}}/{{target}} ! Alors là, chapeau, je suis bluffé·e.",
+          "{{current}}/{{target}}, terminé ! Tu vois quand tu veux.",
+          "{{current}}/{{target}} ! Bon d'accord, t'es un·e champion·ne.",
+          // --- Philosophe du fitness ---
+          "{{current}}/{{target}}. Le sommet est atteint, savoure la vue.",
+          "{{current}}/{{target}}, la dernière pierre est posée sur le monument.",
+          "{{current}}/{{target}} : le chemin s'achève, un nouveau commence.",
+          // --- Gamer/geek ---
+          "{{current}}/{{target}} ! Boss vaincu, achievement débloqué !",
+          "{{current}}/{{target}}, quête terminée. Loot bien mérité.",
+          "{{current}}/{{target}} : niveau complété à 100%.",
+          // --- Héros de film d'action 80s ---
+          "{{current}}/{{target}} ! Mission accomplie, comme au cinéma.",
+          "{{current}}/{{target}}, tu as gagné cette bataille.",
+          "{{current}}/{{target}} ! Générique de victoire, bien joué.",
+          // --- Scientifique/ingénieur ---
+          "{{current}}/{{target}}. Objectif atteint, rendement de 100% confirmé.",
+          "{{current}}/{{target}}, protocole exécuté avec succès.",
+          "{{current}}/{{target}} : résultat conforme aux attentes optimales.",
+          // --- Influenceur Fit-Bro ---
+          "{{current}}/{{target}}, bro ! Cette shape, incroyable, masterclass !",
+          "{{current}}/{{target}} ! Le grind a payé, respect total.",
+          "{{current}}/{{target}}, objectif smashé, focus légendaire.",
+          // --- Vieux sage ---
+          "{{current}}/{{target}}. Le chemin est achevé, la sagesse rayonne.",
+          "{{current}}/{{target}}, la patience a porté ses fruits.",
+          "{{current}}/{{target}} : l'équilibre est atteint.",
+          // --- Coach rétro Gym Tonic ---
+          "{{current}}/{{target}} ! Et voilà, on termine en beauté sur cette note néon !",
+          "{{current}}/{{target}}, séance terminée, quel groove !",
+          "{{current}}/{{target}} ! Standing ovation, tu l'as mérité !",
+          // --- Spartiate/mythologique ---
+          "{{current}}/{{target}} ! Victoire digne de Sparte.",
+          "{{current}}/{{target}}, la gloire t'appartient désormais.",
+          "{{current}}/{{target}} : bataille remportée avec honneur.",
+          // --- Capitaine pirate ---
+          "{{current}}/{{target}} ! Trésor trouvé, moussaillon !",
+          "{{current}}/{{target}}, port atteint sain et sauf.",
+          "{{current}}/{{target}} ! Le capitaine est fier de toi.",
+          // --- Manager corporate ---
+          "{{current}}/{{target}}. Livrable finalisé, objectif dépassé.",
+          "{{current}}/{{target}}, sprint clôturé avec succès.",
+          "{{current}}/{{target}} : KPI atteint, félicitations à l'équipe.",
+          // --- Nutritionniste obsessionnel ---
+          "{{current}}/{{target}}. Objectif atteint, place à la collation méritée.",
+          "{{current}}/{{target}}, macros respectées, bravo.",
+          "{{current}}/{{target}} : effort terminé, hydrate-toi bien maintenant.",
+          // --- Minimaliste stoïcien ---
+          "{{current}}/{{target}}. Terminé.",
+          "{{current}}/{{target}}. Fait. Rien de plus à dire.",
+          "{{current}}/{{target}}. La répétition reste.",
         ],
       },
       tapPunchline: [
