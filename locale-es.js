@@ -222,6 +222,8 @@ const LOCALE_ES = {
     incomingLabel: 'Solicitudes pendientes',
     acceptBtn: 'Aceptar',
     declineBtn: 'Rechazar',
+    groupInvitesLabel: 'Invitaciones de grupo',
+    groupInviteRow: '{{group}} — invitado/a por {{name}}',
     myFriendsLabel: 'Mis amigos',
     removeFriendAria: 'Eliminar a este amigo',
     noFriends: 'Todavía no tienes amigos — busca un usuario arriba para empezar.',

@@ -3672,3 +3672,113 @@ avant ce correctif) reste inchangee.
 CACHE_NAME -> v85 (les 3 fichiers `locale-*.js`, texte de section modifie).
 Aucun changement de regles Firestore/Cloud Functions - modification 100%
 cote client, aucune touche a `functions/**`.
+
+
+## 3 correctifs cibles : score Boulet instable, invitations de groupe centralisees, son de victoire de groupe
+
+### 1. Score de groupe instable apres un malus Boulet (bug reel, pas une preference)
+
+**Symptome signale** : apres avoir recu le malus Boulet (-20), un premier clic
+`+10` n etait pas comptabilise/mis a jour a l ecran, mais un clic suivant
+`+5` "fonctionnait". **Root cause reelle, trouvee par lecture du code (pas
+supposee)** : la mini-barre de progression du defi de groupe affichee sous
+l objectif personnel (`activeExerciseGroupChallenges`, fiche d exercice)
+utilisait une mise a jour "optimiste" naive dans `addSetInner()` -
+`currentTotal + amount`, ajoutant AVEUGLEMENT le montant brut tape. Or
+`computeGroupTotalProgress()` (deja en place, correctif precedent) plafonne
+le NET de CHAQUE participant (`totalAmount - handicap`) a 0 AVANT de sommer -
+une victime du Boulet encore SOUS son handicap qui loggue des repetitions ne
+fait donc PAS avancer le total du groupe au meme rythme que le nombre brut
+tape (rien tant que son net reste negatif, puis seulement l exces une fois le
+handicap compense). Additionner naivement le montant brut etait donc
+**mathematiquement faux**, et desynchronisait l affichage de facon instable
+(parfois "corrige" par une lecture perimee arrivant plus tard et ecrasant la
+valeur) - exactement le symptome decrit.
+
+**Correctif** : `addSetInner()` ne calcule plus rien localement - elle
+resynchronise TOUJOURS via une relecture Firestore fraiche et autoritative
+(`loadActiveExerciseGroupChallenges()`, reutilisee telle quelle - meme
+fonction/meme formule que la carte hero de l ecran Groupes, aucun calcul
+duplique). **Protection contre une 2e source d instabilite, decouverte en
+creusant** : `loadActiveExerciseGroupChallenges()` est aussi appelee en
+"fire-and-forget" depuis `pickChallenge()` a l ouverture de la fiche
+d exercice - un utilisateur qui tape une serie tres vite apres ouverture
+declenchait 2 lectures Firestore concurrentes (l ouverture ET la
+resynchronisation post-serie), sans aucune garantie que la plus RECEMMENT
+EMISE resolve en dernier. Corrige par un jeton de sequence
+(`activeExerciseGroupChallengesSeq`, incremente a chaque appel) : toute
+reponse dont le jeton n est plus le plus recent emis est ignoree - la
+derniere lecture EMISE gagne toujours, jamais celle qui RESOUT en dernier
+par hasard.
+
+**Compromis assume** (explicitement voulu par l utilisateur : "sans aucune
+perte de donnees... 100% robuste" plutot que la reactivite a tout prix) :
+chaque serie loguee sur un exercice lie a un defi de groupe declenche
+desormais un aller-retour Firestore supplementaire (en plus de l appel deja
+existant a la Cloud Function `logGroupChallengeContribution`, deja awaited
+avant ce point) avant le prochain `render()` - un leger delai au lieu d une
+estimation locale potentiellement fausse. N affecte QUE les series liees a
+un defi de groupe actif (garde explicite avant l appel), jamais les series
+"normales".
+
+### 2. Invitations de groupe centralisees dans l ecran Amis
+
+**Contexte, decouvert en explorant le code (different des demandes d amis)** :
+contrairement a `friendRequests` (vraie collection persistante, requete
+`where('toUid','==',uid)` deja fiable), une invitation de groupe
+(`inviteFriendToGroup()`) n existait QUE sous forme d un document
+`users/{uid}/notifications/{id}` (`type:'group_invite'`) - ephemere par
+construction : `processUnreadNotifications()` marque CHAQUE notification
+`read:true` des son premier affichage, accepte ou non, et rien d autre n en
+gardait trace. Une invitation refusee via "Plus tard" tombait donc dans un
+vrai trou noir, sans AUCUN moyen de la retrouver.
+
+**Decision d implementation (aucune nouvelle collection, aucune regle
+Firestore a modifier)** : plutot que de creer une collection dediee (a la
+`friendRequests`), le document `notifications` lui-meme reste la source de
+verite - son EXISTENCE (pas son champ `read`) signale desormais une
+invitation "en attente". `match /users/{userId}/{document=**} { allow read,
+write: if auth.uid == userId; }` (regle generale deja en place, verifiee
+avant tout code) donne DEJA au destinataire un acces complet en
+lecture/ecriture/suppression sur sa propre sous-collection `notifications` -
+aucune regle a ajouter pour pouvoir la supprimer a l acceptation/au refus.
+
+- `refreshPendingGroupInvites()` : requete `notifications.where('type','==',
+  'group_invite')` (filtre simple, aucun index composite necessaire),
+  peuple `incomingGroupInvites`. Appelee depuis `openFriendsScreen()`, EXACTEMENT
+  comme `refreshFriendsData()` (meme correctif de fiabilite que les demandes
+  d amis, meme session) - la liste est donc TOUJOURS a jour a l ouverture de
+  l ecran, independamment de toute notification recue/manquee/refusee.
+- `acceptGroupInviteFromList(notifId, groupId)` / `declineGroupInviteFromList(notifId)` :
+  le premier delegue integralement a `joinGroupById()` (deja existant) puis
+  supprime la notification ; le second supprime seulement.
+- **`processUnreadNotifications()` (branche `group_invite`) mise a jour** :
+  sur acceptation depuis la popup in-app elle-meme, la notification est
+  desormais AUSSI supprimee - sans ce correctif, une invitation deja acceptee
+  depuis la popup continuait d apparaitre "en attente" dans la nouvelle
+  liste centralisee (son EXISTENCE seule faisant foi). Sur "Plus tard", RIEN
+  n est supprime - c est exactement ce qui la laisse visible dans la liste
+  centralisee pour un traitement ulterieur.
+- UI (`renderFriendsScreen()`) : reutilise le composant `renderFriendActionRow()`
+  tel quel (meme pattern que les demandes d amis), masquee si
+  `incomingGroupInvites` est vide. Chaque ligne affiche EXPLICITEMENT le nom
+  du groupe en tete (nouvelle cle `friends.groupInviteRow`,
+  `'{{group}} — invite(e) par {{name}}'`) et un bouton `groups.joinBtn`
+  ("Rejoindre", cle deja existante, reutilisee pour rester coherent avec le
+  reste de l app) + `friends.declineBtn` ("Refuser", deja existante).
+
+### 3. Son de victoire silencieux sur un defi de groupe reussi
+
+**Bug reel signale** : la popup de celebration epique (`targetReached`,
+`processUnreadNotifications()`) s affichait en silence, contrairement a la
+completion personnelle/Hardcore qui appelle deja `playSuccessSound()` a cote
+de son propre `enqueuePopup()`. Un simple appel manquant - ajoute juste avant
+l `enqueuePopup()` de cette branche precise, respecte deja le reglage
+`soundEffectsEnabled` (Parametres) sans aucun changement necessaire a
+`playSuccessSound()` elle-meme.
+
+CACHE_NAME -> v86 (nouvelles cles `friends.groupInvitesLabel`/
+`friends.groupInviteRow` dans les 3 fichiers `locale-*.js`, cache-first avec
+remplissage cote service worker). Aucun changement de regles Firestore/
+Cloud Functions - modification 100% cote client (`index.html` +
+`locale-*.js`), aucune touche a `functions/**`.

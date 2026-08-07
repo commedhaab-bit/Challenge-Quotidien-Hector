@@ -221,6 +221,8 @@ const LOCALE_EN = {
     incomingLabel: 'Pending requests',
     acceptBtn: 'Accept',
     declineBtn: 'Decline',
+    groupInvitesLabel: 'Group invitations',
+    groupInviteRow: '{{group}} — invited by {{name}}',
     myFriendsLabel: 'My friends',
     removeFriendAria: 'Remove this friend',
     noFriends: 'No friends yet — search a username above to get started.',

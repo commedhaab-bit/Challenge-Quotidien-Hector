@@ -2344,6 +2344,18 @@ let friendSearchResult = null; // null | 'searching' | 'not-found' | 'self' | { 
 let myFriends = []; // [{ uid, displayName, photoURL }]
 let incomingFriendRequests = []; // [{ fromUid, displayName, photoURL, at }]
 let outgoingFriendRequestUids = new Set();
+// Invitations de groupe en attente (retour utilisateur : meme fiabilisation que les
+// demandes d'amis - voir refreshPendingGroupInvites()). Contrairement a
+// friendRequests (collection dediee), il n'existe aucune collection separee pour les
+// invitations de groupe : le document notifications lui-meme (type 'group_invite',
+// deja ecrit par inviteFriendToGroup()) EST la source de verite persistante - son
+// EXISTENCE (pas son champ read, qui passe a true des l affichage du popup in-app,
+// accepte ou non) signale une invitation encore en attente. Supprime uniquement a
+// l acceptation (voir acceptGroupInviteFromList() ci-dessous et le bloc
+// processUnreadNotifications() type 'group_invite') ou au refus explicite
+// (declineGroupInviteFromList()) - jamais a la simple lecture, contrairement au
+// comportement generique des autres notifications.
+let incomingGroupInvites = []; // [{ id, groupId, groupName, fromName, at }]
 
 // ==== GROUPES & DEFIS COLLECTIFS (Phase 2 - fondations) ====
 // groups/{groupId} + groups/{groupId}/members/{uid} : jamais un tableau sur le doc
@@ -2367,6 +2379,14 @@ let myActiveGroupChallenges = []; // [{ groupId, challengeId, exerciseSlug, targ
 // lecture Firestore par defi lie pour le total CUMULE reel du groupe (jamais mis en
 // cache ailleurs cote client). [{ groupId, challengeId, groupName, targetTotal, currentTotal }]
 let activeExerciseGroupChallenges = [];
+// Jeton de sequence (retour utilisateur, correctif du bug Boulet) : plusieurs appels
+// a loadActiveExerciseGroupChallenges() peuvent se chevaucher - le chargement initial
+// "fire-and-forget" de pickChallenge() ET la resynchronisation autoritative declenchee
+// par addSetInner() juste apres chaque serie loguee. Sans garde, celui des deux qui
+// RESOUT en dernier ecrase l'autre, meme s'il a ete EMIS avant et transporte donc des
+// donnees perimees (bug reel signale : un clic "non comptabilise a l'ecran" apres un
+// malus Boulet, voir loadActiveExerciseGroupChallenges()/addSetInner()).
+let activeExerciseGroupChallengesSeq = 0;
 let creatingGroupOpen = false; // formulaire "creer un groupe" (racine de l'onglet Groupes)
 let joiningGroupOpen = false; // formulaire "rejoindre avec un code" (racine de l'onglet Groupes)
 let groupCreateNameInput = '';
@@ -2591,6 +2611,19 @@ async function processUnreadNotifications(snap) {
       });
       if (accepted) {
         await joinGroupById(data.groupId);
+        // Retour utilisateur : cette invitation reste desormais visible (centralisee)
+        // dans l ecran Amis (voir incomingGroupInvites/refreshPendingGroupInvites())
+        // tant qu elle n a pas ete explicitement traitee - contrairement au reste des
+        // notifications, son existence (pas son champ read) fait foi. La supprimer ici
+        // evite qu elle continue d apparaitre "en attente" apres avoir deja ete
+        // acceptee depuis cette popup. Sur "Plus tard" (accepted=false), on ne
+        // supprime volontairement RIEN : c est exactement ce qui doit la laisser
+        // visible dans la liste centralisee pour un traitement ulterieur.
+        try {
+          await notificationsCollRef(myUid).doc(doc.id).delete();
+        } catch (e) {
+          reportSaveError('delete accepted group invite notification failed', e);
+        }
       }
     } else if (data.type === 'group_challenge_settled') {
       // winnerName (1er contributeur) : embarque par settleChallengeIfNeeded() cote
@@ -2606,6 +2639,11 @@ async function processUnreadNotifications(snap) {
       // celebration plein ecran a l'image d'un trophee/level up epique) d'un simple
       // reglement par expiration d'echeance sans objectif atteint (bilan neutre).
       if (data.targetReached) {
+        // Bug reel signale (retour utilisateur) : cette popup de victoire collective
+        // s'affichait en silence, contrairement a la completion personnelle/Hardcore
+        // (voir addSetInner(), qui appelle deja playSuccessSound() a cote de son
+        // propre enqueuePopup()) - meme son de celebration ici, pour la coherence.
+        playSuccessSound();
         enqueuePopup({
           variant: 'trophy',
           epic: true,
@@ -3362,8 +3400,10 @@ function openFriendsScreen() {
   // filet de secours n'existait pour la retrouver. Non attendu (pas de await) : le
   // rendu synchrone ci-dessus reste immediat, cette relecture Firestore met juste a
   // jour la liste (et son propre render()) des qu'elle revient, sans jamais dependre
-  // d'une notification recue pour rester fiable.
+  // d'une notification recue pour rester fiable. Meme raisonnement, meme filet de
+  // secours pour les invitations de groupe en attente (voir refreshPendingGroupInvites()).
   refreshFriendsData();
+  refreshPendingGroupInvites();
 }
 
 function updateFriendSearchQuery(value) {
@@ -3458,6 +3498,45 @@ async function declineFriendRequest(fromUid) {
     await refreshFriendsData();
   } catch (e) {
     reportSaveError('decline friend request failed', e);
+  }
+}
+
+// Retour utilisateur : centraliser les invitations de groupe en attente dans l ecran
+// Amis, meme fiabilite que refreshFriendsData()/incomingFriendRequests - relit
+// TOUJOURS Firestore (voir openFriendsScreen()), independamment de toute popup
+// in-app/notification push recue ou manquee. Filtre 'type' cote requete (index
+// simple, deja disponible sans configuration - aucun index composite necessaire),
+// aucun autre champ ne distingue une invitation "en attente" d une autre : son
+// EXISTENCE MEME est le signal (voir le commentaire sur incomingGroupInvites).
+async function refreshPendingGroupInvites() {
+  if (!currentUser) return;
+  try {
+    const snap = await notificationsCollRef(currentUser.uid).where('type', '==', 'group_invite').get();
+    incomingGroupInvites = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    render();
+  } catch (e) {
+    reportSaveError('refresh pending group invites failed', e);
+  }
+}
+
+async function acceptGroupInviteFromList(notifId, groupId) {
+  try {
+    await joinGroupById(groupId);
+    await notificationsCollRef(currentUser.uid).doc(notifId).delete();
+    incomingGroupInvites = incomingGroupInvites.filter((inv) => inv.id !== notifId);
+    render();
+  } catch (e) {
+    reportSaveError('accept group invite from list failed', e);
+  }
+}
+
+async function declineGroupInviteFromList(notifId) {
+  try {
+    await notificationsCollRef(currentUser.uid).doc(notifId).delete();
+    incomingGroupInvites = incomingGroupInvites.filter((inv) => inv.id !== notifId);
+    render();
+  } catch (e) {
+    reportSaveError('decline group invite from list failed', e);
   }
 }
 
@@ -5247,7 +5326,11 @@ async function pickChallenge(id) {
 // exercice, cas gardé generique plutot que suppose impossible).
 async function loadActiveExerciseGroupChallenges(slug) {
   const matches = myActiveGroupChallenges.filter((m) => m.exerciseSlug === slug);
-  if (matches.length === 0) { activeExerciseGroupChallenges = []; return; }
+  const mySeq = ++activeExerciseGroupChallengesSeq;
+  if (matches.length === 0) {
+    if (mySeq === activeExerciseGroupChallengesSeq) activeExerciseGroupChallenges = [];
+    return;
+  }
   try {
     const results = await Promise.all(matches.map(async (m) => {
       const participantsSnap = await db.collection('groups').doc(m.groupId).collection('challenges').doc(m.challengeId).collection('participants').get();
@@ -5258,6 +5341,11 @@ async function loadActiveExerciseGroupChallenges(slug) {
       const group = myGroups.find((g) => g.groupId === m.groupId);
       return { groupId: m.groupId, challengeId: m.challengeId, groupName: group ? group.name : '', targetTotal: m.targetTotal || 0, currentTotal };
     }));
+    // Jeton perime : un appel plus recent a deja ete emis (voir addSetInner(), qui
+    // resynchronise juste apres chaque serie loguee) - ignorer ce resultat, sinon une
+    // lecture LANCEE avant mais RESOLUE apres ecraserait des donnees plus fraiches
+    // avec des donnees perimees (le bug reel signale par l utilisateur).
+    if (mySeq !== activeExerciseGroupChallengesSeq) return;
     // Navigation rapide possible pendant le chargement : n'applique le résultat que
     // s'il correspond encore à l'exercice actuellement affiché.
     const c = getChallenge();
@@ -5365,17 +5453,24 @@ async function addSetInner(amount) {
   const entry = getEntry(currentChallengeId);
   entry.sets.push(amount);
   await registerBossBattleContributionIfNeeded(currentChallengeId, amount); // chaque serie compte, pas seulement la complétion du défi
-  await registerGroupChallengeContributionsIfNeeded(getChallenge() ? getChallenge().slug : null, amount);
-  // Mise a jour optimiste (affichage uniquement) de la progression du/des defi(s) de
-  // groupe deja affichee sous l'objectif du jour (voir activeExerciseGroupChallenges) -
-  // evite d'attendre une nouvelle lecture Firestore a chaque serie loguee.
-  // Resynchronisee avec la vraie valeur serveur (plafond exact inclus) a la prochaine
-  // ouverture de cette fiche (pickChallenge() -> loadActiveExerciseGroupChallenges()).
-  if (activeExerciseGroupChallenges.length > 0) {
-    activeExerciseGroupChallenges = activeExerciseGroupChallenges.map((g) => ({
-      ...g,
-      currentTotal: g.targetTotal > 0 ? Math.min(g.targetTotal, g.currentTotal + amount) : g.currentTotal + amount,
-    }));
+  const exerciseSlugForGroups = getChallenge() ? getChallenge().slug : null;
+  await registerGroupChallengeContributionsIfNeeded(exerciseSlugForGroups, amount);
+  // Bug reel signale (retour utilisateur, "malus Boulet") : l ancienne mise a jour
+  // "optimiste" (currentTotal + amount, sans jamais consulter le serveur) etait
+  // mathematiquement FAUSSE des qu un handicap Boulet est en jeu -
+  // computeGroupTotalProgress() (server ET client) plafonne le NET de CHAQUE
+  // participant (totalAmount - handicap) a 0 avant de sommer, donc une victime
+  // encore SOUS son handicap qui loggue des repetitions ne fait PAS avancer le total
+  // du groupe au meme rythme que le nombre brut tape - additionner naivement le
+  // montant brut desynchronisait l affichage de facon instable (parfois "corrige"
+  // par une lecture perimee arrivant plus tard et ecrasant la valeur, donnant
+  // l impression qu un clic sur deux "ne comptait pas"). Resynchronise desormais
+  // TOUJOURS via une relecture Firestore fraiche et autoritative
+  // (loadActiveExerciseGroupChallenges(), meme fonction/meme formule que la carte
+  // hero de l ecran Groupes - jamais de calcul duplique), protegee contre les
+  // reponses perimees par activeExerciseGroupChallengesSeq (voir cette fonction).
+  if (exerciseSlugForGroups && myActiveGroupChallenges.some((m) => m.exerciseSlug === exerciseSlugForGroups)) {
+    await loadActiveExerciseGroupChallenges(exerciseSlugForGroups);
   }
   // Idem pour la sparkline (7 derniers jours) : le dernier point (aujourd'hui)
   // doit refleter la serie qu'on vient de loguer sans attendre un rechargement.
@@ -7372,6 +7467,23 @@ function renderFriendsScreen() {
     </div>
   ` : '';
 
+  // Retour utilisateur (Priorite 2, centralisation des invitations de groupe) :
+  // meme composant/repli que les demandes d'amis - masquee si aucune invitation en
+  // attente. Chaque ligne affiche EXPLICITEMENT le nom du groupe (groupInviteRow,
+  // {{group}} en tete) - reutilise renderFriendActionRow() tel quel (clickable=false,
+  // le "uid" n'y sert qu'a l'ouverture de fiche profil, jamais utilisee ici) : la
+  // lettre de repli de l'avatar devient alors naturellement l'initiale du GROUPE
+  // (aucune photo de groupe a afficher).
+  const groupInvitesHtml = incomingGroupInvites.length > 0 ? `
+    <div class="section-label">${t('friends.groupInvitesLabel')}</div>
+    <div class="leaderboard-list">
+      ${incomingGroupInvites.map(inv => renderFriendActionRow(inv.id, t('friends.groupInviteRow', { group: inv.groupName || '', name: inv.fromName || '' }), '', `
+        <button class="friend-action-btn" onclick="acceptGroupInviteFromList('${escapeJsAttr(inv.id)}', '${escapeJsAttr(inv.groupId)}')">${t('groups.joinBtn')}</button>
+        <button class="friend-action-btn ghost" onclick="declineGroupInviteFromList('${escapeJsAttr(inv.id)}')">${t('friends.declineBtn')}</button>
+      `)).join('')}
+    </div>
+  ` : '';
+
   const friendsHtml = myFriends.length > 0 ? `
     <div class="section-label">${t('friends.myFriendsLabel')}</div>
     <div class="leaderboard-list">
@@ -7390,6 +7502,7 @@ function renderFriendsScreen() {
            value="${escapeHtml(friendSearchQuery)}" oninput="updateFriendSearchQuery(this.value)">
     <button class="friend-search-submit-btn" onclick="submitFriendSearch()">${t('friends.searchBtn')}</button>
     ${resultHtml}
+    ${groupInvitesHtml}
     ${incomingHtml}
     ${friendsHtml}
   `;

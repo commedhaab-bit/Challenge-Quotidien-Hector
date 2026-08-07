@@ -2742,7 +2742,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v85'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v86'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -4532,6 +4532,12 @@ const cssText = __rawHtml + __cssSource;
   // habituel - une victoire collective merite plus qu'un simple "Bilan disponible".
   __resetCommunityMocks();
   popupQueue = []; popupOpen = false;
+  // Bug reel signale (retour utilisateur) : cette popup de victoire collective
+  // s'affichait jusqu'ici en silence - meme son de celebration que la completion
+  // personnelle/Hardcore desormais (playSuccessSound(), voir processUnreadNotifications()).
+  let groupWinAudioPlayCalls = [];
+  const originalAudioForGroupWin = window.Audio;
+  window.Audio = function (src) { groupWinAudioPlayCalls.push(src); this.play = () => Promise.resolve(); };
   await notificationsCollRef('me-uid').doc().set({
     type: 'group_challenge_settled', fromUid: 'system', groupId: 'g1', challengeId: 'c2',
     challengeName: '500 squats', winnerName: 'Bob M.', targetReached: true, read: false, createdAt: Date.now(),
@@ -4540,10 +4546,12 @@ const cssText = __rawHtml + __cssSource;
   await new Promise(r => setTimeout(r, 50));
   __assertOk(popupOpen && currentPopupHtml.includes('app-popup-card epic') && currentPopupHtml.includes(t('popups.notifications.groupChallengeWonTitle')) && currentPopupHtml.includes('500 squats'), 'un objectif de groupe atteint doit declencher la celebration epique (confettis), pas le bilan neutre');
   __assertOk(!currentPopupHtml.includes('kilo-beer'), 'la celebration epique (trophee) garde son propre traitement, deja distinctif - pas de Kilo ici, reserve au bilan neutre');
+  __assertEq(groupWinAudioPlayCalls, ['./assets/sounds/success.mp3'], 'la celebration d un defi de groupe reussi doit desormais etre accompagnee du son de reussite, pas silencieuse');
+  window.Audio = originalAudioForGroupWin;
   document.getElementById('appPopupCloseBtn').onclick();
   await new Promise(r => setTimeout(r, 10));
   if (notificationsUnsub) { notificationsUnsub(); notificationsUnsub = null; }
-  console.log('OK: victoire collective de groupe (targetReached) declenche la celebration plein ecran epique, distincte du bilan neutre par expiration');
+  console.log('OK: victoire collective de groupe (targetReached) declenche la celebration plein ecran epique + le son de reussite, distincte du bilan neutre par expiration (silencieux)');
 
   // F. Notifications push (Phase A) : les 4 nouveaux types de notification
   // declenchent chacun leur propre popup in-app (meme mecanisme que les types
@@ -6183,11 +6191,42 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(exerciseScreenHtml.includes('40 / 500'), 'la progression CUMULEE du defi de groupe (tous membres confondus) doit etre affichee, pas seulement ma propre contribution');
   console.log('OK: progression du defi de groupe affichee sous l objectif personnel sur la fiche de l exercice (activeExerciseGroupChallenges)');
 
-  // Mise a jour optimiste : chaque serie loguee doit incrementer IMMEDIATEMENT la
-  // progression affichee, sans attendre une nouvelle lecture Firestore.
-  await addSet(5);
-  __assertEq(activeExerciseGroupChallenges[0].currentTotal, 45, 'chaque serie loguee doit incrementer OPTIMISTEMENT la progression affichee du defi de groupe');
-  console.log('OK: mise a jour optimiste de la progression du defi de groupe a chaque serie loguee (addSetInner())');
+  // Bug reel signale (retour utilisateur, "malus Boulet") : l ancienne mise a jour
+  // "optimiste" (currentTotal + amount, sans jamais consulter le serveur) etait
+  // mathematiquement FAUSSE des qu un handicap Boulet est en jeu - computeGroupTotalProgress()
+  // plafonne le NET de chaque participant (totalAmount - handicap) a 0 avant de sommer,
+  // donc une victime encore SOUS son handicap qui loggue des repetitions ne doit PAS
+  // faire avancer le total affiche au meme rythme que le nombre brut tape. addSetInner()
+  // resynchronise desormais TOUJOURS via une relecture Firestore fraiche et autoritative
+  // (loadActiveExerciseGroupChallenges()) au lieu d une estimation locale.
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid')
+    .set({ handicap: 20 }, { merge: true }); // me-uid: totalAmount=10, handicap=20 -> net=-10 (plafonne a 0) ; bob-uid=30 -> total groupe = 30
+  // Simule l effet serveur d une 1ere serie de +10 (mock logGroupChallengeContribution
+  // n ecrit rien lui-meme, voir son commentaire dedie plus haut) : totalAmount 10->20,
+  // net = 20-20 = 0, TOUJOURS plafonne - le total du groupe ne doit PAS bouger, meme si
+  // 10 repetitions brutes viennent d etre tapees. C est exactement le symptome signale
+  // ("un premier clic de +10 pompes n a pas ete comptabilise a l ecran") - desormais un
+  // comportement CORRECT et STABLE (le malus n est pas encore compense), pas un bug
+  // d affichage instable.
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid')
+    .set({ totalAmount: 20 }, { merge: true });
+  await addSet(10);
+  __assertEq(activeExerciseGroupChallenges[0].currentTotal, 30, 'tant que le malus Boulet n est pas compense, une serie loguee ne doit PAS faire avancer le total affiche du defi de groupe (30 = bob seul, me-uid reste plafonne a 0)');
+  console.log('OK: la progression du defi de groupe affichee reste stable/correcte tant que le malus Boulet n est pas compense par une repetition reelle');
+
+  // Le clic SUIVANT (+11) fait franchir le handicap : totalAmount 20->31, net = 31-20 = 11
+  // (positif, plus jamais plafonne) - le total affiche doit desormais refleter cet exces
+  // EXACTEMENT, sans aucune perte de donnees (bob=30 + me-uid=11 = 41).
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid')
+    .set({ totalAmount: 31 }, { merge: true });
+  await addSet(11);
+  __assertEq(activeExerciseGroupChallenges[0].currentTotal, 41, 'des que le malus Boulet est compense, la progression affichee doit immediatement refleter le nouvel exces net, sans aucune perte de donnees');
+  console.log('OK: chaque repetition ajoutee est desormais recalculee de facon authoritative (relecture Firestore) et se met a jour immediatement, meme malus Boulet en jeu (bug reel corrige)');
+
+  // Remet me-uid dans l etat neutre attendu par les tests suivants (Jokers tactiques,
+  // Le Boulet) - ne PAS laisser ce handicap/totalAmount de test "fuiter" plus loin.
+  await db.collection('groups').doc(createdGroupId).collection('challenges').doc(groupChallengeId).collection('participants').doc('me-uid')
+    .set({ totalAmount: 10, handicap: 0 }, { merge: true });
 
   // Regression du bug reel signale en prod : un defi a 125/100 (objectif depasse)
   // restait affiche "actif" indefiniment sans aucune Ardoise/Palmares, car seule
@@ -6419,7 +6458,72 @@ const cssText = __rawHtml + __cssSource;
   confirmModal = originalConfirmModalGroups;
   const chloeMemberDoc = await db.collection('groups').doc(createdGroupId).collection('members').doc('chloe-uid').get();
   __assertOk(chloeMemberDoc.exists, 'accepter l invitation depuis la notification doit ajouter Chloe comme membre');
+  // Retour utilisateur (Priorite 2, centralisation) : une fois acceptee depuis CETTE
+  // popup in-app, la notification group_invite ne doit plus jamais reapparaitre comme
+  // "en attente" dans l ecran Amis (voir processUnreadNotifications()).
+  const inviteNotifAfterAccept = await notificationsCollRef('chloe-uid').where('type', '==', 'group_invite').get();
+  __assertEq(inviteNotifAfterAccept.size, 0, 'la notification group_invite doit etre supprimee une fois acceptee depuis la popup, sinon elle resterait indument "en attente"');
   console.log('OK: invitation a un groupe via le canal de notifications existant (accept -> joinGroupById())');
+
+  // --- Priorite 2 (retour utilisateur) : centraliser les invitations de groupe en
+  // attente dans l ecran Amis, meme fiabilite que les demandes d ami - reliees a la
+  // notification group_invite elle-meme (son EXISTENCE fait foi), pas a un mecanisme
+  // separe. ---
+  myFriends = [{ uid: 'dan-uid', displayName: 'Dan L.', photoURL: '' }];
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  await inviteFriendToGroup(createdGroupId, 'Les Costauds', 'dan-uid');
+
+  // Cote Dan : sur "Plus tard" (refus de la popup in-app), la notification ne doit
+  // PAS etre supprimee - c est exactement ce qui doit la laisser visible dans la
+  // liste centralisee pour un traitement ulterieur (bug reel signale : avant meme
+  // cette liste, une invitation "Plus tard" tombait dans un trou noir).
+  currentUser = { uid: 'dan-uid', displayName: 'Dan L.', email: 'd@test.com', photoURL: '' };
+  const danInviteSnap = await notificationsCollRef('dan-uid').where('read', '==', false).get();
+  __assertEq(danInviteSnap.size, 1, 'une notification group_invite doit etre creee pour Dan');
+  confirmModal = async () => false; // "Plus tard"
+  await processUnreadNotifications(danInviteSnap);
+  confirmModal = originalConfirmModalGroups;
+  const danMemberDocAfterLater = await db.collection('groups').doc(createdGroupId).collection('members').doc('dan-uid').get();
+  __assertOk(!danMemberDocAfterLater.exists, '"Plus tard" ne doit jamais rejoindre le groupe');
+  const danInviteAfterLater = await notificationsCollRef('dan-uid').where('type', '==', 'group_invite').get();
+  __assertEq(danInviteAfterLater.size, 1, '"Plus tard" ne doit PAS supprimer la notification - elle doit rester "en attente" pour la liste centralisee');
+
+  // La liste centralisee doit desormais la retrouver, meme sans avoir traite/vu la
+  // popup une seconde fois - meme fiabilite que refreshFriendsData()/incomingFriendRequests.
+  incomingGroupInvites = [];
+  await refreshPendingGroupInvites();
+  __assertEq(incomingGroupInvites.length, 1, 'refreshPendingGroupInvites() doit retrouver l invitation laissee "en attente"');
+  __assertEq(incomingGroupInvites[0].groupName, 'Les Costauds');
+  __assertEq(incomingGroupInvites[0].fromName, 'Moi A.', 'fromName doit deja etre le nom anonymise (formatDisplayName, applique a l ecriture par inviteFriendToGroup()), jamais le nom complet');
+  const friendsScreenWithInviteHtml = renderFriendsScreen();
+  __assertOk(friendsScreenWithInviteHtml.includes(t('friends.groupInvitesLabel')), 'le titre de section "Invitations de groupe" doit etre affiche');
+  __assertOk(friendsScreenWithInviteHtml.includes('Les Costauds'), 'chaque ligne doit afficher EXPLICITEMENT le nom du groupe concerne');
+  __assertOk(friendsScreenWithInviteHtml.includes(t('groups.joinBtn')), 'un bouton d action clair ("Rejoindre") doit etre propose');
+
+  // Accepter depuis CETTE liste centralisee : rejoint reellement le groupe ET
+  // supprime la notification (ne doit plus jamais reapparaitre).
+  await acceptGroupInviteFromList(danInviteAfterLater.docs[0].id, createdGroupId);
+  const danMemberDocAfterAccept = await db.collection('groups').doc(createdGroupId).collection('members').doc('dan-uid').get();
+  __assertOk(danMemberDocAfterAccept.exists, 'acceptGroupInviteFromList() doit reellement rejoindre le groupe (joinGroupById())');
+  __assertEq(incomingGroupInvites.length, 0, 'l invitation acceptee doit disparaitre immediatement de la liste locale');
+  const danInviteAfterListAccept = await notificationsCollRef('dan-uid').where('type', '==', 'group_invite').get();
+  __assertEq(danInviteAfterListAccept.size, 0, 'la notification doit etre supprimee une fois acceptee depuis la liste centralisee');
+
+  // Refus explicite (Refuser) : ne rejoint jamais, supprime seulement la notification -
+  // section masquee de nouveau des qu il n y a plus aucune invitation en attente.
+  await inviteFriendToGroup(createdGroupId, 'Les Costauds', 'dan-uid');
+  incomingGroupInvites = [];
+  await refreshPendingGroupInvites();
+  __assertEq(incomingGroupInvites.length, 1, 'une 2e invitation doit de nouveau etre retrouvee');
+  await declineGroupInviteFromList(incomingGroupInvites[0].id);
+  const danMemberDocAfterDecline = await db.collection('groups').doc(createdGroupId).collection('members').doc('dan-uid').get();
+  __assertOk(danMemberDocAfterDecline.exists, 'refuser ne doit jamais retirer une adhesion DEJA existante (celle du scenario precedent) - juste ne pas en creer une nouvelle');
+  __assertEq(incomingGroupInvites.length, 0, 'refuser doit retirer l invitation de la liste locale');
+  __assertOk(!renderFriendsScreen().includes(t('friends.groupInvitesLabel')), 'la section doit redevenir masquee des qu il n y a plus aucune invitation en attente');
+  console.log('OK: invitations de groupe centralisees dans l ecran Amis (Rejoindre/Refuser, fiable meme si la popup in-app a ete manquee/refusee)');
+
+  currentUser = { uid: 'me-uid', displayName: 'Moi Athlete', email: 'me@test.com', photoURL: '' };
+  incomingGroupInvites = [];
 
   // Navigation : goBackOneLevel() ferme le plus imbrique en premier (formulaire de
   // defi avant le detail du groupe), meme discipline que le reste de l app.
