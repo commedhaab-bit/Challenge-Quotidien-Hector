@@ -267,6 +267,13 @@ const LOCALE_ES = {
         '{{yearsLabel}} con Kilito a tu lado. El tiempo vuela cuando levantas cosas.',
         'Aniversario de cuenta: ¡{{yearsLabel}}! ¿Seguimos con esta racha?',
       ],
+      // Idea extra #16: frase de bienvenida en el primer lanzamiento del día
+      // (ver maybeShowKiloDailyIntro()).
+      dailyGreeting: [
+        '¡Nuevo día, nueva oportunidad de darlo todo! ¿Listo?',
+        '¡Hola! Kilito está despierto y ya motivado para hoy.',
+        'Empieza un nuevo día. ¿Vamos juntos?',
+      ],
     },
     // Cosmeticos de Kilo (Fase 3 de gamificacion) - id = clave en
     // ACCESSORY_DEFS/KILO_ACCESSORY_SVG, texto canonico frances retomado via

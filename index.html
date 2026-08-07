@@ -495,6 +495,7 @@ async function loadAppData() {
     weights = d.weights ?? {};
     unlockedAccessories = d.unlockedAccessories ?? [];
     kiloMuted = d.kiloMuted ?? false;
+    lastKiloIntroDate = d.lastKiloIntroDate ?? null;
     rebuildChallenges();
     backfillDefaultWeights();
     return;
@@ -525,6 +526,7 @@ async function loadAppData() {
       weights,
       unlockedAccessories,
       kiloMuted,
+      lastKiloIntroDate,
     });
   }
 }
@@ -4444,6 +4446,15 @@ async function toggleKiloMuted() {
   render();
 }
 
+// Idee bonus #16 (retour utilisateur, "petite intro au premier lancement du
+// jour") : cle du jour (meme format que todayKey, "AAAA-MM-JJ") du dernier
+// affichage de l'intro - persistee (pas juste en memoire) pour ne se
+// declencher qu'UNE SEULE FOIS par jour CALENDAIRE, meme si l'appli est
+// fermee/rouverte plusieurs fois le meme jour (meme principe que
+// lastShieldResetWeek, compare a une cle de periode courante a chaque
+// verification). Voir maybeShowKiloDailyIntro() plus bas.
+let lastKiloIntroDate = null;
+
 // ==== NOTIFICATIONS PUSH (Firebase Cloud Messaging, Phase B) ====
 // null tant que pas encore determine (verifie une fois, en tache de fond, voir
 // continueStartApp()) - le reglage reste discret/masque en attendant plutot que
@@ -5500,6 +5511,12 @@ let kiloHomeFidgetUntil = 0;
 let recentKiloHomeTaps = []; // [horodatages]
 const KILO_EASTER_EGG_WINDOW_MS = 3000;
 const KILO_EASTER_EGG_TAP_THRESHOLD = 5;
+// Idee bonus #16 (retour utilisateur, "petite intro au premier lancement du
+// jour") : meme principe horodatage->classe CSS que kiloHomeTapBounceUntil/
+// kiloHomeFidgetUntil ci-dessus, pilote par maybeShowKiloDailyIntro() (voir
+// plus bas), jamais une manipulation DOM directe.
+let kiloHomeIntroUntil = 0;
+const KILO_INTRO_DURATION_MS = 700;
 
 function emptyDayState() {
   return { challenges: {} };
@@ -6308,7 +6325,7 @@ function render(animate) {
     html += `
       <div class="header">
         <div class="date">${formatDateLabel(today)}</div>
-        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}${Date.now() < kiloHomeFidgetUntil ? ' fidgeting' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMoodDisplay, { size: 72, accessories: kiloHomeAccessories })}</div>
+        <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}${Date.now() < kiloHomeFidgetUntil ? ' fidgeting' : ''}${Date.now() < kiloHomeIntroUntil ? ' intro' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMoodDisplay, { size: 72, accessories: kiloHomeAccessories })}</div>
         <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>
       ${!kiloMuted && kiloHomeBubbleTextDisplay ? `<div class="kilo-home-bubble" onclick="kiloHomeTap()">${escapeHtml(kiloHomeBubbleTextDisplay)}</div>` : ''}
@@ -9548,6 +9565,13 @@ async function continueStartApp() {
   // Rattrapage natif inclus : les notifications non lues reçues hors ligne se
   // déclenchent exactement comme celles reçues en direct, dès ce premier instantané.
   startNotificationsListener();
+  // Idee bonus #16 (retour utilisateur, "petite intro au premier lancement du
+  // jour") : appelee AVANT #18 ci-dessous - les 2 partagent le meme emplacement
+  // unique kiloPendingSocialReaction, donc si les 2 se declenchent le meme
+  // jour (rare mais possible : anniversaire de compte ET 1er lancement du
+  // jour), l'anniversaire (plus rare/personnel) doit gagner en etant pose
+  // EN DERNIER, jamais l'inverse.
+  maybeShowKiloDailyIntro();
   // Idee bonus #18 (retour utilisateur) : verification client-side, une seule
   // fois par demarrage - voir maybeQueueAccountAnniversaryReaction() plus bas.
   // Simplification volontaire assumee : pas de garde "deja affiche aujourd'hui"
@@ -9558,6 +9582,24 @@ async function continueStartApp() {
   // (pas encore rechargé à ce moment-là) : sans ce second rendu, l'accueil reste
   // figé sur cet état obsolète (ex: liste vide ou d'une session précédente).
   render();
+}
+
+// Idee bonus #16 (retour utilisateur, "petite intro au premier lancement du
+// jour") : au tout premier rendu de l'accueil de la journee CALENDAIRE (pas
+// juste de la session courante - lastKiloIntroDate est PERSISTE, comparee a
+// todayKey exactement comme lastShieldResetWeek compare une cle de periode),
+// Kilo "apparait" avec une courte animation d'entree (classe CSS .intro,
+// pilotee par kiloHomeIntroUntil - meme principe horodatage->render() que
+// kiloHomeTapBounceUntil/kiloHomeFidgetUntil, jamais de manipulation DOM
+// directe) et une replique de bienvenue dediee, en reutilisant TEL QUEL le
+// mecanisme deja etabli kiloPendingSocialReaction (idees #9/#10/#18).
+async function maybeShowKiloDailyIntro() {
+  if (lastKiloIntroDate === todayKey) return;
+  lastKiloIntroDate = todayKey;
+  kiloHomeIntroUntil = Date.now() + KILO_INTRO_DURATION_MS;
+  kiloPendingSocialReaction = { key: 'kilo.home.dailyGreeting', params: {} };
+  await saveAppField('lastKiloIntroDate', lastKiloIntroDate);
+  setTimeout(() => render(), KILO_INTRO_DURATION_MS + 50); // force un rendu a l expiration, meme sans autre interaction entre-temps
 }
 
 // Idee bonus #18 (retour utilisateur, rappel d'anniversaire de compte) :

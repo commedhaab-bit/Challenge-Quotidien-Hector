@@ -269,6 +269,13 @@ const LOCALE_FR = {
         "{{yearsLabel}} avec Kilito à tes côtés. Le temps passe vite quand on soulève des trucs.",
         'Anniversaire de compte : {{yearsLabel}} ! On continue sur cette lancée ?',
       ],
+      // Idee bonus #16 (retour utilisateur) : replique de bienvenue au tout
+      // premier lancement du jour (voir maybeShowKiloDailyIntro()).
+      dailyGreeting: [
+        'Nouveau jour, nouvelle occasion de tout donner ! Prêt·e ?',
+        "Salut ! Kilito est réveillé et déjà motivé pour aujourd'hui.",
+        'Un nouveau jour commence. On y va ensemble ?',
+      ],
     },
     // Cosmetiques de Kilo (chantier gamification Phase 3) - id = cle dans
     // ACCESSORY_DEFS/KILO_ACCESSORY_SVG, texte canonique francais repris via

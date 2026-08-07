@@ -1908,6 +1908,35 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!kiloReactionAppHtml.slice(kiloReactionSlotIdxAfter, kiloReactionSlotIdxAfter + 400).includes('kilo-hype'), 'sans reaction en attente, l affichage doit revenir a l humeur normale (idle)');
   console.log('OK: idees bonus #9/#10 - reaction sociale ponctuelle sur l accueil (consommee une fois, humeur hype, cache normal preserve)');
 
+  // Idee bonus #16 (retour utilisateur, "petite intro au premier lancement du
+  // jour") : maybeShowKiloDailyIntro() - une seule fois par jour CALENDAIRE
+  // (lastKiloIntroDate PERSISTE, pas juste en memoire), reutilise
+  // kiloPendingSocialReaction (meme mecanisme que #9/#10/#18 ci-dessus).
+  lastKiloIntroDate = null;
+  kiloHomeIntroUntil = 0;
+  kiloPendingSocialReaction = null;
+  await maybeShowKiloDailyIntro();
+  __assertEq(lastKiloIntroDate, todayKey, 'le 1er appel du jour doit marquer lastKiloIntroDate comme traite pour aujourd hui');
+  __assertEq(__appDataStore.data.lastKiloIntroDate, todayKey, 'lastKiloIntroDate doit etre persiste dans le document consolide appData');
+  __assertOk(Date.now() < kiloHomeIntroUntil, 'le 1er appel du jour doit programmer la fenetre d intro');
+  __assertEq(kiloPendingSocialReaction, { key: 'kilo.home.dailyGreeting', params: {} }, 'le 1er appel du jour doit mettre en file la replique de bienvenue');
+  render(false);
+  let kiloIntroAppHtml = document.getElementById('app').innerHTML;
+  let kiloIntroSlotIdx = kiloIntroAppHtml.indexOf('kilo-home-slot');
+  __assertOk(kiloIntroAppHtml.slice(kiloIntroSlotIdx, kiloIntroSlotIdx + 80).includes('intro'), 'la classe .intro doit apparaitre pendant la fenetre d intro');
+
+  // Un 2e appel le MEME jour ne doit RIEN refaire - deja traite pour aujourd'hui.
+  kiloHomeIntroUntil = 0; // simule l expiration (sans attendre reellement 700ms)
+  kiloPendingSocialReaction = null;
+  await maybeShowKiloDailyIntro();
+  __assertEq(kiloHomeIntroUntil, 0, 'un 2e appel le meme jour ne doit jamais reprogrammer la fenetre d intro');
+  __assertEq(kiloPendingSocialReaction, null, 'un 2e appel le meme jour ne doit jamais remettre en file la replique de bienvenue');
+  render(false);
+  kiloIntroAppHtml = document.getElementById('app').innerHTML;
+  kiloIntroSlotIdx = kiloIntroAppHtml.indexOf('kilo-home-slot');
+  __assertOk(!kiloIntroAppHtml.slice(kiloIntroSlotIdx, kiloIntroSlotIdx + 80).includes('intro'), 'la classe .intro ne doit plus apparaitre une fois la fenetre expiree');
+  console.log('OK: idee bonus #16 - petite intro au premier lancement du jour (une seule fois par jour calendaire, jamais redeclenche)');
+
   // --- 35. Compte a rebours de preparation : 3, 2, 1, puis "C'est parti !" et demarrage reel du chrono ---
   voiceCoachEnabled = true;
   __spokenLog.length = 0;
@@ -3081,7 +3110,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v95'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v96'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');

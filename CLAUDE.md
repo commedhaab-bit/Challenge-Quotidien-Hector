@@ -4345,3 +4345,38 @@ CACHE_NAME -> v95 (contenu des `locale-*.js` modifie - nouvelles cles
 `kilo.home.accountAnniversary`/`kilo.home.accountAnniversaryYears`). Aucun
 changement de regles Firestore/Cloud Functions - modification 100% cote
 client, aucune touche a `functions/**`.
+
+## Idees bonus Kilo, lot 6/7 (#16 petite intro au premier lancement du jour)
+
+**`lastKiloIntroDate`** (nouveau champ simple du document consolide
+`appData`, meme structure de branchement exacte que `kiloMuted` au lot 1/7 -
+`let` au niveau module, branche `loadAppData()` "doc existe", payload de la
+migration-write) : cle du jour (`todayKey`, format "AAAA-MM-JJ") du dernier
+affichage de l'intro - **PERSISTEE, pas juste en memoire**, pour ne se
+declencher qu'UNE SEULE FOIS par jour CALENDAIRE meme si l'appli est
+fermee/rouverte plusieurs fois le meme jour (meme principe deja etabli que
+`lastShieldResetWeek`, compare a une cle de periode courante a chaque
+verification).
+
+**`maybeShowKiloDailyIntro()`** (appelee dans `continueStartApp()`, juste
+avant `maybeQueueAccountAnniversaryReaction()` - voir lot 5/7) : au tout
+premier appel du jour, pose `kiloHomeIntroUntil` (horodatage, meme principe
+deja etabli que `kiloHomeTapBounceUntil`/`kiloHomeFidgetUntil` - classe CSS
+`.intro` pilotee par `render()`, jamais de manipulation DOM directe) ET
+reutilise TEL QUEL `kiloPendingSocialReaction` (mecanisme deja etabli aux
+idees #9/#10/#18) pour une replique de bienvenue dediee
+(`kilo.home.dailyGreeting`). `.kilo-home-slot.intro .kilo-svg` :
+`kilo-intro-pop` (0.7s, `scale(0)->1.08->1` avec `cubic-bezier` de rebond) -
+Kilo "apparait" plutot que d'etre statique des le premier rendu.
+
+**Priorite documentee avec #18 (meme emplacement unique)** : appelee AVANT
+`maybeQueueAccountAnniversaryReaction()` dans `continueStartApp()` - si les 2
+se declenchent le meme jour (rare mais possible : anniversaire de compte ET
+1er lancement du jour), l'anniversaire (plus rare/personnel) doit gagner en
+etant pose EN DERNIER, jamais l'inverse. Un seul `kiloPendingSocialReaction`
+visible a la fois de toute facon, aucune perte reelle pour celui qui "perd".
+
+CACHE_NAME -> v96 (`styles.css` modifie - nouvelle animation
+`kilo-intro-pop`, nouvelle cle `locale-*.js` `kilo.home.dailyGreeting`).
+Aucun changement de regles Firestore/Cloud Functions - modification 100%
+cote client, aucune touche a `functions/**`.
