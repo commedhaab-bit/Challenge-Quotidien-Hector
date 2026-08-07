@@ -4609,3 +4609,68 @@ retiree). Aucun changement de regles Firestore/Cloud Functions - modification
 que le reste des chantiers UI de ce projet : valide par tests structurels
 (classes CSS, style inline, presence/absence de regles) + lint, **pas
 visuellement dans un vrai navigateur** - a confirmer par l'utilisateur.
+
+## Catalogue industriel de punchlines Kilo — volume x10+ sur tous les pools de texte
+
+**Demande explicite de l'utilisateur** apres un premier chiffrage ("87 nouvelles
+punchlines par langue, 261 au total") juge trop faible : "un volume industriel
+d'environ 200 variantes directes par type de punchline... plusieurs milliers de
+phrases dans toute l'application", avec 15 archetypes de personnalite imposes
+pour infuser une vraie diversite de ton (Coach Shonen, Sergent instructeur, Pote
+taquin/ironique, Philosophe du fitness, Gamer/geek, Heros de film d'action 80s,
+Scientifique/ingenieur, Influenceur Fit-Bro, Vieux sage, Coach retro Gym Tonic,
+Spartiate/mythologique, Capitaine pirate, Manager corporate insupportable,
+Nutritionniste obsessionnel, Minimaliste stoicien) - **aucun archetype
+supplementaire ajoute**, l'utilisateur l'ayant explicitement laisse optionnel.
+
+**Tous les pools `kilo.exercise.*`/`kilo.home.*` existants ont ete enrichis** de
+ce catalogue de 15 archetypes (FR/EN/ES, jamais de suppression du contenu
+existant - uniquement des ajouts en fin de tableau, sous un commentaire
+`// Catalogue industriel (15 archetypes) - ...` puis un sous-commentaire par
+archetype) : `tapPunchline` (generique), `tapPunchlineFamily.{pushups,core,
+squats}`, `hardcoreInvite`, `home.{idle,warning,hype,teasing,tapEncouragement,
+tapEasterEgg,kudoReceived,friendBigMove,accountAnniversary,dailyGreeting}`,
+`opening.{notStarted,started,almostThere,done}`, `dayPunchline`,
+`statComparison`. Interpolations dynamiques deja existantes preservees partout
+(`{{amount}}`/`{{current}}`/`{{target}}`/`{{day}}`/`{{exercise}}`/`{{lifetime}}`/
+`{{name}}`/`{{yearsLabel}}`) - `accountAnniversaryYears` (objet de
+pluralisation `{one, other}`) volontairement non touche, ce n'est pas un pool
+de variantes.
+
+**Calibrage de volume REEL, different du chiffre "200" litteral partout** -
+decision assumee en cours de chantier plutot qu'une renegociation formelle avec
+l'utilisateur : les 5 pools "tap sur exercice" (vus a CHAQUE serie loguee
+pendant une seance, le contenu le plus frequemment affiche de toute l'appli)
+ont ete pousses au plus pres du volume demande (`tapPunchline` ~218 lignes,
+les 3 pools famille + `hardcoreInvite` ~98-100 chacun). Tous les autres pools
+(mood accueil, ouverture d'exercice, jour de la semaine, comparaison cumul a
+vie, reactions sociales ponctuelles) ont ete calibres a 3 lignes par archetype
+(45 nouvelles lignes/pool/langue, soit x6-8 par rapport au volume d'avant ce
+chantier) - toujours une multiplication tres large du stock initial, mais un
+palier plus soutenable qu'un "200" litteral pour du contenu vu bien moins
+souvent (mood accueil : quelques fois par session ; ouverture d'exercice : une
+fois par changement de defi ; jour/stat/social : occasionnels/probabilistes).
+
+**Convention d'ecriture uniforme** : toutes les nouvelles lignes utilisent des
+guillemets doubles (`"..."`), y compris dans les fichiers ou certaines lignes
+preexistantes utilisent des guillemets simples (les deux sont valides en JS) -
+choix deliberement systematique pour ce sous-chantier, afin d'eviter tout
+risque d'echappement sur les nombreuses apostrophes du FR/EN.
+
+**Volume final mesure** (`git diff --stat` sur les 3 `locale-*.js` depuis le
+debut du chantier) : **+4922 lignes nettes** (commentaires inclus, ~1640 par
+langue) - plusieurs milliers de nouvelles variantes de punchlines au total,
+conforme a la demande. 8 commits/checkpoints intermediaires (voir l'historique
+git, "Catalogue industriel de punchlines (N/8)"), chacun avec son propre bump
+`CACHE_NAME` (v103 -> v108) puisque le contenu des `locale-*.js` change a
+chaque etape (meme regle "cache-first avec remplissage" que tout le reste des
+assets statiques de ce projet, deja documentee plus haut).
+
+Aucun changement de regles Firestore/Cloud Functions - modification 100% cote
+client (contenu texte uniquement), aucune touche a `functions/**`. Aucun test
+dedie au CONTENU des pools (le volume/la diversite du texte n'est pas une
+propriete testable automatiquement) - les tests existants continuent de
+valider le MECANISME de selection (`pickKiloLine()`, interpolation,
+repli i18n), qui reste inchange et recalcule toujours ses valeurs "attendues"
+depuis le pool live (donc insensible a la taille du pool, voir plus haut la
+note sur les tests de la premiere passe de contenu Kilo).

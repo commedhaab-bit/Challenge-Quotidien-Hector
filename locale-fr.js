@@ -1661,6 +1661,67 @@ const LOCALE_FR = {
         'D\'accord, d\'accord, calme-toi, je ne vais nulle part.',
         'Tu comptes les taps ou c\'est moi qui perds le compte ?',
         'Encore un peu et je facture des heures sup.',
+        // Catalogue industriel (15 archetypes) - accueil, easter egg au tap repete.
+        // --- Coach Shonen ---
+        "Ton pouvoir de tap dépasse l'échelle de mesure !",
+        "Cinq taps, c'est le niveau ultime du fan absolu !",
+        "Cette énergie de tap, digne d'un héros légendaire !",
+        // --- Sergent instructeur ---
+        "Stop ! Ordre officiel : cesse le harcèlement tactile, soldat !",
+        "Cinq taps en 3 secondes, rapport transmis au commandement.",
+        "Repos ! Le tap intensif n'est pas au programme.",
+        // --- Pote taquin ---
+        "Ok, j'avoue, je suis flatté·e. Mais calme-toi un peu.",
+        "Cinq taps ? Tu es accro ou quoi ?",
+        "Encore un tap et j'appelle les secours.",
+        // --- Philosophe du fitness ---
+        "Chaque tap répété est une question sans réponse.",
+        "Cinq taps, cinq intentions. Que cherches-tu vraiment ?",
+        "Le doigt s'agite, mais l'esprit reste calme.",
+        // --- Gamer/geek ---
+        "Combo x5 détecté ! Achievement 'Doigt en feu' débloqué.",
+        "Cinq taps, spam confirmé. Cooldown activé.",
+        "Tu farmes les taps maintenant ? Respect.",
+        // --- Héros de film d'action 80s ---
+        "Cinq taps en 3 secondes, digne d'une scène d'action culte.",
+        "Ce rythme, c'est du pur cinéma d'action.",
+        "Calme-toi, on n'est pas dans une course-poursuite.",
+        // --- Scientifique/ingénieur ---
+        "Fréquence de tap anormalement élevée détectée.",
+        "Cinq occurrences en 3 secondes. Hypothèse : affection excessive.",
+        "Données inhabituelles. Recalibrage recommandé.",
+        // --- Influenceur Fit-Bro ---
+        "Bro, ce tap frequency, c'est du next level.",
+        "Cinq taps, cette énergie est complètement folle.",
+        "Calme le jeu, bro, garde ça pour l'entraînement.",
+        // --- Vieux sage ---
+        "Le doigt s'agite. La sagesse, elle, reste immobile.",
+        "Cinq taps ne valent pas une seule respiration calme.",
+        "La précipitation n'est jamais le chemin.",
+        // --- Coach rétro Gym Tonic ---
+        "Cinq taps en rythme, digne d'une chorégraphie disco !",
+        "Ce tempo, c'est du pur groove synthwave !",
+        "Ralentis la cadence, on n'est pas à un concert.",
+        // --- Spartiate/mythologique ---
+        "Cinq assauts en 3 secondes, digne d'un guerrier acharné.",
+        "Cette frénésie ferait presque peur à Sparte elle-même.",
+        "Reprends ton souffle, guerrier·ère.",
+        // --- Capitaine pirate ---
+        "Cinq abordages en 3 secondes, quel équipage impatient !",
+        "Mille sabords, calme cette tempête de taps !",
+        "Range ton sabre, moussaillon, ce n'est qu'un tap.",
+        // --- Manager corporate ---
+        "Fréquence d'interaction anormalement élevée détectée sur ce KPI.",
+        "Cinq clics en 3 secondes, on dirait un pic d'engagement suspect.",
+        "Merci de réguler ce flux d'interactions, s'il te plaît.",
+        // --- Nutritionniste obsessionnel ---
+        "Cinq taps, ça brûle presque autant qu'une collation.",
+        "Cette énergie de tap mériterait un shaker de récupération.",
+        "Doucement, garde tes calories pour l'entraînement.",
+        // --- Minimaliste stoïcien ---
+        "Cinq taps. Beaucoup de bruit.",
+        "Le geste répété ne change rien à l'essentiel.",
+        "Calme. Un seul tap suffit.",
       ],
       // Idees bonus #9/#10 (retour utilisateur) : reactions ponctuelles mises
       // en file via kiloPendingSocialReaction, consommees UNE FOIS par le
@@ -1672,6 +1733,67 @@ const LOCALE_FR = {
         'Un kudo, ça se fête. Merci {{name}}, note prise !',
         '{{name}} pense à toi. Ça fait chaud au cœur, non ?',
         'Kudo reçu de {{name}}. La communauté veille sur toi.',
+        // Catalogue industriel (15 archetypes) - reaction a un kudo recu.
+        // --- Coach Shonen ---
+        "{{name}} t'envoie un kudo ! Ton aura sociale grandit !",
+        "Un kudo de {{name}} ! Ton pouvoir de sympathie explose !",
+        "{{name}} salue ta force ! Ce genre de soutien forge un héros.",
+        // --- Sergent instructeur ---
+        "{{name}} t'a décerné un kudo. Reconnaissance méritée, soldat.",
+        "Rapport positif : {{name}} valide ta performance par un kudo.",
+        "{{name}} salue ta discipline. Bien joué.",
+        // --- Pote taquin ---
+        "{{name}} t'a envoyé un kudo. Tu commences à avoir un fan-club.",
+        "Un kudo de {{name}} ? Tu deviens populaire, dis donc.",
+        "{{name}} pense à toi. Content·e de toi maintenant ?",
+        // --- Philosophe du fitness ---
+        "{{name}} t'offre un kudo, geste silencieux de reconnaissance.",
+        "Un kudo de {{name}}, preuve que l'effort résonne au-delà de soi.",
+        "{{name}} salue ton chemin. Le tien inspire déjà le sien.",
+        // --- Gamer/geek ---
+        "{{name}} t'a envoyé un kudo ! +1 réputation débloquée.",
+        "Kudo reçu de {{name}}. Achievement social validé.",
+        "{{name}} valide ton run. Bien joué, joueur·euse.",
+        // --- Héros de film d'action 80s ---
+        "{{name}} t'envoie un kudo, comme un signe de respect entre légendes.",
+        "Un kudo de {{name}}. Même les héros se saluent entre eux.",
+        "{{name}} salue ta performance, digne d'une scène culte.",
+        // --- Scientifique/ingénieur ---
+        "{{name}} a émis un signal de kudo positif à ton égard.",
+        "Kudo confirmé, source : {{name}}. Corrélation avec ta motivation, probable.",
+        "{{name}} valide ton protocole d'effort par un kudo.",
+        // --- Influenceur Fit-Bro ---
+        "{{name}} t'a filé un kudo, bro. Cette communauté, incroyable.",
+        "Kudo de {{name}}. Le respect entre grinders, ça n'a pas de prix.",
+        "{{name}} valide ta shape avec un kudo. Bien mérité.",
+        // --- Vieux sage ---
+        "{{name}} t'offre un kudo, petit geste chargé de sens.",
+        "Un kudo de {{name}} rappelle que le chemin se partage.",
+        "{{name}} salue ta patience par un kudo.",
+        // --- Coach rétro Gym Tonic ---
+        "{{name}} t'envoie un kudo néon depuis la piste de danse !",
+        "Un kudo de {{name}}, ça mérite un petit air de synthwave !",
+        "{{name}} applaudit ta perf, disco style.",
+        // --- Spartiate/mythologique ---
+        "{{name}} t'honore d'un kudo, digne d'un guerrier respecté.",
+        "Un kudo de {{name}}, reconnaissance méritée sur le champ de bataille.",
+        "{{name}} salue ta vaillance par un kudo.",
+        // --- Capitaine pirate ---
+        "{{name}} t'envoie un kudo, moussaillon, comme un signal de fumée amical.",
+        "Un kudo de {{name}}, ça se fête au rhum (virtuellement).",
+        "{{name}} salue ton courage en mer par un kudo.",
+        // --- Manager corporate ---
+        "{{name}} t'a attribué un kudo. Reconnaissance validée par les pairs.",
+        "Kudo de {{name}} enregistré. Engagement positif détecté.",
+        "{{name}} valorise ta contribution par un kudo.",
+        // --- Nutritionniste obsessionnel ---
+        "{{name}} t'envoie un kudo, presque aussi satisfaisant qu'une collation.",
+        "Un kudo de {{name}}, ça se savoure autant qu'un bon repas.",
+        "{{name}} salue tes efforts, ton métabolisme aussi te remercie.",
+        // --- Minimaliste stoïcien ---
+        "{{name}} t'envoie un kudo. Reconnu, sans bruit.",
+        "Un kudo. De {{name}}. Simple et suffisant.",
+        "{{name}} salue ton chemin. Continue.",
       ],
       friendBigMove: [
         "Whoa, {{name}} vient d'exploser son objectif sur {{exercise}} !",
@@ -1680,6 +1802,67 @@ const LOCALE_FR = {
         '{{name}} vient de mettre la barre haute sur {{exercise}}. À toi de jouer.',
         'No pain no gain chez {{name}} aussi, apparemment, vu sa perf sur {{exercise}}.',
         '{{name}} s\'active sur {{exercise}}. Un peu de compétition amicale, ça te tente ?',
+        // Catalogue industriel (15 archetypes) - reaction au gros coup d'un ami.
+        // --- Coach Shonen ---
+        "{{name}} vient d'exploser son niveau de puissance sur {{exercise}} !",
+        "Whoa, l'aura de {{name}} sur {{exercise}} est hors norme !",
+        "{{name}} monte en flèche sur {{exercise}}. Vas-tu rester en retrait ?",
+        // --- Sergent instructeur ---
+        "{{name}} vient de livrer une performance exemplaire sur {{exercise}}.",
+        "Rapport : {{name}} écrase {{exercise}}. À toi de répondre, soldat.",
+        "{{name}} montre l'exemple sur {{exercise}}. Suis le mouvement.",
+        // --- Pote taquin ---
+        "{{name}} explose sur {{exercise}}, et toi tu fais quoi là ?",
+        "{{name}} en met plein la vue sur {{exercise}}. Un peu de jalousie saine ?",
+        "{{name}} cartonne sur {{exercise}}. Tu vas rester spectateur·rice ?",
+        // --- Philosophe du fitness ---
+        "{{name}} vient de franchir un cap sur {{exercise}}. Chacun son rythme, chacun sa victoire.",
+        "Le chemin de {{name}} sur {{exercise}} inspire, sans jamais dicter le tien.",
+        "{{name}} avance sur {{exercise}}. Peut-être est-ce le signe d'avancer aussi.",
+        // --- Gamer/geek ---
+        "{{name}} vient de débloquer un score énorme sur {{exercise}} !",
+        "Highscore alert : {{name}} explose {{exercise}}. Prêt·e à répondre ?",
+        "{{name}} grind fort sur {{exercise}}. Combo légendaire en approche.",
+        // --- Héros de film d'action 80s ---
+        "{{name}} vient de livrer une performance digne d'un film culte sur {{exercise}} !",
+        "Cette perf de {{name}} sur {{exercise}}, c'est du pur cinéma.",
+        "{{name}} envoie du lourd sur {{exercise}}. À toi de répliquer.",
+        // --- Scientifique/ingénieur ---
+        "Pic de performance détecté chez {{name}} sur {{exercise}}.",
+        "Données confirmées : {{name}} dépasse la moyenne sur {{exercise}}.",
+        "{{name}} affiche un rendement exceptionnel sur {{exercise}}.",
+        // --- Influenceur Fit-Bro ---
+        "{{name}} explose sur {{exercise}}, bro. Cette énergie est contagieuse.",
+        "{{name}} vient de tout casser sur {{exercise}}. Respect total.",
+        "{{name}} grind dur sur {{exercise}}. On suit le mouvement ?",
+        // --- Vieux sage ---
+        "{{name}} progresse sur {{exercise}}. Que son chemin nourrisse le tien.",
+        "Un pas de plus pour {{name}} sur {{exercise}}, un pas possible pour toi aussi.",
+        "{{name}} avance avec constance sur {{exercise}}. Observe et apprends.",
+        // --- Coach rétro Gym Tonic ---
+        "{{name}} explose sur {{exercise}}, digne d'un final néon endiablé !",
+        "Cette perf de {{name}} sur {{exercise}} mérite un standing ovation disco !",
+        "{{name}} envoie du lourd sur {{exercise}}. La piste est chaude !",
+        // --- Spartiate/mythologique ---
+        "{{name}} vient de remporter une bataille sur {{exercise}} !",
+        "La gloire de {{name}} sur {{exercise}} résonne jusqu'à l'Olympe.",
+        "{{name}} combat sans relâche sur {{exercise}}. Prouve ta propre valeur.",
+        // --- Capitaine pirate ---
+        "{{name}} vient de trouver un trésor sur {{exercise}} !",
+        "Cette perf de {{name}} sur {{exercise}} mérite tout un butin !",
+        "{{name}} navigue fort sur {{exercise}}. À l'abordage, toi aussi ?",
+        // --- Manager corporate ---
+        "{{name}} vient de dépasser son objectif sur {{exercise}}.",
+        "Performance exceptionnelle détectée : {{name}} sur {{exercise}}.",
+        "{{name}} livre un résultat au-dessus des attentes sur {{exercise}}.",
+        // --- Nutritionniste obsessionnel ---
+        "{{name}} explose sur {{exercise}}, les macros doivent suivre !",
+        "Cette perf de {{name}} sur {{exercise}} mérite une belle collation.",
+        "{{name}} carbure fort sur {{exercise}}. Toi aussi, prêt·e à carburer ?",
+        // --- Minimaliste stoïcien ---
+        "{{name}} avance sur {{exercise}}. Simplement, avec constance.",
+        "{{name}} progresse. Sur {{exercise}}. Sans bruit.",
+        "{{name}} agit sur {{exercise}}. Observe, puis agis.",
       ],
       // Idee bonus #18 (retour utilisateur) : rappel d'anniversaire de compte
       // - {{yearsLabel}} deja pluralise via accountAnniversaryYears (tn()).
@@ -1693,6 +1876,67 @@ const LOCALE_FR = {
         'Anniversaire de compte : {{yearsLabel}} ! On continue sur cette lancée ?',
         '{{yearsLabel}} déjà. Le temps file quand on soulève des trucs ensemble.',
         'Anniversaire de compte : {{yearsLabel}}. Merci de me supporter depuis tout ce temps.',
+        // Catalogue industriel (15 archetypes) - anniversaire de compte.
+        // --- Coach Shonen ---
+        "{{yearsLabel}} d'entraînement ensemble ! Ton pouvoir a grandi à chaque saison !",
+        "Anniversaire épique : {{yearsLabel}} déjà à mes côtés !",
+        "{{yearsLabel}}, et ton aura n'a jamais été aussi forte !",
+        // --- Sergent instructeur ---
+        "{{yearsLabel}} de service ensemble, soldat. Rapport exemplaire.",
+        "Anniversaire officiel : {{yearsLabel}} de discipline partagée.",
+        "{{yearsLabel}} déjà. Mission accomplie, année après année.",
+        // --- Pote taquin ---
+        "{{yearsLabel}} qu'on se supporte mutuellement. Pas mal, non ?",
+        "Déjà {{yearsLabel}} ensemble ? Le temps passe vite, avoue.",
+        "{{yearsLabel}} plus tard, tu es toujours là. Je suis presque ému·e.",
+        // --- Philosophe du fitness ---
+        "{{yearsLabel}} de chemin parcouru côte à côte.",
+        "{{yearsLabel}}, et chaque saison a ajouté sa propre sagesse.",
+        "Le temps a passé, {{yearsLabel}}, et nous voilà toujours là.",
+        // --- Gamer/geek ---
+        "{{yearsLabel}} de jeu ensemble ! Niveau de fidélité maximal atteint.",
+        "Anniversaire débloqué : {{yearsLabel}} de compte actif !",
+        "{{yearsLabel}}, et le combo continue sans interruption.",
+        // --- Héros de film d'action 80s ---
+        "{{yearsLabel}} d'aventures ensemble, digne d'une saga culte !",
+        "{{yearsLabel}} déjà. Une suite est toujours au programme.",
+        "Anniversaire de légende : {{yearsLabel}} à tes côtés.",
+        // --- Scientifique/ingénieur ---
+        "{{yearsLabel}} de données collectées ensemble. Corrélation : fidélité confirmée.",
+        "Anniversaire mesuré : {{yearsLabel}} d'activité continue.",
+        "{{yearsLabel}}, un échantillon de temps particulièrement significatif.",
+        // --- Influenceur Fit-Bro ---
+        "{{yearsLabel}} de grind ensemble, bro. Cette loyauté, incroyable.",
+        "{{yearsLabel}} déjà. Cette dynamique ne s'arrête jamais.",
+        "Anniversaire respect total : {{yearsLabel}} avec toi.",
+        // --- Vieux sage ---
+        "{{yearsLabel}} de patience partagée. Le temps honore la constance.",
+        "{{yearsLabel}}, et chaque année a porté ses propres fruits.",
+        "Le fleuve du temps a coulé, {{yearsLabel}}, et nous restons.",
+        // --- Coach rétro Gym Tonic ---
+        "{{yearsLabel}} de séances néon ensemble ! On remet le disque !",
+        "Anniversaire disco : {{yearsLabel}} de bons moments partagés !",
+        "{{yearsLabel}} déjà. La musique continue de jouer pour nous deux.",
+        // --- Spartiate/mythologique ---
+        "{{yearsLabel}} de batailles menées ensemble, digne d'une légende.",
+        "Anniversaire de gloire : {{yearsLabel}} à tes côtés, guerrier·ère.",
+        "{{yearsLabel}}, et notre alliance reste aussi forte qu'au premier jour.",
+        // --- Capitaine pirate ---
+        "{{yearsLabel}} de traversées ensemble, moussaillon !",
+        "Anniversaire de trésor : {{yearsLabel}} d'aventures partagées.",
+        "{{yearsLabel}} déjà en mer ensemble. Le voyage continue.",
+        // --- Manager corporate ---
+        "{{yearsLabel}} d'engagement continu. Excellente rétention, félicitations.",
+        "Anniversaire de compte : {{yearsLabel}} de collaboration fructueuse.",
+        "{{yearsLabel}}, un ROI de fidélité qu'on ne voit pas souvent.",
+        // --- Nutritionniste obsessionnel ---
+        "{{yearsLabel}} d'efforts ensemble, ça mérite une grosse collation.",
+        "Anniversaire gourmand : {{yearsLabel}} de constance nutritionnelle.",
+        "{{yearsLabel}} déjà. Les macros et la fidélité, même combat.",
+        // --- Minimaliste stoïcien ---
+        "{{yearsLabel}}. Toujours là.",
+        "{{yearsLabel}} de constance. Rien de plus à dire.",
+        "{{yearsLabel}}. Le temps passe. Nous restons.",
       ],
       // Idee bonus #16 (retour utilisateur) : replique de bienvenue au tout
       // premier lancement du jour (voir maybeShowKiloDailyIntro()).
@@ -1703,6 +1947,67 @@ const LOCALE_FR = {
         'No pain no gain, et aujourd\'hui ne fera pas exception.',
         'Debout, c\'est reparti ! Une nouvelle journée, un nouveau défi.',
         'Le soleil se lève, et moi aussi je suis d\'attaque. Et toi ?',
+        // Catalogue industriel (15 archetypes) - replique de bienvenue quotidienne.
+        // --- Coach Shonen ---
+        "Nouveau jour, nouveau chapitre de ta légende ! Prêt·e ?",
+        "Ton pouvoir se recharge chaque matin. Aujourd'hui, on explose tout !",
+        "Un jour de plus pour dépasser tes propres limites !",
+        // --- Sergent instructeur ---
+        "Debout ! Nouvelle journée, nouvelles missions, aucune excuse.",
+        "Rapport du matin : prêt·e au combat, soldat ?",
+        "Nouvelle journée, même discipline. On y va.",
+        // --- Pote taquin ---
+        "Encore toi ? Bon d'accord, content·e de te revoir.",
+        "Nouveau jour, mêmes bêtises en perspective, j'imagine.",
+        "Salut ! T'as intérêt à assurer aujourd'hui, hein.",
+        // --- Philosophe du fitness ---
+        "Un nouveau jour se lève, une nouvelle page à écrire.",
+        "Chaque matin est une chance de recommencer, sans jugement.",
+        "Le soleil se lève, et avec lui, une nouvelle possibilité.",
+        // --- Gamer/geek ---
+        "Nouveau jour, nouveau reset de quêtes. Prêt·e à farmer ?",
+        "Session du jour lancée. Que le grind commence !",
+        "Nouveau jour débloqué. XP à gagner, c'est parti !",
+        // --- Héros de film d'action 80s ---
+        "Un nouveau jour, une nouvelle mission. On ne recule jamais.",
+        "Le générique d'ouverture démarre. Prêt·e pour l'aventure du jour ?",
+        "Nouvelle journée, nouvelle occasion d'être héroïque.",
+        // --- Scientifique/ingénieur ---
+        "Nouveau cycle journalier initié. Paramètres remis à zéro.",
+        "Bonjour. Conditions optimales pour une nouvelle série de tests.",
+        "Nouveau jour détecté. Protocole d'activité en attente de lancement.",
+        // --- Influenceur Fit-Bro ---
+        "Nouveau jour, bro. On reset et on grind encore plus fort.",
+        "Salut ! Cette énergie du matin, j'adore déjà.",
+        "Nouveau jour, focus total. C'est parti pour du lourd.",
+        // --- Vieux sage ---
+        "Un nouveau jour naît. Accueille-le avec calme et intention.",
+        "Chaque matin offre un nouveau départ, sans rien à prouver.",
+        "Le jour se lève. La sagesse conseille de commencer doucement.",
+        // --- Coach rétro Gym Tonic ---
+        "Nouveau jour, nouveau mix ! On enfile le legging et on y va !",
+        "Bonjour ! La playlist du matin est déjà en marche.",
+        "Un nouveau jour commence, et la piste de danse t'attend.",
+        // --- Spartiate/mythologique ---
+        "Un nouveau jour de bataille commence. Prépare-toi, guerrier·ère.",
+        "Le soleil se lève sur un nouveau champ de gloire.",
+        "Nouvelle journée, nouvelle occasion de forger ta légende.",
+        // --- Capitaine pirate ---
+        "Nouveau jour, nouvel horizon à explorer, moussaillon !",
+        "Le soleil se lève sur la mer. En route pour l'aventure !",
+        "Nouvelle journée, nouveau trésor à conquérir.",
+        // --- Manager corporate ---
+        "Nouveau jour, nouveau sprint. On aligne les objectifs dès le matin.",
+        "Bonjour ! Kick-off de la journée, prêt·e à livrer ?",
+        "Nouvelle journée ouverte. Priorisons les tâches importantes.",
+        // --- Nutritionniste obsessionnel ---
+        "Nouveau jour, nouveau petit-déjeuner équilibré, j'espère.",
+        "Bonjour ! Les macros du jour n'attendent que toi.",
+        "Nouvelle journée, nouvelle occasion de bien manger et bien bouger.",
+        // --- Minimaliste stoïcien ---
+        "Nouveau jour. Simple. Commence.",
+        "Le jour se lève. Agis.",
+        "Un jour de plus. Rien de plus à dire.",
       ],
     },
     // Cosmetiques de Kilo (chantier gamification Phase 3) - id = cle dans
