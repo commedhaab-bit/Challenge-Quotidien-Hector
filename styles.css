@@ -1,6 +1,18 @@
+  /* Passe "premium" typographie (retour utilisateur, direction "SF Arrondi") :
+     SF Pro Rounded appartient a Apple et sa licence interdit de l'embarquer
+     dans une app tierce - impossible a integrer legalement. Nunito est la
+     police retenue a la place (open-source, licence SIL Open Font License,
+     meme famille visuelle "arrondi doux, premium") - fichier variable UNIQUE
+     couvrant tout l'eventail de graisses utilisees dans l'app (200 a 900),
+     precache par le service worker comme n'importe quel autre asset statique
+     (voir ASSETS dans service-worker.js) : rendu IDENTIQUE sur tous les
+     appareils/OS, contrairement a une pile de polices systeme. */
   @font-face {
-    font-family: 'system-condensed';
-    src: local('Arial Narrow');
+    font-family: 'Nunito';
+    font-weight: 200 1000;
+    font-style: normal;
+    font-display: swap;
+    src: url('./assets/fonts/nunito-var.woff2') format('woff2');
   }
 
   :root {
@@ -94,7 +106,7 @@
     padding: 0;
     background: var(--bg);
     color: var(--chalk);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     min-height: 100vh;
     overscroll-behavior-y: contain;
   }
@@ -2578,7 +2590,7 @@
   }
 
   h1.title {
-    font-family: 'Arial Narrow', system-condensed, sans-serif;
+    font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 42px;
     font-weight: 900;
     letter-spacing: -0.01em;

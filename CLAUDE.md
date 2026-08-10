@@ -5081,3 +5081,64 @@ chantiers visuels : valide par tests structurels (dont un test qui simule
 les 2 rendus successifs du switch et verifie la presence/absence de
 `.no-anim` a chaque etape) + lint, **pas visuellement dans un vrai
 navigateur** - a confirmer par l'utilisateur.
+
+## Police "Nunito" reellement embarquee (chantier typographie, choix final apres artifact comparatif)
+
+Suite directe des artifacts de comparaison typographique (voir conversation) :
+l'utilisateur a d'abord valide la direction "B - SF Arrondi" (police systeme
+Apple, aperçu genere via des piles `-apple-system`/`ui-rounded`), puis a
+explicitement demande qu'elle fonctionne **de facon identique sur toutes les
+plateformes, Android inclus**, en embarquant un vrai fichier de police dans
+l'app plutot que de dependre d'une police systeme.
+
+**SF Pro Rounded (la police Apple montree dans l'apercu) est ecartee** : sa
+licence interdit de la redistribuer/l'embarquer dans une app tierce -
+impossible a integrer legalement. Remplacee par **Nunito**, police
+open-source (licence SIL Open Font License, librement redistribuable), meme
+famille visuelle "arrondi doux, premium" - confirmee par un 2e artifact
+comparatif (3 candidats open-source reellement embarques en base64 dans la
+page - Nunito, Baloo 2, M PLUS Rounded 1c - pour montrer un rendu honnete
+plutot qu'une simple description). L'utilisateur a choisi Nunito.
+
+**Implementation** :
+- `assets/fonts/nunito-var.woff2` (~39 Ko) - fichier VARIABLE unique (un seul
+  fichier couvre tout l'eventail de graisses 200 a 1000, y compris le 900
+  deja utilise partout dans l'app pour les titres/gros chiffres) plutot que
+  plusieurs fichiers statiques par graisse - minimise le poids total et le
+  nombre de requetes/entrees de cache.
+- `@font-face` dans `styles.css` (`font-weight: 200 1000`, `font-display:
+  swap`, `src: url('./assets/fonts/nunito-var.woff2')`) - juste apres
+  l'ancien repli `system-condensed`/Arial Narrow, qu'il remplace.
+- `html, body` ET `h1.title` passent en `font-family: 'Nunito', ...` (replis
+  systeme existants conserves apres, jamais retires - un echec de chargement
+  du fichier retombe proprement sur la pile precedente). **`h1.title` perdait
+  jusqu'ici sa police CONDENSEE dediee** (`'Arial Narrow', system-condensed`,
+  choisie a l'origine pour des titres larges en majuscules serrees) - Nunito
+  n'est pas condensee, direction assumee explicitement par l'utilisateur (une
+  seule famille de police dans toute l'app, comme la collection "B" le
+  presentait). L'ancien `@font-face` `system-condensed`/`local('Arial
+  Narrow')`, devenu sans aucun site d'usage restant, est retire entierement
+  (code mort) plutot que laisse trainer.
+- **Precache par le service worker** (`ASSETS`, meme regle que
+  `assets/sounds/success.mp3`) : disponible des le tout premier lancement,
+  y compris hors ligne - c'est precisement ce qui garantit "tout le monde
+  voit exactement la meme chose", contrairement a une pile de polices
+  systeme qui varie par definition d'un appareil/OS a l'autre.
+- **Aucun changement necessaire pour les chiffres** (`.timer-display`/
+  `.progress-current`/etc.) : ils heritaient deja de `html, body`, donc
+  basculent automatiquement sur Nunito en meme temps que le reste - pas de
+  police "numerique" separee a gerer, contrairement au modele a 3 roles
+  (affichage/corps/chiffres) presente dans l'artifact de comparaison, qui
+  restait une simplification pedagogique.
+
+CACHE_NAME -> v114 (`styles.css` modifie + nouvel asset statique
+`assets/fonts/nunito-var.woff2` a precacher). Aucun changement de regles
+Firestore/Cloud Functions - modification 100% cote client, aucune touche a
+`functions/**`. **Limite de verification differente du reste des chantiers
+visuels de ce projet** : contrairement a une simple regle CSS, le CHARGEMENT
+REEL du fichier de police (poids visuel exact du texte, absence de
+flash-of-unstyled-text notable, bon fonctionnement du precache hors ligne)
+ne peut pas non plus etre verifie ici (pas de vrai navigateur) - les tests
+valident la presence/le contenu de la regle `@font-face` et sa reference
+dans le precache, jamais son rendu reel. A confirmer par l'utilisateur sur
+l'app deployee.

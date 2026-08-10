@@ -3189,7 +3189,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v113'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v114'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -7723,6 +7723,17 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(renderExerciseSparkline([0, 0, 0]), '', 'un cumul entierement nul ne doit toujours rien afficher (comportement existant preserve)');
   __assertOk(cssText.includes('.exercise-sparkline-dot {') && cssText.includes('drop-shadow'), 'le point final de la sparkline doit briller legerement (glow)');
   console.log('OK: sparkline en degrade avec aire remplie + point final lumineux (au lieu d un simple trait plat)');
+
+  // --- Police "Nunito" reellement embarquee (choix utilisateur, direction "SF
+  // Arrondi") : SF Pro Rounded est une police Apple non redistribuable, Nunito
+  // (open-source, SIL OFL) la remplace - fichier variable unique precache par
+  // le service worker, rendu identique sur tous les appareils/OS ---
+  __assertOk(/@font-face\\s*\\{[^}]*font-family:\\s*'Nunito'[^}]*font-weight:\\s*200 1000[^}]*src:\\s*url\\('\\.\\/assets\\/fonts\\/nunito-var\\.woff2'\\) format\\('woff2'\\)[^}]*\\}/.test(cssText), 'la regle @font-face Nunito doit declarer le bon fichier et couvrir tout l eventail de graisses utilisees dans l app (200-1000)');
+  __assertOk(/html,\\s*body\\s*\\{[^}]*font-family:\\s*'Nunito'/.test(cssText), 'html/body doivent utiliser Nunito en 1ere police (avant les replis systeme)');
+  __assertOk(/h1\\.title\\s*\\{[^}]*font-family:\\s*'Nunito'/.test(cssText), 'les titres (h1.title) doivent aussi utiliser Nunito, plus l ancienne police condensee');
+  __assertOk(!cssText.includes('system-condensed') && !cssText.includes('Arial Narrow'), 'l ancien repli "Arial Narrow"/system-condensed doit avoir ete retire (code mort, remplace par Nunito)');
+  __assertOk(__swSource.includes("'./assets/fonts/nunito-var.woff2'"), 'le fichier de police doit etre precache pour un rendu identique des le 1er lancement, y compris hors ligne');
+  console.log('OK: police Nunito reellement embarquee (fichier variable precache), plus aucune dependance a une police systeme/Apple');
 
   activeTab = 'today';
 
