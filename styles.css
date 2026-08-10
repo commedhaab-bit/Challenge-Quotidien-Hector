@@ -99,16 +99,15 @@
     overscroll-behavior-y: contain;
   }
 
-  /* Passe "premium" (retour utilisateur) : fond en degrade "aurora" plutot qu'un
-     noir plat - 2 taches radiales tres douces et floues (vert accent + bleu
-     complementaire discret), fixes (ne defilent pas avec le contenu), en PLUS
-     des 2 voiles blancs deja existants. Opacites volontairement tres faibles
-     (3-4%) : un effet de profondeur ambiant, jamais une couleur qui se remarque
-     consciemment ou qui nuit au contraste du texte. */
+  /* Retour utilisateur (v2, "se rapprocher de l'aperçu") : le degrade "aurora"
+     etait reste trop discret (3-9% d'opacite) pour vraiment se voir - repris
+     nettement plus visible/sature, comme sur la maquette validee : large tache
+     verte en haut a gauche qui se fond vers le bleu complementaire en haut a
+     droite, puis vers le noir en bas. Fixe (ne defile pas avec le contenu). */
   body {
     background-image:
-      radial-gradient(ellipse 900px 700px at 8% -10%, rgba(57, 233, 122, 0.09), transparent 55%),
-      radial-gradient(ellipse 800px 650px at 96% 18%, rgba(58, 168, 255, 0.07), transparent 55%),
+      radial-gradient(ellipse 1100px 850px at 0% -8%, rgba(57, 233, 122, 0.30), transparent 62%),
+      radial-gradient(ellipse 950px 800px at 100% 12%, rgba(58, 168, 255, 0.20), transparent 62%),
       radial-gradient(ellipse at top left, rgba(255,255,255,0.03), transparent 50%),
       radial-gradient(ellipse at bottom right, rgba(255,255,255,0.02), transparent 50%);
     background-attachment: fixed;
@@ -133,7 +132,7 @@
   .app {
     max-width: 480px;
     margin: 0 auto;
-    padding: 20px 18px 100px;
+    padding: 20px 18px 116px;
     min-height: 100vh;
     opacity: 1;
     transition: opacity 0.14s ease;
@@ -173,24 +172,29 @@
   }
 
   /* BARRE DE NAVIGATION PERSISTANTE (bas d'écran) */
-  /* Passe "premium" (retour utilisateur) : verre depoli plutot qu'un fond plein
-     - la tab bar est une surface FLOTTANTE (au-dessus du contenu qui defile
-     dessous), le glassmorphism y a plus de sens que sur une carte de contenu.
-     Repli implicite pour les navigateurs sans support de backdrop-filter :
-     --glass-bg est deja suffisamment opaque pour rester lisible seule. */
+  /* Retour utilisateur (v2, "se rapprocher de l'aperçu"/Apple) : la barre
+     flotte desormais au-dessus du bord de l'ecran (pilule entierement arrondie,
+     marge tout autour) plutot que d'etre collee/plate bord a bord - c'est ce
+     detail precis qui a ete valide sur la maquette. Verre depoli (surface
+     FLOTTANTE par definition maintenant) + ombre portee pour vendre l'effet de
+     flottement. Le decalage par rapport au bord (bottom) integre directement
+     env(safe-area-inset-bottom) - plus besoin de l'absorber dans le padding
+     interne, qui reste desormais fixe. */
   .tab-bar {
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    max-width: 480px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    left: 14px;
+    right: 14px;
+    max-width: 452px;
     margin: 0 auto;
     display: flex;
     background: var(--glass-bg);
-    backdrop-filter: blur(20px) saturate(1.4);
-    -webkit-backdrop-filter: blur(20px) saturate(1.4);
-    border-top: 1px solid var(--glass-border);
-    padding: 8px 4px calc(8px + env(safe-area-inset-bottom, 0px));
+    backdrop-filter: blur(24px) saturate(1.5);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    border: 1px solid var(--glass-border);
+    border-radius: 26px;
+    padding: 8px 4px;
+    box-shadow: 0 16px 40px -14px rgba(0, 0, 0, 0.6);
     z-index: 500;
   }
   .tab-btn {
@@ -663,9 +667,11 @@
     background: var(--track-bg);
     border: 1px solid var(--line);
   }
+  /* Retour utilisateur (v2) : meme degrade vert -> bleu que .bar-fill, pour
+     rester coherent partout ou une jauge de progression apparait. */
   .athlete-xp-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    background: linear-gradient(90deg, var(--accent), var(--aurora-2));
     border-radius: 9999px;
     box-shadow: 0 0 10px var(--accent-glow), 0 0 4px var(--accent);
     transition: width 0.3s;
@@ -2389,16 +2395,19 @@
      principal de l'ecran (guide l'oeil sans etre criard - amplitude tres
      faible, cycle lent). Meme traitement que .qa-btn plus bas (voir
      --pulse-glow), pour rester dans le meme vocabulaire visuel. */
+  /* Retour utilisateur (v2) : degrade vert -> bleu (coherent avec le fond
+     aurora/les jauges) + forme pilule complete (border-radius total) plutot
+     que des coins simplement arrondis - correspond a la maquette validee. */
   .community-hero-accept-all-btn {
     display: block;
     width: 100%;
-    background: linear-gradient(135deg, var(--accent-dim), var(--accent));
+    background: linear-gradient(100deg, var(--accent), var(--aurora-2));
     color: #0a0d0b;
     border: none;
     font-weight: 800;
     font-size: 14.5px;
     padding: 14px;
-    border-radius: 12px;
+    border-radius: 9999px;
     cursor: pointer;
     margin-top: 16px;
     box-shadow: 0 10px 24px -12px var(--accent-glow);
@@ -3342,9 +3351,12 @@
     margin-bottom: 20px;
     border: 1px solid var(--line);
   }
+  /* Retour utilisateur (v2) : degrade vert -> bleu (comme le fond aurora et le
+     CTA principal ci-dessous) plutot que vert fonce -> vert clair - coherence
+     visuelle avec la maquette validee. */
   .bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+    background: linear-gradient(90deg, var(--accent), var(--aurora-2));
     border-radius: 9999px;
     transition: width 0.35s cubic-bezier(.2,.8,.2,1);
     box-shadow: 0 0 10px var(--accent-glow), 0 0 4px var(--accent);

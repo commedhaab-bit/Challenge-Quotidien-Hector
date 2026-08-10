@@ -4940,3 +4940,42 @@ en dur). Aucun changement de regles Firestore/Cloud Functions - modification
 verification que le reste des chantiers visuels de ce projet : valide par
 tests structurels (tokens CSS, classes, gating conditionnel) + lint, **pas
 visuellement dans un vrai navigateur** - a confirmer par l'utilisateur.
+
+## Passe "premium" v2 - rapprochement de la maquette validee (tab bar flottante, degrade aurora renforce)
+
+**Retour utilisateur apres capture d'ecran** : la 1ere passe "premium" restait
+trop timide par rapport a la maquette artifact validee en amont - 2 elements
+precis pointes du doigt ("j'aime notamment le design de la zone onglet en bas
+et le degrade sur toute la page"), plus une demande explicite de se
+rapprocher "le plus possible du design Apple".
+
+- **Fond aurora nettement renforce** : opacites des 2 taches radiales
+  passees de 9%/7% a 30%/20%, tailles agrandies (~1100x850px/950x800px),
+  repositionnees pour un vrai lessivage vert (haut-gauche) -> bleu
+  (haut-droite) -> noir (bas), au lieu d'un effet a peine perceptible.
+- **Tab bar : pilule FLOTTANTE, pas collee au bord** - c'est le changement
+  structurel principal. `position:fixed` avec marge de 14px tout autour
+  (`left/right:14px`, `bottom: calc(14px + env(safe-area-inset-bottom))` -
+  le decalage de securite iOS est deplace du padding interne vers la
+  POSITION elle-meme, plus logique pour un element qui flotte desormais
+  au-dessus du bord plutot que d'y etre accole), `border-radius:26px` (pilule
+  complete, plus seulement des coins), bordure sur les 4 cotes (etait
+  `border-top` seul), ombre portee dediee pour vendre l'effet de flottement.
+  `.app` (padding-bottom) ajuste de 100px a 116px en consequence pour garder
+  le contenu clair de la pilule relevee.
+- **Coherence chromatique vert -> bleu** : `.bar-fill`/`.athlete-xp-fill`
+  (jauges de progression) et `.community-hero-accept-all-btn` ("Relever le
+  defi du jour") passent d'un degrade vert fonce -> vert clair a vert ->
+  bleu (`var(--accent)` -> `var(--aurora-2)`), exactement comme sur la
+  maquette - le CTA principal devient aussi une vraie pilule
+  (`border-radius:9999px`, etait 12px). **Mode Hardcore (`.hardcore-fill`)
+  volontairement NON touche** : sa palette feu/orange est une identite
+  visuelle deliberement distincte (deja documentee), pas un oubli.
+
+CACHE_NAME -> v111 (`styles.css` modifie uniquement). Aucun changement de
+regles Firestore/Cloud Functions. Meme limite de verification qu'avant :
+valide par tests structurels (valeurs CSS exactes, presence des regles) +
+lint, **pas visuellement dans un vrai navigateur** - le retour utilisateur
+qui a motive ce correctif venait justement d'une capture d'ecran de la
+maquette (jamais du rendu reel de l'app, toujours pas verifiable ici) - a
+reconfirmer par l'utilisateur sur l'app deployee.

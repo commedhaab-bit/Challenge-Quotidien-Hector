@@ -3176,7 +3176,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v110'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v111'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -7593,7 +7593,7 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(cssText.includes('--aurora-2:') && cssText.includes('--gold:'), 'les teintes secondaires (aurora, or) doivent etre declarees en tokens');
   __assertOk(cssText.includes('--shadow-elevated:') && cssText.includes('--shadow-hero:'), 'le systeme d elevation a 2 paliers doit etre declare en tokens');
   __assertOk(cssText.includes('--glass-bg:') && cssText.includes('--glass-border:'), 'les tokens de verre depoli doivent etre declares');
-  __assertOk(cssText.includes("radial-gradient(ellipse 900px 700px at 8% -10%") && cssText.includes('fractalNoise'), 'le fond doit avoir un degrade "aurora" + une texture de grain');
+  __assertOk(cssText.includes("radial-gradient(ellipse 1100px 850px at 0% -8%") && cssText.includes('fractalNoise'), 'le fond doit avoir un degrade "aurora" + une texture de grain');
   // NB : testDriver est un template literal (voir plus bas dans ce fichier) - tout
   // regex ecrit ICI doit doubler ses backslashes (\\s, \\., \\{) pour qu'il en
   // reste un seul une fois la chaine "cuite" par le template literal lui-meme
@@ -7604,6 +7604,21 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(/\\.app-popup-card\\s*\\{[^}]*backdrop-filter: blur/.test(cssText), 'les popups plein ecran doivent utiliser un traitement de verre depoli');
   __assertOk(/\\.level-roadmap-sheet\\s*\\{[^}]*backdrop-filter: blur/.test(cssText), 'les feuilles (bottom sheets) doivent utiliser un traitement de verre depoli');
   console.log('OK: tokens de design premium (aurora, grain, verre depoli, ressort, elevation) presents et centralises');
+
+  // --- Retour utilisateur (v2, "se rapprocher de l apercu"/Apple) : tab bar en
+  // pilule FLOTTANTE (marge tout autour, entierement arrondie, ombre portee),
+  // plus collee bord a bord comme avant ---
+  __assertOk(/\\.tab-bar\\s*\\{[^}]*border-radius: 26px/.test(cssText), 'la tab bar doit etre entierement arrondie (pilule), pas juste des coins colles au bord');
+  __assertOk(cssText.includes('bottom: calc(14px + env(safe-area-inset-bottom, 0px));') && cssText.includes('left: 14px;') && cssText.includes('right: 14px;'), 'la tab bar doit flotter avec une marge tout autour (haut/bas/gauche/droite), pas etre collee aux bords de l ecran');
+  __assertOk(/\\.tab-bar\\s*\\{[^}]*box-shadow: 0 16px 40px/.test(cssText), 'la tab bar flottante doit porter une ombre pour se detacher visuellement du contenu');
+  console.log('OK: tab bar en pilule flottante (marge, coins entierement arrondis, ombre portee)');
+
+  // --- Degrade vert -> bleu coherent sur les jauges de progression + le CTA
+  // principal (au lieu de vert fonce -> vert clair), pour matcher la maquette ---
+  __assertOk(cssText.includes('background: linear-gradient(90deg, var(--accent), var(--aurora-2));'), 'les jauges de progression (defi du jour) doivent utiliser le degrade vert -> bleu');
+  __assertOk(cssText.includes('background: linear-gradient(100deg, var(--accent), var(--aurora-2));'), 'le CTA principal ("Relever le defi du jour") doit utiliser le degrade vert -> bleu');
+  __assertOk(/\\.community-hero-accept-all-btn\\s*\\{[^}]*border-radius: 9999px/.test(cssText), 'le CTA principal doit etre une vraie pilule (border-radius total), pas juste des coins arrondis');
+  console.log('OK: degrade vert -> bleu coherent sur les jauges de progression et le CTA principal (Mode Hardcore reste sur sa propre palette feu, inchange)');
 
   // --- Micro-interactions a ressort + glow pulsant sur les CTA ---
   __assertOk(cssText.includes('transition: transform 0.35s var(--spring);') && cssText.includes("transition: transform 0.08s ease;"), 'le retour tactile generalise doit utiliser le ressort au relachement, lineaire rapide a l appui');
