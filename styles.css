@@ -58,6 +58,13 @@
        "contenu opaque" vs "contrôle/overlay en verre" lisible d'un coup d'œil). */
     --glass-bg: rgba(15, 18, 15, 0.62);
     --glass-border: rgba(255, 255, 255, 0.09);
+
+    /* Idee bonus (retour utilisateur, "app premium/native") : teinte ambiante
+       qui suit l'heure REELLE de la journee (voir computeTimeOfDayTint()/
+       applyTimeOfDayTint() dans index.html) - transparent par defaut tant que
+       le JS n'a pas encore calcule la vraie heure (1er paint), jamais de flash
+       de couleur incorrecte. */
+    --time-tint: rgba(0, 0, 0, 0);
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -121,7 +128,8 @@
       radial-gradient(ellipse 1100px 850px at 0% -8%, rgba(57, 233, 122, 0.30), transparent 62%),
       radial-gradient(ellipse 950px 800px at 100% 12%, rgba(58, 168, 255, 0.20), transparent 62%),
       radial-gradient(ellipse at top left, rgba(255,255,255,0.03), transparent 50%),
-      radial-gradient(ellipse at bottom right, rgba(255,255,255,0.02), transparent 50%);
+      radial-gradient(ellipse at bottom right, rgba(255,255,255,0.02), transparent 50%),
+      radial-gradient(ellipse 900px 700px at 50% 100%, var(--time-tint), transparent 70%);
     background-attachment: fixed;
   }
   /* Grain/texture bruit tres subtil en overlay - evite l'effet "aplat plastique"
@@ -208,6 +216,22 @@
     padding: 8px 4px;
     box-shadow: 0 16px 40px -14px rgba(0, 0, 0, 0.6);
     z-index: 500;
+    transition: transform 0.3s var(--spring), opacity 0.25s ease;
+  }
+  /* Idee bonus (retour utilisateur, "app premium/native") : la tab bar glisse
+     hors champ pendant qu'on est sur la fiche d'un exercice (voir
+     renderTabBar(hidden) - currentChallengeId truthy), pour liberer l'espace
+     vertical et signaler clairement "mode concentration" pendant l'effort
+     (esprit Strava/Nike Training Club) - reapparait des qu'on quitte l'ecran.
+     pointer-events:none pendant la sortie : sans ca, la pilule resterait
+     cliquable pendant sa translation, invisible mais toujours interactive. */
+  .tab-bar.tab-bar-hidden {
+    transform: translateY(calc(100% + 24px + env(safe-area-inset-bottom, 0px)));
+    opacity: 0;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tab-bar { transition: opacity 0.25s ease; }
   }
   .tab-btn {
     position: relative;
@@ -3027,6 +3051,54 @@
     border-bottom: 1px solid var(--line);
   }
 
+  /* Idee bonus (retour utilisateur, "app premium/native") : ecran de demarrage
+     avec Kilito - couvre le chargement initial (SDK Firebase, verification de
+     l'auth) le temps que #loginScreen/#app deviennent prets, plutot qu'un
+     ecran vide/un simple texte "Chargement...". z-index juste SOUS le verrou
+     d'installation PWA (99998) - si celui-ci doit s'afficher (navigateur non-
+     standalone), il recouvre entierement le splash sans conflit, et sous le
+     filet de securite fatal (99999) pour rester deboguable en cas de crash
+     precoce. Kilito est dessine ICI EN DUR (silhouette simplifiee), PAS via
+     renderKilo() : ce splash doit apparaitre DES le tout premier paint, avant
+     meme que le gros script inline (des centaines de Ko, ou renderKilo()/
+     KILO_STATE_SVG ne sont definis que tout en bas) n'ait fini de s'executer -
+     aucune dependance possible a ce script pour le contenu visuel initial. */
+  .app-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 99997;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    background: var(--bg, #000000);
+    transition: opacity 0.4s ease;
+  }
+  .app-splash.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .app-splash-kilo {
+    animation: app-splash-pulse 1.6s ease-in-out infinite;
+    filter: drop-shadow(0 0 18px rgba(57, 233, 122, 0.55));
+  }
+  @keyframes app-splash-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+  .app-splash-title {
+    font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #eef2ef;
+    opacity: 0.85;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .app-splash-kilo { animation: none; }
+  }
+
   /* Verrou d'installation PWA plein écran ("PWA First" strict) : z-index au-dessus de
      TOUT (y compris #loginScreen/#app), juste sous le filet de sécurité fatal (99999)
      pour rester déboguable en cas de crash. Recouvre tout le viewport : bloque par
@@ -3176,15 +3248,21 @@
     z-index: 998;
   }
 
-  /* PULL TO REFRESH */
+  /* PULL TO REFRESH - Idee bonus (retour utilisateur, "app premium/native") :
+     Kilito "sort la tete" en tirant vers le bas, a la place d'un glyphe
+     generique "↻" - signature immediatement reconnaissable (comme le pull-
+     to-refresh a mascotte de certaines grandes apps), coherent avec le reste
+     du langage visuel de Kilo (rebond a ressort, jamais une rotation
+     litterale du personnage - une simple rotation 360 aurait ete etrange
+     pour un visage/corps, remplacee par un leger rebond en boucle). */
   .ptr-indicator {
     position: fixed;
     top: 0;
     left: 50%;
     transform: translateX(-50%) translateY(0px);
     opacity: 0;
-    width: 40px;
-    height: 40px;
+    width: 52px;
+    height: 52px;
     background: var(--bg-card);
     border: 1px solid var(--accent-dim);
     border-radius: 50%;
@@ -3194,22 +3272,26 @@
     z-index: 997;
     transition: opacity 0.2s ease;
     pointer-events: none;
+    overflow: hidden;
   }
   .ptr-spinner {
-    font-size: 18px;
-    color: var(--chalk-dim);
-    transition: transform 0.15s ease, color 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s var(--spring);
   }
   .ptr-indicator.ready .ptr-spinner {
-    color: var(--accent);
-    transform: rotate(180deg);
+    transform: scale(1.15) translateY(-2px);
   }
   .ptr-indicator.spinning .ptr-spinner {
-    animation: ptr-spin 0.7s linear infinite;
+    animation: kilo-ptr-bounce 0.6s ease-in-out infinite;
   }
-  @keyframes ptr-spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+  @keyframes kilo-ptr-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ptr-indicator.spinning .ptr-spinner { animation: none; }
   }
 
   /* Kilo, coach temps reel sur la fiche d'exercice (retour utilisateur) - a
@@ -3321,15 +3403,66 @@
     color: transparent;
     display: inline-block;
   }
+  /* Idee bonus (retour utilisateur, "app premium/native") : chiffres "odometre"
+     qui roulent chacun independamment (colonne par colonne, comme un compteur
+     kilometrique mecanique) plutot que de sauter/defiler comme un seul bloc de
+     texte (voir animateOdometer() dans index.html, remplace animateCountUp()
+     UNIQUEMENT pour #exerciseProgressCurrent - le nombre le plus vu de toute
+     l'appli, un tap sur deux pendant l'effort). Chaque colonne (.odo-col) est
+     une fenetre de hauteur 1 ligne (overflow:hidden) sur une bande verticale
+     (.odo-strip) qui empile les 10 chiffres 0-9 - translateY en % (relatif a
+     la hauteur PROPRE de la bande, jamais un pixel calcule en JS) positionne
+     le bon chiffre, et glisse naturellement a travers les chiffres
+     intermediaires pendant la transition, exactement comme un vrai odometre. */
+  .progress-current.odometer {
+    display: inline-flex;
+  }
+  .odo-col {
+    display: inline-block;
+    height: 1em;
+    overflow: hidden;
+    vertical-align: bottom;
+    line-height: 1;
+  }
+  .odo-strip {
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .odo-strip span {
+    height: 1em;
+    line-height: 1;
+    display: block;
+    text-align: center;
+    /* Reprend le degrade du conteneur (voir .progress-current juste au-dessus)
+       plutot que de le redefinir en double - chaque colonne clippe sur SA
+       propre boite (leger effet de "reprise" du degrade par colonne plutot
+       qu'un seul balayage continu sur tout le nombre - compromis accepte,
+       les 2 teintes de la palette restent proches). */
+    background: inherit;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .odo-strip { transition: none; }
+  }
   /* Passe "premium" (retour utilisateur) : "boing" d'echelle au moment exact ou
      un chiffre change (au-dela du defilement deja gere par animateCountUp() -
      voir index.html) - classe generique, reutilisable par n'importe quel
      chiffre affiche (progression d'exercice, XP...). */
   .num-pop { animation: num-pop-bounce 0.4s var(--spring); }
+  /* Idee bonus (retour utilisateur, "app premium/native") : Nunito est un VRAI
+     fichier de police VARIABLE (200-1000, voir le @font-face plus haut) - un
+     effet impossible avec une police statique classique. En plus du "boing"
+     d'echelle deja existant, la graisse elle-meme "gonfle" jusqu'au maximum de
+     l'axe (1000) au sommet du rebond avant de retomber sur le poids normal
+     (900) - un vrai "coup de muscle" visuel sur les gros chiffres de
+     progression, thematiquement coherent avec une app de fitness. */
   @keyframes num-pop-bounce {
-    0% { transform: scale(1); }
-    45% { transform: scale(1.16); }
-    100% { transform: scale(1); }
+    0% { transform: scale(1); font-variation-settings: 'wght' 900; }
+    45% { transform: scale(1.16); font-variation-settings: 'wght' 1000; }
+    100% { transform: scale(1); font-variation-settings: 'wght' 900; }
   }
   @media (prefers-reduced-motion: reduce) {
     .num-pop { animation: none; }

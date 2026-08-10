@@ -5197,3 +5197,134 @@ exactement le scenario (tap -> 1er render anime, expiration simulee du
 rebond -> 2e render SANS animation) - meme limite de verification que le
 reste des chantiers visuels : **pas confirme visuellement dans un vrai
 navigateur**, a confirmer par l'utilisateur.
+
+## Passe "app premium/native" — 2e liste de propositions, lot 1/N (7 idees livrees)
+
+**Demande explicite de l'utilisateur** apres la passe "premium" precedente
+(profondeur/typo/ressort/structure/recompenses/data viz/coherence, deja
+livree) : nouvelle liste de propositions numerotees (33 idees, plusieurs
+"gros chantiers" explicitement autorises - "si il faut refondre toute
+l'interface, n'hesite pas"), l'utilisateur choisissant #1, #2, #3, #4, #5, #6,
+#7, #8, #10, #13, #16, #18, #19, #20, #23, #24, #27, #33 a implementer
+directement (sans artifact prealable). Ce 1er lot livre les 7 idees les plus
+contenues/independantes (#27, #20, #13, #24, #3, #8, #19, #33 - #4 fusionnee
+avec #33, voir plus bas) ; les idees plus structurelles/a risque de
+conflit de gestes (#1, #2, #5, #6, #7, #10, #16, #18, #23) restent a livrer
+dans des lots suivants.
+
+**#27 - Badge natif sur l'icone de l'app (Badging API)** : `updateAppBadge()`
+(nouvelle fonction, point d'appel UNIQUE au tout debut de `render()`, plutot
+que duplique a chaque site qui mute `incomingFriendRequests`/
+`incomingGroupInvites` - meme principe de centralisation deja applique
+ailleurs dans ce fichier) reflete la somme des 2 memes sources deja
+affichees comme badge IN-APP (`.friends-badge`, bouton Amis). N'appelle
+`navigator.setAppBadge()`/`clearAppBadge()` que si le COMPTE a reellement
+change (`lastAppBadgeCount`, sentinelle `-1`) - jamais a chaque render().
+Gardee derriere une detection de support (`'setAppBadge' in navigator`),
+encore absente de nombreux navigateurs (Firefox, Safari desktop).
+
+**#20 - Clic sonore discret sur chaque tap +5/+10** : `playTapTickSound()`,
+meme patron deja etabli que `playTimerBeep()`/`unlockTimerAudio()`
+(AudioContext PARTAGE paresseusement cree/reutilise, `tapAudioCtx` - jamais
+une nouvelle instance par tap, qui epuiserait vite la limite du navigateur
+sur des taps rapproches). Gain tres bas (0.12) + duree tres courte (~50ms) :
+quasi subliminal, jamais une 2e fanfare qui ferait doublon avec
+`playSuccessSound()` (fichier audio reel, completion). Appelee en tout
+premier dans `addSet()`, AVANT le garde-fou anti-spam
+(`maybeInterceptSpammyTaps()`) - feedback immediat au tap lui-meme, pas a la
+validation.
+
+**#13 - Degrade ambiant selon l'heure reelle de la journee** : nouvelle
+variable CSS `--time-tint` (3eme couche radiale ajoutee au fond aurora
+existant, jamais en remplacement des 2 taches vert/bleu de marque -
+opacites tres faibles 0.07-0.09). `computeTimeOfDayTint(hour)` (fonction
+PURE, meme convention que `computeKiloMood()`/`computeSeasonalAccessory()`) :
+cyan frais le matin (5h-11h), neutre en journee (11h-17h), ambre coucher de
+soleil en soiree (17h-21h), indigo profond la nuit. Appliquee au demarrage
+(`continueStartApp()`) ET a chaque retour au premier plan (nouveau listener
+`visibilitychange` dedie, separe des 3 autres deja existants dans ce fichier
+- chacun scope a un concern different) - reste juste meme si la PWA reste
+ouverte des heures a cheval sur 2 periodes.
+
+**#24 - Poids de police variable anime** : Nunito est un VRAI fichier de
+police VARIABLE (200-1000) - `@keyframes num-pop-bounce` (deja existante,
+"boing" d'echelle sur `animateCountUp()`/`animateOdometer()`) anime
+desormais AUSSI `font-variation-settings: 'wght'` (900 -> 1000 au sommet du
+rebond -> 900), un vrai "coup de muscle" visuel impossible avec une police
+statique classique - aucun changement JS necessaire, pur ajout CSS sur un
+mecanisme deja en place.
+
+**#3 - Tab bar cachee pendant l'effort** : `renderTabBar(hidden)` (nouveau
+parametre optionnel) pose `.tab-bar-hidden` (translateY hors champ + fade,
+`pointer-events:none` pendant la sortie) quand `currentChallengeId` est
+truthy (fiche d'un exercice precis) - reapparait des qu'on revient a la
+liste des defis. Esprit Strava/Nike Training Club : liberer l'espace
+vertical et signaler "mode concentration" pendant l'effort.
+
+**#8 - Pull-to-refresh signature avec Kilito** : `initPullToRefresh()`
+remplace le glyphe generique "↻" par `renderKilo('idle', {size:34})` -
+rotation 360 litterale retiree (etrange pour un personnage), remplacee par
+un leger rebond en boucle (`kilo-ptr-bounce`) pendant le rafraichissement et
+un `scale()` au seuil "pret a relacher".
+
+**#19 - Chiffres "odometre"** : `animateOdometer()`/
+`renderOdometerColumnsHtml()` (nouvelles fonctions) remplacent
+`animateCountUp()` UNIQUEMENT sur `#exerciseProgressCurrent` (le nombre le
+plus vu de l'appli, un tap sur deux pendant l'effort) - chaque chiffre roule
+INDEPENDAMMENT (colonne = fenetre 1 ligne sur une bande verticale des 10
+chiffres, position en `translateY(%)` RELATIF a la hauteur propre de la
+bande, aucun calcul de pixel JS) comme un vrai compteur kilometrique
+mecanique, plutot que le texte entier qui saute/defile en bloc. Alignement
+du nombre de colonnes sur un changement de longueur (`99 -> 100` doit faire
+rouler 3 colonnes, l'ancienne valeur paddee `"099"`) - sinon la colonne du
+chiffre AJOUTE n'aurait aucun etat de depart d'ou rouler. Degrade de texte
+existant (`background-clip:text`) deplace des chiffres eux-memes
+(`.odo-strip span { background:inherit; ... }`, DRY - reprend le degrade du
+conteneur) puisque le texte n'est plus un noeud direct de `.progress-current`
+- **limite acceptee** : chaque colonne clippe sur SA PROPRE boite, un leger
+effet de "reprise" du degrade par colonne plutot qu'un seul balayage continu
+sur tout le nombre (compromis assume, les 2 teintes de palette restent
+proches). `animateCountUp()` elle-meme reste en place (fonction generique
+reutilisable, garde sa propre suite de tests dediee) - pas devenue du code
+mort, juste un 2e primitif a un niveau de sophistication different.
+
+**#33 - Ecran de demarrage avec Kilito (+ #4 fusionnee)** : nouveau
+`#appSplash` dans le HTML STATIQUE (avant meme `#loginScreen`/`#app`),
+Kilito dessine EN DUR (silhouette simplifiee - cercle + 2 yeux + sourire,
+PAS via `renderKilo()`) puisqu'il doit apparaitre des le tout premier paint,
+avant que le gros script inline (des centaines de Ko, ou `renderKilo()`/
+`KILO_STATE_SVG` ne sont definis que tout en bas) n'ait fini de s'executer -
+aucune dependance possible. Pulse doucement (glow + scale) pendant le
+chargement des SDK Firebase/la verification d'auth, cache en fondu
+(`hideAppSplash()`) des que `#loginScreen` OU `#app` devient le contenu
+reellement affiche (les 2 branches de `auth.onAuthStateChanged()`). z-index
+juste sous le verrou d'installation PWA (99998) - si celui-ci doit
+s'afficher (navigateur non-standalone), il recouvre le splash sans conflit.
+**Idee #4 (entree en cascade une seule fois par session) fusionnee ici** :
+ce splash EST l'orchestration de "cold start" demandee - les cascades
+d'entree existantes des ecrans (`.picker-item`/`card-pop-in`) etaient deja
+correctement gatees au cas par cas AVANT ce lot (Bibliotheque via
+`libraryAnimatingCat`, Aujourd'hui deja force en permanence `.no-anim`,
+voir la passe "optimisations visuelles" precedente) - aucun probleme de
+cascade repetee ne subsistait reellement a corriger, contrairement au vrai
+trou (l'absence d'un moment de demarrage orchestre), desormais comble par
+le splash.
+
+**Piege de mock decouvert en testant #13** : le mock DOM de test
+(`makeEl()`) avait un `style: {}` (simple objet plat) sans
+`setProperty()`/`getPropertyValue()` - `applyTimeOfDayTint()` (premiere
+fonctionnalite de ce fichier a manipuler une variable CSS via
+`style.setProperty('--x', ...)`, plutot qu'une classe ou un attribut) a
+immediatement revele ce gap reel. Etendu (`style.setProperty`/
+`getPropertyValue`, memes conventions que le reste du mock) plutot que
+contourne cote application (`setProperty()` est la facon standard/fiable de
+poser une variable CSS depuis JS, a garder telle quelle).
+
+CACHE_NAME -> v117 (`styles.css` + `index.html` modifies, aucun nouvel
+asset statique ce lot). Aucun changement de regles Firestore/Cloud
+Functions - modification 100% cote client, aucune touche a `functions/**`.
+Meme limite de verification que le reste des chantiers visuels de ce
+projet : valide par tests structurels/comportementaux (dont le nouveau gap
+de mock ci-dessus, corrige) + lint, **pas confirme visuellement dans un
+vrai navigateur** - a confirmer par l'utilisateur. Suite (idees #1, #2, #5,
+#6, #7, #10, #16, #18, #23) a livrer dans un/des lot(s) suivant(s).

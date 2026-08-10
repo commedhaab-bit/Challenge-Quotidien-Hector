@@ -56,7 +56,14 @@ function makeEl(id) {
   const el = {
     id: id || '',
     _html: '',
-    style: {},
+    // setProperty()/getPropertyValue() (variables CSS, ex: applyTimeOfDayTint())
+    // - un simple objet {} ne les implemente pas (vraie CSSStyleDeclaration
+    // requise), gap reel decouvert en testant cette fonctionnalite.
+    style: {
+      _props: {},
+      setProperty(k, v) { this._props[k] = v; this[k] = v; },
+      getPropertyValue(k) { return this._props[k] || ''; },
+    },
     classList: { add(){}, remove(){}, contains(){ return false; }, toggle(){} },
     addEventListener(){}, removeEventListener(){},
     appendChild(){}, remove(){}, closest(){ return null; },
@@ -121,6 +128,9 @@ const mockLocalStorage = {
   removeItem(key) { mockLocalStorageStore.delete(key); },
   clear() { mockLocalStorageStore.clear(); },
 };
+// Idee bonus (retour utilisateur, "app premium/native") : Badging API - simple
+// journal des appels, voir updateAppBadge().
+const __mockAppBadgeCalls = [];
 const elementsById = new Map(); // simule le DOM : meme element retourne par id (ex: 'app')
 const sandboxSpokenLog = []; // simule window.speechSynthesis : phrases prononcees, dans l'ordre
 const mockLocation = { search: '', pathname: '/index.html' }; // simule window.location (raccourcis PWA, ?tab=...)
@@ -420,6 +430,10 @@ const sandbox = {
     // tests qui simulent un autre appareil/langue reassignent directement, meme
     // convention que navigator.onLine/userAgent ci-dessus.
     language: 'fr-FR',
+    // Idee bonus (retour utilisateur, "app premium/native") : Badging API, voir
+    // updateAppBadge()/__mockAppBadgeCalls.
+    setAppBadge(n) { __mockAppBadgeCalls.push(n); return Promise.resolve(); },
+    clearAppBadge() { __mockAppBadgeCalls.push(null); return Promise.resolve(); },
   },
   caches: mockCachesApi,
   history: {
@@ -623,6 +637,7 @@ const sandbox = {
   get __mockDeleteGroupCalls() { return mockDeleteGroupCalls; },
   __setMockDeleteGroupShouldFail(v) { mockDeleteGroupShouldFail = v; },
   __resetMockApplyGroupJoker() { mockApplyGroupJokerCalls = []; },
+  __mockAppBadgeCalls, // Badging API simulee (voir updateAppBadge())
   __mockCacheKeys: mockCacheKeys, // Cache Storage simule (forceAppUpdate)
   __mockSwRegistrations: mockSwRegistrations, // ServiceWorkerRegistration simulees (forceAppUpdate)
   __rawHtml: html, // fichier source complet de index.html (le <style> a ete extrait dans styles.css, voir __cssSource)
@@ -2171,6 +2186,85 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(countUpTestEl.textContent, 42, 'un VRAI changement de valeur doit passer par l animation differee (requestAnimationFrame) plutot qu un saut instantane - le mock de test n execute jamais les frames, donc le texte doit rester a l ancienne valeur ici (preuve que le chemin "instantane" n a pas ete pris a tort)');
   console.log('OK: animateCountUp() (defilement uniquement sur un vrai changement, jamais sur le premier affichage ni un re-rendu identique)');
 
+  // Idee bonus (retour utilisateur, "app premium/native") : chiffres "odometre"
+  // sur le compteur de progression de l exercice - chaque colonne roule
+  // INDEPENDAMMENT (voir animateOdometer()/renderOdometerDigitsHtml()).
+  // querySelectorAll() du mock de test renvoie toujours [] (voir son
+  // commentaire dedie) - la position FINALE (apres transition) n est donc pas
+  // verifiable ici, seulement la construction du HTML (fonction pure) et
+  // l etat DE DEPART ecrit dans innerHTML (seule mutation observable dans ce mock).
+  const odoDigitsHtml = renderOdometerDigitsHtml(42);
+  __assertEq((odoDigitsHtml.match(/class="odo-col"/g) || []).length, 2, 'renderOdometerDigitsHtml() doit produire une colonne par chiffre');
+  __assertOk(odoDigitsHtml.includes('translateY(-40%)'), 'le chiffre "4" doit positionner sa bande a translateY(-40%) (4eme dixieme de la hauteur totale de la bande)');
+  __assertOk(odoDigitsHtml.includes('translateY(-20%)'), 'le chiffre "2" doit positionner sa bande a translateY(-20%)');
+  const odoTestEl = document.getElementById('odometerTestTarget');
+  odoTestEl.innerHTML = '';
+  animateOdometer('odometerTestTarget', 'odo-test-key', 42);
+  __assertOk(odoTestEl.innerHTML.includes('translateY(-40%)') && odoTestEl.innerHTML.includes('translateY(-20%)'), 'le tout premier affichage doit ecrire directement les colonnes a leur position finale (aucune valeur precedente connue)');
+  animateOdometer('odometerTestTarget', 'odo-test-key', 42);
+  __assertOk(odoTestEl.innerHTML.includes('translateY(-40%)') && odoTestEl.innerHTML.includes('translateY(-20%)'), 'un re-rendu SANS changement de valeur ne doit jamais relancer d animation (juste re-ecrire la meme position finale)');
+  animateOdometer('odometerTestTarget', 'odo-test-key', 99);
+  __assertOk(odoTestEl.innerHTML.includes('translateY(-40%)') && odoTestEl.innerHTML.includes('translateY(-20%)'), 'un vrai changement de valeur doit d abord reafficher l ETAT DE DEPART (ancienne valeur), jamais sauter directement a la nouvelle position');
+  animateOdometer('odometerTestTarget', 'odo-test-key', 100);
+  __assertEq((odoTestEl.innerHTML.match(/class="odo-col"/g) || []).length, 3, 'un changement qui AJOUTE un chiffre (99 -> 100) doit pad l ancienne valeur au meme nombre de colonnes que la nouvelle (sinon la colonne du chiffre ajoute n aurait aucun etat de depart d ou rouler)');
+  console.log('OK: chiffres "odometre" (chaque colonne roule independamment, alignement du nombre de colonnes sur un changement de longueur)');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : badge natif sur
+  // l'icone de l'app (Badging API) - reflete incomingFriendRequests +
+  // incomingGroupInvites (memes 2 sources que le badge IN-APP existant sur le
+  // bouton Amis), un seul appel reel a l'API par changement de COMPTE.
+  __mockAppBadgeCalls.length = 0;
+  lastAppBadgeCount = -1;
+  incomingFriendRequests = [];
+  incomingGroupInvites = [];
+  render(false);
+  __assertEq(__mockAppBadgeCalls[__mockAppBadgeCalls.length - 1], null, 'aucune demande en attente doit effacer le badge (clearAppBadge)');
+  incomingFriendRequests = [{ fromUid: 'x' }];
+  render(false);
+  __assertEq(__mockAppBadgeCalls[__mockAppBadgeCalls.length - 1], 1, 'une demande d ami en attente doit poser un badge de 1');
+  const badgeCallsAfterFirstChange = __mockAppBadgeCalls.length;
+  render(false); // re-rendu SANS aucun changement de compte
+  __assertEq(__mockAppBadgeCalls.length, badgeCallsAfterFirstChange, 'un re-rendu sans changement de compte ne doit jamais rappeler l API (lastAppBadgeCount)');
+  incomingGroupInvites = [{ id: 'g1' }];
+  render(false);
+  __assertEq(__mockAppBadgeCalls[__mockAppBadgeCalls.length - 1], 2, 'le compte doit cumuler demandes d ami + invitations de groupe');
+  incomingFriendRequests = [];
+  incomingGroupInvites = [];
+  render(false);
+  __assertEq(__mockAppBadgeCalls[__mockAppBadgeCalls.length - 1], null, 'un retour a zero doit de nouveau effacer le badge');
+  console.log('OK: badge natif sur l icone de l app (Badging API), un seul appel reel par changement de compte');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : la tab bar se
+  // cache pendant l execution d un exercice precis (currentChallengeId), voir
+  // renderTabBar(hidden)/.tab-bar-hidden.
+  activeToday = new Set([pompes.id]);
+  state = emptyDayState();
+  currentChallengeId = null;
+  render(false);
+  __assertOk(!document.getElementById('app').innerHTML.includes('tab-bar-hidden'), 'la tab bar doit rester visible sur la liste des defis (aucun exercice ouvert)');
+  await pickChallenge(pompes.id);
+  render(false);
+  __assertOk(document.getElementById('app').innerHTML.includes('tab-bar-hidden'), 'la tab bar doit se cacher pendant l execution d un exercice precis');
+  currentChallengeId = null;
+  render(false);
+  __assertOk(!document.getElementById('app').innerHTML.includes('tab-bar-hidden'), 'la tab bar doit reapparaitre des qu on quitte la fiche d exercice');
+  console.log('OK: la tab bar se cache pendant l effort (mode concentration), reapparait des qu on quitte l ecran');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : degrade ambiant
+  // selon l heure reelle de la journee (fonction PURE, testable sans mocker
+  // l horloge - voir computeTimeOfDayTint()).
+  __assertEq(computeTimeOfDayTint(8), 'rgba(120, 200, 255, 0.07)', 'le matin (8h) doit avoir une teinte cyan fraiche');
+  __assertEq(computeTimeOfDayTint(13), 'rgba(0, 0, 0, 0)', 'la pleine journee (13h) ne doit ajouter aucune teinte');
+  __assertEq(computeTimeOfDayTint(19), 'rgba(255, 145, 60, 0.09)', 'la soiree (19h) doit avoir une teinte ambre coucher de soleil');
+  __assertEq(computeTimeOfDayTint(23), 'rgba(120, 90, 255, 0.08)', 'la nuit (23h) doit avoir une teinte indigo profonde');
+  console.log('OK: degrade ambiant selon l heure reelle de la journee (4 tranches, fonction pure)');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : ecran de demarrage
+  // avec Kilito (pas un simple logo), masque au 1er auth resolu.
+  __assertOk(__rawHtml.includes('id="appSplash"') && __rawHtml.includes('class="app-splash-kilo"'), 'l ecran de demarrage doit exister dans le HTML statique, avec Kilito dessine (pas juste un logo)');
+  __assertOk(typeof hideAppSplash === 'function', 'hideAppSplash() doit exister pour masquer le splash une fois l auth resolue');
+  console.log('OK: ecran de demarrage avec Kilito present dans le HTML statique');
+
   // Retour utilisateur "effet waouh" : les panneaux (parcours de niveau, fiche
   // d ami, info groupe) sont desormais de VRAIES feuilles a glisser - le mock
   // DOM du harnais ne simule pas de vrais evenements tactiles (querySelector
@@ -3199,7 +3293,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v116'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v117'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');

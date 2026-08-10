@@ -71,6 +71,21 @@
      navigateurs qui ne pourront jamais proposer d'installation réelle. -->
 <div id="pwaInstallGate" class="pwa-install-gate" style="display:none;"></div>
 
+<!-- Idee bonus (retour utilisateur, "app premium/native") : ecran de demarrage
+     avec Kilito (dessine en dur, voir le commentaire CSS dedie sur .app-splash
+     dans styles.css) - couvre le chargement des SDK Firebase/verification de
+     l'auth, masque par hideAppSplash() (voir plus bas dans ce fichier) des que
+     #loginScreen ou #app devient le contenu reellement affiche. -->
+<div id="appSplash" class="app-splash">
+  <svg class="app-splash-kilo" width="96" height="96" viewBox="-60 -60 120 120" role="img" aria-label="Défi du Jour">
+    <circle cx="0" cy="8" r="34" fill="#0f120f" stroke="#39e97a" stroke-width="3"/>
+    <circle cx="-11" cy="0" r="5" fill="#39e97a"/>
+    <circle cx="11" cy="0" r="5" fill="#39e97a"/>
+    <path d="M -10 16 Q 0 24 10 16" stroke="#39e97a" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </svg>
+  <div class="app-splash-title">Défi du Jour</div>
+</div>
+
 <div id="loginScreen" class="login-screen" style="display:none;">
   <div class="emoji">💪</div>
   <h1>Défi du Jour</h1>
@@ -664,6 +679,18 @@ async function deleteMyAccount() {
 
 let lastAuthUid = null;
 
+// Idee bonus (retour utilisateur, "app premium/native") : cache l'ecran de
+// demarrage (fondu 0.4s, voir .app-splash dans styles.css) - appelee des que
+// #loginScreen OU #app devient le contenu reellement affiche (les 2 branches
+// de auth.onAuthStateChanged() ci-dessous). Si le verrou d'installation PWA
+// doit s'afficher a la place (navigateur non-standalone), son z-index plus
+// eleve (99998 > 99997) le recouvre de toute facon - inutile de le cacher
+// explicitement dans ce cas, aucun conflit visuel.
+function hideAppSplash() {
+  const el = document.getElementById('appSplash');
+  if (el) el.classList.add('hidden');
+}
+
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
@@ -674,6 +701,7 @@ auth.onAuthStateChanged(user => {
       return;
     }
     lastAuthUid = user.uid;
+    hideAppSplash();
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     startApp();
@@ -714,6 +742,7 @@ auth.onAuthStateChanged(user => {
     // un compte A sur le même onglet de navigateur verrait à tort l'historique de A.
     historyDayCache = {};
     publicProfileCache = {}; // repart propre pour le prochain compte connecté sur cet onglet
+    hideAppSplash();
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
   }
@@ -2463,6 +2492,12 @@ let outgoingFriendRequestUids = new Set();
 // comportement generique des autres notifications.
 let incomingGroupInvites = []; // [{ id, groupId, groupName, fromName, at }]
 
+// Badge natif sur l'icone de l'app (Badging API, retour utilisateur "app
+// premium/native") - -1 garantit que le tout 1er appel de updateAppBadge()
+// declenche bien un appel reel a l'API (0 est une valeur legitime de compte,
+// ne peut pas servir de sentinelle "jamais calcule").
+let lastAppBadgeCount = -1;
+
 // ==== GROUPES & DEFIS COLLECTIFS (Phase 2 - fondations) ====
 // groups/{groupId} + groups/{groupId}/members/{uid} : jamais un tableau sur le doc
 // groupe, meme principe que friendships - chaque membre n'ecrit que SON PROPRE doc
@@ -3125,6 +3160,37 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// Idee bonus (retour utilisateur, "app premium/native") : le fond aurora
+// (vert -> bleu) penche legerement de teinte selon l'heure REELLE de la
+// journee - cyan frais le matin, neutre en pleine journee, ambre coucher de
+// soleil en soiree, indigo profond la nuit - pour une app qui semble
+// "consciente du moment" plutot que figee. Fonction PURE (hour en parametre,
+// jamais `new Date()` en interne - meme convention que computeKiloMood()/
+// computeSeasonalAccessory()) : testable de facon deterministe. Opacites
+// tres faibles (0.07-0.09), jamais assez fortes pour rivaliser avec les 2
+// taches vert/bleu de la palette de marque - un signal ambiant, pas une
+// couleur consciemment remarquee.
+function computeTimeOfDayTint(hour) {
+  if (hour >= 5 && hour < 11) return 'rgba(120, 200, 255, 0.07)'; // matin - cyan frais
+  if (hour >= 11 && hour < 17) return 'rgba(0, 0, 0, 0)'; // journee - neutre
+  if (hour >= 17 && hour < 21) return 'rgba(255, 145, 60, 0.09)'; // soiree - ambre
+  return 'rgba(120, 90, 255, 0.08)'; // nuit - indigo profond
+}
+
+// Applique la teinte via la variable CSS --time-tint (voir body{} dans
+// styles.css) - appelee au demarrage ET a chaque retour au premier plan
+// (meme ecouteur foreground que le rechargement groupe/exercice ci-dessus,
+// volontairement separe ici avec son propre commentaire plutot que fusionne :
+// concern different, plus facile a retrouver/retirer independamment) pour
+// rester juste meme si la PWA reste ouverte des heures a cheval sur 2
+// periodes de la journee.
+function applyTimeOfDayTint() {
+  document.documentElement.style.setProperty('--time-tint', computeTimeOfDayTint(new Date().getHours()));
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') applyTimeOfDayTint();
+});
+
 // Pure (aucune donnee supplementaire a charger : deja dans groupDetailMembers,
 // rollups mis a jour par closeExpiredGroupChallenges()) - Hall of Fame a 5 titres :
 // Le Mecene (le plus souvent payeur), Le Roi des Repets (volume cumule le plus
@@ -3710,6 +3776,32 @@ async function declineGroupInviteFromList(notifId) {
     render();
   } catch (e) {
     reportSaveError('decline group invite from list failed', e);
+  }
+}
+
+// Idee bonus (retour utilisateur, "app premium/native") : badge natif sur
+// l'icone de l'app (Badging API), visible SANS ouvrir l'app - reutilise les
+// 2 memes sources deja affichees comme badges IN-APP (bouton Amis, voir
+// .friends-badge dans renderCommunityScreen()/renderFriendsScreen()), pas de
+// nouvelle donnee a suivre. Point d'appel UNIQUE (depuis render() lui-meme)
+// plutot que duplique a chaque site qui mute ces 2 tableaux
+// (refreshFriendsData/refreshPendingGroupInvites/accept.../decline...) - meme
+// principe de centralisation deja applique ailleurs dans ce fichier (un seul
+// trigger sendPushOnNotificationCreate cote serveur, un seul ecouteur click
+// pour la vibration generalisee...). N'appelle l'API navigateur que si le
+// COMPTE a reellement change (lastAppBadgeCount), pour ne pas la solliciter a
+// chaque render(). navigator.setAppBadge()/clearAppBadge() sont encore
+// absentes de beaucoup de navigateurs (Firefox, Safari desktop...) : gardees
+// derriere une detection de support, jamais un throw silencieux.
+function updateAppBadge() {
+  if (!('setAppBadge' in navigator)) return;
+  const count = incomingFriendRequests.length + incomingGroupInvites.length;
+  if (count === lastAppBadgeCount) return;
+  lastAppBadgeCount = count;
+  if (count > 0) {
+    navigator.setAppBadge(count).catch(() => {});
+  } else if ('clearAppBadge' in navigator) {
+    navigator.clearAppBadge().catch(() => {});
   }
 }
 
@@ -5197,6 +5289,43 @@ function playTimerBeep() {
   } catch (e) { /* audio non disponible, tant pis */ }
 }
 
+// Idee bonus (retour utilisateur, "app premium/native") : clic sonore TRES
+// discret sur chaque tap +5/+10/etc, distinct de la fanfare de completion
+// (playSuccessSound(), fichier audio reel) - un feedback continu pendant
+// l'effort plutot qu'un silence jusqu'a la fin. Meme patron deja etabli que
+// playTimerBeep()/unlockTimerAudio() (AudioContext PARTAGE, cree/reutilise
+// paresseusement - jamais une nouvelle instance par tap, qui epuiserait vite
+// la limite du navigateur sur des taps rapproches/en rafale). Gain tres bas
+// (0.12) + duree tres courte (~50ms) : quasi subliminal, jamais une 2e
+// fanfare qui ferait doublon avec le son de completion.
+let tapAudioCtx = null;
+function unlockTapAudio() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!tapAudioCtx) tapAudioCtx = new AudioCtx();
+    if (tapAudioCtx.state === 'suspended') tapAudioCtx.resume();
+  } catch (e) { /* audio non disponible, tant pis */ }
+}
+function playTapTickSound() {
+  if (!soundEffectsEnabled) return;
+  unlockTapAudio();
+  if (!tapAudioCtx) return;
+  try {
+    const osc = tapAudioCtx.createOscillator();
+    const gain = tapAudioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 1400;
+    osc.connect(gain);
+    gain.connect(tapAudioCtx.destination);
+    const start = tapAudioCtx.currentTime;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.12, start + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.05);
+    osc.start(start);
+    osc.stop(start + 0.06);
+  } catch (e) { /* audio non disponible, tant pis */ }
+}
+
 function formatTimer(totalSec) {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
@@ -6013,6 +6142,7 @@ async function maybeInterceptSpammyTaps(amount) {
 
 async function addSet(amount) {
   if (amount <= 0) return;
+  playTapTickSound(); // feedback immediat au tap lui-meme (avant meme le garde-fou anti-spam), voir playTapTickSound()
   if (!(await maybeInterceptSpammyTaps(amount))) return;
   beginAppDataBatch(); // stats/lastCompleted/dailyActivity/badges/xpTotal/xpWeeklyData/streakData : un seul aller-retour Firestore pour tout ce qui suit, voir saveAppField()
   try {
@@ -6439,9 +6569,70 @@ function animateCountUp(elId, key, targetValue) {
   requestAnimationFrame(step);
 }
 
+// Idee bonus (retour utilisateur, "app premium/native") : chaque chiffre du
+// nombre roule INDEPENDAMMENT, comme un vrai compteur kilometrique mecanique -
+// va plus loin que animateCountUp() (qui ne fait que changer le TEXTE affiche
+// pendant le defilement). Une colonne (.odo-col) par chiffre : fenetre d'1
+// ligne (overflow:hidden) sur une bande verticale empilant "0123456789"
+// (.odo-strip), positionnee par translateY en % (relatif a la hauteur PROPRE
+// de la bande) - glisse donc naturellement a travers les chiffres
+// intermediaires via une simple transition CSS, sans le moindre calcul de
+// pixel cote JS. Reserve pour l'instant a #exerciseProgressCurrent (nombre
+// non formate, sans separateur de milliers - voir le commentaire CSS dedie
+// sur la limite du degrade par colonne).
+function renderOdometerColumnsHtml(digitsStr) {
+  return digitsStr.split('').map((ch) => {
+    const n = Number(ch);
+    if (Number.isNaN(n)) return escapeHtml(ch); // repli inoffensif si jamais un caractere non numerique arrive ici (ex: signe negatif)
+    const digitsColumn = '0123456789'.split('').map((d) => `<span>${d}</span>`).join('');
+    return `<span class="odo-col"><span class="odo-strip" style="transform: translateY(-${n * 10}%)">${digitsColumn}</span></span>`;
+  }).join('');
+}
+function renderOdometerDigitsHtml(value) {
+  return renderOdometerColumnsHtml(String(value));
+}
+const odometerLastValues = {};
+function animateOdometer(containerId, key, targetValue) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const previous = odometerLastValues[key];
+  odometerLastValues[key] = targetValue;
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (previous === undefined || previous === targetValue || reduceMotion) {
+    container.innerHTML = renderOdometerDigitsHtml(targetValue);
+    return;
+  }
+  // Aligne le nombre de colonnes sur le plus long des 2 (ancien/nouveau),
+  // complete par des zeros non significatifs a gauche - ex: 99 -> 100 doit
+  // faire rouler 3 colonnes (0->1, 9->0, 9->0), pas seulement 2.
+  const digitCount = Math.max(String(previous).length, String(targetValue).length);
+  const oldDigitsStr = String(previous).padStart(digitCount, '0');
+  const newDigitsStr = String(targetValue).padStart(digitCount, '0');
+  container.innerHTML = renderOdometerColumnsHtml(oldDigitsStr);
+  // Force un reflow avant de changer la position cible, sinon le navigateur
+  // fusionne l'etat initial et l'etat final (aucune transition visible) -
+  // meme technique que kiloTap()/animateCountUp() (void offsetWidth) ailleurs
+  // dans ce fichier.
+  void container.offsetWidth;
+  const strips = container.querySelectorAll('.odo-strip');
+  strips.forEach((strip, i) => {
+    strip.style.transform = `translateY(-${Number(newDigitsStr[i]) * 10}%)`;
+  });
+  // Meme "boing" que animateCountUp() une fois le roulement termine (0.5s,
+  // voir .odo-strip dans styles.css) - applique sur le CONTENEUR entier
+  // (toutes les colonnes flexent ensemble), pas colonne par colonne.
+  setTimeout(() => {
+    if (document.getElementById(containerId) !== container) return; // noeud remplace par un re-render entre-temps
+    container.classList.remove('num-pop');
+    void container.offsetWidth;
+    container.classList.add('num-pop');
+  }, 520);
+}
+
 function render(animate) {
   const app = document.getElementById('app');
   const today = new Date();
+  updateAppBadge(); // no-op si le compte n'a pas change ou si l'API est absente
 
   if (showProfileOnboarding) {
     applyContent(app, renderProfileOnboardingScreen(), animate, initWheelPickers);
@@ -6693,7 +6884,7 @@ function render(animate) {
         ${!entry.done ? `
           <div class="progress-row">
             <div class="progress-numbers">
-              <span class="progress-current" id="exerciseProgressCurrent">${total}</span><span class="progress-target"> / ${target}</span>
+              <span class="progress-current odometer" id="exerciseProgressCurrent">${renderOdometerDigitsHtml(total)}</span><span class="progress-target"> / ${target}</span>
               <span class="progress-unit"> ${unitDisplay}</span>
               ${c.unit === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(target)})</span>` : ''}
               <button class="target-edit" onclick="editTarget()" aria-label="${t('exercise.editTargetAria')}">✏️</button>
@@ -6821,7 +7012,10 @@ function render(animate) {
     }
     html += `</div>`;
   }
-  html += renderTabBar();
+  // Idee bonus (retour utilisateur, "app premium/native") : la tab bar se
+  // cache le temps de l'execution d'un exercice precis (currentChallengeId
+  // truthy) - voir .tab-bar-hidden dans styles.css.
+  html += renderTabBar(!!currentChallengeId);
   html += renderGuidedTourOverlay();
 
   applyContent(app, html, animate, () => {
@@ -6831,10 +7025,11 @@ function render(animate) {
         if (e.key === 'Enter') customAddSubmit();
       });
     }
-    // Retour utilisateur "effet waouh" : le gros chiffre de progression defile
-    // vers sa nouvelle valeur plutot que de sauter instantanement.
+    // Idee bonus (retour utilisateur, "app premium/native") : chaque chiffre
+    // du gros compteur de progression roule independamment (odometre), voir
+    // animateOdometer() - remplace l'ancien animateCountUp() sur ce nombre precis.
     if (currentChallengeId !== null) {
-      animateCountUp('exerciseProgressCurrent', 'exercise:' + currentChallengeId, getTotal());
+      animateOdometer('exerciseProgressCurrent', 'exercise:' + currentChallengeId, getTotal());
     }
   });
 }
@@ -9546,7 +9741,7 @@ function switchProfileView(view) {
 
 // Barre de navigation persistante en bas de l'écran (masquée pendant les
 // écrans plein écran : onboarding, connexion, mode focus).
-function renderTabBar() {
+function renderTabBar(hidden) {
   // Journal n'est plus un onglet separe (fusionne en sous-onglet de Profil, voir
   // renderAccountTabScreen()/profileView) - 5 onglets au lieu de 6.
   const tabs = [
@@ -9557,7 +9752,7 @@ function renderTabBar() {
     { id: 'account',  icon: '👤', label: t('nav.account') },
   ];
   return `
-    <nav class="tab-bar" role="tablist">
+    <nav class="tab-bar${hidden ? ' tab-bar-hidden' : ''}" role="tablist">
       ${tabs.map(t => `
         <button class="tab-btn${activeTab === t.id ? ' active' : ''}" onclick="switchTab('${t.id}')" role="tab" aria-selected="${activeTab === t.id}">
           <span class="tab-icon">${t.icon}</span>
@@ -9580,7 +9775,14 @@ function initPullToRefresh() {
   const indicator = document.createElement('div');
   indicator.id = 'ptrIndicator';
   indicator.className = 'ptr-indicator';
-  indicator.innerHTML = '<div class="ptr-spinner">↻</div>';
+  // Idee bonus (retour utilisateur, "app premium/native") : Kilito remplace le
+  // glyphe generique "↻" - signature de pull-to-refresh reconnaissable, voir
+  // le commentaire CSS dedie (.ptr-indicator). Cree UNE SEULE FOIS ici (comme
+  // le reste de cet indicateur, en dehors du cycle de render()) - jamais
+  // recree a chaque render(), donc aucun risque de rejouer une animation
+  // d'entree parasite (meme discipline que les autres correctifs de
+  // clignotement de ce fichier).
+  indicator.innerHTML = `<div class="ptr-spinner">${renderKilo('idle', { size: 34 })}</div>`;
   document.body.appendChild(indicator);
 
   document.addEventListener('touchstart', (e) => {
@@ -9850,6 +10052,7 @@ async function proceedAfterProfile() {
 }
 
 async function continueStartApp() {
+  applyTimeOfDayTint(); // idee bonus "app premium/native" - teinte ambiante selon l'heure reelle, voir computeTimeOfDayTint()
   // loadAppData() (appelé juste avant, dans startApp()) a déjà chargé
   // customChallenges/profile/stats/badges/etc. en une seule lecture — il ne reste
   // que les documents par jour, qui en dépendent (todayKey/dailyActivity).
