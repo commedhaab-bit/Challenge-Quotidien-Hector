@@ -5114,21 +5114,112 @@ function playSuccessSound() {
   successAudio.play().catch((error) => console.log('Audio play blocked:', error));
 }
 
+// Extraite de getLifetimeSummary() (comportement inchange) pour etre
+// reutilisee par le radar par categorie (idee bonus "app premium/native",
+// voir renderCategoryRadarChart() plus bas) - meme simplification deja
+// acceptee ici (reps et secondes additionnees telles quelles, sans
+// conversion d'unite) : ne sert qu'a une comparaison RELATIVE entre
+// categories (favori le plus haut / equilibre du radar), jamais une valeur
+// absolue affichee telle quelle.
+function computeCategoryVolumeBreakdown() {
+  const catVolume = {};
+  for (const c of CHALLENGES) {
+    const s = stats[c.id];
+    if (!s) continue;
+    catVolume[c.cat] = (catVolume[c.cat] || 0) + s.lifetimeTotal;
+  }
+  return catVolume;
+}
 function getLifetimeSummary() {
   let totalReps = 0, totalSeconds = 0;
-  const catVolume = {};
   for (const c of CHALLENGES) {
     const s = stats[c.id];
     if (!s) continue;
     if (c.unit === 'reps') totalReps += s.lifetimeTotal;
     else totalSeconds += s.lifetimeTotal;
-    catVolume[c.cat] = (catVolume[c.cat] || 0) + s.lifetimeTotal;
   }
+  const catVolume = computeCategoryVolumeBreakdown();
   let favCat = null, favVal = -1;
   for (const [cat, val] of Object.entries(catVolume)) {
     if (val > favVal) { favVal = val; favCat = cat; }
   }
   return { totalReps, totalSeconds, favCat };
+}
+
+// Idee bonus (retour utilisateur, "app premium/native") : graphique radar par
+// categorie musculaire - revele l'equilibre de l'entrainement d'un coup
+// d'oeil ("tu negliges tes jambes"), la ou la liste d'exercices ne le montre
+// pas. Scope volontairement simplifie par rapport a la proposition initiale
+// ("30 derniers jours") : utilise le cumul A VIE deja en memoire
+// (stats[id].lifetimeTotal, comme renderAthleteStatsBento()) plutot qu'une
+// fenetre glissante de 30 jours, qui aurait exige soit une nouvelle lecture
+// Firestore soit un etat de chargement asynchrone - zero cout supplementaire,
+// coherent avec le reste du bloc stats du Profil.
+const RADAR_CATEGORIES = ['Haut du corps', 'Bas du corps', 'Gainage / Core', 'Haltères'];
+const RADAR_CHART_RADIUS = 70;
+// Fonction PURE (catVolume en parametre) : angle standard d'un radar chart,
+// -90° (tout en haut) puis sens horaire, chaque axe normalise sur le MAX des
+// 4 categories (donc la categorie la plus travaillee touche toujours 100% du
+// rayon) - une vraie mesure de BALANCE, pas de volume absolu.
+function computeRadarChartPoints(catVolume, radius) {
+  const maxVal = Math.max(1, ...RADAR_CATEGORIES.map((c) => catVolume[c] || 0));
+  return RADAR_CATEGORIES.map((cat, i) => {
+    const angle = -Math.PI / 2 + i * (2 * Math.PI / RADAR_CATEGORIES.length);
+    const ratio = (catVolume[cat] || 0) / maxVal;
+    const r = ratio * radius;
+    return { x: Math.round(r * Math.cos(angle) * 100) / 100, y: Math.round(r * Math.sin(angle) * 100) / 100, ratio, cat };
+  });
+}
+function renderCategoryRadarChart() {
+  const catVolume = computeCategoryVolumeBreakdown();
+  const total = RADAR_CATEGORIES.reduce((sum, c) => sum + (catVolume[c] || 0), 0);
+  if (total <= 0) return ''; // rien a montrer avant la toute 1ere serie loguee
+  const radius = RADAR_CHART_RADIUS;
+  const points = computeRadarChartPoints(catVolume, radius);
+  const polygonPoints = points.map((p) => `${p.x},${p.y}`).join(' ');
+  const gridRings = [0.33, 0.66, 1].map((frac) => {
+    const ringPts = RADAR_CATEGORIES.map((_, i) => {
+      const angle = -Math.PI / 2 + i * (2 * Math.PI / RADAR_CATEGORIES.length);
+      const r = frac * radius;
+      return `${(r * Math.cos(angle)).toFixed(1)},${(r * Math.sin(angle)).toFixed(1)}`;
+    }).join(' ');
+    return `<polygon points="${ringPts}" class="radar-grid-ring" />`;
+  }).join('');
+  const axisLines = RADAR_CATEGORIES.map((_, i) => {
+    const angle = -Math.PI / 2 + i * (2 * Math.PI / RADAR_CATEGORIES.length);
+    const x = (radius * Math.cos(angle)).toFixed(1);
+    const y = (radius * Math.sin(angle)).toFixed(1);
+    return `<line x1="0" y1="0" x2="${x}" y2="${y}" class="radar-axis-line" />`;
+  }).join('');
+  const labels = RADAR_CATEGORIES.map((cat, i) => {
+    const angle = -Math.PI / 2 + i * (2 * Math.PI / RADAR_CATEGORIES.length);
+    const labelR = radius + 20;
+    const x = (labelR * Math.cos(angle)).toFixed(1);
+    const y = (labelR * Math.sin(angle)).toFixed(1);
+    return `<text x="${x}" y="${y}" class="radar-axis-label" text-anchor="middle" dominant-baseline="middle">${escapeHtml(translateCategoryName(cat))}</text>`;
+  }).join('');
+  const dots = points.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="radar-data-dot" />`).join('');
+  // Site d'appel UNIQUE dans toute l'appli (Profil) - aucun risque de collision
+  // d'id SVG entre plusieurs instances simultanees, meme raisonnement deja
+  // documente pour renderExerciseSparkline().
+  return `
+    <div class="section-label">${t('profileTab.radarLabel')}</div>
+    <div class="radar-chart-wrap">
+      <svg viewBox="-100 -100 200 200" class="radar-chart-svg" role="img" aria-label="${t('profileTab.radarLabel')}">
+        <defs>
+          <linearGradient id="radarFillGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color: var(--accent); stop-opacity: 0.45;"/>
+            <stop offset="100%" style="stop-color: var(--aurora-2); stop-opacity: 0.22;"/>
+          </linearGradient>
+        </defs>
+        ${gridRings}
+        ${axisLines}
+        <polygon points="${polygonPoints}" class="radar-data-polygon" />
+        ${dots}
+        ${labels}
+      </svg>
+    </div>
+  `;
 }
 
 async function shareStatsImage() {
@@ -7425,6 +7516,7 @@ function renderLibraryScreen() {
     return renderChallengeForm();
   }
   let html = `
+    ${renderCollapsibleTitleBar(t('library.title'))}
     <div class="library-header-row">
       <div>
         <h1 class="title">${t('library.title')}</h1>
@@ -7727,29 +7819,45 @@ function renderAthleteCard() {
 // ==== "PARCOURS DE NIVEAU" (page détaillant toute la progression XP/titres) ====
 let levelRoadmapOpen = false;
 
+// Idee bonus (retour utilisateur, "app premium/native") : chemin de
+// progression visuel façon jeu de plateau (esprit arbre de competences
+// Duolingo, deja la comparaison retenue pour penser Kilito) - a la place
+// d'une simple liste verticale de lignes. Chaque palier devient un
+// medaillon rond en ZIGZAG gauche/centre/droite (nth-child, voir CSS), relie
+// par une ligne verticale centrale (.roadmap-path::before) dont le degrade
+// s'arrete PRECISEMENT au palier courant (computeRoadmapPathProgressPct(),
+// fonction PURE extraite pour rester testable) - la ligne "se remplit" en
+// vert au fur et a mesure de la progression, grise au-dela.
+function computeRoadmapPathProgressPct(tiers, currentIndex) {
+  if (tiers.length <= 1) return 100;
+  return Math.round((currentIndex / (tiers.length - 1)) * 100);
+}
 function renderLevelRoadmapSheet() {
   const { level, xpIntoLevel, xpNeeded } = xpProgress(xpTotal);
   const pct = xpNeeded > 0 ? Math.min(100, Math.round((xpIntoLevel / xpNeeded) * 100)) : 100;
   let prevMax = 0;
+  let currentTierIndex = 0;
   // Parametre renomme `tier` (pas `t`) : `t` masquerait la fonction globale de
   // traduction dans cette portee, meme piege deja rencontre dans renderChallengeCard()
   // (voir CLAUDE.md, batch 3 du chantier i18n).
-  const rows = ATHLETE_TITLE_TIERS.map(tier => {
+  const nodes = ATHLETE_TITLE_TIERS.map((tier, idx) => {
     const minLevel = prevMax + 1;
     const rangeLabel = tier.maxLevel === Infinity ? t('profileTab.roadmap.rangeMax', { min: minLevel }) : t('profileTab.roadmap.rangeBetween', { min: minLevel, max: tier.maxLevel });
     const unlocked = level >= minLevel;
     const current = level >= minLevel && level <= tier.maxLevel;
+    if (current) currentTierIndex = idx;
     prevMax = tier.maxLevel;
     return `
-      <div class="roadmap-row${unlocked ? ' unlocked' : ''}${current ? ' current' : ''}">
-        <div class="roadmap-row-icon">${current ? '▶' : unlocked ? '✓' : lockIconSVG(14)}</div>
-        <div class="roadmap-row-text">
-          <div class="roadmap-row-title">${t('athleteTitles.' + tier.id)} ${tier.icon}</div>
-          <div class="roadmap-row-range">${rangeLabel}</div>
+      <div class="path-node${unlocked ? ' unlocked' : ''}${current ? ' current' : ''}">
+        <div class="path-node-medal">${unlocked ? tier.icon : lockIconSVG(16)}</div>
+        <div class="path-node-text">
+          <div class="path-node-title">${t('athleteTitles.' + tier.id)} ${tier.icon}</div>
+          <div class="path-node-range">${rangeLabel}</div>
         </div>
       </div>
     `;
   }).join('');
+  const pathProgressPct = computeRoadmapPathProgressPct(ATHLETE_TITLE_TIERS, currentTierIndex);
   return `
     <div class="level-roadmap-sheet">
       <div class="sheet-drag-handle"></div>
@@ -7761,7 +7869,7 @@ function renderLevelRoadmapSheet() {
         <div class="level-roadmap-xp-label">${t('profileTab.roadmap.xpToNext', { current: xpIntoLevel, needed: xpNeeded, n: level + 1 })}</div>
       </div>
       <div class="section-label">${t('profileTab.roadmap.titlesLabel')}</div>
-      <div class="roadmap-list">${rows}</div>
+      <div class="roadmap-path" style="--path-progress: ${pathProgressPct}%">${nodes}</div>
     </div>
   `;
 }
@@ -8376,6 +8484,7 @@ function renderCommunityScreen() {
     : '';
 
   return `
+    ${renderCollapsibleTitleBar(t('community.title'))}
     <div class="library-header-row">
       <div>
         <h1 class="title">${t('community.title')}</h1>
@@ -9697,6 +9806,7 @@ function renderAccountTabScreen() {
   `;
   const contentHtml = isJournal ? renderJournalSection() : `
     ${renderAthleteCard()}
+    ${renderCategoryRadarChart()}
     ${renderTrophiesGrid()}
     ${renderAccountSection()}
     <button class="signout-btn" onclick="openSettingsScreen()">${t('profileTab.settingsBtn')}</button>
@@ -9708,6 +9818,7 @@ function renderAccountTabScreen() {
   const subtabAnimClass = profileSubtabJustEntered ? '' : ' no-anim';
   profileSubtabJustEntered = false;
   return `
+    ${renderCollapsibleTitleBar(isJournal ? t('history.title') : t('profileTab.title'))}
     <div class="library-header-row">
       <div>
         <h1 class="title">${isJournal ? t('history.title') : t('profileTab.title')}</h1>
@@ -9951,6 +10062,37 @@ function initParallax() {
   }, { passive: true });
 }
 
+// Idee bonus (retour utilisateur, "app premium/native") : grand titre qui se
+// retracte au scroll (Défis/Journal/Communauté - ecrans avec du contenu
+// scrollable, esprit iOS "large title"). Fonction PURE (seuil en dur,
+// extraite pour rester testable) : au-dela de COLLAPSE_TITLE_SCROLL_THRESHOLD,
+// une pilule fixe compacte (.compact-title-bar, verre depoli comme la tab
+// bar) apparait en haut avec le titre en petit - le grand titre original
+// reste inchange dans le flux, la pilule compacte est un 2e element qui
+// PREND LE RELAIS visuellement, pas une transformation du titre lui-meme
+// (plus simple/robuste que redimensionner le vrai h1 au pixel pres au fil du
+// scroll). Meme delegation qu'initParallax()/initTiltCards() juste au-dessus
+// (un seul listener global, jamais re-attache a chaque render() qui recree
+// tout le DOM) - non executee par le harnais de test (mock
+// document.addEventListener no-op, meme limite deja acceptee pour
+// initParallax()/initTiltCards() dans ce fichier).
+const COLLAPSE_TITLE_SCROLL_THRESHOLD = 48;
+function shouldShowCompactTitleBar(scrollY) {
+  return scrollY > COLLAPSE_TITLE_SCROLL_THRESHOLD;
+}
+function initCollapsingTitleBar() {
+  window.addEventListener('scroll', () => {
+    const bar = document.querySelector('.compact-title-bar');
+    if (!bar) return;
+    bar.classList.toggle('visible', shouldShowCompactTitleBar(window.scrollY));
+  }, { passive: true });
+}
+// Reutilisee par renderLibraryScreen()/renderCommunityScreen()/
+// renderAccountTabScreen() - un seul balisage, un seul CSS, 3 sites d'appel.
+function renderCollapsibleTitleBar(text) {
+  return `<div class="compact-title-bar"><div class="compact-title-bar-text">${escapeHtml(text)}</div></div>`;
+}
+
 async function refreshApp() {
   await loadAppData();
   if (activeTab === 'account' && profileView === 'journal') {
@@ -10143,6 +10285,7 @@ initPullToRefresh();
 initTiltCards();
 initSwipeableRows();
 initParallax();
+initCollapsingTitleBar();
 
 </script>
 

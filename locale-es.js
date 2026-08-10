@@ -2357,6 +2357,7 @@ const LOCALE_ES = {
     xpProgress: '{{current}} / {{needed}} XP · toca para ver tu progreso',
     xpProgressPlain: '{{current}} / {{needed}} XP',
     trophiesLabel: 'Trofeos ({{unlocked}}/{{total}})',
+    radarLabel: 'Equilibrio por categoría',
     bento: {
       xp: 'XP total',
       streak: 'Días de racha',

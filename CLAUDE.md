@@ -5328,3 +5328,71 @@ projet : valide par tests structurels/comportementaux (dont le nouveau gap
 de mock ci-dessus, corrige) + lint, **pas confirme visuellement dans un
 vrai navigateur** - a confirmer par l'utilisateur. Suite (idees #1, #2, #5,
 #6, #7, #10, #16, #18, #23) a livrer dans un/des lot(s) suivant(s).
+
+## Passe "app premium/native" — lot 2/N (3 idees livrees : #2, #16, #18)
+
+**#2 - Grand titre qui se retracte au scroll** (Défis/Journal/Communauté,
+esprit iOS "large title") : `renderCollapsibleTitleBar(text)` (nouvelle
+fonction partagee, 1 balisage/1 CSS/3 sites d'appel) insere une pilule fixe
+en verre depoli (meme langage visuel que `.tab-bar`) au-dessus du grand
+titre existant, qui reste LUI-MEME inchange dans le flux normal - la pilule
+PREND LE RELAIS visuellement au-dela d'un seuil de scroll
+(`shouldShowCompactTitleBar()`, fonction PURE, seuil `48px`), plutot que de
+redimensionner le vrai `<h1>` au pixel pres au fil du scroll (plus
+simple/robuste). `initCollapsingTitleBar()` : delegation par un seul
+listener `window.scroll` (meme patron qu'`initParallax()`/`initTiltCards()`
+juste au-dessus dans le fichier) - non executee par le harnais de test (mock
+`addEventListener` no-op, meme limite deja acceptee pour ces 2 fonctions).
+
+**#16 - Chemin de progression en zigzag ("Parcours de niveau")** : remplace
+`.roadmap-list`/`.roadmap-row` (liste verticale plate) par
+`.roadmap-path`/`.path-node` - chaque palier devient un medaillon rond en
+ZIGZAG gauche/centre/droite (`nth-child(odd)`/`nth-child(even)`, esprit
+arbre de competences Duolingo - deja la comparaison retenue pour penser
+Kilito), relies par une ligne verticale centrale dont le degrade s'arrete
+PRECISEMENT au palier courant (`computeRoadmapPathProgressPct()`, fonction
+PURE extraite pour rester testable, variable CSS `--path-progress` posee en
+inline) - la ligne "raconte" la progression a elle seule. Chaque medaillon
+affiche desormais l'icone REELLE du palier (`tier.icon`) des qu'il est
+debloque (au lieu d'un checkmark generique uniforme) - garde l'identite
+visuelle propre a chaque titre, le palier COURANT se distingue par un
+anneau lumineux pulsant plutot que par une icone differente.
+
+**#18 - Graphique radar par categorie musculaire** (nouveau, ecran Profil,
+entre la carte athlete et la grille de trophees) : `renderCategoryRadarChart()`
++ `computeRadarChartPoints()` (fonction PURE, angles standards d'un radar
+chart, normalisation sur le MAX des 4 categories - donc la categorie la plus
+travaillee touche toujours 100% du rayon, une vraie mesure de BALANCE, pas
+de volume absolu). **Scope volontairement simplifie par rapport a la
+proposition initiale ("30 derniers jours")** : utilise le cumul A VIE deja
+en memoire (`stats[id].lifetimeTotal`, comme `renderAthleteStatsBento()`)
+plutot qu'une fenetre glissante de 30 jours, qui aurait exige soit une
+nouvelle lecture Firestore soit un etat de chargement asynchrone - zero cout
+supplementaire. `computeCategoryVolumeBreakdown()` extraite de
+`getLifetimeSummary()` (comportement inchange, juste factorisee pour etre
+partagee par les 2) - **meme simplification deja acceptee la-bas** : reps
+et secondes additionnees telles quelles sans conversion d'unite, une
+comparaison RELATIVE entre categories uniquement, jamais une valeur absolue
+affichee. 4 axes fixes (`RADAR_CATEGORIES`, les 4 seules categories de
+l'app : Haut du corps/Bas du corps/Gainage-Core/Haltères). Vide (chaine
+vide) tant qu'aucune statistique n'existe - pas de radar absurde a 0% partout
+avant la toute 1ere serie loguee. Site d'appel SVG unique dans toute l'app
+(comme `renderExerciseSparkline()`) : aucun risque de collision d'`id`
+(`#radarFillGrad`) entre plusieurs instances simultanees. Nouvelle cle i18n
+`profileTab.radarLabel` (fr/en/es).
+
+**Piege de test rencontre et corrige en ecrivant #16** : un regex
+`class="path-node` (sans limite de mot) matchait AUSSI le prefixe de
+`class="path-node-medal"`/`-text`/`-title`/`-range`, faisant echouer le
+compte attendu de medaillons - corrige en comptant precisement
+`class="path-node-medal"` (exactement 1 par palier), plutot que d'ajouter
+une limite de mot fragile au regex.
+
+CACHE_NAME -> v118 (`styles.css` + `index.html` + les 3 `locale-*.js`
+modifies - nouvelle cle `profileTab.radarLabel`). Aucun changement de regles
+Firestore/Cloud Functions - modification 100% cote client, aucune touche a
+`functions/**`. Meme limite de verification que le reste des chantiers
+visuels : valide par tests structurels/comportementaux + lint, **pas
+confirme visuellement dans un vrai navigateur** - a confirmer par
+l'utilisateur. Suite (idees #1, #5, #6, #7, #10, #23) a livrer dans un/des
+lot(s) suivant(s).

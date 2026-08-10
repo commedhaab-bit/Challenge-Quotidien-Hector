@@ -2349,6 +2349,7 @@ const LOCALE_EN = {
     xpProgress: '{{current}} / {{needed}} XP · tap to see your progress',
     xpProgressPlain: '{{current}} / {{needed}} XP',
     trophiesLabel: 'Trophies ({{unlocked}}/{{total}})',
+    radarLabel: 'Balance by category',
     bento: {
       xp: 'Total XP',
       streak: 'Day streak',

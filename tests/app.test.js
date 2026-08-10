@@ -2265,6 +2265,63 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(typeof hideAppSplash === 'function', 'hideAppSplash() doit exister pour masquer le splash une fois l auth resolue');
   console.log('OK: ecran de demarrage avec Kilito present dans le HTML statique');
 
+  // Idee bonus (retour utilisateur, "app premium/native") : grand titre qui
+  // se retracte au scroll (Défis/Journal/Communauté) - pilule compacte
+  // presente sur les 3 ecrans, seuil de declenchement teste comme fonction PURE.
+  __assertEq(shouldShowCompactTitleBar(0), false, 'tout en haut de l ecran, la pilule compacte ne doit pas etre visible');
+  __assertEq(shouldShowCompactTitleBar(COLLAPSE_TITLE_SCROLL_THRESHOLD), false, 'exactement au seuil, la pilule ne doit pas encore etre visible (comparaison stricte)');
+  __assertEq(shouldShowCompactTitleBar(COLLAPSE_TITLE_SCROLL_THRESHOLD + 1), true, 'juste au-dela du seuil, la pilule doit devenir visible');
+  const libraryHtmlForTitleBar = renderLibraryScreen();
+  __assertOk(libraryHtmlForTitleBar.includes('compact-title-bar') && libraryHtmlForTitleBar.includes(t('library.title')), 'l ecran Défis doit inclure la pilule compacte avec le bon titre');
+  const communityHtmlForTitleBar = renderCommunityScreen();
+  __assertOk(communityHtmlForTitleBar.includes('compact-title-bar') && communityHtmlForTitleBar.includes(t('community.title')), 'l ecran Communauté doit inclure la pilule compacte avec le bon titre');
+  profileView = 'profile';
+  const profileHtmlForTitleBar = renderAccountTabScreen();
+  __assertOk(profileHtmlForTitleBar.includes('compact-title-bar') && profileHtmlForTitleBar.includes(t('profileTab.title')), 'l ecran Profil doit inclure la pilule compacte avec le bon titre');
+  profileView = 'journal';
+  const journalHtmlForTitleBar = renderAccountTabScreen();
+  __assertOk(journalHtmlForTitleBar.includes('compact-title-bar') && journalHtmlForTitleBar.includes(t('history.title')), 'le sous-onglet Journal doit inclure la pilule compacte avec SON propre titre (pas celui de Profil)');
+  profileView = 'profile';
+  console.log('OK: grand titre retractable au scroll (pilule compacte presente sur Défis/Journal/Communauté, seuil de declenchement pur)');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : chemin de
+  // progression en zigzag facon jeu de plateau (Parcours de niveau).
+  __assertEq(computeRoadmapPathProgressPct(ATHLETE_TITLE_TIERS, 0), 0, 'au tout 1er palier, la ligne ne doit avoir progresse a aucun pourcentage');
+  __assertEq(computeRoadmapPathProgressPct(ATHLETE_TITLE_TIERS, ATHLETE_TITLE_TIERS.length - 1), 100, 'au dernier palier, la ligne doit etre entierement remplie');
+  __assertEq(computeRoadmapPathProgressPct(['a'], 0), 100, 'un seul palier doit toujours etre traite comme 100% (division par zero evitee)');
+  const savedXpTotalPathTest = xpTotal;
+  xpTotal = xpForLevel(21) + 40; // milieu du parcours (Athlète)
+  const pathRoadmapHtml = renderLevelRoadmapSheet();
+  __assertOk(pathRoadmapHtml.includes('class="roadmap-path"') && pathRoadmapHtml.includes('--path-progress:'), 'le chemin doit exister avec sa variable CSS de progression posee en inline');
+  __assertEq((pathRoadmapHtml.match(/class="path-node-medal"/g) || []).length, ATHLETE_TITLE_TIERS.length, 'chaque palier doit avoir son propre medaillon sur le chemin');
+  xpTotal = savedXpTotalPathTest;
+  __assertOk(cssText.includes('.path-node:nth-child(odd)') && cssText.includes('.path-node:nth-child(even)'), 'le chemin doit alterner gauche/droite (zigzag), pas une simple liste verticale');
+  console.log('OK: chemin de progression en zigzag facon jeu de plateau (ligne qui se remplit jusqu au palier courant)');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : graphique radar
+  // par categorie musculaire - revele l equilibre de l entrainement.
+  const savedStatsRadarTest = stats;
+  stats = {};
+  __assertEq(renderCategoryRadarChart(), '', 'aucune statistique -> rien a afficher (pas de radar vide/absurde)');
+  const pompesForRadar = CHALLENGE_LIBRARY.find((c) => c.slug === 'pompes');
+  const squatsForRadar = CHALLENGE_LIBRARY.find((c) => c.slug === 'squats');
+  stats = {
+    [pompesForRadar.id]: { lifetimeTotal: 1000, bestDay: { total: 0, date: null }, recordStreak: 0 },
+    [squatsForRadar.id]: { lifetimeTotal: 250, bestDay: { total: 0, date: null }, recordStreak: 0 },
+  };
+  const catVolumeForRadar = computeCategoryVolumeBreakdown();
+  __assertEq(catVolumeForRadar['Haut du corps'], 1000, 'le volume par categorie doit agreger tous les exercices de cette categorie');
+  const radarPoints = computeRadarChartPoints(catVolumeForRadar, RADAR_CHART_RADIUS);
+  const upperBodyPoint = radarPoints.find((p) => p.cat === 'Haut du corps');
+  __assertEq(upperBodyPoint.ratio, 1, 'la categorie la plus travaillee doit toujours toucher 100% du rayon (normalisation sur le MAX, pas une echelle absolue)');
+  const lowerBodyPoint = radarPoints.find((p) => p.cat === 'Bas du corps');
+  __assertEq(lowerBodyPoint.ratio, 0.25, 'les autres categories doivent etre proportionnelles a la categorie la plus travaillee (250/1000 = 0.25)');
+  const radarChartHtml = renderCategoryRadarChart();
+  __assertOk(radarChartHtml.includes('radar-chart-svg') && radarChartHtml.includes('radarFillGrad'), 'le radar doit exister avec son degrade de remplissage des qu au moins une categorie a du volume');
+  __assertEq((radarChartHtml.match(/class="radar-axis-label"/g) || []).length, 4, 'le radar doit avoir exactement 4 axes (4 categories fixes de l app)');
+  stats = savedStatsRadarTest;
+  console.log('OK: graphique radar par categorie musculaire (normalise sur la categorie la plus travaillee, vide si aucune statistique)');
+
   // Retour utilisateur "effet waouh" : les panneaux (parcours de niveau, fiche
   // d ami, info groupe) sont desormais de VRAIES feuilles a glisser - le mock
   // DOM du harnais ne simule pas de vrais evenements tactiles (querySelector
@@ -2344,7 +2401,7 @@ const cssText = __rawHtml + __cssSource;
   for (const tier of ['Recrue 🥉', 'Initié 🎖️', 'Motivé 🥈', 'Régulier 📅', 'Athlète 🥇', 'Guerrier ⚔️', 'Expert ⚡', 'Titan 🏆', 'Demi-Dieu 🌌', 'Légende Immortelle 👑']) {
     __assertOk(roadmapHtml.includes(tier), 'tous les titres doivent figurer dans le parcours : ' + tier);
   }
-  __assertOk(/class="roadmap-row[^"]*\\bcurrent\\b/.test(roadmapHtml), 'le palier courant doit etre visuellement marque');
+  __assertOk(/class="path-node[^"]*\\bcurrent\\b/.test(roadmapHtml), 'le palier courant doit etre visuellement marque');
   closeLevelRoadmap();
   __assertOk(!levelRoadmapOpen, 'closeLevelRoadmap doit refermer la page');
   console.log('OK: carte "Parcours de niveau" (niveau courant, XP manquant, tous les titres listes)');
@@ -3293,7 +3350,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v117'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v118'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
