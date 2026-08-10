@@ -870,24 +870,18 @@
   /* HEADER */
   /* Retour utilisateur : la ligne de demarcation (border-bottom) et la date
      n'ont de sens que sur l'accueil (seul ecran ou la date accompagne Kilo et
-     sa bulle) - retirees de TOUS les autres ecrans qui partagent .header
-     (Communaute/Groupes/Profil) pour un haut de page plus epure. La ligne
-     n'a donc plus jamais lieu d'etre nulle part : simplement retiree de la
-     regle de base plutot que desactivee au cas par cas comme avant (l'ancien
-     .header.today-header qui l'annulait devient sans objet). Sur les ecrans
-     SANS date (un seul enfant restant, ex: le bouton "Amis"/la pastille de
-     serie, ou meme aucun), .header:not(.today-header) passe en flex-end pour
-     garder ce bouton cale a droite plutot que de le voir glisser a gauche
-     une fois le premier enfant (la date) disparu. */
+     sa bulle) - retirees de TOUS les autres ecrans. `.header` (avec sa classe
+     `.today-header`) est desormais EXCLUSIVEMENT utilisee par l'accueil ;
+     Communaute/Profil/Groupes sont passes a `.library-header-row` (titre +
+     bouton sur la meme ligne, meme composant que l'onglet Défis - voir
+     retour utilisateur "pastille a la meme hauteur que le titre"), qui gere
+     deja tout seul l'alignement `flex-start`/`space-between` necessaire. */
   .header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
     margin-bottom: 22px;
     padding-bottom: 14px;
-  }
-  .header:not(.today-header) {
-    justify-content: flex-end;
   }
   .header .date {
     font-size: 13px;
@@ -896,7 +890,11 @@
     color: #D1D5DB; /* plus clair que --chalk-dim pour rester lisible sur le fond noir */
     font-weight: 600;
   }
-  .header .streak {
+  /* Non-scope a .header (etait ".header .streak") : ce bouton vit desormais
+     aussi dans .library-header-row sur l'ecran Profil (voir
+     renderAccountTabScreen()), pas seulement dans le header de l'accueil. */
+  .streak {
+    flex-shrink: 0;
     font-size: 13px;
     color: var(--accent);
     font-weight: 700;
@@ -909,12 +907,13 @@
     padding: 6px 12px;
     cursor: pointer;
   }
-  .header .streak:active { background: var(--bg-raised); transform: scale(0.95); }
+  .streak:active { background: var(--bg-raised); transform: scale(0.95); }
 
   /* Bouton "Amis" (en-tête écran Communauté) : même gabarit que .streak ci-dessus,
      avec un badge de notification (demandes reçues en attente) en coin. */
   .friends-btn {
     position: relative;
+    flex-shrink: 0;
     font-size: 13px;
     color: var(--chalk);
     font-weight: 700;
@@ -2587,6 +2586,14 @@
     margin: 0 0 4px;
     line-height: 0.95;
   }
+  /* Retour utilisateur : le titre "Communauté" (le plus long des titres
+     d'ecran) partage desormais sa ligne avec le bouton "Amis"
+     (.library-header-row, voir renderCommunityScreen()) - reduit pour
+     laisser une vraie marge de respiration au bouton, plutot que de risquer
+     un chevauchement a 42px. */
+  h1.title.community-title {
+    font-size: 33px;
+  }
   .subtitle {
     color: var(--chalk-dim);
     font-size: 14px;
@@ -3912,6 +3919,15 @@
      ancien/nouveau noeud possible sans changer d'architecture de rendu). */
   .groups-subtab-content {
     animation: card-pop-in 0.25s ease backwards;
+  }
+  /* Bug reel corrige (retour utilisateur, clignotement a l ouverture de Journal) :
+     voir profileSubtabJustEntered (index.html) - le 2e rendu declenche par
+     switchProfileView('journal') une fois les donnees chargees ne doit PLUS
+     rejouer cette entree en fondu (le conteneur venait d etre recree une
+     fraction de seconde plus tot, repartir d "invisible" une 2e fois donnait
+     un vrai clignotement, pas juste une transition). */
+  .groups-subtab-content.no-anim {
+    animation: none;
   }
   @media (prefers-reduced-motion: reduce) {
     .groups-subtab-content { animation: none; }

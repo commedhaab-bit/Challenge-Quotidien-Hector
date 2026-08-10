@@ -2096,6 +2096,18 @@ let historyLoading = false;
 // Journal fusionne dans l'onglet Profil (sous-onglet, meme principe que
 // groupDetailView pour les Groupes) - plus un onglet separe dans la barre du bas.
 let profileView = 'profile'; // 'profile' | 'journal'
+// Bug reel signale (retour utilisateur) : ouvrir Journal faisait clignoter tout
+// l'ecran (contenu qui disparait puis reapparait). Cause reelle : .groups-subtab-content
+// rejoue son entree en fondu (card-pop-in) a CHAQUE rendu (voir styles.css) ;
+// switchProfileView('journal') declenche 2 rendus tres rapproches (etat "chargement"
+// puis donnees chargees), donc CE conteneur etait recree/re-anime 2 fois de suite -
+// la 2e animation repartait de "invisible" (fill-mode backwards) avant meme que la
+// 1ere n'ait fini, d'ou le clignotement. Pose a `true` UNIQUEMENT au moment d'un vrai
+// changement de sous-onglet, consomme (remis a false) par le PROCHAIN rendu de
+// renderAccountTabScreen() - seul ce rendu-la anime, jamais le 2e (donnees chargees)
+// qui suit dans la meme "entree". Meme principe que libraryAnimatingCat pour
+// l'accordeon de la Bibliotheque.
+let profileSubtabJustEntered = false;
 
 // ==== SÉRIE (STREAK) & BOUCLIER DE PAUSE ====
 // streakCount / lastCompletedDate / hasShield / lastShieldResetWeek sont regroupés
@@ -8154,11 +8166,13 @@ function renderCommunityScreen() {
     : '';
 
   return `
-    <div class="header">
+    <div class="library-header-row">
+      <div>
+        <h1 class="title community-title">${t('community.title')}</h1>
+        <div class="subtitle">${t('community.subtitle')}</div>
+      </div>
       <button class="friends-btn" onclick="openFriendsScreen()">${t('community.friendsBtn')}${incomingFriendRequests.length > 0 ? `<span class="friends-badge">${incomingFriendRequests.length}</span>` : ''}</button>
     </div>
-    <h1 class="title">${t('community.title')}</h1>
-    <div class="subtitle">${t('community.subtitle')}</div>
     ${leaderboardOptOut ? `<div class="community-optout-notice">${t('community.optOutNotice')}</div>` : ''}
     ${renderBossBattleSection()}
     ${renderActivityFeedSection()}
@@ -9477,14 +9491,22 @@ function renderAccountTabScreen() {
     ${renderAccountSection()}
     <button class="signout-btn" onclick="openSettingsScreen()">${t('profileTab.settingsBtn')}</button>
   `;
+  // Bug reel corrige (retour utilisateur, clignotement a l ouverture de Journal) :
+  // n anime l entree QUE sur le rendu qui suit immediatement un vrai changement de
+  // sous-onglet (profileSubtabJustEntered) - jamais sur le 2e rendu declenche par
+  // switchProfileView('journal') une fois les donnees chargees (voir sa definition).
+  const subtabAnimClass = profileSubtabJustEntered ? '' : ' no-anim';
+  profileSubtabJustEntered = false;
   return `
-    <div class="header">
+    <div class="library-header-row">
+      <div>
+        <h1 class="title">${isJournal ? t('history.title') : t('profileTab.title')}</h1>
+        <div class="subtitle">${isJournal ? t('history.subtitle') : t('profileTab.subtitle')}</div>
+      </div>
       <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
     </div>
-    <h1 class="title">${isJournal ? t('history.title') : t('profileTab.title')}</h1>
-    <div class="subtitle">${isJournal ? t('history.subtitle') : t('profileTab.subtitle')}</div>
     ${viewTabsHtml}
-    <div class="groups-subtab-content">${contentHtml}</div>
+    <div class="groups-subtab-content${subtabAnimClass}">${contentHtml}</div>
   `;
 }
 
@@ -9494,6 +9516,7 @@ function renderAccountTabScreen() {
 function switchProfileView(view) {
   if (view === profileView) return;
   profileView = view;
+  profileSubtabJustEntered = true;
   if (view === 'journal') {
     historyLoading = true;
     render();

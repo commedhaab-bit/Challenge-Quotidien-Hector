@@ -5021,3 +5021,63 @@ de regles Firestore/Cloud Functions - modification 100% cote client, aucune
 touche a `functions/**`. Meme limite de verification que le reste des
 chantiers visuels : valide par tests structurels + lint, **pas
 visuellement dans un vrai navigateur** - a confirmer par l'utilisateur.
+
+## Pastille alignee au titre (Communaute/Profil) + bug reel corrige : clignotement a l'ouverture du Journal
+
+**1. Alignement pastille/titre (retour utilisateur, capture d'ecran)** :
+sur Communaute et Profil, la pastille (bouton "Amis"/pastille de serie)
+vivait seule au-dessus du titre (ancien `.header`), laissant un espace mort
+en dessous - desormais sur la MEME ligne que le titre, comme l'onglet
+Défis (`.library-header-row`, deja utilisee la-bas pour le bouton "+").
+`h1.title.community-title` (33px, contre 42px pour les autres titres) evite
+tout risque de chevauchement avec le bouton "Amis" une fois cote a cote -
+"Communauté" est le plus long des titres d'ecran. `.friends-btn`/`.streak`
+recoivent `flex-shrink:0` (la pastille ne doit jamais se comprimer, meme a
+cote d'un titre qui prendrait toute la largeur restante). `.streak` n'est
+plus scope a `.header .streak` (devenu `.streak` tout court) puisqu'il vit
+desormais aussi dans `.library-header-row` sur Profil - `.header` redevient
+un composant utilise EXCLUSIVEMENT par l'accueil (voir la section
+precedente), donc sa regle `.header:not(.today-header) { justify-content:
+flex-end; }` (introduite pour ce meme correctif la fois d'avant) est
+devenue sans objet et retiree.
+
+**2. Bug reel corrige : clignotement a l'ouverture de Journal (retour
+utilisateur, enquete + correctif)** - symptome : le contenu de Journal
+s'affichait puis disparaissait/reapparaissait une fraction de seconde.
+**Cause racine identifiee par lecture du code** (pas supposee) :
+`.groups-subtab-content` (conteneur partage par les sous-onglets de Groupes
+ET de Profil) rejoue son entree en fondu (`card-pop-in`, `fill-mode:
+backwards` - part donc bien d'un etat "invisible" avant meme le debut de
+l'animation) a CHAQUE rendu, sans aucune garde. Or `switchProfileView
+('journal')` declenche 2 rendus tres rapproches pour une seule et meme
+action utilisateur : un premier immediat (etat "chargement"), puis un
+second des que `loadHistoryEntries()` se resout (souvent quasi instantane
+grace au cache du Journal deja en place, `historyDayCache`). Le 2e rendu
+RECREE le conteneur (nouveau noeud DOM, `innerHTML` remplace en bloc) qui
+repart donc lui aussi d'un etat invisible - la 2eme animation "coupe"
+visuellement la 1ere encore en cours, d'ou le veritable clignotement
+(disparition puis reapparition), pas une simple transition.
+
+**Corrige avec `profileSubtabJustEntered`** (nouveau booleen, meme principe
+que `libraryAnimatingCat` pour l'accordeon de la Bibliotheque) : pose a
+`true` UNIQUEMENT dans `switchProfileView()`, au moment d'un vrai
+changement de sous-onglet - consomme (remis a `false`) par le TOUT PROCHAIN
+rendu de `renderAccountTabScreen()`, qui seul anime alors
+`.groups-subtab-content` (classe `.no-anim` sinon, `animation: none`). Le
+2e rendu (donnees chargees) qui suit dans la meme "entree" ne re-declenche
+donc plus jamais l'animation - le contenu passe directement de l'etat
+"chargement" a l'etat final, sans repartir d'invisible. Un nouveau VRAI
+switch (ex: retour sur "Profil") repose le flag a `true` et anime a nouveau
+normalement, comme avant. **Portee volontairement limitee a Profil/Journal**
+(le seul site signale) : les sous-onglets de Groupes (`switchGroupDetailView()`,
+Défi/Ardoise/Palmares) ne font qu'UN SEUL rendu synchrone par bascule
+(aucune donnee chargee de facon asynchrone entre-temps), donc aucun risque
+du meme clignotement la-bas - verifie avant de conclure, pas suppose.
+
+CACHE_NAME -> v113 (`styles.css` + `index.html` modifies). Aucun changement
+de regles Firestore/Cloud Functions - modification 100% cote client, aucune
+touche a `functions/**`. Meme limite de verification que le reste des
+chantiers visuels : valide par tests structurels (dont un test qui simule
+les 2 rendus successifs du switch et verifie la presence/absence de
+`.no-anim` a chaque etape) + lint, **pas visuellement dans un vrai
+navigateur** - a confirmer par l'utilisateur.

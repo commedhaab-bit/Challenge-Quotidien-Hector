@@ -1038,12 +1038,21 @@ const cssText = __rawHtml + __cssSource;
   switchProfileView('journal');
   __assertEq(profileView, 'journal', 'switchProfileView doit basculer sur le sous-onglet Journal');
   __assertOk(historyLoading, 'le Journal doit passer en chargement des le declenchement du switch, avant resolution de loadHistoryEntries()');
+  // Bug reel corrige (retour utilisateur) : ouvrir Journal faisait clignoter tout
+  // l ecran - .groups-subtab-content rejouait son entree en fondu 2 FOIS de suite
+  // (1x pour l etat "chargement" rendu ici, 1x de plus une fois les donnees
+  // chargees juste apres), le 2e depart "invisible" ecrasant la 1ere animation
+  // encore en cours. Seul le tout 1er rendu (celui-ci, juste apres le switch)
+  // doit animer.
+  __assertOk(!document.getElementById('app').innerHTML.includes('groups-subtab-content no-anim'), 'le rendu "chargement" (juste apres le switch) doit animer son entree normalement');
   await new Promise(r => setTimeout(r, 20));
   __assertOk(!historyLoading, 'historyLoading doit repasser a false une fois loadHistoryEntries() resolue');
+  __assertOk(document.getElementById('app').innerHTML.includes('groups-subtab-content no-anim'), 'le rendu "donnees chargees" (2e rendu du meme switch) ne doit PAS rejouer l entree en fondu (evite le clignotement)');
   switchProfileView('profile');
   __assertEq(profileView, 'profile', 'switchProfileView doit revenir sur le sous-onglet Profil');
+  __assertOk(!document.getElementById('app').innerHTML.includes('groups-subtab-content no-anim'), 'un nouveau switch (retour sur Profil) doit de nouveau animer son entree normalement');
   activeTab = 'today';
-  console.log('OK: switchProfileView() (bascule Profil/Journal, recharge le Journal a la demande)');
+  console.log('OK: switchProfileView() (bascule Profil/Journal, recharge le Journal a la demande, plus de clignotement au 2e rendu du meme switch)');
 
   // --- 20. Presse cubaine : objectif calculé identique à celui de Biceps ---
   userProfile = { age: 34, sex: 'homme', heightCm: 180, weightKg: 78, level: 'intermediaire' };
@@ -2120,9 +2129,9 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(idxAccountCard < idxSettingsNavBtn, 'la carte Compte doit preceder le bouton de navigation vers les Parametres, tout en bas de la page');
   __assertOk(!fullAccountHtml.includes('settings-card'), 'la carte parametres (coach vocal) ne doit plus apparaitre directement sur l ecran Profil principal');
   __assertOk(!fullAccountHtml.includes('signout-btn" onclick="signOutUser()'), 'le bouton de deconnexion ne doit plus apparaitre directement sur l ecran Profil principal (relocalise dans Parametres)');
-  __assertOk(fullAccountHtml.includes('class="header"'), 'l onglet Profil doit desormais avoir un en-tete');
+  __assertOk(fullAccountHtml.includes('library-header-row'), 'l onglet Profil doit desormais avoir un en-tete (titre + pastille de serie sur la meme ligne, comme l onglet Défis)');
   __assertOk(fullAccountHtml.includes('onclick="showStreakInfoModal()">🔥 6 j'), 'la pastille de serie interactive doit etre dans l en-tete du Profil');
-  __assertOk(fullAccountHtml.indexOf('class="header"') < idxAthlete, 'l en-tete doit precede la carte athlete');
+  __assertOk(fullAccountHtml.indexOf('library-header-row') < idxAthlete, 'l en-tete doit precede la carte athlete');
   console.log('OK: onglet Profil (en-tete avec pastille serie, carte athlete cliquable, bouton Parametres tout en bas)');
 
   // Retour utilisateur "effet waouh" : la carte athlete doit porter .tilt-card
@@ -3180,7 +3189,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v112'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v113'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -4632,11 +4641,19 @@ const cssText = __rawHtml + __cssSource;
   const profileHeaderHtml = renderAccountTabScreen();
   __assertOk(!profileHeaderHtml.includes('class="date"'), 'l ecran Profil ne doit plus afficher la date en haut a gauche');
   __assertOk(profileHeaderHtml.includes('class="streak"'), 'la pastille de serie doit rester affichee sur Profil, seule la date disparait');
-  {
-    const notTodayRuleIdx = cssText.indexOf('.header:not(.today-header) {');
-    __assertOk(notTodayRuleIdx !== -1 && cssText.slice(notTodayRuleIdx, notTodayRuleIdx + 80).includes('justify-content: flex-end'), 'sans la date, le contenu restant du header (bouton Amis/pastille de serie) doit rester cale a droite (flex-end)');
-  }
   console.log('OK: date + ligne de demarcation retirees du header sur Communaute/Groupes/Profil (reservees a l accueil)');
+
+  // Retour utilisateur (v2, capture d ecran) : sur Communaute/Profil, la
+  // pastille (Amis/serie) trainait seule au-dessus du titre, avec un espace
+  // perdu en dessous - desormais sur la MEME ligne que le titre, comme
+  // l onglet Défis (.library-header-row, deja utilise pour son bouton "+").
+  __assertOk(communityHeaderHtml.includes('library-header-row') && communityHeaderHtml.indexOf('library-header-row') < communityHeaderHtml.indexOf('friends-btn'), 'le bouton Amis doit desormais vivre dans .library-header-row, sur la meme ligne que le titre Communaute');
+  __assertOk(communityHeaderHtml.includes('title community-title'), 'le titre "Communaute" doit porter une classe dediee (reduction de taille pour laisser la place au bouton Amis a cote)');
+  __assertOk(profileHeaderHtml.includes('library-header-row') && profileHeaderHtml.indexOf('library-header-row') < profileHeaderHtml.indexOf('class="streak"'), 'la pastille de serie doit desormais vivre dans .library-header-row, sur la meme ligne que le titre Profil/Journal');
+  __assertOk(/\\.title\\.community-title\\s*\\{[^}]*font-size: 33px/.test(cssText), 'le titre Communaute doit avoir une taille de police reduite par rapport aux autres titres (42px), pour ne jamais toucher le bouton Amis a cote');
+  __assertOk(cssText.includes('.friends-btn {') && /\\.friends-btn\\s*\\{[^}]*flex-shrink: 0/.test(cssText), 'le bouton Amis ne doit jamais se comprimer (flex-shrink:0) meme a cote d un titre long');
+  __assertOk(/\\.streak\\s*\\{[^}]*flex-shrink: 0/.test(cssText), 'la pastille de serie ne doit jamais se comprimer (flex-shrink:0) meme a cote d un titre');
+  console.log('OK: pastille (Amis/serie) alignee a la meme hauteur que le titre sur Communaute/Profil, comme sur l onglet Défis');
 
   // Acceptation : cree friendships/{paire triee}, supprime la demande, ET
   // previent desormais le demandeur original (Phase A notifications push -
