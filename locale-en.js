@@ -2602,6 +2602,7 @@ const LOCALE_EN = {
         other: '📡 Offline — {{n}} changes pending sync',
       },
       idle: '📡 Offline — your data will sync when you reconnect',
+      synced: 'Workout synced successfully!',
     },
     voiceCoach: {
       hardcoreEngaged: 'Hardcore mode engaged!',

@@ -1711,6 +1711,12 @@
     overflow-y: scroll;
     scroll-snap-type: y mandatory;
     -webkit-overflow-scrolling: touch;
+    /* Declare explicitement au compositeur qu'un seul axe de geste (vertical) est
+       attendu ici, avant meme toute logique JS - evite l'ambiguite de resolution
+       de geste (scroll vs autre chose) plus stricte sur iOS Safari que sur
+       Android/Chrome, cause possible d'un swipe qui ne "prend" pas sur le tout
+       1er rouleau rencontre dans l'onboarding (bug reel signale). */
+    touch-action: pan-y;
     /* Pas de bloc plein/bordure massive autour (look "input encadré") : juste un
        voile très subtil, l'essentiel de la lisibilité vient du cadre de sélection
        (.wheel-picker-highlight, accent vert néon) et du fondu ci-dessous — plus

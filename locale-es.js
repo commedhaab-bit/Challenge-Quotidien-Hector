@@ -2610,6 +2610,7 @@ const LOCALE_ES = {
         other: '📡 Sin conexión — {{n}} cambios pendientes de sincronizar',
       },
       idle: '📡 Sin conexión — tus datos se sincronizarán al volver la red',
+      synced: '¡Sesión sincronizada con éxito!',
     },
     voiceCoach: {
       hardcoreEngaged: '¡Modo Hardcore activado!',

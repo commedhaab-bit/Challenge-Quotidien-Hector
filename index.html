@@ -401,22 +401,36 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => { flushWorkoutWrites(); });
 
+// Retour haptique gradue (Vibration API) - 3 paliers d'intensite, du plus leger
+// au plus festif. Regroupes ici en constantes nommees plutot que des tableaux
+// magiques disperses a chaque site d'appel, pour que l'intensite relative de
+// chaque palier reste coherente et facile a retoucher globalement.
+const VIBRATE_TAP_MS = 12; // tap court (+5/+10, boutons, elements .clickable)
+const VIBRATE_COMPLETION_PATTERN = [30, 50, 30]; // completion d'un exercice (double pulse distinct)
+const VIBRATE_FESTIVE_PATTERN = [50, 30, 50, 30, 100]; // victoire Boss Battle / Level Up / Mode Hardcore / defi de groupe gagne
+
 // Retour utilisateur : parcours complet de l'app en manque de retour tactile a
 // plusieurs endroits (signale sur les sous-onglets Defi/Ardoise/Palmares d'un
 // groupe, mais le meme trou existe partout ou navigator.vibrate() n'a jamais ete
 // ajoute manuellement). Plutot que d'auditer et poser un vibrate() bouton par
 // bouton (deja fait ponctuellement a des moments cles - validation de defi, level
 // up, badges...), UN SEUL ecouteur delegue couvre desormais TOUT bouton/element
-// .clickable de l'app, meme ceux ajoutes plus tard - meme philosophie que le
-// retour visuel :active generalise (voir styles.css). Phase de CAPTURE (pas
-// bubbling) : se declenche AVANT le onclick propre de l'element, donc si ce
-// dernier pose ensuite sa propre vibration plus riche (ex: [60,40,60,40,140] a
-// l'obtention d'un badge), celle-ci se declenche juste APRES et remplace
-// naturellement ce signal court par la Vibration API (un nouvel appel annule
-// toujours le precedent) - jamais de conflit, jamais de double-retour perceptible.
+// .clickable/.picker-item/.timer-ring-wrap de l'app, meme ceux ajoutes plus tard -
+// meme philosophie que le retour visuel :active generalise (voir styles.css).
+// Phase de CAPTURE (pas bubbling) : se declenche AVANT le onclick propre de
+// l'element, donc si ce dernier pose ensuite sa propre vibration plus riche (ex:
+// VIBRATE_FESTIVE_PATTERN a l'obtention d'un badge), celle-ci se declenche juste
+// APRES et remplace naturellement ce signal court par la Vibration API (un
+// nouvel appel annule toujours le precedent) - jamais de conflit, jamais de
+// double-retour perceptible. **Bug reel corrige ici** : un 2e ecouteur, quasi
+// identique (selecteur `button, .picker-item, .manage-item, .qa-btn,
+// .timer-ring-wrap`, dont `.manage-item` n'existe nulle part ailleurs dans le
+// fichier - reliquat mort), avait ete ajoute plus tard sans que celui-ci ne soit
+// jamais retire - les deux se declenchaient sur CHAQUE clic de bouton, en double.
+// Fusionnes en un seul, avec un selecteur qui couvre les deux besoins reels.
 document.addEventListener('click', (e) => {
   if (!navigator.vibrate) return;
-  if (e.target.closest('button:not(:disabled), .clickable')) navigator.vibrate(6);
+  if (e.target.closest('button:not(:disabled), .clickable, .picker-item, .timer-ring-wrap')) navigator.vibrate(VIBRATE_TAP_MS);
 }, true);
 
 /**
@@ -745,19 +759,48 @@ if ('serviceWorker' in navigator) {
 // chaque validation de défi (plusieurs écritures séquentielles par addSet()).
 let pendingWriteCount = 0;
 
+// Mode hors-ligne (offline-first) : AUCUNE file d'attente maison en localStorage/
+// IndexedDB n'est nécessaire ici — Firestore le fait déjà nativement dès qu'il est
+// hors ligne (enablePersistence({synchronizeTabs:true}), voir plus haut) : chaque
+// écriture (dbSet()/saveAppField()) est appliquée au cache local IMMÉDIATEMENT
+// (l'UI se met à jour sans attendre le réseau), et le SDK Firestore rejoue lui-même
+// TOUTES les écritures en attente, dans l'ordre, dès que la connexion revient - la
+// Promise renvoyée par set()/.doc().set() ne se résout d'ailleurs qu'à cet instant
+// précis (jamais avant, tant qu'on reste hors ligne). `hadOfflineWrites` exploite
+// exactement ce comportement : posé à `true` dès qu'une écriture est encore EN
+// ATTENTE alors qu'on est hors ligne, il permet de détecter le moment exact où
+// cette même écriture finit par se résoudre APRÈS le retour du réseau (pendingWriteCount
+// retombe à 0 alors que navigator.onLine est de nouveau vrai) - c'est ce moment,
+// et lui seul, qui déclenche le toast de confirmation. Limite assumée (rare,
+// dégradée) : si la persistance Firestore n'a pas pu s'activer sur cet appareil
+// (voir firestorePersistenceEnabled), une écriture faite hors ligne échoue vite
+// au lieu d'être mise en file - le drapeau peut alors rester à `true` sans qu'un
+// vrai retour reseau n'ait rien synchronisé, et le prochain retour en ligne
+// affichera le toast à tort une fois. Compromis accepté : ce cas de repli était
+// déjà totalement silencieux avant ce correctif (reportSaveError() n'alerte
+// jamais hors ligne), un faux positif occasionnel n'est pas pire.
+let hadOfflineWrites = false;
+
 // Bandeau hors-ligne : aucun appel réseau supplémentaire, juste un retour visuel clair
 // (jusqu'ici totalement silencieux) quand la connexion tombe, et sa disparition dès
 // qu'elle revient. Précise désormais, hors ligne, si des modifications sont en
 // attente de synchronisation (pendingWriteCount) — Firestore les rejoue déjà
 // automatiquement au retour du réseau (enablePersistence), ceci ne fait qu'en
-// informer l'utilisateur.
+// informer l'utilisateur. Et, à l'inverse, dès que la synchronisation d'écritures
+// faites hors ligne se termine effectivement après un retour en ligne, un toast de
+// confirmation ponctuel complète ce bandeau (voir hadOfflineWrites ci-dessus).
 function updateOfflineBanner() {
   const banner = document.getElementById('offlineBanner');
-  if (!banner) return;
   if (navigator.onLine) {
-    banner.style.display = 'none';
+    if (hadOfflineWrites && pendingWriteCount === 0) {
+      hadOfflineWrites = false;
+      showToast(t('popups.offlineBanner.synced'));
+    }
+    if (banner) banner.style.display = 'none';
     return;
   }
+  if (pendingWriteCount > 0) hadOfflineWrites = true;
+  if (!banner) return;
   banner.style.display = 'flex';
   banner.textContent = pendingWriteCount > 0
     ? tn('popups.offlineBanner.pending', pendingWriteCount)
@@ -1333,6 +1376,23 @@ function onWheelPickerScroll(id) {
 function setWheelPickerValue(id, value) {
   const el = document.getElementById(id);
   if (!el) return;
+  // Bug reel signale (retour utilisateur, iOS Safari uniquement - fonctionne sur
+  // Android) : la roulette d'age (1er rouleau de tout l'onboarding, positionne ici
+  // juste apres son insertion dans le DOM par applyContent()) ne reagissait plus
+  // au swipe, contrairement aux roulettes taille/poids affichees 2 ecrans plus
+  // loin - memes markup/CSS/JS partages pour les 3 (voir renderWheelPicker()),
+  // donc pas un probleme de configuration differente entre elles. Lire une
+  // propriete de mise en page (offsetHeight) force ICI un reflow SYNCHRONE avant
+  // d'ecrire scrollTop : sans lui, WebKit peut positionner le scroll d'un
+  // conteneur `overflow-y:scroll` fraichement insere AVANT d'avoir fini de
+  // calculer sa vraie hauteur/scrollHeight (surtout juste apres un
+  // document.startViewTransition(), voir applyContent() - le callback y tourne de
+  // facon synchrone, sans laisser respirer la mise en page) - le conteneur reste
+  // alors visuellement correct mais son moteur de geste tactile ne l'a jamais
+  // reconnu comme reellement scrollable. Inoffensif partout ailleurs (simple
+  // lecture, aucun effet visuel), y compris dans le harnais de test (mock DOM
+  // sans vraie mise en page : lecture qui vaut simplement undefined).
+  void el.offsetHeight;
   const itemHeight = parseInt(el.dataset.itemHeight, 10);
   const min = parseInt(el.dataset.min, 10);
   const step = parseInt(el.dataset.step, 10);
@@ -2689,7 +2749,11 @@ async function processUnreadNotifications(snap) {
         // s'affichait en silence, contrairement a la completion personnelle/Hardcore
         // (voir addSetInner(), qui appelle deja playSuccessSound() a cote de son
         // propre enqueuePopup()) - meme son de celebration ici, pour la coherence.
+        // Meme raisonnement applique au retour haptique (chantier feedback haptique
+        // gradue) : une victoire collective est un moment "epique" au meme titre
+        // qu'un trophee/level up, elle merite le meme palier festif, pas le silence.
         playSuccessSound();
+        if (navigator.vibrate) navigator.vibrate(VIBRATE_FESTIVE_PATTERN);
         enqueuePopup({
           variant: 'trophy',
           epic: true,
@@ -3754,7 +3818,7 @@ function startRecentContributionsListener() {
 
 async function handleBossBattleVictory(weekStart, target, finalProgress) {
   const challenge = CHALLENGE_LIBRARY.find(c => c.id === target.targetChallengeId);
-  if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 140]);
+  if (navigator.vibrate) navigator.vibrate(VIBRATE_FESTIVE_PATTERN);
   fireConfetti();
   playSuccessSound();
   enqueuePopup({
@@ -4160,6 +4224,14 @@ function showTrophyDetailModal(badgeId) {
 // d'XP et enfile la popup adaptée (level up simple, ou popup "titre" plus épique).
 function enqueueLevelPopups(levelBefore, levelAfter) {
   if (levelAfter <= levelBefore) return;
+  // Retour haptique festif ici (chokepoint unique) plutot qu'a chaque site
+  // d'appel (completion normale, Hardcore, trophee "cumul a vie" precoce) :
+  // couvre les 3 chemins d'un seul coup, sans jamais dupliquer la logique. Si
+  // un level up survient dans le meme tick qu'une vibration de completion deja
+  // declenchee juste avant (voir addSetInner()), celle-ci la remplace
+  // naturellement (la Vibration API annule toujours l'appel precedent) - le
+  // palier le plus festif gagne toujours, jamais de double-retour percu.
+  if (navigator.vibrate) navigator.vibrate(VIBRATE_FESTIVE_PATTERN);
   const titleBefore = athleteTitle(levelBefore);
   const titleAfter = athleteTitle(levelAfter);
   if (titleAfter !== titleBefore) {
@@ -5206,6 +5278,30 @@ function formatDisplayName(fullName) {
 // (script classique chargé avant celui-ci, voir <head>) — restent des globaux,
 // aucun changement d'usage ici.
 
+// Bug reel signale (retour utilisateur) : cliquer sur Kilito (accueil) faisait
+// clignoter une fraction de seconde les apercus d'exercice des cartes en
+// dessous, alors qu'aucune de leurs donnees ne change au clic. Cause reelle :
+// render() remplace TOUJOURS tout le innerHTML de #app (architecture du
+// projet, voir CLAUDE.md) - chaque <img> de vignette est donc entierement
+// RECREEE a chaque re-rendu, meme quand son src est identique. Une image deja
+// en cache HTTP ne re-telecharge rien, mais le nouveau noeud <img> redemarre
+// quand meme a zero cote DOM : `loading="lazy"` retarde le debut du chargement
+// (recalcul d'intersection avec le viewport avant meme de consulter le cache),
+// puis onload() ne se declenche que de façon asynchrone (au moins un tour de
+// boucle d'evenements) avant que la classe .loaded ne retire le skeleton
+// "shimmer" - assez de delai pour un flash perceptible, sans le moindre
+// veritable re-telechargement. Corrige en memorisant, cote client et pour la
+// SESSION uniquement (jamais persiste), quelles vignettes ont deja fini de
+// charger au moins une fois : un re-rendu ulterieur du MEME exercice rend
+// alors sa vignette DEJA marquee .loaded (et en chargement "eager", puisqu'on
+// sait deja qu'elle est utile) directement dans le HTML genere, sans jamais
+// repasser par l'etat "shimmer" ni attendre un nouvel evenement onload.
+let loadedPictoKeys = new Set();
+// Meme principe, pour l'image "hero" (GIF/APNG de demonstration) de la fiche
+// d'exercice - voir son site d'utilisation, plus bas, pour le detail du bug
+// resolu (flash a CHAQUE tap +5/+10, pas seulement a l'ouverture de la fiche).
+let loadedHeroImageKeys = new Set();
+
 // EXERCISE_PICTOGRAMS, EXERCISE_ICON_BY_NAME, PICTOGRAM_ASSET_MISSING et
 // getExercisePictogramKey() vivent désormais dans exercise-pictograms.js /
 // exercise-data.js (scripts classiques chargés avant celui-ci, voir <head>) —
@@ -5227,11 +5323,12 @@ function renderExercisePicto(c) {
   // La classe .loaded (posée par onload OU par le dernier repli onerror, quel que
   // soit le chemin emprunté) fait disparaître le skeleton "shimmer" et fait
   // apparaître l'image en fondu, pour ne jamais montrer de pop-in brut.
+  const alreadyLoaded = loadedPictoKeys.has(key);
   return `
-    <div class="exercise-picto">
-      <img src="exercices/${key}-static.webp" alt="${escapeHtml(challengeDisplayName(c))}" loading="lazy" decoding="async" width="64" height="64"
-           onload="this.classList.add('loaded'); this.parentElement.classList.add('loaded');"
-           onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${key}-static.png';}else{this.style.display='none'; this.nextElementSibling.style.display='flex'; this.parentElement.classList.add('loaded');}">
+    <div class="exercise-picto${alreadyLoaded ? ' loaded' : ''}">
+      <img src="exercices/${key}-static.webp" alt="${escapeHtml(challengeDisplayName(c))}" loading="${alreadyLoaded ? 'eager' : 'lazy'}" decoding="async" width="64" height="64"${alreadyLoaded ? ' class="loaded"' : ''}
+           onload="loadedPictoKeys.add('${key}'); this.classList.add('loaded'); this.parentElement.classList.add('loaded');"
+           onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${key}-static.png';}else{loadedPictoKeys.add('${key}'); this.style.display='none'; this.nextElementSibling.style.display='flex'; this.parentElement.classList.add('loaded');}">
       <div class="exercise-picto-fallback">${svg}</div>
     </div>
   `;
@@ -6018,7 +6115,7 @@ async function addSetInner(amount) {
     const { levelBefore, levelAfter } = await awardXp(xpGained + trophyXp);
     if (isFirstCompletionOfDay) await registerDailyStreak();
 
-    if (navigator.vibrate) navigator.vibrate([45, 35, 45, 35, 90]);
+    if (navigator.vibrate) navigator.vibrate(VIBRATE_COMPLETION_PATTERN);
     fireConfetti();
     playSuccessSound();
 
@@ -6081,7 +6178,7 @@ async function addSetInner(amount) {
     const hcTrophyXp = freshHardcoreBadges.reduce((sum, b) => sum + (b.xp || 0), 0);
     const { levelBefore: hcLevelBefore, levelAfter: hcLevelAfter } = await awardXp(HARDCORE_XP_BONUS + hcTrophyXp);
 
-    if (navigator.vibrate) navigator.vibrate([60, 40, 60, 40, 60, 40, 140]);
+    if (navigator.vibrate) navigator.vibrate(VIBRATE_FESTIVE_PATTERN);
     fireConfetti('hardcore');
     playSuccessSound();
 
@@ -6447,9 +6544,18 @@ function render(animate) {
     // WebP d'abord (bien plus léger que l'APNG source), repli PNG puis suppression
     // silencieuse si aucun des deux n'existe ; aucune requête réseau du tout pour les
     // clés connues comme n'ayant aucune image (PICTOGRAM_ASSET_MISSING).
+    // Meme correctif anti-flash que renderExercisePicto() (loadedPictoKeys) : cette
+    // image hero est recreee a CHAQUE tap +5/+10 sur cette fiche (render() a chaque
+    // serie loguee, voir addSetInner()) - sans ce garde-fou, le GIF/APNG de
+    // demonstration clignotait (skeleton -> onload asynchrone) a chaque repetition,
+    // meme deja en cache. loadedHeroImageKeys est un Set DEDIE (jamais partage avec
+    // loadedPictoKeys) : memes cles de pictogramme, mais 2 fichiers differents
+    // (vignette statique vs animation complete) - marquer l'un "charge" ne doit
+    // jamais marquer l'autre a tort.
+    const heroAlreadyLoaded = loadedHeroImageKeys.has(heroKey);
     const heroImgHtml = PICTOGRAM_ASSET_MISSING.has(heroKey) ? '' : `
-        <img class="exercise-hero-apng parallax-img" src="exercices/${heroKey}.webp" alt="${t('exercise.demoAlt', { name: escapeHtml(challengeDisplayName(c)) })}" decoding="async" loading="eager"
-             onload="this.classList.add('loaded');"
+        <img class="exercise-hero-apng parallax-img${heroAlreadyLoaded ? ' loaded' : ''}" src="exercices/${heroKey}.webp" alt="${t('exercise.demoAlt', { name: escapeHtml(challengeDisplayName(c)) })}" decoding="async" loading="eager"
+             onload="loadedHeroImageKeys.add('${heroKey}'); this.classList.add('loaded');"
              onerror="if(!this.dataset.fb){this.dataset.fb='1';this.src='exercices/${heroKey}.png';}else{this.remove();}">
     `;
     const unitDisplay = c.unit === 'sec' ? t('exercise.unitSecLabel') : t('exercise.unitRepsLabel');
@@ -6616,20 +6722,26 @@ function render(animate) {
   }
 
   // week strip — semaine calendaire Lundi -> Dimanche, numéro du jour dans le cercle
-  // (remplacé par ✓ une fois le jour validé).
-  html += `<div class="week-strip">`;
-  for (const d of getCalendarWeekDates(new Date())) {
-    const k = dateKey(d);
-    const isToday = k === todayKey;
-    const done = weekData[k];
-    html += `
-      <div class="week-day">
-        <div class="dow">${t('dates.dowShort')[d.getDay()]}</div>
-        <div class="week-dot${done ? ' done' : ''}${isToday ? ' today' : ''}">${done ? '✓' : d.getDate()}</div>
-      </div>
-    `;
+  // (remplacé par ✓ une fois le jour validé). Nettoyage UI (retour utilisateur) :
+  // retiré de la fiche d'exercice (currentChallengeId truthy, ci-dessus) — reste
+  // affiché uniquement sur l'écran Aujourd'hui (liste des défis), là où un aperçu
+  // de la semaine a du sens ; sur la fiche d'un exercice précis, il redisait une
+  // information déjà secondaire à cet endroit, sans rapport avec l'exercice affiché.
+  if (!currentChallengeId) {
+    html += `<div class="week-strip">`;
+    for (const d of getCalendarWeekDates(new Date())) {
+      const k = dateKey(d);
+      const isToday = k === todayKey;
+      const done = weekData[k];
+      html += `
+        <div class="week-day">
+          <div class="dow">${t('dates.dowShort')[d.getDay()]}</div>
+          <div class="week-dot${done ? ' done' : ''}${isToday ? ' today' : ''}">${done ? '✓' : d.getDate()}</div>
+        </div>
+      `;
+    }
+    html += `</div>`;
   }
-  html += `</div>`;
   html += renderTabBar();
   html += renderGuidedTourOverlay();
 
@@ -9710,14 +9822,6 @@ function maybeQueueAccountAnniversaryReaction() {
     };
   }
 }
-
-// Micro-interaction : légère vibration sur chaque tap d'élément interactif
-document.addEventListener('click', (e) => {
-  const target = e.target.closest('button, .picker-item, .manage-item, .qa-btn, .timer-ring-wrap');
-  if (target && navigator.vibrate) {
-    navigator.vibrate(8);
-  }
-}, true);
 
 initPullToRefresh();
 initTiltCards();

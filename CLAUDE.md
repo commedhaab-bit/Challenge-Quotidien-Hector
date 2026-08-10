@@ -4674,3 +4674,121 @@ valider le MECANISME de selection (`pickKiloLine()`, interpolation,
 repli i18n), qui reste inchange et recalcule toujours ses valeurs "attendues"
 depuis le pool live (donc insensible a la taille du pool, voir plus haut la
 note sur les tests de la premiere passe de contenu Kilo).
+
+## Lot de retours utilisateur - 3e vague (haptique gradue, offline-first, nettoyage UI, flash des vignettes, roulette age iOS)
+
+**1. Retour haptique gradue (Vibration API)** : 3 paliers nommes
+(`VIBRATE_TAP_MS`=12, `VIBRATE_COMPLETION_PATTERN`=[30,50,30],
+`VIBRATE_FESTIVE_PATTERN`=[50,30,50,30,100]), poses aux points d'appel deja
+existants (tap generalise, completion d'objectif du jour, victoire Boss
+Battle) + 2 trous reels combles au passage : `enqueueLevelPopups()` (level up
+simple ET nouveau titre) et la popup de victoire collective de groupe
+(`targetReached`) n'avaient jamais eu leur PROPRE vibration jusqu'ici
+(silencieux, ou dependants d'un hasard de timing avec une autre vibration
+voisine) - le level up recoit desormais son vibrate au chokepoint unique
+`enqueueLevelPopups()` (couvre ses 3 chemins d'appel sans dupliquer la
+logique), la victoire de groupe recoit `VIBRATE_FESTIVE_PATTERN` juste a cote
+du `playSuccessSound()` deja present.
+
+**Bug reel corrige en meme temps (decouvert en auditant l'existant avant
+d'ajouter du nouveau code)** : DEUX ecouteurs `click` quasi identiques, tous
+deux en phase de capture au niveau du `document`, vibraient chacun sur le
+meme clic de bouton - le second (`button, .picker-item, .manage-item,
+.qa-btn, .timer-ring-wrap`, dont `.manage-item` n'existe nulle part ailleurs
+dans le fichier, reliquat mort) avait ete ajoute plus tard sans jamais
+retirer le premier (`button:not(:disabled), .clickable`). Fusionnes en un
+seul ecouteur (`button:not(:disabled), .clickable, .picker-item,
+.timer-ring-wrap`), avec `VIBRATE_TAP_MS`.
+
+**2. Mode hors-ligne** : deja 100% offline-first via `enablePersistence({synchronizeTabs:true})`
+(voir plus haut) - aucune file d'attente maison en localStorage/IndexedDB
+necessaire ni ajoutee, Firestore le fait deja nativement (cache local
+immediat, rejeu automatique au retour reseau, la Promise d'ecriture elle-meme
+ne se resout qu'a cet instant). Seul vrai trou comble : aucun retour visuel
+positif une fois la synchronisation reellement terminee (le bandeau
+`updateOfflineBanner()` se contentait de disparaitre). Nouveau
+`hadOfflineWrites` (booleen) : pose a `true` des qu'une ecriture est encore
+EN ATTENTE alors qu'on est hors ligne, exploite pour detecter le moment exact
+ou `pendingWriteCount` retombe a 0 APRES un retour en ligne - c'est ce moment
+precis, et lui seul, qui declenche le toast `popups.offlineBanner.synced`
+("Séance synchronisée avec succès !"). Limite assumee et documentee dans le
+code : si la persistance Firestore n'a pas pu s'activer sur l'appareil (cas
+deja degrade, voir `firestorePersistenceEnabled`), un faux positif occasionnel
+est possible au prochain retour en ligne - deja strictement mieux que le
+silence total d'avant ce correctif.
+
+**3. Nettoyage UI** : bande des jours de la semaine (`.week-strip`, semaine
+calendaire avec pastilles de validation) retiree de la fiche d'un exercice
+precis - reste affichee uniquement sur l'ecran Aujourd'hui (liste des defis),
+seul contexte ou elle a un sens. `render()` construisait ce bloc APRES le
+if/else qui distingue les 2 vues (partage par construction, jamais
+distingue) - simple ajout d'un `if (!currentChallengeId)` autour du bloc
+existant, aucun autre changement.
+
+**4. Flash des vignettes d'exercice (bug reel, enquete + correctif)** :
+symptome signale au clic sur Kilito (accueil) - les apercus d'exercice des
+cartes en dessous clignotaient une fraction de seconde. Cause reelle
+identifiee par lecture du code (pas supposee) : `render()` remplace TOUJOURS
+tout le `innerHTML` de `#app` (architecture du projet), donc CHAQUE `<img>`
+de vignette est entierement RECREEE a chaque re-rendu, meme quand son `src`
+est identique et deja en cache HTTP - le nouveau noeud redemarre quand meme a
+zero cote DOM (`loading="lazy"` retarde en plus le debut du chargement en
+attendant un recalcul d'intersection avec le viewport, puis `onload()` ne se
+declenche que de facon asynchrone) : assez de delai pour un flash percu,
+sans le moindre reel re-telechargement. Corrige en memorisant, cote client,
+pour la SESSION uniquement (`loadedPictoKeys`/`loadedHeroImageKeys`, 2 `Set`
+DEDIES - memes cles de pictogramme mais 2 fichiers differents, vignette
+statique vs animation complete, ne jamais les fusionner), quelles images ont
+deja fini de charger au moins une fois : un exercice deja vu est desormais
+rendu DIRECTEMENT marque `.loaded` (et en chargement `eager` pour la
+vignette, puisqu'on sait deja qu'elle est utile) dans le HTML genere, sans
+jamais repasser par l'etat "shimmer" ni attendre un nouvel evenement onload.
+**Etendu au-dela du signalement initial** : la meme image "hero" (GIF/APNG de
+demonstration) de la fiche d'exercice souffrait du meme bug a CHAQUE tap
++5/+10 (`render()` a chaque serie loguee, voir `addSetInner()`) - corrigee
+avec le meme mecanisme (`loadedHeroImageKeys`), pas seulement le cas
+initialement signale (accueil).
+
+**5. Roulette de selection de l'age bloquee sur iOS Safari (enquete + correctif,
+limite de verification honnete)** : symptome signale - la roulette d'age (1er
+rouleau de tout l'onboarding) ne reagit pas au swipe sur iPhone/Safari, alors
+que les roulettes taille/poids (2 ecrans plus loin, memes markup/CSS/JS
+partages via `renderWheelPicker()`) fonctionnent normalement ; Android
+fonctionne partout. Aucune difference de CONFIGURATION trouvee entre les 3
+roulettes (verifie par lecture directe du code) - l'hypothese retenue est un
+comportement WebKit connu : positionner programmatiquement le `scrollTop`
+d'un conteneur `overflow-y:scroll` fraichement insere AVANT que le moteur
+n'ait fini de calculer sa vraie mise en page (particulierement plausible ici,
+puisque `initWheelPickers()` tourne de facon SYNCHRONE a l'interieur du
+callback de `document.startViewTransition()`, voir `applyContent()`) peut
+laisser ce conteneur visuellement correct mais jamais reconnu comme
+reellement scrollable par le moteur de geste tactile - jusqu'a ce qu'un
+evenement quelconque force un nouveau recalcul de mise en page (explique le
+"ca marche 2 ecrans plus loin" : le temps que d'autres interactions aient
+force ce recalcul entretemps). **2 correctifs surs et non-risques appliques**
+(n'ont pas pu changer le comportement de test, deja verifie) : `touch-action:
+pan-y` explicite sur `.wheel-picker` (l'ambiguite de resolution de geste au
+tout premier contact est documentee comme plus stricte sur iOS Safari que sur
+Chrome/Android) + un reflow synchrone forcé (`void el.offsetHeight`) dans
+`setWheelPickerValue()` juste avant d'ecrire `scrollTop`, pour garantir que
+WebKit a fini de mesurer le conteneur avant qu'on le positionne. **Correctif
+volontairement PAS tente** : différer `initWheelPickers()`/`afterRender()`
+hors du callback synchrone de `startViewTransition()` (ex: via sa promesse
+`.ready`) - explore mais abandonne : un test existant verrouille explicitement
+le comportement synchrone actuel (`applyContent()` doit appliquer son contenu
+"de facon SYNCHRONE via le callback de startViewTransition, pas de setTimeout
+a attendre" - voir la suite de tests dediee a `document.startViewTransition`),
+et cette fonction est au coeur du rendu de TOUTE l'application - un chantier
+bien plus large et plus risque que ne le justifie ce bug precis, pour un
+mecanisme qui reste une hypothese non verifiee sur un vrai appareil.
+**Limite de verification non contournable, comme pour tout le reste de l'UI
+mobile de ce projet** : aucun appareil iOS reel ni simulateur Safari
+disponible dans cet environnement - correctifs bases sur des causes connues
+et documentees du comportement WebKit, mais NON confirmes en conditions
+reelles. A tester par l'utilisateur ; si le probleme persiste malgre ces 2
+correctifs, la piste `startViewTransition()`/`.ready` ci-dessus serait la
+prochaine a explorer, avec le risque de regression plus large qu'elle implique.
+
+CACHE_NAME -> v109 (`styles.css` + `locale-*.js` modifies - nouvelle cle
+`popups.offlineBanner.synced`). Aucun changement de regles Firestore/Cloud
+Functions - modification 100% cote client, aucune touche a `functions/**`.

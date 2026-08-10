@@ -2130,7 +2130,7 @@ const cssText = __rawHtml + __cssSource;
 
   // Retour utilisateur "effet waouh" : legere parallaxe sur l image de
   // demonstration de l exercice (.parallax-img) au defilement.
-  __assertOk(__rawHtml.includes('class="exercise-hero-apng parallax-img"'), 'l image de demonstration de l exercice doit porter la classe .parallax-img');
+  __assertOk(__rawHtml.includes('class="exercise-hero-apng parallax-img'), 'l image de demonstration de l exercice doit porter la classe .parallax-img');
   __assertOk(__rawHtml.includes("matchMedia('(prefers-reduced-motion: reduce)').matches) return;") && __rawHtml.includes('function initParallax()'), 'la parallaxe ne doit jamais s activer si prefers-reduced-motion est demande');
   console.log('OK: parallaxe sur l image de l exercice (jamais active sous prefers-reduced-motion)');
 
@@ -2789,6 +2789,17 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(getWheelPickerValue('pfAge'), 42, 'setWheelPickerValue doit toujours positionner correctement le scroll apres le refactor');
   console.log('OK: wheel picker - calcul fiable de l index actif (mise en valeur du chiffre centre)');
 
+  // Bug reel signale (retour utilisateur) : roulette d age non reactive au swipe
+  // sur iOS Safari (fonctionne sur Android et sur les roulettes taille/poids
+  // affichees 2 ecrans plus loin). Correctifs : touch-action explicite (evite
+  // l ambiguite de resolution de geste, plus stricte sur iOS Safari) + reflow
+  // synchrone force avant tout positionnement programmatique de scrollTop (evite
+  // de positionner un conteneur avant que WebKit n ait fini de le mesurer,
+  // notamment juste apres un document.startViewTransition()).
+  __assertOk(cssText.includes('touch-action: pan-y;') && cssText.slice(cssText.indexOf('.wheel-picker {'), cssText.indexOf('.wheel-picker {') + 900).includes('touch-action: pan-y;'), 'le rouleau de selection doit declarer explicitement touch-action: pan-y');
+  __assertOk(__rawHtml.includes('void el.offsetHeight;'), 'setWheelPickerValue() doit forcer un reflow synchrone avant de positionner scrollTop (fiabilite iOS Safari)');
+  console.log('OK: correctifs iOS Safari sur les rouleaux de selection (touch-action + reflow force avant positionnement)');
+
   // --- 65. Bulle du tutoriel : relief "3D" (ombre + animation d entree) sans flou sur
   // les etapes 2+, flou renforce (6px) reserve a la carte de bienvenue ---
   __assertOk(cssText.includes('blur(6px)'), 'le flou de la carte de bienvenue doit etre passe a 6px');
@@ -2820,6 +2831,17 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(firstDowMatch[1], 'L', 'le premier jour affiche doit etre Lundi (L), pas Dimanche');
   __assertOk(/class="week-dot[^"]*">[0-9]{1,2}</.test(weekStripSlice), 'un numero de jour doit s afficher dans un cercle non encore valide');
   console.log('OK: semaine calendaire Lundi -> Dimanche avec numero du jour dans le cercle');
+
+  // Nettoyage UI (retour utilisateur) : la bande de la semaine ne doit plus
+  // apparaitre sur la fiche d un exercice precis - reservee a l ecran Aujourd hui
+  // (liste des defis, deja verifie juste au-dessus).
+  activeToday = new Set([pompes.id]);
+  state = emptyDayState();
+  await pickChallenge(pompes.id);
+  render(false);
+  __assertOk(!document.getElementById('app').innerHTML.includes('week-strip'), 'la bande de la semaine ne doit plus etre affichee sur la fiche d un exercice');
+  currentChallengeId = null;
+  console.log('OK: bande de la semaine retiree de la fiche d exercice (reste uniquement sur Aujourd hui)');
 
   // --- 67. Teaser "prochains trophées à portée de main" : remplace la carte statique
   // vide quand aucun trophée n est encore débloqué ---
@@ -3154,7 +3176,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v108'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v109'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -3214,6 +3236,36 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = null;
   console.log('OK: WebP essaye en premier sur les cartes et la fiche detail (repli PNG puis SVG en cascade)');
 
+  // Bug reel signale (retour utilisateur) : cliquer sur Kilito (accueil) faisait
+  // clignoter les vignettes d exercice en dessous - render() recree chaque <img>
+  // a chaque re-rendu, qui repartait donc du skeleton "shimmer" meme deja en
+  // cache. Corrige via loadedPictoKeys/loadedHeroImageKeys (Set memorise pour la
+  // session) : un exercice deja vu une fois doit desormais etre rendu DEJA
+  // marque .loaded, sans repasser par l etat shimmer ni par loading="lazy".
+  const savedLoadedPictoKeys = new Set(loadedPictoKeys);
+  const savedLoadedHeroImageKeys = new Set(loadedHeroImageKeys);
+  loadedPictoKeys = new Set();
+  loadedHeroImageKeys = new Set();
+  const freshPictoHtml = renderExercisePicto(pompesForWebp);
+  __assertOk(!freshPictoHtml.includes('exercise-picto loaded'), 'une vignette jamais vue cette session doit demarrer non chargee (skeleton visible)');
+  __assertOk(freshPictoHtml.includes('loading="lazy"'), 'une vignette jamais vue cette session doit rester lazy');
+  loadedPictoKeys.add(getExercisePictogramKey(pompesForWebp)); // simule l onload deja survenu une 1ere fois
+  const repeatPictoHtml = renderExercisePicto(pompesForWebp);
+  __assertOk(repeatPictoHtml.includes('exercise-picto loaded'), 'une vignette deja vue cette session doit etre rendue directement marquee .loaded (plus de flash de skeleton)');
+  __assertOk(repeatPictoHtml.includes('loading="eager"') && repeatPictoHtml.includes('class="loaded"'), 'une vignette deja vue cette session doit passer en chargement eager avec sa classe .loaded posee des le markup');
+  await pickChallenge(pompesForWebp.id);
+  render(false);
+  const freshHeroHtml = document.getElementById('app').innerHTML;
+  __assertOk(!freshHeroHtml.includes('exercise-hero-apng parallax-img loaded'), 'l image hero jamais vue cette session doit demarrer non chargee (skeleton visible)');
+  loadedHeroImageKeys.add(getExercisePictogramKey(pompesForWebp)); // simule l onload deja survenu une 1ere fois
+  render(false); // re-rendu de la MEME fiche (equivalent a un tap +5/+10, sans re-appeler pickChallenge())
+  const repeatHeroHtml = document.getElementById('app').innerHTML;
+  __assertOk(repeatHeroHtml.includes('exercise-hero-apng parallax-img loaded'), 'l image hero deja vue cette session doit etre rendue directement marquee .loaded a chaque re-rendu ulterieur de la meme fiche (ex: tap +5/+10)');
+  currentChallengeId = null;
+  loadedPictoKeys = savedLoadedPictoKeys;
+  loadedHeroImageKeys = savedLoadedHeroImageKeys;
+  console.log('OK: vignettes/image hero deja chargees cette session ne clignotent plus sur un re-rendu (bug reel corrige - flash au clic sur Kilito)');
+
   // --- 90. Chargement percu : skeleton "shimmer" + fondu a l arrivee (classe .loaded),
   // espace reserve (aspect-ratio) pour ne jamais provoquer de saut de mise en page (CLS) ---
   __assertOk(cssText.includes('picto-shimmer'), 'un skeleton shimmer doit exister pour les miniatures en cours de chargement');
@@ -3270,6 +3322,23 @@ const cssText = __rawHtml + __cssSource;
   navigator.onLine = true;
   updateOfflineBanner();
   console.log('OK: pendingWriteCount reflete fidelement les ecritures dbSet/saveAppField en cours');
+
+  // --- Mode hors-ligne : toast de confirmation une fois la synchronisation
+  // reellement terminee apres un retour en ligne (hadOfflineWrites) ---
+  navigator.onLine = false;
+  pendingWriteCount = 1; // simule une ecriture encore en attente pendant qu'on est hors ligne
+  updateOfflineBanner();
+  document.getElementById('toast').innerHTML = '';
+  navigator.onLine = true; // retour reseau, mais l'ecriture n'est pas encore resolue
+  updateOfflineBanner();
+  __assertEq(document.getElementById('toast').innerHTML, '', 'pas de toast tant que des ecritures restent en attente, meme de retour en ligne');
+  pendingWriteCount = 0; // l'ecriture vient enfin de se resoudre (Firestore l'a rejouee)
+  updateOfflineBanner();
+  __assertOk(document.getElementById('toast').innerHTML.includes('synchronisée avec succès'), 'un toast de confirmation doit s afficher une fois la synchronisation hors ligne terminee');
+  document.getElementById('toast').innerHTML = '';
+  updateOfflineBanner();
+  __assertEq(document.getElementById('toast').innerHTML, '', 'le toast de synchronisation ne doit se declencher qu une seule fois, pas a chaque appel ulterieur');
+  console.log('OK: toast de confirmation de synchronisation affiche une seule fois, uniquement quand des ecritures faites hors ligne se resolvent apres un retour en ligne');
 
   // --- 93. Mise a jour SW : detection structurelle (updatefound/statechange) +
   // bandeau dedie ; preconnect vers les domaines Firebase/Firestore ---
@@ -3785,7 +3854,7 @@ const cssText = __rawHtml + __cssSource;
   // --- 118. Fermeture #3 (lazy-loading) : l image hero de la fiche detail reste
   // explicitement eager (LCP-critique, ne doit jamais devenir lazy) ; les images de
   // liste (renderExercisePicto) restent lazy comme deja verifie plus haut ---
-  __assertOk(__rawHtml.includes('class="exercise-hero-apng parallax-img"') && __rawHtml.includes('loading="eager"'), 'l image hero de la fiche detail doit etre explicitement loading="eager"');
+  __assertOk(__rawHtml.includes('class="exercise-hero-apng parallax-img') && __rawHtml.includes('loading="eager"'), 'l image hero de la fiche detail doit etre explicitement loading="eager"');
   console.log('OK: image hero de la fiche detail explicitement loading="eager" (LCP-critique)');
 
   // --- 119. Nettoyage des libelles d exercices : plus aucun nom ne contient

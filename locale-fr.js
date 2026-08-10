@@ -2612,6 +2612,7 @@ const LOCALE_FR = {
         other: '📡 Hors ligne — {{n}} modifications en attente de synchronisation',
       },
       idle: '📡 Hors ligne — tes données seront synchronisées au retour du réseau',
+      synced: 'Séance synchronisée avec succès !',
     },
     voiceCoach: {
       hardcoreEngaged: 'Mode Hardcore enclenché !',
