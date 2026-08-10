@@ -4380,6 +4380,16 @@
     cursor: pointer;
     animation: kilo-exercise-bubble-pop-in 0.25s ease;
   }
+  /* Bug reel corrige (retour utilisateur) : kiloHomeTap() declenche 2 render()
+     (immediat + un 2e a +450ms rien que pour retirer la classe .tapped du
+     rebond, voir kiloHomeTap()) - render() remplace TOUT #app, donc cette
+     bulle etait recreee (et rejouait son animation d'entree) aux 2 rendus,
+     meme quand son TEXTE n'avait pas change entre les deux (clignotement
+     "disparait puis reapparait"). .no-anim (pose par render() quand le texte
+     affiche est identique au dernier rendu, voir kiloHomeBubbleLastRenderedText)
+     coupe l'animation pour ce cas precis - un vrai changement de texte
+     (tap, nouvelle humeur, reaction sociale...) continue de l'animer normalement. */
+  .kilo-home-bubble.no-anim { animation: none; }
   .kilo-home-bubble::before,
   .kilo-home-bubble::after {
     content: '';

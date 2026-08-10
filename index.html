@@ -5649,6 +5649,16 @@ let kiloHomeHugeSetUntil = 0;
 const KILO_HUGE_SET_WINDOW_MS = 5 * 60 * 1000;
 let kiloHomeBubbleText = '';
 let kiloHomeBubbleMood = null;
+// Bug reel corrige (retour utilisateur, clignotement au tap sur Kilo) :
+// kiloHomeTap() force un 2e render() a +450ms rien que pour retirer la
+// classe .tapped du rebond (voir plus bas) - sans garde, la bulle (recreee a
+// CHAQUE render(), comme tout #app) rejouait son animation d'entree meme si
+// son texte n'avait pas change depuis le rendu precedent. Memorise le
+// DERNIER texte reellement affiche pour que render() puisse comparer et
+// n'animer que sur un vrai changement (meme logique que
+// countUpLastValues/animateCountUp() : comparer avant/apres plutot que
+// supposer qu'un re-rendu signifie toujours un changement).
+let kiloHomeBubbleLastRenderedText = null;
 // Idees bonus #9/#10 (retour utilisateur) : emplacement UNIQUE pour une
 // reaction sociale ponctuelle de Kilo (gros coup d'un ami sur le fil
 // d'activite / kudo recu), nommant la personne concernee - {key, params}
@@ -6518,6 +6528,11 @@ function render(animate) {
       kiloHomeMoodDisplay = 'hype';
       kiloPendingSocialReaction = null;
     }
+    // Bug reel corrige (retour utilisateur, clignotement au tap sur Kilo) :
+    // voir kiloHomeBubbleLastRenderedText plus haut - seul un texte REELLEMENT
+    // different du dernier rendu rejoue l'animation d'entree de la bulle.
+    const kiloHomeBubbleChanged = kiloHomeBubbleTextDisplay !== kiloHomeBubbleLastRenderedText;
+    kiloHomeBubbleLastRenderedText = kiloHomeBubbleTextDisplay;
     // Chantier gamification Phase 3 (cosmetiques) : Kilo "porte" toujours
     // l'accessoire debloque le plus prestigieux sur l'accueil (equipement v1
     // volontairement simple, voir computeEquippedAccessory()) - null si rien
@@ -6549,7 +6564,7 @@ function render(animate) {
         <div class="date">${formatDateLabel(today)}</div>
         <div class="kilo-home-wrap">
           <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}${Date.now() < kiloHomeFidgetUntil ? ' fidgeting' : ''}${Date.now() < kiloHomeIntroUntil ? ' intro' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMoodDisplay, { size: 72, accessories: kiloHomeAccessories })}</div>
-          ${!kiloMuted && kiloHomeBubbleTextDisplay ? `<div class="kilo-home-bubble" onclick="kiloHomeTap()">${escapeHtml(kiloHomeBubbleTextDisplay)}</div>` : ''}
+          ${!kiloMuted && kiloHomeBubbleTextDisplay ? `<div class="kilo-home-bubble${kiloHomeBubbleChanged ? '' : ' no-anim'}" onclick="kiloHomeTap()">${escapeHtml(kiloHomeBubbleTextDisplay)}</div>` : ''}
         </div>
         <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>

@@ -5152,3 +5152,48 @@ Nunito, qui prend nettement moins de largeur horizontale sur ce mot precis -
 retiree entierement (classe CSS + son usage dans `renderCommunityScreen()`),
 "Communaute" partage desormais la meme taille que tous les autres titres de
 l'app. CACHE_NAME -> v115.
+
+## Bug reel corrige : clignotement de la bulle de Kilito au tap sur l'accueil
+
+**Signale par l'utilisateur** : cliquer sur Kilito (accueil) fait clignoter
+sa bulle de dialogue - elle disparait puis reapparait, desagreable. **Meme
+famille de bug que le clignotement du Journal deja corrige** (voir plus
+haut, "Pastille alignee au titre... + bug reel corrige : clignotement a
+l'ouverture du Journal") : `render()` remplace TOUJOURS tout le `innerHTML`
+de `#app`, donc `.kilo-home-bubble` est entierement RECREEE a chaque
+render() - et `animation: kilo-exercise-bubble-pop-in 0.25s ease;` (fondu +
+glissement d'entree) rejoue donc a chaque fois, meme si le TEXTE affiche n'a
+pas change.
+
+**Cause racine precise** : `kiloHomeTap()` declenche 2 `render()` pour une
+seule action utilisateur - un premier IMMEDIAT (nouvelle phrase
+d'encouragement + rebond) et un second a +450ms, dont le SEUL but est de
+retirer la classe `.tapped` (fin de la fenetre de rebond,
+`kiloHomeTapBounceUntil` expire) - le texte de la bulle, lui, ne change PAS
+entre ces 2 renders. Le 2e render recree quand meme la bulle de zero (comme
+tout `#app`) et rejoue donc son animation d'entree pour rien - c'est ce
+second rendu, precis et repetable a chaque tap, qui produisait le
+clignotement.
+
+**Corrige avec le meme patron deja etabli** (`libraryAnimatingCat` pour
+l'accordeon Défis, `profileSubtabJustEntered` pour le Journal) : nouvelle
+variable `kiloHomeBubbleLastRenderedText` (memorise le DERNIER texte
+REELLEMENT affiche, pas juste "a-t-on change de mood" - `kiloHomeBubbleText`
+peut rester la meme reference alors que `kiloHomeBubbleTextDisplay` differe
+a cause d'une reaction sociale ponctuelle en cours). `render()` compare le
+texte a afficher CE render au texte du render precedent (meme principe que
+`countUpLastValues`/`animateCountUp()` : comparer avant/apres plutot que
+supposer qu'un re-rendu signifie toujours un changement) - `kiloHomeBubbleChanged`
+pose `.no-anim` (`animation: none`, nouvelle regle CSS) sur la bulle
+lorsqu'il n'y a PAS de vrai changement de texte. Un vrai changement (tap qui
+change reellement la phrase, changement d'humeur, reaction sociale,
+easter egg...) continue d'animer normalement - seul le rendu de nettoyage
+"muet" en est desormais exempte.
+
+CACHE_NAME -> v116 (`styles.css` + `index.html` modifies). Aucun changement
+de regles Firestore/Cloud Functions - modification 100% cote client, aucune
+touche a `functions/**`. Verifie par un nouveau test qui reproduit
+exactement le scenario (tap -> 1er render anime, expiration simulee du
+rebond -> 2e render SANS animation) - meme limite de verification que le
+reste des chantiers visuels : **pas confirme visuellement dans un vrai
+navigateur**, a confirmer par l'utilisateur.

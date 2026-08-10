@@ -1863,12 +1863,22 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(kiloHomeAppHtml.slice(kiloSlotIdxHome, kiloSlotIdxHome + 60).includes('tapped'), 'le tap doit declencher le rebond (classe .tapped)');
   const tapEncouragementVariants = t('kilo.home.tapEncouragement').map((v) => interpolate(v, {}));
   __assertOk(tapEncouragementVariants.includes(kiloHomeBubbleText), 'le tap doit afficher une phrase d encouragement aleatoire dans la bulle');
+  const kiloBubbleIdxAfterTap = kiloHomeAppHtml.indexOf('kilo-home-bubble');
+  __assertOk(!kiloHomeAppHtml.slice(kiloBubbleIdxAfterTap, kiloBubbleIdxAfterTap + 40).includes('no-anim'), 'le 1er rendu apres un tap (le texte a reellement change) doit animer normalement l entree de la bulle');
   kiloHomeTapBounceUntil = 0; // simule l expiration du rebond (sans attendre reellement 400ms)
-  render(false);
+  render(false); // reproduit le 2e render() de kiloHomeTap() (a +450ms dans la vraie app, ici synchrone) - meme texte de bulle, rien qui devrait rejouer d animation
   kiloHomeAppHtml = document.getElementById('app').innerHTML;
   const kiloSlotIdxHomeAfter = kiloHomeAppHtml.indexOf('kilo-home-slot');
   __assertOk(!kiloHomeAppHtml.slice(kiloSlotIdxHomeAfter, kiloSlotIdxHomeAfter + 60).includes('tapped'), 'le rebond doit disparaitre une fois expire');
-  console.log('OK: tap sur Kilo (accueil) declenche le rebond + une phrase d encouragement aleatoire dans la bulle');
+  // Bug reel corrige (retour utilisateur) : le 2e render() de kiloHomeTap()
+  // (uniquement destine a retirer la classe .tapped expiree) recreait aussi la
+  // bulle (comme tout #app) et rejouait son animation d entree meme si son
+  // texte n avait pas change depuis le rendu precedent - clignotement
+  // "disparait puis reapparait" ressenti au tap. kiloHomeBubbleLastRenderedText
+  // doit desormais detecter ce cas et poser .no-anim.
+  const kiloBubbleIdxAfterExpiry = kiloHomeAppHtml.indexOf('kilo-home-bubble');
+  __assertOk(kiloHomeAppHtml.slice(kiloBubbleIdxAfterExpiry, kiloBubbleIdxAfterExpiry + 40).includes('no-anim'), 'le 2e rendu (meme texte, juste pour retirer le rebond expire) ne doit PAS rejouer l entree de la bulle');
+  console.log('OK: tap sur Kilo (accueil) declenche le rebond + une phrase d encouragement aleatoire dans la bulle, sans clignotement au 2e rendu de nettoyage (texte inchange)');
 
   // Idee bonus #8 (retour utilisateur, easter egg au tap repete) : 5 taps
   // rapproches (fenetre glissante, meme principe que le garde-fou anti-spam)
@@ -3189,7 +3199,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v115'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v116'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
