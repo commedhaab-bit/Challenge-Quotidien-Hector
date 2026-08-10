@@ -107,7 +107,7 @@ const LOCALE_ES = {
     customPlaceholder: 'Número personalizado',
     addBtn: 'Añadir',
     undoBtn: 'Deshacer la última serie ({{n}})',
-    doneBanner: '✓ Reto completado hoy',
+    doneBanner: 'Reto completado hoy',
     demoAlt: 'Demostración: {{name}}',
     armModeSentence: 'Cada brazo debe hacer {{target}} {{unit}}.',
     editWeightPrompt: 'Peso de la mancuerna para "{{name}}" (kg):',
@@ -2357,6 +2357,11 @@ const LOCALE_ES = {
     xpProgress: '{{current}} / {{needed}} XP · toca para ver tu progreso',
     xpProgressPlain: '{{current}} / {{needed}} XP',
     trophiesLabel: 'Trofeos ({{unlocked}}/{{total}})',
+    bento: {
+      xp: 'XP total',
+      streak: 'Días de racha',
+      trophies: 'Trofeos',
+    },
     roadmap: {
       xpToNext: '{{current}} / {{needed}} XP hasta el nivel {{n}}',
       titlesLabel: 'Recorrido de títulos de atleta',

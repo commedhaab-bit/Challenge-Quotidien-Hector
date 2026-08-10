@@ -106,7 +106,7 @@ const LOCALE_EN = {
     customPlaceholder: 'Custom number',
     addBtn: 'Add',
     undoBtn: 'Undo last set ({{n}})',
-    doneBanner: '✓ Challenge completed today',
+    doneBanner: 'Challenge completed today',
     demoAlt: 'Demo: {{name}}',
     armModeSentence: 'Each arm must do {{target}} {{unit}}.',
     editWeightPrompt: 'Dumbbell weight for "{{name}}" (kg):',
@@ -2349,6 +2349,11 @@ const LOCALE_EN = {
     xpProgress: '{{current}} / {{needed}} XP · tap to see your progress',
     xpProgressPlain: '{{current}} / {{needed}} XP',
     trophiesLabel: 'Trophies ({{unlocked}}/{{total}})',
+    bento: {
+      xp: 'Total XP',
+      streak: 'Day streak',
+      trophies: 'Trophies',
+    },
     roadmap: {
       xpToNext: '{{current}} / {{needed}} XP to level {{n}}',
       titlesLabel: 'Athlete title roadmap',

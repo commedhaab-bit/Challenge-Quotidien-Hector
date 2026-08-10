@@ -109,7 +109,7 @@ const LOCALE_FR = {
     customPlaceholder: 'Nombre personnalisé',
     addBtn: 'Ajouter',
     undoBtn: 'Annuler la dernière série ({{n}})',
-    doneBanner: "✓ Défi complété aujourd'hui",
+    doneBanner: "Défi complété aujourd'hui",
     demoAlt: 'Démonstration : {{name}}',
     armModeSentence: 'Chaque bras doit faire {{target}} {{unit}}.',
     editWeightPrompt: 'Poids de l\'haltère pour "{{name}}" (kg) :',
@@ -2359,6 +2359,11 @@ const LOCALE_FR = {
     xpProgress: '{{current}} / {{needed}} XP · appuie pour voir ta progression',
     xpProgressPlain: '{{current}} / {{needed}} XP',
     trophiesLabel: 'Trophées ({{unlocked}}/{{total}})',
+    bento: {
+      xp: 'XP total',
+      streak: 'Jours de série',
+      trophies: 'Trophées',
+    },
     roadmap: {
       xpToNext: "{{current}} / {{needed}} XP jusqu'au niveau {{n}}",
       titlesLabel: "Parcours des titres d'athlète",

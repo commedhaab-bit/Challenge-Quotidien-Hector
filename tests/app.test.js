@@ -3176,7 +3176,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v109'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v110'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -7585,6 +7585,91 @@ const cssText = __rawHtml + __cssSource;
   activeToday = new Set();
   currentChallengeId = null;
   console.log('OK: garde-fou anti-spam humoristique (Kilito) - detection temporelle + interception avant Firebase + retour haptique');
+
+  // --- Passe "premium" (retour utilisateur) : tokens de design partages
+  // (profondeur/lumiere, ressort, verre) ---
+  __assertOk(cssText.includes('--spring: cubic-bezier(.34, 1.56, .64, 1);'), 'la courbe a ressort doit etre centralisee dans une variable CSS unique');
+  __assertOk(cssText.includes('--bg: #000000;'), 'le fond doit etre un noir OLED vrai, pas un gris fonce');
+  __assertOk(cssText.includes('--aurora-2:') && cssText.includes('--gold:'), 'les teintes secondaires (aurora, or) doivent etre declarees en tokens');
+  __assertOk(cssText.includes('--shadow-elevated:') && cssText.includes('--shadow-hero:'), 'le systeme d elevation a 2 paliers doit etre declare en tokens');
+  __assertOk(cssText.includes('--glass-bg:') && cssText.includes('--glass-border:'), 'les tokens de verre depoli doivent etre declares');
+  __assertOk(cssText.includes("radial-gradient(ellipse 900px 700px at 8% -10%") && cssText.includes('fractalNoise'), 'le fond doit avoir un degrade "aurora" + une texture de grain');
+  // NB : testDriver est un template literal (voir plus bas dans ce fichier) - tout
+  // regex ecrit ICI doit doubler ses backslashes (\\s, \\., \\{) pour qu'il en
+  // reste un seul une fois la chaine "cuite" par le template literal lui-meme
+  // (deja le cas ailleurs dans ce fichier, ex: [\\s\\S] ligne ~852) - piege reel
+  // rencontre en ecrivant ces tests (un simple \s/\. silencieusement mange par
+  // l'echappement de chaine AVANT meme d'atteindre le moteur de regex).
+  __assertOk(/\\.tab-bar\\s*\\{[^}]*backdrop-filter: blur/.test(cssText), 'la tab bar doit utiliser un traitement de verre depoli (backdrop-filter)');
+  __assertOk(/\\.app-popup-card\\s*\\{[^}]*backdrop-filter: blur/.test(cssText), 'les popups plein ecran doivent utiliser un traitement de verre depoli');
+  __assertOk(/\\.level-roadmap-sheet\\s*\\{[^}]*backdrop-filter: blur/.test(cssText), 'les feuilles (bottom sheets) doivent utiliser un traitement de verre depoli');
+  console.log('OK: tokens de design premium (aurora, grain, verre depoli, ressort, elevation) presents et centralises');
+
+  // --- Micro-interactions a ressort + glow pulsant sur les CTA ---
+  __assertOk(cssText.includes('transition: transform 0.35s var(--spring);') && cssText.includes("transition: transform 0.08s ease;"), 'le retour tactile generalise doit utiliser le ressort au relachement, lineaire rapide a l appui');
+  __assertOk(cssText.includes('qa-btn-breathe') && cssText.includes('cta-glow-breathe'), 'les CTA principaux (+5/+10, "Relever le defi") doivent respirer doucement (glow pulsant)');
+  __assertOk(cssText.includes('.qa-btn { animation: none; }'), 'le glow pulsant du CTA +5/+10 doit etre desactivable via prefers-reduced-motion');
+  console.log('OK: micro-interactions a ressort + glow pulsant discret sur les CTA principaux');
+
+  // --- Sweep lumineux sur les jauges de progression ---
+  __assertOk(cssText.includes('fill-shimmer-sweep'), 'les jauges de progression (defi/XP/Hardcore) doivent avoir un sweep lumineux anime');
+  __assertOk(cssText.includes('.bar-fill, .athlete-xp-fill, .hardcore-fill {') && cssText.includes('overflow: hidden;'), 'le sweep doit etre confine a la forme arrondie de la jauge (overflow hidden)');
+  console.log('OK: sweep lumineux partage sur les 3 jauges de progression de l appli');
+
+  // --- Pop de chiffre a l incrementation (animateCountUp) ---
+  __assertOk(__rawHtml.includes("el.classList.remove('num-pop');") && __rawHtml.includes("el.classList.add('num-pop');"), 'animateCountUp() doit declencher un "boing" d echelle une fois le defilement termine');
+  __assertOk(cssText.includes('.num-pop { animation: num-pop-bounce'), 'la classe .num-pop doit etre definie avec l animation de rebond');
+  __assertOk(/\\.progress-current\\s*\\{[^}]*background-clip: text;/.test(cssText), 'le gros chiffre de progression doit utiliser un texte en degrade');
+  console.log('OK: pop de chiffre (boing) + texte en degrade sur le compteur de progression');
+
+  // --- Coche qui se dessine (etat de succes) ---
+  const doneBannerHtmlTest = checkmarkSVG(16);
+  __assertOk(doneBannerHtmlTest.includes('check-draw-svg') && doneBannerHtmlTest.includes('<path'), 'checkmarkSVG() doit produire un trace SVG (pas un simple glyphe statique)');
+  __assertOk(cssText.includes('.check-draw-svg {') && cssText.includes('stroke-dashoffset: 26;') && cssText.includes('@keyframes check-draw'), 'la coche doit se dessiner via une animation de trace (stroke-dasharray/dashoffset)');
+  __assertOk(!t('exercise.doneBanner').includes('✓'), 'le glyphe "✓" statique doit avoir ete retire du texte traduit (remplace par la coche animee)');
+  console.log('OK: coche qui se dessine (trace SVG progressif) sur le bandeau de defi complete');
+
+  // --- Bordure en degrade + effet holographique reserves au titre "legende" ---
+  __assertEq(isLegendaryLevel(47), false, 'le titre juste avant "legende" (demidieu, niveau max 47) ne doit pas declencher l effet legendaire');
+  __assertEq(isLegendaryLevel(48), true, 'le niveau 48 (1er niveau du titre "legende") doit declencher l effet legendaire');
+  const savedXpTotalPremium = xpTotal;
+  xpTotal = 100; // niveau bas, tres loin de "legende"
+  let athleteHtmlLow = renderAthleteCard();
+  __assertOk(!athleteHtmlLow.includes(' legendary') && !athleteHtmlLow.includes(' holo'), 'un profil de niveau bas ne doit recevoir ni la bordure legendaire ni le titre holographique');
+  xpTotal = 50000000; // niveau tres eleve, garanti au-dela de 47 (voir computeLevel(), aucun plafond dur)
+  let athleteHtmlHigh = renderAthleteCard();
+  __assertOk(athleteHtmlHigh.includes('athlete-card tilt-card legendary'), 'un profil "legende" doit recevoir la bordure en degrade animee sur sa carte');
+  __assertOk(athleteHtmlHigh.includes('athlete-title holo'), 'un profil "legende" doit recevoir l effet holographique sur son titre');
+  xpTotal = savedXpTotalPremium;
+  console.log('OK: bordure en degrade animee + effet holographique reserves au titre "legende" (statut immediatement visible)');
+
+  // --- Bento grid de stats sur la carte athlete ---
+  xpTotal = 12345;
+  const bentoHtml = renderAthleteStatsBento();
+  __assertOk(bentoHtml.includes('stats-bento') && bentoHtml.includes('bento-cell-xp'), 'la carte athlete doit afficher un mini bento de stats (XP/serie/trophees)');
+  __assertOk(bentoHtml.includes((12345).toLocaleString(LOCALE_TO_INTL[currentLocale])), 'le bento doit afficher le vrai total XP deja charge en memoire (aucune nouvelle lecture Firestore)');
+  xpTotal = savedXpTotalPremium;
+  __assertOk(cssText.includes('.stats-bento {') && cssText.includes('grid-template-columns: 1fr 1fr;'), 'le bento doit utiliser une vraie grille CSS modulaire');
+  console.log('OK: bento grid de stats (XP total/serie/trophees) sur la carte athlete, sans lecture Firestore supplementaire');
+
+  // --- Trophees en duotone/degrade (debloques) vs gris plat (verrouilles, deja existant) ---
+  __assertOk(/\\.trophy-item\\.unlocked \\.badge-icon::before\\s*\\{[^}]*radial-gradient/.test(cssText), 'les trophees debloques doivent avoir un fond en degrade (duotone) derriere l icone');
+  console.log('OK: trophees debloques en duotone/degrade, verrouilles restent en gris plat (contraste "acquis" renforce)');
+
+  // --- Navigation en pilule : transition douce plutot qu un indicateur qui
+  // glisse litteralement (deja tente puis retire sur la tab bar principale
+  // suite a un retour utilisateur negatif - voir plus haut .tab-btn.active) ---
+  __assertOk(cssText.includes('.leaderboard-tab-btn {') && /\\.leaderboard-tab-btn \\{[^}]*transition: background 0\\.3s ease/.test(cssText), 'les onglets en pilule (classement/langue/Profil-Journal, tous partagent cette classe) doivent transitionner en douceur vers leur etat actif');
+  console.log('OK: navigation en pilule generalisee avec transition douce vers l etat actif');
+
+  // --- Sparkline en degrade avec point final lumineux ---
+  xpTotal = savedXpTotalPremium;
+  const sparklineHtmlTest = renderExerciseSparkline([2, 5, 3, 8, 6, 10, 12]);
+  __assertOk(sparklineHtmlTest.includes('exercise-sparkline-area') && sparklineHtmlTest.includes('exercise-sparkline-dot'), 'la sparkline doit afficher une aire en degrade sous la courbe et un point final');
+  __assertOk(sparklineHtmlTest.includes('linearGradient') && sparklineHtmlTest.includes('sparklineFill') && sparklineHtmlTest.includes('sparklineStroke'), 'la sparkline doit definir ses propres degrades (trait ET aire)');
+  __assertEq(renderExerciseSparkline([0, 0, 0]), '', 'un cumul entierement nul ne doit toujours rien afficher (comportement existant preserve)');
+  __assertOk(cssText.includes('.exercise-sparkline-dot {') && cssText.includes('drop-shadow'), 'le point final de la sparkline doit briller legerement (glow)');
+  console.log('OK: sparkline en degrade avec aire remplie + point final lumineux (au lieu d un simple trait plat)');
 
   activeTab = 'today';
 

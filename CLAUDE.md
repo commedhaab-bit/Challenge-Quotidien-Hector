@@ -4792,3 +4792,151 @@ prochaine a explorer, avec le risque de regression plus large qu'elle implique.
 CACHE_NAME -> v109 (`styles.css` + `locale-*.js` modifies - nouvelle cle
 `popups.offlineBanner.synced`). Aucun changement de regles Firestore/Cloud
 Functions - modification 100% cote client, aucune touche a `functions/**`.
+
+## Passe "premium" globale (profondeur/lumiere, ressort, verre, recompenses) - retour utilisateur
+
+**Demande explicite de l'utilisateur** : rendre toute l'app "nettement plus
+premium, pas juste un style page web" - liste detaillee en 7 categories
+(profondeur/lumiere, typographie, micro-interactions a ressort, structure/
+hierarchie, recompenses visibles, data visualization, coherence d'un mini
+design system), validee en integralite ("j'adore toutes tes propositions,
+implemente tout"). Un artifact HTML autonome (mockup interactif, 3 ecrans
+cles) a d'abord ete presente et valide avant tout code reel dans l'app.
+
+**1. Profondeur & lumiere** :
+- `--bg` passe de `#0a0d0b` a `#000000` (noir OLED vrai - fait ressortir
+  davantage les halos neon existants, contraste maximal).
+- Fond en degrade "aurora" : 2 taches radiales tres douces (vert accent +
+  bleu complementaire `--aurora-2`) AJOUTEES aux 2 voiles blancs deja
+  existants sur `body` (jamais remplaces), opacites tres faibles (7-9%) -
+  profondeur ambiante, jamais une couleur consciemment remarquee.
+- Grain/texture de bruit (`body::after`, SVG `feTurbulence` en data-URI,
+  opacite 3%, `mix-blend-mode: overlay`, `pointer-events: none`) - evite
+  l'effet "aplat plastique" du noir pur.
+- Glassmorphism CIBLE aux surfaces flottantes uniquement (tab bar, popups
+  plein ecran, bottom sheets) - jamais aux cartes de contenu, pour garder la
+  hierarchie "contenu opaque" vs "controle/overlay en verre" lisible d'un
+  coup d'oeil (`--glass-bg`/`--glass-border`, `backdrop-filter: blur()`).
+- Glow pulsant discret (`@keyframes ...breathe`, amplitude faible, cycle
+  3s+, desactive sous `prefers-reduced-motion`) sur les 2 CTA les plus
+  utilises : `.qa-btn` (+5/+10, l'action la plus frequente de toute l'appli)
+  et `.community-hero-accept-all-btn` ("Relever le defi du jour").
+
+**2. Typographie** : `.progress-current` (gros chiffre de progression de la
+fiche d'exercice) passe en texte degrade (`background-clip: text`), meme
+degrade que les glows pour rester unifie. **Police display custom
+volontairement PAS tentee** - embarquer un fichier de police en base64
+depuis cet environnement (sans acces reseau pour la recuperer) aurait ete
+disproportionne/fragile ; la hierarchie typographique existante
+(`font-weight: 900`, `tabular-nums` deja largement present) reste le
+vecteur principal.
+
+**3. Micro-interactions a ressort** : `--spring: cubic-bezier(.34, 1.56,
+.64, 1)` centralise dans `:root` - cette meme courbe existait deja EN DUR a
+8 reprises eparpillees dans le fichier (card-pop-in, prep-countdown-pop,
+app-popup-pop-in, kilo-pop-in x3, tour-bubble-pop-in) : toutes remplacees
+par `var(--spring)`, aucun changement de comportement, uniquement de la
+coherence. Le retour tactile GENERALISE (`button:not(:disabled),
+.clickable`) est desormais scinde en 2 : relachement a ressort
+(`transition: transform 0.35s var(--spring)` sur la regle de base), appui
+rapide et lineaire (`transition: transform 0.08s ease` sur la regle
+`:active`, qui l'emporte le temps d'entrer dans cet etat) - un ressort
+perceptible A L'APPUI aurait ajoute un delai avant la reaction,
+contre-productif. Sweep lumineux (degrade qui balaie en boucle,
+`background-position` anime) partage par les 3 jauges de progression de
+l'appli (`.bar-fill`/`.athlete-xp-fill`/`.hardcore-fill`, meme regle
+groupee). "Boing" d'echelle (`.num-pop`, classe generique reutilisable) sur
+`animateCountUp()` une fois le defilement termine - **piege de test evite** :
+le mock `requestAnimationFrame()` du harnais ne declenche jamais son
+callback (deja documente ailleurs), donc ce chemin de code reste inatteint
+en test ; verifie a la place par presence structurelle du code source
+(`__rawHtml.includes(...)`). Coche qui se DESSINE (`checkmarkSVG()`, trace
+SVG progressif via `stroke-dasharray`/`stroke-dashoffset`) sur le bandeau
+"Defi complete aujourd'hui" - remplace le glyphe "✓" statique jusque-la
+inclus EN DUR dans le texte traduit (retire des 3 locale-*.js, `doneBanner`
+ne contient plus que le texte). **Piege reel decouvert en ecrivant les
+tests** : `testDriver` (le corps du harnais de test) est lui-meme un
+TEMPLATE LITERAL - tout regex y ecrit doit doubler ses backslashes (`\\s`,
+`\\.`, `\\{`) pour qu'il en reste un seul une fois la chaine "cuite" par le
+template literal AVANT d'atteindre le moteur de regex (deja le cas ailleurs
+dans ce fichier, ex. `[\\s\\S]`, jamais documente explicitement avant ce
+chantier) - un simple `\s`/`\.` non double est SILENCIEUSEMENT mange
+(devient un caractere litteral "s"/"." dans le pattern final), sans la
+moindre erreur de syntaxe pour le signaler : plusieurs assertions ont
+d'abord echoue de facon deroutante avant que cette cause reelle ne soit
+identifiee par debogage cible (comparaison d'un regex simplifie pas a pas).
+**A retenir pour tout futur regex ajoute a l'interieur de `testDriver`.**
+
+**4. Structure/hierarchie** : systeme d'elevation a 2 paliers
+(`--shadow-elevated` cartes de contenu, `--shadow-hero` surfaces flottantes/
+premier plan), applique a `.picker-item`/`.athlete-card` (elevated) et
+`.app-popup-card`/`.level-roadmap-sheet`/`.athlete-card.legendary` (hero).
+Bento grid (`renderAthleteStatsBento()`, nouvelle fonction) sur la carte
+athlete - XP total (grande cellule, texte degrade) + serie + trophees,
+**reutilise EXCLUSIVEMENT des donnees deja chargees en memoire** (`xpTotal`,
+`computeStreak()`, `badges.unlocked.length`) - aucune nouvelle lecture
+Firestore. Navigation en pilule : **pas d'indicateur qui glisse litteral**
+(deja tente puis explicitement retire sur la tab bar principale suite a un
+retour utilisateur negatif - voir plus haut ".tab-bar" / le halo diffus qui
+a remplace "la barre verte glissante") - `.leaderboard-tab-btn` (deja
+partagee par le classement, le selecteur de langue, Profil/Journal) recoit
+a la place une transition douce (`transition: background/border-color/
+color 0.3s ease`) vers son etat actif, moins fragile qu'un noeud de fond
+partage entre des groupes de boutons de nombre variable.
+
+**5. Recompenses visibles** : `isLegendaryLevel(level)` (nouvelle fonction
+pure, `index.html`) distingue le tout dernier palier de titre ('legende',
+`ATHLETE_TITLE_TIERS`, maxLevel Infinity) - reserve 2 effets au statut le
+plus prestigieux SEULEMENT (jamais aux paliers intermediaires, garde l'effet
+rare) : `.athlete-card.legendary` (bordure en degrade animee, technique
+"double fond" padding-box/border-box + `background-position` en boucle,
+robuste sans `@property`) et `.athlete-title.holo` (effet holographique/foil
+sur le texte du titre, degrade dore qui se deplace, `background-clip:
+text`). **Reutilise `renderAthleteLevelBlock()`, deja partagee avec la
+fiche d'un ami** (`renderFriendProfileSheet()`) - un ami "legende" affichera
+donc aussi son titre en holo, coherent (c'est SON accomplissement affiche,
+pas une question de "propriete" de la carte). Trophees debloques : petit
+disque en degrade radial derriere l'icone (`.trophy-item.unlocked
+.badge-icon::before`, duotone) - les trophees verrouilles restent inchanges
+(deja en gris plat).
+
+**6. Data visualization** : `renderExerciseSparkline()` (fiche d'exercice,
+tendance 7 jours) gagne une aire remplie en degrade sous la courbe (2e
+`<linearGradient>`, opacite 35%->0%) + un point final qui brille
+legerement (`filter: drop-shadow`), au lieu d'un simple trait plat - reste
+un site d'appel UNIQUE dans toute l'appli (verifie), donc aucun risque de
+collision d'`id` SVG entre plusieurs instances simultanees sur le meme
+ecran. **Heatmap d'activite (calendrier) delibersement NON touchee** :
+un commentaire existant documente deja une decision anterieure explicite
+("3 etats seulement, tres contrastes, au lieu de 4 nuances proches peu
+lisibles") - introduire une echelle continue aurait directement contredit
+ce choix deja fait pour des raisons de lisibilite, pas oublie par
+inattention.
+
+**7. Coherence (mini design system)** : tous les nouveaux tokens
+(`--spring`, `--aurora-2`, `--gold`/`--gold-2`, `--shadow-elevated`/
+`--shadow-hero`, `--glass-bg`/`--glass-border`) centralises dans `:root`,
+reutilises tels quels par chaque composant touche - jamais une valeur
+redefinie localement. Les 8 occurrences preexistantes de la courbe a ressort
+en dur ont ete retrofit vers `var(--spring)` (voir point 3) precisement pour
+cette raison : avant ce chantier, "le meme mouvement" existait dans les
+faits mais pas dans le code (8 copies independantes, risque de divergence
+future a chaque modification d'une seule d'entre elles).
+
+**Portee assumee** : chantier volontairement scope aux surfaces les PLUS
+visibles/frequentees (accueil, fiche d'exercice, profil/trophees, popups,
+tab bar, navigation en pilule generalisee) plutot qu'un ratissage exhaustif
+de tous les ecrans du fichier (Communaute/Groupes/Bibliotheque/Parametres
+gardent leur traitement visuel actuel, deja largement aligne sur ce meme
+vocabulaire via les passes "effet waouh" precedentes - cartes `.picker-item`/
+boutons/popups deja communs a tous ces ecrans en heritent quand meme
+automatiquement via les regles globales retouchees). A prolonger a la
+demande sur les ecrans restants si voulu.
+
+CACHE_NAME -> v110 (`styles.css`, `index.html` et les 3 `locale-*.js`
+modifies - nouvelle cle `profileTab.bento.*`, `doneBanner` sans glyphe "✓"
+en dur). Aucun changement de regles Firestore/Cloud Functions - modification
+100% cote client, aucune touche a `functions/**`. Meme limite de
+verification que le reste des chantiers visuels de ce projet : valide par
+tests structurels (tokens CSS, classes, gating conditionnel) + lint, **pas
+visuellement dans un vrai navigateur** - a confirmer par l'utilisateur.

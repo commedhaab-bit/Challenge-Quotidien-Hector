@@ -4,7 +4,10 @@
   }
 
   :root {
-    --bg: #0a0d0b;
+    /* Passe "premium" (retour utilisateur) : noir OLED vrai plutot qu'un gris
+       fonce uniforme - fait ressortir bien plus les halos neon (contraste
+       maximal), --bg-raised/--bg-card restent les teintes "surface" au-dessus. */
+    --bg: #000000;
     --bg-raised: #121613;
     --bg-card: #171c18;
     --chalk: #eef2ef;
@@ -18,6 +21,31 @@
     --danger: #ef5350;
     --hardcore: #ff6b35;
     --track-bg: #1e293b; /* fond distinct des jauges de progression (XP, series, trophees) */
+
+    /* Teinte secondaire (aurora, dégradés de fond) — complémentaire discrète au
+       vert néon, jamais utilisée comme accent d'action (réservée à la profondeur
+       décorative : fond, halos, bordures animées). */
+    --aurora-2: #3aa8ff;
+    --gold: #ffd76a;
+    --gold-2: #f5a623;
+
+    /* Courbe "ressort" unique, réutilisée partout (déjà utilisée en dur à 3
+       reprises avant ce chantier : card-pop-in, prep-countdown-pop,
+       app-popup-pop-in) - centralisée ici pour que tout nouvel effet à ressort
+       (boutons, cartes, feuilles) parle exactement le même langage de mouvement. */
+    --spring: cubic-bezier(.34, 1.56, .64, 1);
+
+    /* Système d'élévation à 2 paliers : "élevé" (cartes/panneaux au-dessus du
+       fond) et "hero" (surfaces flottantes/premier plan : popups, feuilles,
+       carte athlète légendaire). */
+    --shadow-elevated: 0 16px 32px -18px rgba(0, 0, 0, 0.6);
+    --shadow-hero: 0 30px 60px -20px rgba(0, 0, 0, 0.7), 0 0 40px -14px var(--accent-glow);
+
+    /* Verre dépoli — réservé aux surfaces FLOTTANTES (tab bar, popups, feuilles,
+       bulles de Kilito), jamais aux cartes de contenu (garde la hiérarchie
+       "contenu opaque" vs "contrôle/overlay en verre" lisible d'un coup d'œil). */
+    --glass-bg: rgba(15, 18, 15, 0.62);
+    --glass-border: rgba(255, 255, 255, 0.09);
   }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -30,11 +58,19 @@
      specifiques deja existantes (ex: .tab-btn:active, qui ajoute aussi un fond)
      restent prioritaires par specificite CSS - celle-ci ne fait que combler les
      elements qui n'en avaient encore aucune. */
+  /* Passe "premium" (retour utilisateur) : la transition de RETOUR (relachement)
+     utilise desormais la courbe a ressort commune (--spring) - le leger
+     depassement avant stabilisation est LE detail qui distingue une interface
+     "web" d'une interface "native". L'ENFONCEMENT (:active), lui, reste tres
+     rapide et lineaire (transition posee directement sur la regle :active,
+     qui l'emporte le temps d'entrer dans cet etat) : un ressort perceptible a
+     l'appui ferait sentir un delai avant la reaction, contre-productif. */
   button:not(:disabled), .clickable {
-    transition: transform 0.1s ease;
+    transition: transform 0.35s var(--spring);
   }
   button:not(:disabled):active, .clickable:active {
     transform: scale(0.96);
+    transition: transform 0.08s ease;
   }
   @media (prefers-reduced-motion: reduce) {
     button:active, .clickable:active { transform: none; }
@@ -63,10 +99,35 @@
     overscroll-behavior-y: contain;
   }
 
+  /* Passe "premium" (retour utilisateur) : fond en degrade "aurora" plutot qu'un
+     noir plat - 2 taches radiales tres douces et floues (vert accent + bleu
+     complementaire discret), fixes (ne defilent pas avec le contenu), en PLUS
+     des 2 voiles blancs deja existants. Opacites volontairement tres faibles
+     (3-4%) : un effet de profondeur ambiant, jamais une couleur qui se remarque
+     consciemment ou qui nuit au contraste du texte. */
   body {
     background-image:
+      radial-gradient(ellipse 900px 700px at 8% -10%, rgba(57, 233, 122, 0.09), transparent 55%),
+      radial-gradient(ellipse 800px 650px at 96% 18%, rgba(58, 168, 255, 0.07), transparent 55%),
       radial-gradient(ellipse at top left, rgba(255,255,255,0.03), transparent 50%),
       radial-gradient(ellipse at bottom right, rgba(255,255,255,0.02), transparent 50%);
+    background-attachment: fixed;
+  }
+  /* Grain/texture bruit tres subtil en overlay - evite l'effet "aplat plastique"
+     du noir pur, technique courante des interfaces sombres haut de gamme.
+     Fixe (pointer-events:none), au-dessus de tout le contenu mais sous les
+     popups/feuilles (z-index tres bas comparé a leur 950+). mix-blend-mode:
+     overlay le rend quasi invisible sur les zones claires, juste une texture
+     sur le fond sombre. */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.03;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
 
   .app {
@@ -112,6 +173,11 @@
   }
 
   /* BARRE DE NAVIGATION PERSISTANTE (bas d'écran) */
+  /* Passe "premium" (retour utilisateur) : verre depoli plutot qu'un fond plein
+     - la tab bar est une surface FLOTTANTE (au-dessus du contenu qui defile
+     dessous), le glassmorphism y a plus de sens que sur une carte de contenu.
+     Repli implicite pour les navigateurs sans support de backdrop-filter :
+     --glass-bg est deja suffisamment opaque pour rester lisible seule. */
   .tab-bar {
     position: fixed;
     bottom: 0;
@@ -120,8 +186,10 @@
     max-width: 480px;
     margin: 0 auto;
     display: flex;
-    background: var(--bg-raised);
-    border-top: 1px solid var(--line);
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    border-top: 1px solid var(--glass-border);
     padding: 8px 4px calc(8px + env(safe-area-inset-bottom, 0px));
     z-index: 500;
   }
@@ -234,7 +302,7 @@
     border-radius: 16px;
     padding: 16px 18px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.35), 0 20px 45px rgba(0,0,0,0.55), 0 0 0 1px rgba(57,233,122,0.15);
-    animation: tour-bubble-pop-in 0.3s cubic-bezier(.34,1.56,.64,1);
+    animation: tour-bubble-pop-in 0.3s var(--spring);
   }
   @keyframes tour-bubble-pop-in {
     from { transform: translateY(14px) scale(0.94); opacity: 0; }
@@ -310,7 +378,7 @@
     font-weight: 900;
     color: var(--accent);
     text-shadow: 0 0 60px var(--accent-glow);
-    animation: prep-countdown-pop 0.35s cubic-bezier(.34,1.56,.64,1);
+    animation: prep-countdown-pop 0.35s var(--spring);
   }
   @keyframes prep-countdown-pop {
     from { transform: scale(0.4); opacity: 0; }
@@ -331,16 +399,22 @@
     animation: app-popup-fade-in 0.2s ease;
   }
   @keyframes app-popup-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  /* Passe "premium" (retour utilisateur) : verre depoli (surface flottante
+     au-dessus du backdrop assombri) + ombre "hero" plutot qu'un simple fond
+     plein - renforce la sensation de carte qui flotte au premier plan. */
   .app-popup-card {
     position: relative;
-    background: var(--bg-card);
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px) saturate(1.3);
+    -webkit-backdrop-filter: blur(24px) saturate(1.3);
     border: 1px solid var(--accent-dim);
     border-radius: 22px;
     padding: 40px 28px 28px;
     text-align: center;
     max-width: 340px;
     width: 100%;
-    animation: app-popup-pop-in 0.4s cubic-bezier(.34,1.56,.64,1);
+    box-shadow: var(--shadow-hero);
+    animation: app-popup-pop-in 0.4s var(--spring);
   }
   .app-popup-close-x {
     position: absolute;
@@ -368,7 +442,7 @@
   .app-popup-card.epic {
     border: 1.5px solid #ffd700;
     box-shadow: 0 0 30px rgba(255,215,0,0.35), 0 0 70px rgba(255,215,0,0.15);
-    animation: app-popup-pop-in 0.4s cubic-bezier(.34,1.56,.64,1), app-popup-epic-glow 1.6s ease-in-out infinite;
+    animation: app-popup-pop-in 0.4s var(--spring), app-popup-epic-glow 1.6s ease-in-out infinite;
   }
   @keyframes app-popup-epic-glow {
     0%, 100% { box-shadow: 0 0 30px rgba(255,215,0,0.35), 0 0 70px rgba(255,215,0,0.15); }
@@ -530,8 +604,30 @@
     padding: 18px 20px;
     margin-bottom: 22px;
     cursor: pointer;
+    box-shadow: var(--shadow-elevated);
   }
   .athlete-card:active { transform: scale(0.98); }
+  /* Passe "premium" (retour utilisateur) : bordure en degrade animee, signe de
+     statut immediatement visible - reservee au titre le plus prestigieux
+     (ATHLETE_TITLE_TIERS, id 'legende', voir renderAthleteCard()). Technique
+     "double fond" (padding-box + border-box), sans @property : robuste sur
+     tous les navigateurs, contrairement a un angle de conic-gradient anime. */
+  .athlete-card.legendary {
+    border: 1.5px solid transparent;
+    background:
+      linear-gradient(135deg, rgba(57,233,122,0.10), rgba(57,233,122,0.02)) padding-box,
+      linear-gradient(120deg, var(--gold), var(--accent), var(--aurora-2), var(--gold)) border-box;
+    background-size: auto, 300% 300%;
+    animation: legendary-border-sweep 7s ease infinite;
+    box-shadow: var(--shadow-hero), 0 0 30px -12px rgba(255, 215, 106, 0.4);
+  }
+  @keyframes legendary-border-sweep {
+    0%, 100% { background-position: 0 0, 0% 50%; }
+    50% { background-position: 0 0, 100% 50%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .athlete-card.legendary { animation: none; background-position: 0 0, 50% 50%; }
+  }
   .athlete-level-row {
     display: flex;
     justify-content: space-between;
@@ -540,6 +636,27 @@
   }
   .athlete-level { font-size: 20px; font-weight: 900; }
   .athlete-title { font-size: 20px; color: var(--accent); font-weight: 900; margin-bottom: 22px; text-shadow: 0 0 16px var(--accent-glow); }
+  /* Passe "premium" (retour utilisateur) : effet "holographique"/foil anime sur
+     le titre le plus prestigieux (voir .athlete-card.legendary ci-dessus) -
+     degrade dore qui se deplace en boucle, plutot qu'une simple couleur unie,
+     pour un vrai sentiment de rarete. */
+  .athlete-title.holo {
+    color: transparent;
+    background: linear-gradient(110deg, var(--gold-2), #fff6da 30%, var(--gold) 50%, #fff6da 70%, var(--gold-2));
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    text-shadow: none;
+    filter: drop-shadow(0 0 14px rgba(255, 215, 106, 0.45));
+    animation: holo-title-shift 4.5s ease-in-out infinite;
+  }
+  @keyframes holo-title-shift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .athlete-title.holo { animation: none; background-position: 40% 50%; }
+  }
   .athlete-xp-track {
     height: 10px;
     border-radius: 9999px;
@@ -561,6 +678,47 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* Passe "premium" (retour utilisateur) : mini "bento grid" de stats sous le
+     bloc niveau/titre de la carte athlete - grille modulaire (1 cellule large +
+     2 cellules egales), plus riche visuellement qu'une simple liste. Toutes les
+     donnees viennent de renderAthleteStatsBento() (index.html), deja chargees
+     en memoire (aucune lecture Firestore supplementaire). */
+  .stats-bento {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .bento-cell {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 13px;
+    padding: 10px 12px;
+  }
+  .bento-cell-xp {
+    grid-column: span 2;
+    background: linear-gradient(120deg, rgba(57,233,122,0.14), rgba(58,168,255,0.08));
+  }
+  .bento-num {
+    font-size: 18px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  .bento-cell-xp .bento-num {
+    font-size: 24px;
+    background: linear-gradient(100deg, var(--accent), var(--aurora-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .bento-label {
+    font-size: 10.5px;
+    color: var(--chalk-dim);
+    font-weight: 650;
+    margin-top: 2px;
+  }
+
   /* PARCOURS DE NIVEAU / FICHE AMI / INFO GROUPE — retour utilisateur "effet
      waouh" : de VRAIES feuilles a glisser (bottom sheets), pas une page pleine
      qui se contente d'apparaitre. Le fond (backdrop) reste semi-transparent et
@@ -578,13 +736,18 @@
     background: rgba(0, 0, 0, 0.55);
     animation: sheet-backdrop-fade-in 0.2s ease;
   }
+  /* Passe "premium" (retour utilisateur) : verre depoli - meme raisonnement que
+     .app-popup-card, une bottom sheet est une surface flottante par excellence. */
   .level-roadmap-sheet {
     width: 100%;
     max-width: 480px;
     max-height: 88vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    background: var(--bg);
+    background: var(--glass-bg);
+    backdrop-filter: blur(26px) saturate(1.3);
+    -webkit-backdrop-filter: blur(26px) saturate(1.3);
+    border-top: 1px solid var(--glass-border);
     border-radius: 22px 22px 0 0;
     padding: 8px 20px calc(24px + env(safe-area-inset-bottom, 0px));
     position: relative;
@@ -873,6 +1036,15 @@
     gap: 8px;
     margin-bottom: 16px;
   }
+  /* Passe "premium" (retour utilisateur) : navigation en pilule generalisee -
+     cette meme classe est deja reutilisee pour plusieurs groupes de filtres/
+     sous-onglets de l'appli (classement, langue, Profil/Journal...). Plutot
+     qu'un "indicateur qui glisse" litteral (un noeud de fond partage entre
+     boutons de nombre variable, fragile a maintenir - et deja tente/retire
+     une fois sur la tab bar principale suite a un retour utilisateur negatif,
+     voir plus haut .tab-btn.active), transition de couleur/fond DOUCE plutot
+     qu'un changement instantane : la FEUILLE reste la meme (un simple bouton
+     qui change d'etat), seul le rythme du changement devient premium. */
   .leaderboard-tab-btn {
     flex: 1;
     background: rgba(255, 255, 255, 0.04);
@@ -883,6 +1055,7 @@
     padding: 10px;
     border-radius: 12px;
     cursor: pointer;
+    transition: background 0.3s ease, border-color 0.3s ease, color 0.3s ease, transform 0.35s var(--spring);
   }
   .leaderboard-tab-btn.active {
     background: var(--accent);
@@ -1379,6 +1552,19 @@
   .trophy-item.unlocked {
     border-color: var(--accent-dim);
     box-shadow: 0 0 12px var(--accent-glow);
+  }
+  /* Passe "premium" (retour utilisateur) : icones en duotone/degrade pour les
+     trophees debloques - petit disque en degrade derriere l'emoji, renforce le
+     contraste "acquis" vs le simple gris plat des trophees verrouilles
+     ci-dessous. z-index:-1 sur un ::before positionne dans .badge-icon (deja
+     position:relative) garde le disque bien DERRIERE l'emoji. */
+  .trophy-item.unlocked .badge-icon::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    z-index: -1;
+    border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 30%, transparent), transparent 72%);
   }
   .trophy-item.locked .badge-icon {
     filter: grayscale(1) opacity(0.45);
@@ -2199,6 +2385,10 @@
      defis communautaires du jour EN UNE FOIS. Remplace les anciens boutons "Relever
      le defi" par carte, qui n'activaient qu'UN SEUL des 2 defis et pretaient a
      confusion (l'intention est de rejoindre les 2 defis du jour ensemble). */
+  /* Passe "premium" (retour utilisateur) : glow pulsant discret sur le CTA
+     principal de l'ecran (guide l'oeil sans etre criard - amplitude tres
+     faible, cycle lent). Meme traitement que .qa-btn plus bas (voir
+     --pulse-glow), pour rester dans le meme vocabulaire visuel. */
   .community-hero-accept-all-btn {
     display: block;
     width: 100%;
@@ -2211,8 +2401,17 @@
     border-radius: 12px;
     cursor: pointer;
     margin-top: 16px;
+    box-shadow: 0 10px 24px -12px var(--accent-glow);
+    animation: cta-glow-breathe 3.2s ease-in-out infinite;
   }
   .community-hero-accept-all-btn:active { transform: scale(0.98); }
+  @keyframes cta-glow-breathe {
+    0%, 100% { box-shadow: 0 10px 24px -12px var(--accent-glow); }
+    50% { box-shadow: 0 10px 30px -8px var(--accent-glow); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .community-hero-accept-all-btn { animation: none; }
+  }
   /* Bordure/texte volontairement plus contrastés que var(--line)/var(--chalk-dim) :
      avec ces tokens (quasi invisibles sur ce fond), ce bouton pourtant bien actif
      donnait l'impression trompeuse d'être désactivé. */
@@ -2385,6 +2584,10 @@
     grid-template-columns: 1fr;
     gap: 8px;
   }
+  /* Passe "premium" (retour utilisateur) : palier d'elevation "carte" - ombre
+     ambiante douce au repos (--shadow-elevated), qui se renforce legerement au
+     survol/appui pour un vrai effet de profondeur plutot qu'un simple
+     changement de couleur de bordure. */
   .picker-item {
     background: var(--bg-card);
     border: 1px solid var(--line);
@@ -2395,11 +2598,12 @@
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
-    transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
-    animation: card-pop-in 0.35s cubic-bezier(.34,1.56,.64,1) backwards;
+    box-shadow: var(--shadow-elevated);
+    transition: border-color 0.15s, transform 0.35s var(--spring), box-shadow 0.25s ease;
+    animation: card-pop-in 0.35s var(--spring) backwards;
   }
-  .picker-item:active { transform: scale(0.98); }
-  .picker-item:hover { border-color: var(--accent-dim); }
+  .picker-item:active { transform: scale(0.98); transition: transform 0.08s ease; }
+  .picker-item:hover { border-color: var(--accent-dim); box-shadow: var(--shadow-elevated), 0 0 22px -10px var(--accent-glow); }
   /* Entrée en cascade des cartes de liste (Aujourd'hui/Défis) : léger décalage par
      carte (animation-delay posé en inline par renderChallengeCard), même timing/bounce
      que app-popup-pop-in/tour-bubble-pop-in pour rester cohérent avec le reste de
@@ -2718,10 +2922,20 @@
   }
   .exercise-sparkline polyline {
     fill: none;
-    stroke: var(--accent);
+    stroke: url(#sparklineStroke);
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+  /* Passe "premium" (retour utilisateur) : aire en degrade sous la courbe + point
+     final lumineux, plutot qu'un simple trait plat. */
+  .exercise-sparkline-area {
+    fill: url(#sparklineFill);
+    stroke: none;
+  }
+  .exercise-sparkline-dot {
+    fill: var(--accent);
+    filter: drop-shadow(0 0 2px var(--accent)) drop-shadow(0 0 4px var(--accent-glow));
   }
 
   .toast {
@@ -3067,10 +3281,32 @@
   .progress-numbers {
     font-variant-numeric: tabular-nums;
   }
+  /* Passe "premium" (retour utilisateur) : texte en degrade sur le gros chiffre
+     de progression (valeur a forte charge emotionnelle - le compte de
+     repetitions/secondes de l'exercice en cours), meme degrade que les glows
+     de l'appli pour rester unifie visuellement. */
   .progress-current {
     font-size: 40px;
     font-weight: 900;
-    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(100deg, var(--accent), var(--aurora-2) 130%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display: inline-block;
+  }
+  /* Passe "premium" (retour utilisateur) : "boing" d'echelle au moment exact ou
+     un chiffre change (au-dela du defilement deja gere par animateCountUp() -
+     voir index.html) - classe generique, reutilisable par n'importe quel
+     chiffre affiche (progression d'exercice, XP...). */
+  .num-pop { animation: num-pop-bounce 0.4s var(--spring); }
+  @keyframes num-pop-bounce {
+    0% { transform: scale(1); }
+    45% { transform: scale(1.16); }
+    100% { transform: scale(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .num-pop { animation: none; }
   }
   .progress-target {
     font-size: 18px;
@@ -3115,6 +3351,32 @@
   }
   .bar-fill.complete {
     background: linear-gradient(90deg, #3f8f5c, var(--good));
+  }
+
+  /* Passe "premium" (retour utilisateur) : sweep lumineux qui traverse en boucle
+     les barres/jauges de progression remplies, plutot qu'un aplat statique -
+     meme technique partagee par les 3 jauges de l'appli (defi du jour, XP du
+     Profil, Hardcore). Le degrade balaie horizontalement (background-position),
+     jamais un vrai deplacement de noeud - overflow:hidden le confine a
+     l'interieur de la jauge, sans jamais deborder de sa forme arrondie. */
+  .bar-fill, .athlete-xp-fill, .hardcore-fill {
+    position: relative;
+    overflow: hidden;
+  }
+  .bar-fill::after, .athlete-xp-fill::after, .hardcore-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.55) 48%, transparent 66%);
+    background-size: 200% 100%;
+    animation: fill-shimmer-sweep 2.6s ease-in-out infinite;
+  }
+  @keyframes fill-shimmer-sweep {
+    0% { background-position: 150% 0; }
+    55%, 100% { background-position: -50% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .bar-fill::after, .athlete-xp-fill::after, .hardcore-fill::after { animation: none; display: none; }
   }
 
   /* HARDCORE MODE */
@@ -3190,6 +3452,10 @@
   /* CTA principal de l'écran d'exécution : +5/+10 sont la méthode d'interaction
      privilégiée pendant l'effort, doivent dominer visuellement la saisie
      personnalisée (.custom-add-row, reléguée en action secondaire ci-dessous). */
+  /* Passe "premium" (retour utilisateur) : glow pulsant tres discret (le CTA le
+     plus utilise de toute l'appli, pendant l'effort) + relachement a ressort.
+     Amplitude volontairement faible : un signal ambiant, pas une animation qui
+     distrait pendant une serie. */
   .qa-btn {
     background: #00E676;
     border: none;
@@ -3200,11 +3466,20 @@
     border-radius: 12px;
     cursor: pointer;
     box-shadow: 0 2px 8px rgba(0, 230, 118, 0.18);
-    transition: transform 0.08s, background 0.1s;
+    transition: transform 0.35s var(--spring), background 0.1s;
+    animation: qa-btn-breathe 3s ease-in-out infinite;
   }
   .qa-btn:active {
     transform: scale(0.94);
     background: #00c766;
+    transition: transform 0.08s ease, background 0.08s;
+  }
+  @keyframes qa-btn-breathe {
+    0%, 100% { box-shadow: 0 2px 8px rgba(0, 230, 118, 0.18); }
+    50% { box-shadow: 0 4px 16px rgba(0, 230, 118, 0.32); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .qa-btn { animation: none; }
   }
 
   /* TIMER */
@@ -3374,6 +3649,10 @@
   }
 
   .done-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     text-align: center;
     padding: 16px;
     background: rgba(127, 176, 105, 0.12);
@@ -3383,6 +3662,22 @@
     font-weight: 700;
     font-size: 15px;
     margin-top: 16px;
+  }
+  /* Passe "premium" (retour utilisateur) : la coche se DESSINE (trace SVG
+     progressif) au lieu d'apparaitre d'un coup - stroke-dasharray fixe a la
+     longueur exacte du chemin (~26, mesuree pour ce trace precis), anime de
+     dashoffset=longueur (invisible) a 0 (trace complet). */
+  .check-draw-svg {
+    flex-shrink: 0;
+    stroke-dasharray: 26;
+    stroke-dashoffset: 26;
+    animation: check-draw 0.5s 0.1s ease-out forwards;
+  }
+  @keyframes check-draw {
+    to { stroke-dashoffset: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .check-draw-svg { animation: none; stroke-dashoffset: 0; }
   }
 
   /* TARGET EDIT — icône crayon discrète, pas de texte "modifier" inséré dans le chiffre */
@@ -3537,7 +3832,7 @@
     background: var(--bg-card);
     border: 1px solid var(--line);
     margin-bottom: 8px;
-    animation: card-pop-in 0.3s cubic-bezier(.34, 1.56, .64, 1) backwards;
+    animation: card-pop-in 0.3s var(--spring) backwards;
   }
   .joker-card-icon {
     font-size: 21px;
@@ -3619,7 +3914,7 @@
     border: 1px solid var(--line);
     cursor: pointer;
     transition: transform 0.15s ease, border-color 0.15s ease;
-    animation: card-pop-in 0.35s cubic-bezier(.34, 1.56, .64, 1) backwards;
+    animation: card-pop-in 0.35s var(--spring) backwards;
   }
   .group-card:active { transform: scale(0.97); }
   .group-card-emoji {
@@ -3821,7 +4116,7 @@
      translateY(0), deux etats visuellement neutres). Specificite (2 classes)
      l'emporte naturellement sur .kilo-idle seule, aucun !important necessaire. */
   .kilo-idle.kilo-unflash {
-    animation: kilo-pop-in 0.4s cubic-bezier(.34, 1.56, .64, 1) both,
+    animation: kilo-pop-in 0.4s var(--spring) both,
       kilo-idle-bounce 2.0s ease-in-out infinite 0.4s;
   }
 
@@ -3831,7 +4126,7 @@
   .kilo-sweat { animation: kilo-sweat-drip 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
   @keyframes kilo-sweat-drip { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(15px); opacity: 0; } }
 
-  .kilo-success { filter: drop-shadow(0 0 5px rgba(253, 224, 71, 0.95)) drop-shadow(0 0 20px rgba(234, 179, 8, 0.65)); animation: kilo-pop-in 0.4s cubic-bezier(.34, 1.56, .64, 1) both; }
+  .kilo-success { filter: drop-shadow(0 0 5px rgba(253, 224, 71, 0.95)) drop-shadow(0 0 20px rgba(234, 179, 8, 0.65)); animation: kilo-pop-in 0.4s var(--spring) both; }
   @keyframes kilo-pop-in { 0% { transform: scale(0.7); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
 
   .kilo-spark { transform-origin: center; animation: kilo-spark-twinkle 1.1s ease-in-out infinite; animation-delay: var(--kilo-spark-delay, 0ms); }
@@ -3865,7 +4160,7 @@
   .kilo-lost-mark { animation: kilo-lost-mark-drift 3.2s ease-in-out infinite; transform-origin: center; }
   @keyframes kilo-lost-mark-drift { 0%, 100% { opacity: 0.45; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-5px); } }
 
-  .kilo-level_up { filter: drop-shadow(0 0 6px rgba(253, 224, 71, 1)) drop-shadow(0 0 24px rgba(234, 179, 8, 0.75)); animation: kilo-pop-in 0.4s cubic-bezier(.34, 1.56, .64, 1) both; }
+  .kilo-level_up { filter: drop-shadow(0 0 6px rgba(253, 224, 71, 1)) drop-shadow(0 0 24px rgba(234, 179, 8, 0.75)); animation: kilo-pop-in 0.4s var(--spring) both; }
   /* Entree unique (la coupe vole jusqu'a sa place) puis relai par
      kilo-trophy-pump, un groupe ENFANT, pour boucler en continu sans jamais
      entrer en conflit avec la 1ere animation - 2 animations ne peuvent pas

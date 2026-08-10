@@ -4194,6 +4194,18 @@ function lockIconSVG(size) {
   </svg>`;
 }
 
+// Passe "premium" (retour utilisateur) : coche qui se DESSINE (trace SVG
+// progressif via stroke-dasharray/dashoffset, voir .check-draw-svg dans
+// styles.css) plutot qu'un glyphe "✓" statique - effet "confirmation de
+// paiement", nettement plus qualitatif sur un etat de succes. currentColor
+// pour heriter la couleur du texte environnant, comme lockIconSVG() ci-dessus.
+function checkmarkSVG(size) {
+  const s = size || 16;
+  return `<svg class="check-draw-svg" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path d="M4 12.5L9.5 18L20 6" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
 // Petites icônes (vert néon via currentColor) remplaçant les mots "Chrono"/"Répétitions"
 // sur les cartes d'exercice des listes (Défis/Aujourd'hui) : chrono épuré pour les
 // défis en secondes, traits de comptage à la craie pour les défis en répétitions.
@@ -4482,6 +4494,15 @@ function athleteTitle(level) {
   // (renderChallengeCard() batch 3, renderLevelRoadmapSheet() batch 6).
   const tier = ATHLETE_TITLE_TIERS.find(tier => level <= tier.maxLevel);
   return t('athleteTitles.' + tier.id) + ' ' + tier.icon;
+}
+// Passe "premium" (retour utilisateur) : distingue le tout dernier palier de
+// titre ('legende', maxLevel Infinity) - reserve l'effet holographique/bordure
+// en degrade animee (voir renderAthleteCard()/renderAthleteLevelBlock() +
+// styles.css .athlete-card.legendary/.athlete-title.holo) au titre le plus
+// prestigieux, jamais aux paliers intermediaires (garde l'effet rare/special).
+function isLegendaryLevel(level) {
+  const tier = ATHLETE_TITLE_TIERS.find(tier => level <= tier.maxLevel);
+  return tier.id === 'legende';
 }
 // 50 XP de base + bonus selon le volume (reps/sec) et, pour les haltères, la charge.
 function xpForChallenge(c, total) {
@@ -5882,16 +5903,37 @@ async function loadExerciseSparkline(challengeId) {
   }
 }
 
+// Passe "premium" (retour utilisateur) : remplissage en degrade sous la ligne
+// (plutot qu'un simple trait) + point final qui brille legerement - meme
+// esprit que les jauges de progression en degrade avec glow ailleurs dans
+// l'appli, applique ici a la mini-visualisation de tendance.
 function renderExerciseSparkline(totals) {
   if (!totals || totals.every((v) => v === 0)) return '';
   const max = Math.max(...totals, 1);
   const w = 60, h = 18, pad = 2;
-  const points = totals.map((v, i) => {
+  const coords = totals.map((v, i) => {
     const x = pad + (i * (w - pad * 2)) / (totals.length - 1);
     const y = h - pad - (v / max) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  return `<svg class="exercise-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>`;
+    return [x, y];
+  });
+  const points = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const [lastX, lastY] = coords[coords.length - 1];
+  const areaPoints = `${pad.toFixed(1)},${h - pad} ${points} ${(w - pad).toFixed(1)},${h - pad}`;
+  return `<svg class="exercise-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="sparklineStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="var(--accent-dim)"/>
+        <stop offset="100%" stop-color="var(--accent)"/>
+      </linearGradient>
+      <linearGradient id="sparklineFill" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <polygon class="exercise-sparkline-area" points="${areaPoints}"></polygon>
+    <polyline points="${points}"></polyline>
+    <circle class="exercise-sparkline-dot" cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="1.6"></circle>
+  </svg>`;
 }
 
 // ==== Garde-fou anti-spam humoristique (retour utilisateur) ====
@@ -6360,7 +6402,17 @@ function animateCountUp(elId, key, targetValue) {
     const progress = Math.min(1, (Date.now() - start) / duration);
     const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubique
     el.textContent = Math.round(from + (targetValue - from) * eased);
-    if (progress < 1) requestAnimationFrame(step);
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    } else {
+      // Passe "premium" (retour utilisateur) : petit "boing" d'echelle une fois le
+      // defilement termine, en plus du defilement lui-meme - void offsetWidth force
+      // un reflow pour permettre de rejouer l'animation meme si la classe etait deja
+      // presente (meme technique que kiloTap()/qa-btn.flash ailleurs dans ce fichier).
+      el.classList.remove('num-pop');
+      void el.offsetWidth;
+      el.classList.add('num-pop');
+    }
   }
   requestAnimationFrame(step);
 }
@@ -6716,7 +6768,7 @@ function render(animate) {
           </div>
         ` : ''}
 
-        ${entry.done ? `<div class="done-banner">${t('exercise.doneBanner')}</div>` : ''}
+        ${entry.done ? `<div class="done-banner">${checkmarkSVG(16)}${t('exercise.doneBanner')}</div>` : ''}
       </div>
     `;
   }
@@ -7404,20 +7456,48 @@ function renderAthleteLevelBlock(xpTotalValue, clickable = true) {
   const xpLabel = clickable
     ? t('profileTab.xpProgress', { current: xpIntoLevel, needed: xpNeeded })
     : t('profileTab.xpProgressPlain', { current: xpIntoLevel, needed: xpNeeded });
+  const titleClass = isLegendaryLevel(level) ? ' holo' : '';
   return `
     <div class="athlete-level-row">
       <div class="athlete-level">${t('profileTab.levelLabel', { n: level })}</div>
     </div>
-    <div class="athlete-title">${title}</div>
+    <div class="athlete-title${titleClass}">${title}</div>
     <div class="athlete-xp-track"><div class="athlete-xp-fill" style="width:${pct}%"></div></div>
     <div class="athlete-xp-label">${xpLabel}</div>
   `;
 }
 
-function renderAthleteCard() {
+// Passe "premium" (retour utilisateur) : mini bento de stats juste sous le
+// bloc niveau/titre - reutilise EXCLUSIVEMENT des donnees deja chargees en
+// memoire (xpTotal, computeStreak(), badges.unlocked.length), aucune nouvelle
+// lecture Firestore. Scope volontairement a SA PROPRE carte (jamais
+// renderAthleteLevelBlock(), partagee avec la fiche d'un ami) - ces stats
+// (serie, trophees) n'ont de sens que pour son propre profil dans ce contexte.
+function renderAthleteStatsBento() {
   return `
-    <div class="athlete-card tilt-card" onclick="openLevelRoadmap()">
+    <div class="stats-bento">
+      <div class="bento-cell bento-cell-xp">
+        <div class="bento-num">${xpTotal.toLocaleString(LOCALE_TO_INTL[currentLocale])}</div>
+        <div class="bento-label">${t('profileTab.bento.xp')}</div>
+      </div>
+      <div class="bento-cell">
+        <div class="bento-num">🔥 ${computeStreak()}</div>
+        <div class="bento-label">${t('profileTab.bento.streak')}</div>
+      </div>
+      <div class="bento-cell">
+        <div class="bento-num">${badges.unlocked.length}</div>
+        <div class="bento-label">${t('profileTab.bento.trophies')}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAthleteCard() {
+  const legendaryClass = isLegendaryLevel(xpProgress(xpTotal).level) ? ' legendary' : '';
+  return `
+    <div class="athlete-card tilt-card${legendaryClass}" onclick="openLevelRoadmap()">
       ${renderAthleteLevelBlock(xpTotal)}
+      ${renderAthleteStatsBento()}
     </div>
   `;
 }
