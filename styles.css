@@ -2598,14 +2598,6 @@
     margin: 0 0 4px;
     line-height: 0.95;
   }
-  /* Retour utilisateur : le titre "Communauté" (le plus long des titres
-     d'ecran) partage desormais sa ligne avec le bouton "Amis"
-     (.library-header-row, voir renderCommunityScreen()) - reduit pour
-     laisser une vraie marge de respiration au bouton, plutot que de risquer
-     un chevauchement a 42px. */
-  h1.title.community-title {
-    font-size: 33px;
-  }
   .subtitle {
     color: var(--chalk-dim);
     font-size: 14px;

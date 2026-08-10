@@ -5142,3 +5142,13 @@ ne peut pas non plus etre verifie ici (pas de vrai navigateur) - les tests
 valident la presence/le contenu de la regle `@font-face` et sa reference
 dans le precache, jamais son rendu reel. A confirmer par l'utilisateur sur
 l'app deployee.
+
+**Retour utilisateur apres verification reelle** : la reduction de taille
+dediee au titre "Communaute" (`h1.title.community-title`, 33px au lieu de
+42px - ajoutee du temps ou les titres utilisaient la police CONDENSEE Arial
+Narrow, pour eviter tout risque de chevauchement avec le bouton Amis a cote,
+voir "Pastille alignee au titre" plus haut) n'a plus lieu d'etre avec
+Nunito, qui prend nettement moins de largeur horizontale sur ce mot precis -
+retiree entierement (classe CSS + son usage dans `renderCommunityScreen()`),
+"Communaute" partage desormais la meme taille que tous les autres titres de
+l'app. CACHE_NAME -> v115.

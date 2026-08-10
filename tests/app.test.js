@@ -3189,7 +3189,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v114'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v115'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -4648,9 +4648,14 @@ const cssText = __rawHtml + __cssSource;
   // perdu en dessous - desormais sur la MEME ligne que le titre, comme
   // l onglet Défis (.library-header-row, deja utilise pour son bouton "+").
   __assertOk(communityHeaderHtml.includes('library-header-row') && communityHeaderHtml.indexOf('library-header-row') < communityHeaderHtml.indexOf('friends-btn'), 'le bouton Amis doit desormais vivre dans .library-header-row, sur la meme ligne que le titre Communaute');
-  __assertOk(communityHeaderHtml.includes('title community-title'), 'le titre "Communaute" doit porter une classe dediee (reduction de taille pour laisser la place au bouton Amis a cote)');
   __assertOk(profileHeaderHtml.includes('library-header-row') && profileHeaderHtml.indexOf('library-header-row') < profileHeaderHtml.indexOf('class="streak"'), 'la pastille de serie doit desormais vivre dans .library-header-row, sur la meme ligne que le titre Profil/Journal');
-  __assertOk(/\\.title\\.community-title\\s*\\{[^}]*font-size: 33px/.test(cssText), 'le titre Communaute doit avoir une taille de police reduite par rapport aux autres titres (42px), pour ne jamais toucher le bouton Amis a cote');
+  // Retour utilisateur (apres passage a Nunito) : avec la police arrondie,
+  // "Communaute" n occupe plus assez de largeur pour risquer de toucher le
+  // bouton Amis a cote - la reduction de taille dediee (33px vs 42px) n a
+  // plus lieu d etre et a ete retiree, le titre partage desormais la meme
+  // taille que tous les autres titres de l app.
+  __assertOk(communityHeaderHtml.includes('<h1 class="title">') && !communityHeaderHtml.includes('community-title'), 'le titre "Communaute" ne doit plus porter de classe dediee, meme taille que les autres titres');
+  __assertOk(!cssText.includes('community-title'), 'la regle CSS de reduction de taille du titre Communaute doit avoir ete retiree (code mort)');
   __assertOk(cssText.includes('.friends-btn {') && /\\.friends-btn\\s*\\{[^}]*flex-shrink: 0/.test(cssText), 'le bouton Amis ne doit jamais se comprimer (flex-shrink:0) meme a cote d un titre long');
   __assertOk(/\\.streak\\s*\\{[^}]*flex-shrink: 0/.test(cssText), 'la pastille de serie ne doit jamais se comprimer (flex-shrink:0) meme a cote d un titre');
   console.log('OK: pastille (Amis/serie) alignee a la meme hauteur que le titre sur Communaute/Profil, comme sur l onglet Défis');
