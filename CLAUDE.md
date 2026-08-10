@@ -4979,3 +4979,45 @@ lint, **pas visuellement dans un vrai navigateur** - le retour utilisateur
 qui a motive ce correctif venait justement d'une capture d'ecran de la
 maquette (jamais du rendu reel de l'app, toujours pas verifiable ici) - a
 reconfirmer par l'utilisateur sur l'app deployee.
+
+## Date + ligne de demarcation du header retirees partout sauf l'accueil
+
+**Demande explicite de l'utilisateur** : la date en haut a gauche (et la
+ligne de demarcation juste en dessous) n'a d'utilite reelle que sur l'ecran
+Aujourd'hui - sur les 3 autres ecrans qui partagent `.header` (Communaute,
+Groupes, Profil), retirer les 2 pour un haut de page plus epure.
+
+**`.header` (regle de base, `styles.css`) perd `border-bottom` purement et
+simplement** - avant ce correctif, seul `.header.today-header` l'annulait
+(voir plus haut "l'accueil... n'a plus besoin de cette ligne de
+demarcation") ; puisque PLUS AUCUN header n'en a besoin desormais, la ligne
+est retiree a la source plutot que desactivee au cas par cas - `.header.
+today-header` en tant que classe de suppression du trait devient sans objet
+(la classe elle-meme reste, toujours utile pour le `justify-content:
+space-between` specifique a l'accueil, voir ci-dessous).
+
+**3 sites retouches, chacun different selon ce qu'il restait a cote de la
+date** :
+- `renderCommunityScreen()` : la date disparait, le bouton "Amis" (badge de
+  demandes en attente inclus) reste seul dans le header.
+- `renderAccountTabScreen()` (Profil) : la date disparait, la pastille de
+  serie (`.streak`) reste seule.
+- `renderGroupsScreen()` : le header ne contenait QUE la date - le `<div
+  class="header">...</div>` entier est retire (pas juste son contenu), pour
+  ne pas laisser un bloc vide avec ses propres marge/padding (36px de vide
+  pour rien). Le titre "Groupes" (`.library-header-row`, juste en dessous)
+  remonte directement sous le padding de `.app`.
+
+**`justify-content` scinde en consequence** : `.header` garde `space-between`
+par defaut (necessaire a l'accueil : date a gauche, Kilo+bulle a droite),
+mais `.header:not(.today-header) { justify-content: flex-end; }` recale a
+droite le seul enfant restant (bouton Amis/pastille de serie) sur les 2
+ecrans qui en gardent un - sans ca, ce bouton aurait glisse a gauche une
+fois la date disparue (space-between avec un seul enfant l'aligne au
+debut, pas a la fin).
+
+CACHE_NAME -> v112 (`styles.css` + `index.html` modifies). Aucun changement
+de regles Firestore/Cloud Functions - modification 100% cote client, aucune
+touche a `functions/**`. Meme limite de verification que le reste des
+chantiers visuels : valide par tests structurels + lint, **pas
+visuellement dans un vrai navigateur** - a confirmer par l'utilisateur.

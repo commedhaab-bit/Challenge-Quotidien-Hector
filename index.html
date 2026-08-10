@@ -8155,7 +8155,6 @@ function renderCommunityScreen() {
 
   return `
     <div class="header">
-      <div class="date">${formatDateLabel(new Date())}</div>
       <button class="friends-btn" onclick="openFriendsScreen()">${t('community.friendsBtn')}${incomingFriendRequests.length > 0 ? `<span class="friends-badge">${incomingFriendRequests.length}</span>` : ''}</button>
     </div>
     <h1 class="title">${t('community.title')}</h1>
@@ -8845,9 +8844,6 @@ function renderGroupsScreen() {
   ` : '';
 
   return `
-    <div class="header">
-      <div class="date">${formatDateLabel(new Date())}</div>
-    </div>
     <div class="library-header-row">
       <div>
         <h1 class="title">${t('nav.groups')}</h1>
@@ -9483,7 +9479,6 @@ function renderAccountTabScreen() {
   `;
   return `
     <div class="header">
-      <div class="date">${formatDateLabel(new Date())}</div>
       <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
     </div>
     <h1 class="title">${isJournal ? t('history.title') : t('profileTab.title')}</h1>

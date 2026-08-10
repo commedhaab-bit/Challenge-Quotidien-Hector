@@ -868,20 +868,26 @@
   .switch.on .switch-knob { left: 22px; }
 
   /* HEADER */
+  /* Retour utilisateur : la ligne de demarcation (border-bottom) et la date
+     n'ont de sens que sur l'accueil (seul ecran ou la date accompagne Kilo et
+     sa bulle) - retirees de TOUS les autres ecrans qui partagent .header
+     (Communaute/Groupes/Profil) pour un haut de page plus epure. La ligne
+     n'a donc plus jamais lieu d'etre nulle part : simplement retiree de la
+     regle de base plutot que desactivee au cas par cas comme avant (l'ancien
+     .header.today-header qui l'annulait devient sans objet). Sur les ecrans
+     SANS date (un seul enfant restant, ex: le bouton "Amis"/la pastille de
+     serie, ou meme aucun), .header:not(.today-header) passe en flex-end pour
+     garder ce bouton cale a droite plutot que de le voir glisser a gauche
+     une fois le premier enfant (la date) disparu. */
   .header {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
     margin-bottom: 22px;
     padding-bottom: 14px;
-    border-bottom: 1px solid var(--line);
   }
-  /* Retour utilisateur (UI) : l'accueil (seul ecran a afficher Kilo + sa
-     bulle dans le header) n'a plus besoin de cette ligne de demarcation -
-     scope a CET ecran uniquement (.header reste inchangee pour Communaute/
-     Groupes/Profil, qui la partagent toujours). */
-  .header.today-header {
-    border-bottom: none;
+  .header:not(.today-header) {
+    justify-content: flex-end;
   }
   .header .date {
     font-size: 13px;

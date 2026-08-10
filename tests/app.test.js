@@ -1806,7 +1806,11 @@ const cssText = __rawHtml + __cssSource;
   const kiloBubbleIdxInWrap = kiloHomeAppHtml.indexOf('kilo-home-bubble', kiloWrapIdx);
   __assertOk(kiloSlotIdxInWrap > kiloWrapIdx && kiloBubbleIdxInWrap > kiloSlotIdxInWrap, 'dans le HTML, kilo-home-wrap doit envelopper le slot PUIS la bulle, dans cet ordre');
   __assertOk(kiloHomeAppHtml.includes('today-header'), 'le header de l accueil doit porter la classe today-header (suppression de la ligne de demarcation)');
-  __assertOk(cssText.includes('.header.today-header') && cssText.includes('border-bottom: none'), 'la regle CSS qui supprime la ligne de demarcation doit exister, scopee a today-header uniquement');
+  {
+    const headerRuleIdx = cssText.indexOf('.header {');
+    const headerRuleBlock = cssText.slice(headerRuleIdx, cssText.indexOf('}', headerRuleIdx));
+    __assertOk(!headerRuleBlock.includes('border-bottom'), 'la ligne de demarcation ne doit plus etre definie du tout sur .header de base (retiree partout, pas seulement desactivee sur today-header - voir retour utilisateur "haut de page epure sur tous les ecrans sauf Aujourd hui")');
+  }
   __assertOk(cssText.includes('.kilo-home-bubble::before') && cssText.includes('.kilo-home-bubble::after'), 'la bulle d accueil doit avoir une pointe triangulaire, comme la bulle de la fiche d exercice');
   __assertOk(cssText.includes('min-height: 58px'), 'la bulle d accueil doit avoir une hauteur minimale FIXE (empeche les cartes en dessous de bouger quand le texte change de longueur - "effet cascade")');
   console.log('OK: bulle d accueil restylee (conteneur commun avec Kilo, triangle, hauteur fixe, header sans ligne de demarcation)');
@@ -3176,7 +3180,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v111'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v112'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -4616,6 +4620,23 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(incomingFriendRequests[0].fromUid, 'me-uid', 'la demande recue doit venir de moi-uid');
   const communityHeaderHtml = renderCommunityScreen();
   __assertOk(communityHeaderHtml.includes('friends-badge') && communityHeaderHtml.includes('>1<'), 'le bouton Amis doit afficher un badge avec le nombre de demandes en attente');
+
+  // Retour utilisateur : la date en haut a gauche (et la ligne de demarcation
+  // qui l accompagnait) n a de sens que sur l accueil - retiree de Communaute/
+  // Groupes/Profil pour un haut de page plus epure, sans toucher au reste du
+  // contenu de ces 3 ecrans.
+  __assertOk(!communityHeaderHtml.includes('class="date"'), 'l ecran Communaute ne doit plus afficher la date en haut a gauche');
+  const groupsHeaderHtml = renderGroupsScreen();
+  __assertOk(!groupsHeaderHtml.includes('class="date"'), 'l ecran Groupes ne doit plus afficher la date en haut a gauche');
+  __assertOk(!groupsHeaderHtml.trimStart().startsWith('<div class="header">'), 'l ecran Groupes ne doit plus afficher de header du tout (il ne contenait QUE la date, plus rien a y garder)');
+  const profileHeaderHtml = renderAccountTabScreen();
+  __assertOk(!profileHeaderHtml.includes('class="date"'), 'l ecran Profil ne doit plus afficher la date en haut a gauche');
+  __assertOk(profileHeaderHtml.includes('class="streak"'), 'la pastille de serie doit rester affichee sur Profil, seule la date disparait');
+  {
+    const notTodayRuleIdx = cssText.indexOf('.header:not(.today-header) {');
+    __assertOk(notTodayRuleIdx !== -1 && cssText.slice(notTodayRuleIdx, notTodayRuleIdx + 80).includes('justify-content: flex-end'), 'sans la date, le contenu restant du header (bouton Amis/pastille de serie) doit rester cale a droite (flex-end)');
+  }
+  console.log('OK: date + ligne de demarcation retirees du header sur Communaute/Groupes/Profil (reservees a l accueil)');
 
   // Acceptation : cree friendships/{paire triee}, supprime la demande, ET
   // previent desormais le demandeur original (Phase A notifications push -
