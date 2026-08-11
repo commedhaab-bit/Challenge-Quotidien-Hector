@@ -2703,7 +2703,10 @@
     text-align: center;
     padding: 40px 24px;
   }
-  .login-screen .emoji { font-size: 48px; margin-bottom: 18px; }
+  .login-kilo-slot {
+    margin-bottom: 18px;
+    filter: drop-shadow(0 0 14px rgba(57, 233, 122, 0.5));
+  }
   .login-screen h1 {
     font-size: 30px;
     font-weight: 900;
@@ -3541,9 +3544,24 @@
      la hauteur PROPRE de la bande, jamais un pixel calcule en JS) positionne
      le bon chiffre, et glisse naturellement a travers les chiffres
      intermediaires pendant la transition, exactement comme un vrai odometre. */
-  .progress-current.odometer {
-    display: inline-flex;
-  }
+  /* Bug reel corrige DEUX FOIS de suite (retour utilisateur : "les chiffres
+     ne s'affichent toujours pas, sauf un 0 qui apparait une seconde") - la
+     1ere correction (redeclarer le degrade au lieu de `background: inherit`)
+     etait insuffisante. Plutot que de continuer a chasser une interaction
+     CSS exotique invisible sans navigateur reel sous la main, simplifie
+     RADICALEMENT vers la technique la plus classique/eprouvee possible :
+     - AUCUN flexbox nulle part (ni sur le conteneur ni sur les bandes) -
+       .odo-col (inline-block) + .odo-strip span (block) suffisent pour un
+       empilement vertical fiable, sans les subtilites de dimensionnement
+       d'un flex imbrique dans un flex (align-items:stretch, hauteur auto
+       d'un flex-column...).
+     - COULEUR PLEINE (var(--accent)) a la place du degrade en
+       background-clip:text - cette technique a deja echoue 2 fois dans ce
+       contexte precis (colonnes+overflow:hidden+transform), potentiellement
+       a cause d'un support inconsistant de background-clip:text combine a
+       un ancetre overflow:hidden/transform sur certains moteurs de rendu
+       mobiles. Le gain visuel du degrade ne justifie pas un 2e bug de
+       visibilite totale. */
   .odo-col {
     display: inline-block;
     height: 1em;
@@ -3552,30 +3570,15 @@
     line-height: 1;
   }
   .odo-strip {
-    display: flex;
-    flex-direction: column;
+    display: block;
     transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .odo-strip span {
+    display: block;
     height: 1em;
     line-height: 1;
-    display: block;
     text-align: center;
-    /* Bug reel corrige (retour utilisateur, "les chiffres ne s'affichent pas
-       du tout") : `background: inherit` remontait seulement au parent DIRECT
-       (.odo-strip, qui n'a lui-meme AUCUN background propre), pas jusqu'a
-       .progress-current 2 niveaux plus haut - le degrade heritait donc de
-       rien, laissant un texte totalement transparent (color:transparent +
-       background-clip:text sans le moindre background reel derriere).
-       Redeclare le MEME degrade directement ici (duplique, mais correct quel
-       que soit le niveau d'imbrication) - chaque colonne clippe sur SA propre
-       boite (leger effet de "reprise" du degrade par colonne plutot qu'un
-       seul balayage continu sur tout le nombre - compromis accepte, les 2
-       teintes de la palette restent proches). */
-    background: linear-gradient(100deg, var(--accent), var(--aurora-2) 130%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--accent);
   }
   @media (prefers-reduced-motion: reduce) {
     .odo-strip { transition: none; }

@@ -2081,7 +2081,7 @@ const LOCALE_ES = {
     noOneYet: 'Todavía no hay nadie que mostrar.',
     inviteText: 'Invita a tus amigos para animar la clasificación ⚡',
     inviteBtn: '📤 Compartir',
-    shareInviteText: 'Únete a mí en Défi du Jour para aceptar el reto comunitario ⚡',
+    shareInviteText: 'Únete a mí en Kilito para aceptar el reto comunitario ⚡',
     streakValue: '🔥 {{n}} d',
     xpValue: '⚡ {{n}} XP',
     rankOutOfTotal: 'de {{total}} participantes',
@@ -2276,7 +2276,7 @@ const LOCALE_ES = {
     },
   },
   tour: {
-    welcome: { title: '¡Bienvenido a Défi du Jour!', text: 'Hagamos un recorrido rápido para descubrir cómo funciona la aplicación.' },
+    welcome: { title: '¡Bienvenido a Kilito!', text: 'Hagamos un recorrido rápido para descubrir cómo funciona la aplicación.' },
     today: { title: 'Hoy', text: 'Encuentra aquí los retos que has activado para hoy, y sigue tu progreso en directo.' },
     library: { title: 'Retos', text: 'Empieza por aquí: activa uno o varios retos para hoy pulsando su tarjeta.' },
     account: { title: 'Perfil', text: 'Tu información, tu perfil deportivo y todos los trofeos que desbloqueas con el tiempo. Justo arriba: tu Diario (calendario, actividad reciente e historial detallado).' },
@@ -2310,7 +2310,7 @@ const LOCALE_ES = {
       ctaBtn: 'Descubrir mis retos',
     },
     welcome: {
-      titleHtml: 'Bienvenido a<br><span class="pf-brand">Défi du Jour</span>',
+      titleHtml: 'Bienvenido a<br><span class="pf-brand">Kilito</span>',
       feature1: 'Elige tus retos diarios',
       feature2: 'Supérate cada día',
       feature3: 'Sigue tu progreso en tiempo real',
@@ -2357,7 +2357,7 @@ const LOCALE_ES = {
     xpProgress: '{{current}} / {{needed}} XP · toca para ver tu progreso',
     xpProgressPlain: '{{current}} / {{needed}} XP',
     trophiesLabel: 'Trofeos ({{unlocked}}/{{total}})',
-    radarLabel: 'Equilibrio del último mes',
+    radarLabel: 'Equilibrio mensual',
     bento: {
       xp: 'XP total',
       streak: 'Días de racha',
@@ -2598,7 +2598,7 @@ const LOCALE_ES = {
       minutesLabel: 'minutos cronometrados',
       favCategory: '💪 Categoría favorita: {{category}}',
       trophiesUnlocked: '🏆 {{unlocked}}/{{total}} trofeos desbloqueados',
-      shareTitle: 'Mis estadísticas — Défi du Jour',
+      shareTitle: 'Mis estadísticas — Kilito',
     },
     importData: {
       invalidFile: '❌ Archivo no válido',
@@ -2626,7 +2626,7 @@ const LOCALE_ES = {
     },
   },
   pwaGate: {
-    title: 'Bienvenido a Défi du Jour ⚡',
+    title: 'Bienvenido a Kilito ⚡',
     subtitle: 'Instala la aplicación en tu teléfono para empezar tu aventura.',
     iosStep1: 'Toca el botón <strong>Compartir</strong>, en la parte inferior de tu pantalla de Safari',
     iosStep2: 'Desplázate y toca <strong>Añadir a pantalla de inicio</strong>',

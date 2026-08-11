@@ -5712,3 +5712,84 @@ vrai navigateur** - a reconfirmer par l'utilisateur sur l'app deployee,
 notamment le rendu reel du radar (labels non tronques) et du splash (vrai
 Kilito, pas juste la silhouette de repli si le timing s'avere different en
 conditions reelles).
+
+## Retours utilisateur (2e vague) : libelle radar, odometre TOUJOURS casse, Kilito comme logo + renommage complet en "Kilito"
+
+**#18 - Libelle du radar.** Retour direct : "tu devrais l'indiquer dans le
+titre 'équilibre mensuel'". `profileTab.radarLabel` simplifie de "Équilibre
+du dernier mois" a **"Équilibre mensuel"** (fr) / "Monthly balance" (en) /
+"Equilibrio mensual" (es) - plus court, meme information.
+
+**#19 - Odometre TOUJOURS casse apres la 1ere correction ("le probleme
+continue, pas de chiffre, a part quand on ajoute une serie il y a un 0 qui
+apparait une seconde").** La 1ere correction (redeclarer le degrade au lieu
+de `background: inherit`) etait insuffisante - un 2e passage a echoue sur le
+meme symptome. Plutot que de continuer a chasser une interaction CSS
+invisible sans navigateur reel sous la main, **simplification radicale** de
+toute la technique :
+- **Aucun flexbox nulle part** (ni sur `.progress-current.odometer`, ni sur
+  `.odo-strip`) - remplace par de l'empilement `block`/`inline-block` classique,
+  la technique CSS la plus basique/eprouvee possible pour un compteur a
+  bandes verticales. Le flex-dans-flex (`.progress-current.odometer` en
+  `inline-flex` contenant des `.odo-col` eux-memes parents d'un `.odo-strip`
+  en `flex-direction:column`) pouvait produire des hauteurs auto calculees
+  de facon inconsistante selon le moteur de rendu.
+- **Couleur PLEINE** (`var(--accent)`) a la place du degrade en
+  `background-clip:text` - cette technique a echoue 2 fois de suite dans ce
+  contexte precis (colonnes + `overflow:hidden` + `transform` sur un ancetre),
+  signe possible d'un support incoherent de `background-clip:text` combine a
+  ces autres proprietes sur certains moteurs de rendu mobiles. Le gain
+  visuel du degrade ne justifiait pas un 3e risque d'invisibilite totale sur
+  le nombre le plus vu de l'app.
+- **Non teste visuellement une 3e fois avant de le proposer** - a confirmer
+  imperativement par l'utilisateur ; si le probleme persiste malgre cette
+  simplification radicale, la piste suivante serait d'abandonner entierement
+  l'odometre (retour a `animateCountUp()`, deja fonctionnel et disponible)
+  plutot que d'insister sur une technique CSS qui semble fondamentalement
+  fragile dans cet environnement.
+
+**#33 - Kilito comme logo de l'app + renommage complet en "Kilito".**
+Demande en 2 parties, toutes 2 traitees :
+- **Icones PWA reelles regenerees** (`icon-192.png`/`icon-512.png`,
+  jusqu'ici des icones generiques sans rapport avec Kilito) : aucun outil de
+  rasterisation SVG->PNG n'etait deja installe (ni cairosvg/Pillow cote
+  Python, ni sharp/resvg cote Node, ni rsvg-convert/Inkscape) - **Microsoft
+  Edge en mode headless** (`msedge --headless --screenshot=...`, deja
+  present sur la machine, aucune nouvelle dependance ajoutee au projet) a
+  servi a capturer le VRAI SVG de Kilito (etat idle, meme trace que
+  `KILO_STATE_SVG.idle`) sur un fond noir avec halo neon cyan, a 512x512,
+  puis redimensionne a 192x192 via .NET `System.Drawing` (aucun 2e rendu
+  necessaire). Verifie manuellement que le personnage reste bien dans la
+  zone de securite d'une icone "maskable" (contenu centre, marge
+  confortable) avant remplacement des 2 fichiers - `manifest.json` reference
+  deja `"purpose": "any maskable"` sur les 2, donc aucun changement de
+  manifest necessaire pour ce point.
+- **Ecran de connexion** : l'emoji `💪` (`.login-screen .emoji`) remplace
+  par le VRAI Kilito (meme mecanisme d'upgrade que le splash - voir plus
+  bas) - `upgradeSplashToRealKilito()` gere desormais 2 slots
+  (`appSplashKiloSlot` taille 110, `loginScreenKiloSlot` taille 80) via une
+  seule boucle plutot que 2 fonctions dupliquees.
+- **Renommage complet "Défi du Jour" -> "Kilito"** partout ou c'est un NOM
+  PROPRE (titre de page, `apple-mobile-web-app-title`, ecran de connexion,
+  titre du splash, alt du logo sur le verrou PWA, `manifest.json`
+  `name`/`short_name`, branding sur l'image de partage des stats (canvas),
+  titre de `navigator.share()`, invitation communautaire, ecrans
+  d'onboarding/bienvenue, titre du tour guide, titre du verrou PWA - fr/en/es)
+  - **la forme GENERIQUE minuscule "défi du jour" (design­ant le CONCEPT de
+  defi quotidien, ex: "N'oublie pas ton défi du jour !") est volontairement
+  preservee telle quelle**, ce n'est pas un nom de marque. `manifest.json`
+  `background_color`/`theme_color` et la meta `theme-color` d'`index.html`
+  opportunement alignes sur `#000000` au passage (etaient restes sur
+  l'ancien gris `#1e1d1b`/`#0a0d0b`, perimes depuis le passage au noir OLED
+  vrai documente plus haut dans ce fichier - premiere chose que l'OS affiche
+  au demarrage de la PWA, avant meme que le CSS de l'app ne charge).
+
+CACHE_NAME -> v123 (`index.html` + `styles.css` + `manifest.json` + les 3
+`locale-*.js` + `icon-192.png`/`icon-512.png` modifies). Aucun changement de
+regles Firestore/Cloud Functions - modification 100% cote client, aucune
+touche a `functions/**`. **Limite de verification explicite pour ce lot** :
+l'odometre en particulier a maintenant echoue 2 fois en conditions reelles
+malgre des corrections qui semblaient correctes sur le papier - la
+simplification radicale de ce lot doit etre consideree comme "a l'essai",
+pas comme acquise, tant que l'utilisateur ne l'a pas confirmee sur l'app
+deployee.

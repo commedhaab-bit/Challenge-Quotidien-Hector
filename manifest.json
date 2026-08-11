@@ -1,13 +1,13 @@
 {
-  "name": "Défi du Jour",
-  "short_name": "Défi du Jour",
+  "name": "Kilito",
+  "short_name": "Kilito",
   "description": "Défis quotidiens avec compteur de séries et chronomètre",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#1e1d1b",
-  "theme_color": "#1e1d1b",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "icon-192.png",

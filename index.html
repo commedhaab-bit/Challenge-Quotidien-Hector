@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Défi du Jour</title>
+<title>Kilito</title>
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0a0d0b">
+<meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Défi du Jour">
+<meta name="apple-mobile-web-app-title" content="Kilito">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="icon" href="icon-192.png">
 
@@ -86,19 +86,31 @@
      de seconde dans les faits, jamais pendant toute l'attente Firebase. -->
 <div id="appSplash" class="app-splash">
   <div id="appSplashKiloSlot" class="app-splash-kilo-slot">
-    <svg width="96" height="96" viewBox="-60 -60 120 120" role="img" aria-label="Défi du Jour">
+    <svg width="96" height="96" viewBox="-60 -60 120 120" role="img" aria-label="Kilito">
       <circle cx="0" cy="8" r="34" fill="#0f120f" stroke="#39e97a" stroke-width="3"/>
       <circle cx="-11" cy="0" r="5" fill="#39e97a"/>
       <circle cx="11" cy="0" r="5" fill="#39e97a"/>
       <path d="M -10 16 Q 0 24 10 16" stroke="#39e97a" stroke-width="3" fill="none" stroke-linecap="round"/>
     </svg>
   </div>
-  <div class="app-splash-title">Défi du Jour</div>
+  <div class="app-splash-title">Kilito</div>
 </div>
 
+<!-- Idee bonus (retour utilisateur) : Kilito comme logo/mascotte de l'ecran de
+     connexion aussi, meme technique d'upgrade que le splash (voir
+     upgradeSplashToRealKilito() plus bas) - repli statique le temps que le
+     script finisse de charger, meme si en pratique cet ecran ne devient
+     visible qu'apres la resolution de l'auth Firebase (donc bien apres). -->
 <div id="loginScreen" class="login-screen" style="display:none;">
-  <div class="emoji">💪</div>
-  <h1>Défi du Jour</h1>
+  <div id="loginScreenKiloSlot" class="login-kilo-slot">
+    <svg width="80" height="80" viewBox="-60 -60 120 120" role="img" aria-label="Kilito">
+      <circle cx="0" cy="8" r="34" fill="#0f120f" stroke="#39e97a" stroke-width="3"/>
+      <circle cx="-11" cy="0" r="5" fill="#39e97a"/>
+      <circle cx="11" cy="0" r="5" fill="#39e97a"/>
+      <path d="M -10 16 Q 0 24 10 16" stroke="#39e97a" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <h1>Kilito</h1>
   <p>Connecte-toi avec Google pour retrouver tes défis et ta progression sur tous tes appareils.</p>
   <button class="google-btn" onclick="signIn()">
     <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72A5.4 5.4 0 0 1 3.68 9c0-.6.1-1.18.29-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.59-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
@@ -931,7 +943,7 @@ async function triggerPwaInstallFromGate() {
 
 function buildPwaInstallGateHtml(platform) {
   const header = `
-    <img src="icon-192.png" class="gate-logo-img" alt="Défi du Jour">
+    <img src="icon-192.png" class="gate-logo-img" alt="Kilito">
     <h1 class="gate-title">${t('pwaGate.title')}</h1>
     <p class="gate-subtitle">${t('pwaGate.subtitle')}</p>
   `;
@@ -2358,7 +2370,7 @@ function getWeeklyBossBattleTarget(weekStartStr = mondayOfWeek(new Date())) {
   return null;
 }
 
-// ==== COMMUNAUTÉ : DÉFI DU JOUR (Hero Banner + preuve sociale) ====
+// ==== COMMUNAUTÉ : défi quotidien (Hero Banner + preuve sociale) ====
 // Compteurs de validations du jour (communaute/dailyChallenge_{date}), tenus à jour en
 // temps réel via onSnapshot — jamais relus manuellement ailleurs, render() se contente
 // de lire cette valeur déjà en mémoire (même principe que dailyActivity/weekData).
@@ -5311,7 +5323,7 @@ async function shareStatsImage() {
 
   ctx.fillStyle = '#39e97a';
   ctx.font = '700 32px sans-serif';
-  ctx.fillText('DÉFI DU JOUR', 64, 100);
+  ctx.fillText('KILITO', 64, 100);
 
   ctx.fillStyle = '#eef2ef';
   ctx.font = '900 66px sans-serif';
@@ -8381,7 +8393,7 @@ async function shareCommunityInvite() {
   const url = location.href;
   if (navigator.share) {
     try {
-      await navigator.share({ title: 'Défi du Jour', text, url });
+      await navigator.share({ title: 'Kilito', text, url });
       return;
     } catch (e) { return; } // annulé par l'utilisateur : pas d'erreur à afficher
   }
@@ -10477,16 +10489,19 @@ initTabSwipe();
 initEdgeSwipeBack();
 
 // Bug reel corrige (retour utilisateur, "juste un smiley, pas Kilito") :
-// upgrade l'ecran de demarrage vers le VRAI Kilito des que ce script a fini
-// de s'executer (renderKilo()/KILO_STATE_SVG sont desormais definis - ils ne
-// l'etaient pas au moment du tout premier paint, d'ou le repli statique dans
-// le HTML). Appelee ici, tout en bas du script (donc apres TOUTES les
-// definitions) : le splash reste visible jusqu'a ce que Firebase Auth
-// resolve (hideAppSplash()), ce qui laisse largement le temps a cet upgrade
-// de s'appliquer avant que l'utilisateur ne remarque quoi que ce soit.
+// upgrade l'ecran de demarrage ET l'ecran de connexion vers le VRAI Kilito
+// des que ce script a fini de s'executer (renderKilo()/KILO_STATE_SVG sont
+// desormais definis - ils ne l'etaient pas au moment du tout premier paint,
+// d'ou le repli statique dans le HTML pour ces 2 slots). Appelee ici, tout
+// en bas du script (donc apres TOUTES les definitions) : les 2 ecrans
+// restent visibles au minimum jusqu'a ce que Firebase Auth resolve
+// (hideAppSplash()), ce qui laisse largement le temps a cet upgrade de
+// s'appliquer avant que l'utilisateur ne remarque quoi que ce soit.
 function upgradeSplashToRealKilito() {
-  const slot = document.getElementById('appSplashKiloSlot');
-  if (slot) slot.innerHTML = renderKilo('idle', { size: 110 });
+  [['appSplashKiloSlot', 110], ['loginScreenKiloSlot', 80]].forEach(([id, size]) => {
+    const slot = document.getElementById(id);
+    if (slot) slot.innerHTML = renderKilo('idle', { size });
+  });
 }
 upgradeSplashToRealKilito();
 

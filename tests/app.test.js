@@ -1326,7 +1326,7 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(guidedTourStep, 0, 'le tour doit demarrer a l etape 0 (carte de bienvenue) si jamais vu');
   __assertEq(GUIDED_TOUR_STEPS.length, 4, 'le tour doit desormais compter 4 cartes (bienvenue + 3 onglets - Journal fusionne dans Profil, plus d etape dediee)');
   let overlay = renderGuidedTourOverlay();
-  __assertOk(overlay.includes('Bienvenue dans Défi du Jour !'), 'la carte 0 doit etre une bienvenue neutre dediee');
+  __assertOk(overlay.includes('Bienvenue dans Kilito !'), 'la carte 0 doit etre une bienvenue neutre dediee');
   __assertOk(overlay.includes('tour-overlay intro'), 'la carte 0 doit avoir le fond assombri/floute (intro)');
   __assertOk(overlay.includes('tour-bubble-avatar') && overlay.includes('kilo-idle'), 'Kilo doit presenter chaque carte du tour guide (retour utilisateur : mascotte tout au long de l onboarding)');
   guidedTourNext(); // carte 0 -> carte 1 : MEME onglet ('today') -> teste le correctif du bug de re-render
@@ -2288,9 +2288,24 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(typeof upgradeSplashToRealKilito === 'function', 'upgradeSplashToRealKilito() doit exister pour remplacer le repli statique par le vrai Kilito');
   const splashSlotEl = document.getElementById('appSplashKiloSlot');
   splashSlotEl.innerHTML = '';
+  const loginSlotEl = document.getElementById('loginScreenKiloSlot');
+  loginSlotEl.innerHTML = '';
   upgradeSplashToRealKilito();
   __assertOk(splashSlotEl.innerHTML.includes('kilo-svg') && splashSlotEl.innerHTML.includes('kilo-idle'), 'upgradeSplashToRealKilito() doit injecter le VRAI Kilito (renderKilo(), pas la silhouette de repli)');
-  console.log('OK: ecran de demarrage avec Kilito present dans le HTML statique, upgrade vers le vrai Kilito une fois le script charge');
+  __assertOk(loginSlotEl.innerHTML.includes('kilo-svg') && loginSlotEl.innerHTML.includes('kilo-idle'), 'upgradeSplashToRealKilito() doit AUSSI injecter le vrai Kilito sur l ecran de connexion (utilise desormais comme logo, pas juste un emoji)');
+  console.log('OK: ecran de demarrage + ecran de connexion avec Kilito present dans le HTML statique, upgrade vers le vrai Kilito une fois le script charge');
+
+  // Idee bonus (retour utilisateur) : renommage complet de l application en
+  // "Kilito" (titre de page, ecrans de connexion/demarrage, image de partage
+  // des stats, invitation communautaire, onboarding, verrou PWA) - la
+  // distinction avec le terme GENERIQUE minuscule "defi du jour" (qui
+  // designe le concept de defi quotidien, ex: "N'oublie pas ton defi du
+  // jour !") est volontairement preservee, seule la forme CAPITALISEE
+  // "Défi du Jour" (nom propre de la marque) a ete remplacee.
+  __assertOk(__rawHtml.includes('<title>Kilito</title>'), 'le titre de la page doit etre "Kilito"');
+  __assertOk(__rawHtml.includes('content="Kilito"'), 'le nom affiche sur l ecran d accueil iOS doit etre "Kilito"');
+  __assertOk(!__rawHtml.includes('Défi du Jour') && !__rawHtml.includes('DÉFI DU JOUR'), 'plus aucune reference au nom de marque "Défi du Jour" ne doit subsister dans le HTML/JS principal');
+  console.log('OK: application renommee "Kilito" (titre, ecrans, image de partage), le terme generique "defi du jour" reste intact');
 
   // Idee bonus (retour utilisateur, "app premium/native") : chemin de
   // progression en zigzag facon jeu de plateau (Parcours de niveau).
@@ -3368,7 +3383,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v122'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v123'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -6587,7 +6602,7 @@ const cssText = __rawHtml + __cssSource;
   currentLocale = 'en';
   guidedTourStep = 0;
   const tourWelcomeHtmlEn = renderGuidedTourOverlay();
-  __assertOk(tourWelcomeHtmlEn.includes('Welcome to Défi du Jour!') && tourWelcomeHtmlEn.includes('Next ›'), 'la 1ere carte du tour guide doit etre traduite en anglais');
+  __assertOk(tourWelcomeHtmlEn.includes('Welcome to Kilito!') && tourWelcomeHtmlEn.includes('Next ›'), 'la 1ere carte du tour guide doit etre traduite en anglais');
   guidedTourStep = GUIDED_TOUR_STEPS.length - 1;
   const tourLastHtmlEn = renderGuidedTourOverlay();
   __assertOk(tourLastHtmlEn.includes('Finish'), 'la derniere carte du tour guide doit afficher le bouton de fin traduit');
@@ -6854,7 +6869,7 @@ const cssText = __rawHtml + __cssSource;
   updateOfflineBanner();
 
   const pwaGateHtmlEn = buildPwaInstallGateHtml('ios');
-  __assertOk(pwaGateHtmlEn.includes('Welcome to Défi du Jour') && pwaGateHtmlEn.includes('Share') && pwaGateHtmlEn.includes('Add to Home Screen'), 'le verrou d installation PWA (iOS) doit etre traduit en anglais');
+  __assertOk(pwaGateHtmlEn.includes('Welcome to Kilito') && pwaGateHtmlEn.includes('Share') && pwaGateHtmlEn.includes('Add to Home Screen'), 'le verrou d installation PWA (iOS) doit etre traduit en anglais');
   const pwaGateAndroidHtmlEn = buildPwaInstallGateHtml('android');
   __assertOk(pwaGateAndroidHtmlEn.includes('Install the app in 1 tap'), 'le verrou d installation PWA (Android) doit etre traduit en anglais');
 

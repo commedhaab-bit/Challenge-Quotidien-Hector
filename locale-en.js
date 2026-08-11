@@ -2074,7 +2074,7 @@ const LOCALE_EN = {
     noOneYet: 'Nobody to show yet.',
     inviteText: 'Invite friends to spice up the leaderboard ⚡',
     inviteBtn: '📤 Share',
-    shareInviteText: 'Join me on Défi du Jour to take on the community challenge ⚡',
+    shareInviteText: 'Join me on Kilito to take on the community challenge ⚡',
     streakValue: '🔥 {{n}}d',
     xpValue: '⚡ {{n}} XP',
     rankOutOfTotal: 'out of {{total}} participants',
@@ -2268,7 +2268,7 @@ const LOCALE_EN = {
     },
   },
   tour: {
-    welcome: { title: 'Welcome to Défi du Jour!', text: "Let's do a quick tour to see how the app works." },
+    welcome: { title: 'Welcome to Kilito!', text: "Let's do a quick tour to see how the app works." },
     today: { title: 'Today', text: 'Find the challenges you turned on for the day here, and follow your progress live.' },
     library: { title: 'Challenges', text: 'Start here: turn on one or more challenges for today by tapping their card.' },
     account: { title: 'Profile', text: 'Your info, your fitness profile and every trophy you unlock over time. Right above: your Log (calendar, recent activity and detailed history).' },
@@ -2302,7 +2302,7 @@ const LOCALE_EN = {
       ctaBtn: 'Discover my challenges',
     },
     welcome: {
-      titleHtml: 'Welcome to<br><span class="pf-brand">Défi du Jour</span>',
+      titleHtml: 'Welcome to<br><span class="pf-brand">Kilito</span>',
       feature1: 'Pick your daily challenges',
       feature2: 'Push yourself every day',
       feature3: 'Track your progress in real time',
@@ -2349,7 +2349,7 @@ const LOCALE_EN = {
     xpProgress: '{{current}} / {{needed}} XP · tap to see your progress',
     xpProgressPlain: '{{current}} / {{needed}} XP',
     trophiesLabel: 'Trophies ({{unlocked}}/{{total}})',
-    radarLabel: 'Last month balance',
+    radarLabel: 'Monthly balance',
     bento: {
       xp: 'Total XP',
       streak: 'Day streak',
@@ -2590,7 +2590,7 @@ const LOCALE_EN = {
       minutesLabel: 'minutes timed',
       favCategory: '💪 Favorite category: {{category}}',
       trophiesUnlocked: '🏆 {{unlocked}}/{{total}} trophies unlocked',
-      shareTitle: 'My stats — Défi du Jour',
+      shareTitle: 'My stats — Kilito',
     },
     importData: {
       invalidFile: '❌ Invalid file',
@@ -2618,7 +2618,7 @@ const LOCALE_EN = {
     },
   },
   pwaGate: {
-    title: 'Welcome to Défi du Jour ⚡',
+    title: 'Welcome to Kilito ⚡',
     subtitle: 'Install the app on your phone to start your adventure.',
     iosStep1: 'Tap the <strong>Share</strong> button, at the bottom of your Safari screen',
     iosStep2: 'Scroll down and tap <strong>Add to Home Screen</strong>',
