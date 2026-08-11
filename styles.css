@@ -875,6 +875,31 @@
   @keyframes sheet-slide-up {
     from { transform: translateY(100%); }
   }
+  /* Idee bonus (retour utilisateur, "app premium/native") : menu contextuel
+     au long-press sur une carte de la Bibliotheque - reutilise TEL QUEL le
+     chrome de .level-roadmap-sheet (verre depoli, glisser-pour-fermer), juste
+     un titre + des actions en boutons pleine largeur. */
+  .context-menu-title {
+    font-size: 15px;
+    font-weight: 800;
+    text-align: center;
+    margin-bottom: 14px;
+  }
+  .context-menu-action {
+    display: block;
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    color: var(--chalk);
+    font-size: 14.5px;
+    font-weight: 700;
+    text-align: left;
+    padding: 14px 16px;
+    border-radius: 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  .context-menu-action:last-child { margin-bottom: 0; }
   @media (prefers-reduced-motion: reduce) {
     .level-roadmap-overlay, .level-roadmap-sheet { animation: none; }
   }

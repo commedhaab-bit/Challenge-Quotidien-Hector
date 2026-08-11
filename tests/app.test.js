@@ -3369,7 +3369,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v119'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v120'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -3616,6 +3616,64 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(exerciseDetailHtmlForMorph.includes('view-transition-name: card-morph-' + pompes.id + ';'), 'le hero de la fiche d exercice doit porter EXACTEMENT le meme nom que la carte d origine, pour le meme defi');
   currentChallengeId = null;
   console.log('OK: morph carte -> fiche d exercice (meme view-transition-name partage entre la carte accueil et le hero de la fiche, scope a l accueil uniquement)');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : menu contextuel
+  // au long-press sur une carte de la Bibliotheque.
+  const libraryCardHtmlForContextMenu = renderChallengeCard(pompes, 'library', 0);
+  __assertOk(libraryCardHtmlForContextMenu.includes('data-context-menu="challenge:' + pompes.id + '"'), 'une carte de la Bibliotheque doit porter l attribut de menu contextuel avec son id');
+  const todayCardHtmlForContextMenu = renderChallengeCard(pompes, 'today', 0);
+  __assertOk(!todayCardHtmlForContextMenu.includes('data-context-menu'), 'une carte de l accueil ne doit PAS porter de menu contextuel (scope limite a la Bibliotheque)');
+  activeToday = new Set();
+  __assertEq(contextMenuOpen, false, 'aucun menu contextuel ne doit etre ouvert par defaut');
+  openContextMenu('challenge:' + pompes.id);
+  __assertEq(contextMenuOpen, true, 'openContextMenu() doit marquer le menu comme ouvert');
+  openContextMenu('not-a-challenge-key');
+  __assertEq(contextMenuOpen, true, 'une cle mal formee doit etre ignorée silencieusement (jamais de throw, ni de fermeture du menu deja ouvert)');
+  closeContextMenu();
+  __assertEq(contextMenuOpen, false, 'closeContextMenu() doit refermer le menu');
+  const inactiveMenuHtml = renderContextMenuSheet(pompes, false);
+  __assertOk(inactiveMenuHtml.includes(t('card.activate')) && !inactiveMenuHtml.includes(t('card.active') + '</button>'), 'un defi INACTIF doit proposer "Activer" dans le menu');
+  const activeMenuHtml = renderContextMenuSheet(pompes, true);
+  __assertOk(activeMenuHtml.includes(t('card.active')), 'un defi ACTIF doit proposer "Desactiver" (etat actif) dans le menu');
+  __assertOk(inactiveMenuHtml.includes('pickChallenge(' + pompes.id + ')'), 'le menu doit toujours proposer "Voir la fiche" (ouvre directement l execution, sans activer au prealable)');
+  console.log('OK: menu contextuel au long-press (Bibliotheque uniquement, "Voir la fiche" + raccourci Activer/Desactiver)');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : glisser
+  // horizontalement pour passer d'un onglet a l'adjacent.
+  __assertEq(computeTabSwipeTarget('today', -20, TAB_SWIPE_THRESHOLD_PX), null, 'sous le seuil, aucun changement d onglet ne doit etre declenche');
+  __assertEq(computeTabSwipeTarget('today', -TAB_SWIPE_THRESHOLD_PX - 5, TAB_SWIPE_THRESHOLD_PX), 'library', 'glisser vers la gauche (au-dela du seuil) doit avancer vers l onglet suivant');
+  __assertEq(computeTabSwipeTarget('library', TAB_SWIPE_THRESHOLD_PX + 5, TAB_SWIPE_THRESHOLD_PX), 'today', 'glisser vers la droite doit reculer vers l onglet precedent');
+  __assertEq(computeTabSwipeTarget('today', TAB_SWIPE_THRESHOLD_PX + 5, TAB_SWIPE_THRESHOLD_PX), null, 'deja au tout premier onglet : glisser vers la droite ne doit jamais boucler sur le dernier');
+  __assertEq(computeTabSwipeTarget('account', -TAB_SWIPE_THRESHOLD_PX - 5, TAB_SWIPE_THRESHOLD_PX), null, 'deja au tout dernier onglet : glisser vers la gauche ne doit jamais boucler sur le premier');
+  __assertEq(TAB_ORDER.length, 5, 'TAB_ORDER doit refleter les 5 onglets reels de la tab bar (Journal fusionne dans Profil)');
+  currentChallengeId = null;
+  editingChallengeId = null;
+  settingsScreenOpen = false;
+  openGroupId = null;
+  creatingGroupChallenge = false;
+  friendsScreenOpen = false;
+  showProfileOnboarding = false;
+  usernameSetupMode = null;
+  onboardingTransitionPhase = null;
+  contextMenuOpen = false;
+  __assertEq(isAtTabRoot(), true, 'a la racine d un onglet (rien d imbrique ouvert), le swipe entre onglets doit etre actif');
+  currentChallengeId = pompes.id;
+  __assertEq(isAtTabRoot(), false, 'sur la fiche d un exercice, le swipe entre onglets ne doit PAS etre actif (reserve au geste de retour)');
+  currentChallengeId = null;
+  settingsScreenOpen = true;
+  __assertEq(isAtTabRoot(), false, 'sur l ecran Parametres, le swipe entre onglets ne doit pas etre actif');
+  settingsScreenOpen = false;
+  console.log('OK: swipe horizontal entre onglets (avance/recule sans boucler, actif uniquement a la racine d un onglet)');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : geste de bord
+  // pour revenir en arriere (glisser depuis le bord gauche de l ecran).
+  __assertEq(isValidEdgeSwipeStart(0, EDGE_SWIPE_ZONE_PX), true, 'un toucher au tout bord gauche (x=0) doit demarrer le suivi');
+  __assertEq(isValidEdgeSwipeStart(EDGE_SWIPE_ZONE_PX, EDGE_SWIPE_ZONE_PX), true, 'un toucher exactement a la limite de la zone doit demarrer le suivi');
+  __assertEq(isValidEdgeSwipeStart(EDGE_SWIPE_ZONE_PX + 1, EDGE_SWIPE_ZONE_PX), false, 'un toucher hors de la zone de bord (meme tres proche) ne doit jamais demarrer le suivi');
+  __assertEq(shouldTriggerEdgeSwipeBack(EDGE_SWIPE_THRESHOLD_PX + 5, 0, EDGE_SWIPE_THRESHOLD_PX), true, 'un glissement horizontal net au-dela du seuil doit declencher le retour');
+  __assertEq(shouldTriggerEdgeSwipeBack(EDGE_SWIPE_THRESHOLD_PX - 5, 0, EDGE_SWIPE_THRESHOLD_PX), false, 'sous le seuil, le retour ne doit pas se declencher');
+  __assertEq(shouldTriggerEdgeSwipeBack(EDGE_SWIPE_THRESHOLD_PX + 5, EDGE_SWIPE_THRESHOLD_PX + 20, EDGE_SWIPE_THRESHOLD_PX), false, 'un glissement majoritairement VERTICAL ne doit jamais declencher le retour, meme avec assez de distance horizontale');
+  console.log('OK: geste de bord pour revenir en arriere (zone de detection stricte, seuil directionnel)');
 
   // --- 94. Securite : escapeHtml/escapeJsAttr echappent correctement les caracteres
   // dangereux (protection XSS) ---

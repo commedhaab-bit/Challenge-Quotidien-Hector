@@ -5471,3 +5471,79 @@ chantiers visuels : valide par tests structurels/comportementaux + lint,
 directionnel reel (fluidite, direction percue) ne peut pas etre confirme
 ici, a verifier par l'utilisateur. Suite (idees #6, #7, #10, #23) a livrer
 dans un/des lot(s) suivant(s).
+
+## Passe "app premium/native" — lot 4/N (3 idees livrees : #7, #6, #10)
+
+**#7 - Menu contextuel au long-press** (Bibliotheque uniquement) : rester
+appuye ~500ms sur une carte (`data-context-menu="challenge:{{id}}"`, pose
+UNIQUEMENT en mode `'library'`) ouvre une action sheet (`renderContextMenuSheet()`,
+reutilise TEL QUEL `attachSheetBehavior()`/`.level-roadmap-overlay`/`-sheet` -
+memes classes que le Parcours de niveau/la fiche d'ami/l'info groupe, aucun
+nouveau mecanisme de glisser-pour-fermer a ecrire) avec 2 actions :
+- **"Voir la fiche"** (`pickChallenge()`) : jusqu'ici IMPOSSIBLE d'ouvrir la
+  fiche d'un exercice depuis la Bibliotheque sans d'abord l'activer PUIS
+  aller le chercher sur Aujourd'hui - une vraie friction, comblee ici.
+- **"Activer"/"Desactiver"** (`toggleActiveToday()`) : raccourci vers la
+  meme action que le bouton deja visible sur la carte.
+
+`initLongPressMenu()` (delegation `document`, meme patron que
+`initTiltCards()`/`initSwipeableRows()`) distingue un VRAI maintien
+(tolerance de mouvement 10px, sinon annule) d'un tap normal ou d'un debut de
+scroll, et neutralise le clic qui suivrait immediatement l'ouverture du menu
+(meme technique `suppressClick` deja etablie par `initSwipeableRows()`).
+Nouvelle cle i18n `card.contextMenuView` (fr/en/es).
+
+**#6 - Swipe horizontal entre onglets** : `initTabSwipe()` (delegation
+`document`) + `computeTabSwipeTarget(currentTab, deltaX, thresholdPx)`
+(fonction PURE, teste directement sans mock tactile) - glisser vers la
+gauche avance vers l'onglet suivant, vers la droite recule, JAMAIS de
+bouclage aux extremites (premier onglet + glisser a droite = rien, dernier +
+glisser a gauche = rien). Exclut explicitement les zones qui ont deja leur
+propre geste horizontal (`.swipeable-row-content`, `.tilt-card`) pour ne
+jamais leur disputer le meme `touchmove`. **N'est actif qu'a la RACINE d'un
+onglet** (`isAtTabRoot()`, nouvelle fonction reutilisee aussi par #10
+ci-dessous) - jamais dans un ecran imbrique, reserve au geste de retour
+dedie. `TAB_ORDER` (nouvelle constante, 5 ids dans le meme ordre/ensemble
+que `renderTabBar()` - commentaires croises dans les 2 sens pour eviter
+toute divergence future) fait office de source de verite partagee.
+**Limite assumee, documentee dans le code** : contrairement a un geste natif
+complet, le contenu ne suit PAS le doigt pendant le glisser (l'architecture
+`render()` remplace toujours tout `#app` d'un coup, un aperçu en direct
+serait complexe/couteux a construire) - le changement d'onglet se declenche
+directement au relachement, une fois le seuil franchi.
+
+**#10 - Geste de bord pour revenir en arriere** (glisser depuis le bord
+GAUCHE de l'ecran, comme iOS natif) : `initEdgeSwipeBack()` +
+`isValidEdgeSwipeStart(x, edgeZonePx)`/`shouldTriggerEdgeSwipeBack(dx, dy,
+thresholdPx)` (2 fonctions PURES, testees independamment du mock tactile).
+**Filet COMPLEMENTAIRE au bouton retour minimaliste (`.nav-back-btn`) deja
+existant, jamais un remplacement** - delegue a `history.back()` (jamais un
+appel direct a `goBackOneLevel()`, meme discipline de symetrie deja
+documentee pour `.nav-back-btn`), qui beneficie donc automatiquement de la
+transition directionnelle "arriere" deja en place (idee #5 du lot 3).
+**N'est actif QUE dans un ecran imbrique** (`!isAtTabRoot()`, complementaire
+de #6 - jamais les 2 gestes actifs simultanement sur le meme ecran) - a la
+racine d'un onglet, `history.back()` sortirait de l'historique applicatif
+sans rien "fermer" d'utile. Exclut aussi les bottom sheets deja ouvertes
+(`document.querySelector('.level-roadmap-overlay')`, meme garde deja
+utilisee par `initPullToRefresh()`) : leur propre glisser-pour-fermer est
+VERTICAL, mais un geste horizontal depuis le bord par-dessus n'aurait pas de
+sens pendant qu'une feuille est ouverte. **Meme limite assumee que #6** :
+pas d'aperçu de l'ecran precedent qui suit le doigt pendant le glisser,
+seul le relachement (au-dela du seuil, zone de detection stricte 24px
+depuis le bord) declenche le retour reel.
+
+CACHE_NAME -> v120 (`index.html` + `styles.css` + les 3 `locale-*.js`
+modifies - nouvelle cle `card.contextMenuView`). Aucun changement de regles
+Firestore/Cloud Functions - modification 100% cote client, aucune touche a
+`functions/**`. Memes limites de verification que le reste des gestes
+tactiles de ce projet (`initTiltCards()`/`initSwipeableRows()`/
+`initParallax()`...) : le harnais de test ne peut verifier que la logique
+PURE extraite (seuils, zones, cibles) et la structure du HTML genere -
+jamais le rendu/ressenti tactile reel sur un vrai appareil, ni les
+interactions ENTRE les 3 nouveaux gestes et les gestes deja existants
+(pull-to-refresh, tilt, swipe-to-reveal, glisser-pour-fermer une feuille) -
+a confirmer par l'utilisateur en conditions reelles, avec une attention
+particuliere aux zones de recouvrement (bord gauche d'une carte de la
+Bibliotheque avec un menu contextuel possible ET pas de geste de retour
+actif a cet endroit precis puisqu'on est a la racine de l'onglet Défis).

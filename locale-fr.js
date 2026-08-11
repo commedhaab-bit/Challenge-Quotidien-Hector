@@ -2027,6 +2027,7 @@ const LOCALE_FR = {
     inProgress: '● En cours — {{current}}/{{target}}',
     activate: '+ Activer',
     active: '✓ Actif',
+    contextMenuView: 'Voir la fiche',
     communityRibbonTitle: 'Défi communautaire du jour — {{n}} validé(s) aujourd\'hui',
   },
   library: {

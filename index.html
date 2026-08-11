@@ -7527,8 +7527,13 @@ function renderChallengeCard(c, mode, index, animate = true) {
     ? `<span class="community-card-ribbon" title="${t('card.communityRibbonTitle', { n: communityCount })}">🌍 ${communityCount}</span>`
     : '';
 
+  // Idee bonus (retour utilisateur, "app premium/native") : menu contextuel
+  // au long-press - scope volontairement limite au mode 'library' (voir
+  // initLongPressMenu()/openContextMenu() plus bas) : c'est le seul mode ou
+  // "voir la fiche sans activer" comble une vraie friction actuelle.
+  const contextMenuAttr = mode === 'library' ? ` data-context-menu="challenge:${c.id}"` : '';
   return `
-    <div class="picker-item${noAnimClass}"${delayStyle} onclick="${onclick}">
+    <div class="picker-item${noAnimClass}"${delayStyle}${contextMenuAttr} onclick="${onclick}">
       ${renderExercisePicto(c)}
       <div class="picker-item-body">
         <span class="name">${escapeHtml(challengeDisplayName(c))}</span>
@@ -9889,11 +9894,18 @@ function switchProfileView(view) {
   render();
 }
 
+// Idee bonus (retour utilisateur, "app premium/native") : ordre canonique
+// des onglets, partage entre renderTabBar() (ci-dessous, DOIT rester le
+// meme ordre/ensemble d'ids) et le swipe horizontal entre onglets
+// (initTabSwipe()/computeTabSwipeTarget(), voir plus bas).
+const TAB_ORDER = ['today', 'library', 'community', 'groups', 'account'];
+
 // Barre de navigation persistante en bas de l'écran (masquée pendant les
 // écrans plein écran : onboarding, connexion, mode focus).
 function renderTabBar(hidden) {
   // Journal n'est plus un onglet separe (fusionne en sous-onglet de Profil, voir
-  // renderAccountTabScreen()/profileView) - 5 onglets au lieu de 6.
+  // renderAccountTabScreen()/profileView) - 5 onglets au lieu de 6. Meme
+  // ordre/ensemble d'ids que TAB_ORDER ci-dessus (voir son commentaire).
   const tabs = [
     { id: 'today',   icon: '🏋️‍♂️', label: t('nav.today') },
     { id: 'library',  icon: '🎯', label: t('nav.library') },
@@ -10080,6 +10092,205 @@ function initSwipeableRows() {
     }
     dragRow = null;
   }, { passive: true });
+}
+
+// Idee bonus (retour utilisateur, "app premium/native") : menu contextuel
+// natif au LONG-PRESS (rester appuye ~500ms) sur une carte de la Bibliotheque
+// (voir data-context-menu, pose UNIQUEMENT en mode 'library' par
+// renderChallengeCard()) - action sheet qui glisse depuis le bas (reutilise
+// TEL QUEL attachSheetBehavior()/.level-roadmap-overlay/-sheet, memes classes
+// que le Parcours de niveau/la fiche d'ami/l'info groupe - AUCUN nouveau
+// mecanisme de glisser-pour-fermer a ecrire). 2 actions rapides, toutes 2
+// deja des fonctions existantes reutilisees telles quelles :
+// - "Voir la fiche" (pickChallenge()) : jusqu'ici IMPOSSIBLE d'ouvrir la
+//   fiche d'un exercice depuis la Bibliotheque sans d'abord l'activer PUIS
+//   aller le chercher sur Aujourd'hui - une vraie friction, comblee ici.
+// - "Activer"/"Desactiver" (toggleActiveToday()) : raccourci vers la meme
+//   action que le bouton deja visible sur la carte.
+// Delegation sur document (meme patron que initTiltCards()/initSwipeableRows()
+// juste au-dessus) : survit nativement a tous les re-renders. Distingue un
+// VRAI maintien (tolerance de mouvement 10px, sinon annule) d'un tap normal
+// ou d'un debut de scroll - et neutralise le clic qui suivrait immediatement
+// l'ouverture du menu (meme technique suppressClick que initSwipeableRows()).
+const LONG_PRESS_DURATION_MS = 500;
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
+let contextMenuOpen = false;
+function initLongPressMenu() {
+  let timer = null, target = null, startX = 0, startY = 0;
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } target = null; };
+  document.addEventListener('touchstart', (e) => {
+    const el = e.target.closest && e.target.closest('[data-context-menu]');
+    cancel();
+    if (!el) return;
+    target = el;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    timer = setTimeout(() => {
+      timer = null;
+      if (navigator.vibrate) navigator.vibrate([15, 30, 15]); // motif distinct du simple tap, signale une action "differente"
+      const suppressClick = (ev) => { ev.stopPropagation(); ev.preventDefault(); target.removeEventListener('click', suppressClick, true); };
+      target.addEventListener('click', suppressClick, true);
+      openContextMenu(target.dataset.contextMenu);
+      target = null;
+    }, LONG_PRESS_DURATION_MS);
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (!timer) return;
+    const dx = Math.abs(e.touches[0].clientX - startX);
+    const dy = Math.abs(e.touches[0].clientY - startY);
+    if (dx > LONG_PRESS_MOVE_TOLERANCE_PX || dy > LONG_PRESS_MOVE_TOLERANCE_PX) cancel();
+  }, { passive: true });
+  document.addEventListener('touchend', cancel, { passive: true });
+  document.addEventListener('touchcancel', cancel, { passive: true });
+}
+
+// Extraite en fonction de rendu separee (meme convention que
+// renderLevelRoadmapSheet()/renderFriendProfileSheet() pour les 2 autres
+// bottom sheets) - rend openContextMenu() testable sans dependre de
+// document.createElement()/appendChild() (non modelises fidelement par le
+// mock DOM de test, memes limites deja documentees pour les 3 autres sheets).
+function renderContextMenuSheet(c, isActive) {
+  return `
+    <div class="level-roadmap-sheet context-menu-sheet">
+      <div class="sheet-drag-handle"></div>
+      <div class="context-menu-title">${escapeHtml(challengeDisplayName(c))}</div>
+      <button class="context-menu-action" onclick="closeContextMenu(); pickChallenge(${c.id});">🔍 ${t('card.contextMenuView')}</button>
+      <button class="context-menu-action" onclick="closeContextMenu(); toggleActiveToday(${c.id});">${isActive ? t('card.active') : t('card.activate')}</button>
+    </div>
+  `;
+}
+function openContextMenu(key) {
+  const [kind, idStr] = (key || '').split(':');
+  if (kind !== 'challenge') return;
+  const id = Number(idStr);
+  const c = CHALLENGE_LIBRARY.find((x) => x.id === id) || CHALLENGES.find((x) => x.id === id);
+  if (!c) return;
+  const el = document.createElement('div');
+  el.id = 'contextMenuOverlay';
+  el.className = 'level-roadmap-overlay context-menu-overlay';
+  el.innerHTML = renderContextMenuSheet(c, activeToday.has(id));
+  document.body.appendChild(el);
+  attachSheetBehavior(el, closeContextMenu);
+  contextMenuOpen = true;
+}
+
+function closeContextMenu() {
+  const el = document.getElementById('contextMenuOverlay');
+  if (el) el.remove();
+  contextMenuOpen = false;
+}
+
+// Idee bonus (retour utilisateur, "app premium/native") : glisser
+// horizontalement pour passer d'un onglet a l'adjacent, sans avoir a viser la
+// tab bar tout en bas - geste standard (Instagram, Gmail...). Fonction PURE
+// (computeTabSwipeTarget()) : renvoie le PROCHAIN onglet ou null (seuil non
+// atteint, ou deja au premier/dernier onglet - jamais de wrap-around, qui
+// serait deroutant). N'active le geste QUE lorsqu'on est a la RACINE d'un
+// onglet (isAtTabRoot()) - jamais dans un ecran imbrique (fiche d'exercice,
+// Parametres, detail de groupe...), reserve au geste de retour dedie
+// (initEdgeSwipeBack(), idee #10) pour eviter toute ambiguite entre "je
+// change d'onglet" et "je reviens en arriere".
+function isAtTabRoot() {
+  return !currentChallengeId && editingChallengeId === null && !settingsScreenOpen
+    && openGroupId === null && !creatingGroupChallenge && !friendsScreenOpen
+    && !showProfileOnboarding && !usernameSetupMode && !onboardingTransitionPhase
+    && !contextMenuOpen;
+}
+function computeTabSwipeTarget(currentTab, deltaX, thresholdPx) {
+  if (Math.abs(deltaX) < thresholdPx) return null;
+  const idx = TAB_ORDER.indexOf(currentTab);
+  if (idx === -1) return null;
+  const nextIdx = deltaX < 0 ? idx + 1 : idx - 1; // glisser vers la gauche = onglet suivant (comme tourner une page)
+  if (nextIdx < 0 || nextIdx >= TAB_ORDER.length) return null;
+  return TAB_ORDER[nextIdx];
+}
+const TAB_SWIPE_THRESHOLD_PX = 70;
+function initTabSwipe() {
+  let startX = null, startY = null, swiping = false;
+  document.addEventListener('touchstart', (e) => {
+    // Exclut les zones qui possedent deja leur propre geste horizontal
+    // (glisser-pour-reveler sur une ligne d'ami, tilt 3D sur une carte hero) -
+    // sans ca, les 2 gestes se disputeraient le meme touchmove.
+    if (!isAtTabRoot() || (e.target.closest && (e.target.closest('.swipeable-row-content') || e.target.closest('.tilt-card')))) {
+      startX = null;
+      return;
+    }
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    swiping = false;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    if (startX === null) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    // Engage seulement sur un geste NETTEMENT horizontal (1.5x plus de
+    // deplacement horizontal que vertical) - un scroll vertical normal ne
+    // doit jamais etre confondu avec une intention de changer d'onglet.
+    if (!swiping && Math.abs(dx) > 24 && Math.abs(dx) > Math.abs(dy) * 1.5) swiping = true;
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (startX === null) return;
+    if (swiping) {
+      const dx = e.changedTouches[0].clientX - startX;
+      const target = computeTabSwipeTarget(activeTab, dx, TAB_SWIPE_THRESHOLD_PX);
+      if (target) switchTab(target);
+    }
+    startX = null; startY = null; swiping = false;
+  }, { passive: true });
+  document.addEventListener('touchcancel', () => { startX = null; startY = null; swiping = false; }, { passive: true });
+}
+
+// Idee bonus (retour utilisateur, "app premium/native") : geste de bord pour
+// revenir en arriere (glisser depuis le bord GAUCHE de l'ecran, comme iOS
+// natif) - filet COMPLEMENTAIRE au bouton retour minimaliste (.nav-back-btn)
+// deja existant, jamais un remplacement. Delegue a history.back() (jamais un
+// appel direct a goBackOneLevel(), pour rester symetrique avec le bouton
+// retour physique/popstate - meme discipline deja documentee pour
+// .nav-back-btn). **Limite assumee** : contrairement a un vrai geste iOS, le
+// contenu ne suit PAS le doigt pendant le glisser (l'architecture de cette
+// appli - render() remplace TOUJOURS tout #app d'un coup - rendrait un
+// aperçu en direct de l'ecran precedent couteux/complexe a construire) - le
+// relachement declenche directement la transition directionnelle deja en
+// place (idee #5, glissement "arriere"), sans aperçu intermediaire pendant
+// le geste lui-meme. Fonctions PURES extraites (isValidEdgeSwipeStart()/
+// shouldTriggerEdgeSwipeBack()) pour rester testables sans mock tactile.
+// N'est actif que DANS un ecran imbrique (!isAtTabRoot(), voir #6
+// juste au-dessus) - a la racine d'un onglet, il n'y a rien a "fermer" et
+// history.back() sortirait de l'historique applicatif sans effet utile.
+const EDGE_SWIPE_ZONE_PX = 24;
+const EDGE_SWIPE_THRESHOLD_PX = 80;
+function isValidEdgeSwipeStart(x, edgeZonePx) {
+  return x <= edgeZonePx;
+}
+function shouldTriggerEdgeSwipeBack(dx, dy, thresholdPx) {
+  return dx > thresholdPx && dx > Math.abs(dy);
+}
+function initEdgeSwipeBack() {
+  let startX = null, startY = null, tracking = false;
+  document.addEventListener('touchstart', (e) => {
+    // document.querySelector('.level-roadmap-overlay') : une bottom sheet deja
+    // ouverte (Parcours de niveau, fiche ami, info groupe, menu contextuel -
+    // idee #7) gere deja son propre glisser-pour-fermer VERTICAL - un geste
+    // horizontal depuis le bord ne doit pas interferer par-dessus.
+    if (isAtTabRoot() || document.querySelector('.level-roadmap-overlay') || !isValidEdgeSwipeStart(e.touches[0].clientX, EDGE_SWIPE_ZONE_PX)) {
+      tracking = false;
+      return;
+    }
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    tracking = true;
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    if (!tracking) { startX = null; return; }
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (shouldTriggerEdgeSwipeBack(dx, dy, EDGE_SWIPE_THRESHOLD_PX)) {
+      if (navigator.vibrate) navigator.vibrate(10);
+      history.back();
+    }
+    tracking = false; startX = null;
+  }, { passive: true });
+  document.addEventListener('touchcancel', () => { tracking = false; startX = null; }, { passive: true });
 }
 
 // Retour utilisateur "effet waouh" : legere parallaxe sur l'image de
@@ -10325,6 +10536,9 @@ initTiltCards();
 initSwipeableRows();
 initParallax();
 initCollapsingTitleBar();
+initLongPressMenu();
+initTabSwipe();
+initEdgeSwipeBack();
 
 </script>
 

@@ -2018,6 +2018,7 @@ const LOCALE_EN = {
     inProgress: '● In progress — {{current}}/{{target}}',
     activate: '+ Activate',
     active: '✓ Active',
+    contextMenuView: 'View details',
     communityRibbonTitle: "Community challenge of the day — {{n}} completed today",
   },
   library: {
