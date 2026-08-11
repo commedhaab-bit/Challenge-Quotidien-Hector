@@ -2279,29 +2279,18 @@ const cssText = __rawHtml + __cssSource;
   console.log('OK: degrade ambiant selon l heure reelle de la journee (4 tranches, fonction pure)');
 
   // Idee bonus (retour utilisateur, "app premium/native") : ecran de demarrage
-  // avec Kilito (pas un simple logo), masque au 1er auth resolu.
-  __assertOk(__rawHtml.includes('id="appSplash"') && __rawHtml.includes('class="app-splash-kilo"'), 'l ecran de demarrage doit exister dans le HTML statique, avec Kilito dessine (pas juste un logo)');
+  // avec Kilito (pas un simple logo), masque au 1er auth resolu. Bug reel
+  // corrige (retour utilisateur, "juste un smiley, pas Kilito") :
+  // upgradeSplashToRealKilito() remplace le repli statique par le VRAI
+  // renderKilo() des que le script a fini de s'executer.
+  __assertOk(__rawHtml.includes('id="appSplash"') && __rawHtml.includes('id="appSplashKiloSlot"'), 'l ecran de demarrage doit exister dans le HTML statique, avec un slot pour Kilito');
   __assertOk(typeof hideAppSplash === 'function', 'hideAppSplash() doit exister pour masquer le splash une fois l auth resolue');
-  console.log('OK: ecran de demarrage avec Kilito present dans le HTML statique');
-
-  // Idee bonus (retour utilisateur, "app premium/native") : grand titre qui
-  // se retracte au scroll (Défis/Journal/Communauté) - pilule compacte
-  // presente sur les 3 ecrans, seuil de declenchement teste comme fonction PURE.
-  __assertEq(shouldShowCompactTitleBar(0), false, 'tout en haut de l ecran, la pilule compacte ne doit pas etre visible');
-  __assertEq(shouldShowCompactTitleBar(COLLAPSE_TITLE_SCROLL_THRESHOLD), false, 'exactement au seuil, la pilule ne doit pas encore etre visible (comparaison stricte)');
-  __assertEq(shouldShowCompactTitleBar(COLLAPSE_TITLE_SCROLL_THRESHOLD + 1), true, 'juste au-dela du seuil, la pilule doit devenir visible');
-  const libraryHtmlForTitleBar = renderLibraryScreen();
-  __assertOk(libraryHtmlForTitleBar.includes('compact-title-bar') && libraryHtmlForTitleBar.includes(t('library.title')), 'l ecran Défis doit inclure la pilule compacte avec le bon titre');
-  const communityHtmlForTitleBar = renderCommunityScreen();
-  __assertOk(communityHtmlForTitleBar.includes('compact-title-bar') && communityHtmlForTitleBar.includes(t('community.title')), 'l ecran Communauté doit inclure la pilule compacte avec le bon titre');
-  profileView = 'profile';
-  const profileHtmlForTitleBar = renderAccountTabScreen();
-  __assertOk(profileHtmlForTitleBar.includes('compact-title-bar') && profileHtmlForTitleBar.includes(t('profileTab.title')), 'l ecran Profil doit inclure la pilule compacte avec le bon titre');
-  profileView = 'journal';
-  const journalHtmlForTitleBar = renderAccountTabScreen();
-  __assertOk(journalHtmlForTitleBar.includes('compact-title-bar') && journalHtmlForTitleBar.includes(t('history.title')), 'le sous-onglet Journal doit inclure la pilule compacte avec SON propre titre (pas celui de Profil)');
-  profileView = 'profile';
-  console.log('OK: grand titre retractable au scroll (pilule compacte presente sur Défis/Journal/Communauté, seuil de declenchement pur)');
+  __assertOk(typeof upgradeSplashToRealKilito === 'function', 'upgradeSplashToRealKilito() doit exister pour remplacer le repli statique par le vrai Kilito');
+  const splashSlotEl = document.getElementById('appSplashKiloSlot');
+  splashSlotEl.innerHTML = '';
+  upgradeSplashToRealKilito();
+  __assertOk(splashSlotEl.innerHTML.includes('kilo-svg') && splashSlotEl.innerHTML.includes('kilo-idle'), 'upgradeSplashToRealKilito() doit injecter le VRAI Kilito (renderKilo(), pas la silhouette de repli)');
+  console.log('OK: ecran de demarrage avec Kilito present dans le HTML statique, upgrade vers le vrai Kilito une fois le script charge');
 
   // Idee bonus (retour utilisateur, "app premium/native") : chemin de
   // progression en zigzag facon jeu de plateau (Parcours de niveau).
@@ -2318,18 +2307,21 @@ const cssText = __rawHtml + __cssSource;
   console.log('OK: chemin de progression en zigzag facon jeu de plateau (ligne qui se remplit jusqu au palier courant)');
 
   // Idee bonus (retour utilisateur, "app premium/native") : graphique radar
-  // par categorie musculaire - revele l equilibre de l entrainement.
-  const savedStatsRadarTest = stats;
-  stats = {};
-  __assertEq(renderCategoryRadarChart(), '', 'aucune statistique -> rien a afficher (pas de radar vide/absurde)');
+  // par categorie musculaire - revele l equilibre de l entrainement. Retour
+  // utilisateur apres 1er test reel : bascule desormais sur une fenetre de
+  // 28 jours (historyEntries, deja chargee par le Journal) plutot que le
+  // cumul a vie, et corrige le texte des labels gauche/droite tronques.
+  const savedHistoryEntriesRadarTest = historyEntries;
+  historyEntries = [];
+  __assertEq(renderCategoryRadarChart(), '', 'aucune entree recente -> rien a afficher (pas de radar vide/absurde)');
   const pompesForRadar = CHALLENGE_LIBRARY.find((c) => c.slug === 'pompes');
   const squatsForRadar = CHALLENGE_LIBRARY.find((c) => c.slug === 'squats');
-  stats = {
-    [pompesForRadar.id]: { lifetimeTotal: 1000, bestDay: { total: 0, date: null }, recordStreak: 0 },
-    [squatsForRadar.id]: { lifetimeTotal: 250, bestDay: { total: 0, date: null }, recordStreak: 0 },
-  };
-  const catVolumeForRadar = computeCategoryVolumeBreakdown();
-  __assertEq(catVolumeForRadar['Haut du corps'], 1000, 'le volume par categorie doit agreger tous les exercices de cette categorie');
+  historyEntries = [
+    { key: todayKey, date: new Date(), challengeName: 'Pompes', cat: pompesForRadar.cat, total: 1000, target: 100, unit: 'reps', done: true },
+    { key: todayKey, date: new Date(), challengeName: 'Squats', cat: squatsForRadar.cat, total: 250, target: 100, unit: 'reps', done: true },
+  ];
+  const catVolumeForRadar = computeCategoryVolumeBreakdownFromEntries(historyEntries);
+  __assertEq(catVolumeForRadar['Haut du corps'], 1000, 'le volume par categorie doit agreger toutes les entrees recentes de cette categorie');
   const radarPoints = computeRadarChartPoints(catVolumeForRadar, RADAR_CHART_RADIUS);
   const upperBodyPoint = radarPoints.find((p) => p.cat === 'Haut du corps');
   __assertEq(upperBodyPoint.ratio, 1, 'la categorie la plus travaillee doit toujours toucher 100% du rayon (normalisation sur le MAX, pas une echelle absolue)');
@@ -2338,8 +2330,15 @@ const cssText = __rawHtml + __cssSource;
   const radarChartHtml = renderCategoryRadarChart();
   __assertOk(radarChartHtml.includes('radar-chart-svg') && radarChartHtml.includes('radarFillGrad'), 'le radar doit exister avec son degrade de remplissage des qu au moins une categorie a du volume');
   __assertEq((radarChartHtml.match(/class="radar-axis-label"/g) || []).length, 4, 'le radar doit avoir exactement 4 axes (4 categories fixes de l app)');
-  stats = savedStatsRadarTest;
-  console.log('OK: graphique radar par categorie musculaire (normalise sur la categorie la plus travaillee, vide si aucune statistique)');
+  // Bug reel corrige : les labels gauche ("Haltères")/droite ("Bas du corps")
+  // etaient tronques par le bord du SVG (text-anchor="middle" fixe pour les
+  // 4 axes) - verifie que seuls les 2 axes VERTICAUX (haut/bas) gardent un
+  // ancrage centre, les 2 axes lateraux doivent desormais grandir vers le
+  // centre du radar (anchor "start"/"end") plutot que vers le bord.
+  __assertEq((radarChartHtml.match(/text-anchor="middle"/g) || []).length, 2, 'seuls les 2 axes verticaux (haut/bas) doivent garder un ancrage centre');
+  __assertOk(radarChartHtml.includes('text-anchor="start"') && radarChartHtml.includes('text-anchor="end"'), 'les 2 axes lateraux doivent grandir vers le centre (start a gauche, end a droite)');
+  historyEntries = savedHistoryEntriesRadarTest;
+  console.log('OK: graphique radar par categorie musculaire (fenetre de 28 jours, normalise sur la categorie la plus travaillee, labels lateraux non tronques)');
 
   // Retour utilisateur "effet waouh" : les panneaux (parcours de niveau, fiche
   // d ami, info groupe) sont desormais de VRAIES feuilles a glisser - le mock
@@ -3369,7 +3368,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v121'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v122'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -3617,27 +3616,6 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = null;
   console.log('OK: morph carte -> fiche d exercice (meme view-transition-name partage entre la carte accueil et le hero de la fiche, scope a l accueil uniquement)');
 
-  // Idee bonus (retour utilisateur, "app premium/native") : menu contextuel
-  // au long-press sur une carte de la Bibliotheque.
-  const libraryCardHtmlForContextMenu = renderChallengeCard(pompes, 'library', 0);
-  __assertOk(libraryCardHtmlForContextMenu.includes('data-context-menu="challenge:' + pompes.id + '"'), 'une carte de la Bibliotheque doit porter l attribut de menu contextuel avec son id');
-  const todayCardHtmlForContextMenu = renderChallengeCard(pompes, 'today', 0);
-  __assertOk(!todayCardHtmlForContextMenu.includes('data-context-menu'), 'une carte de l accueil ne doit PAS porter de menu contextuel (scope limite a la Bibliotheque)');
-  activeToday = new Set();
-  __assertEq(contextMenuOpen, false, 'aucun menu contextuel ne doit etre ouvert par defaut');
-  openContextMenu('challenge:' + pompes.id);
-  __assertEq(contextMenuOpen, true, 'openContextMenu() doit marquer le menu comme ouvert');
-  openContextMenu('not-a-challenge-key');
-  __assertEq(contextMenuOpen, true, 'une cle mal formee doit etre ignorée silencieusement (jamais de throw, ni de fermeture du menu deja ouvert)');
-  closeContextMenu();
-  __assertEq(contextMenuOpen, false, 'closeContextMenu() doit refermer le menu');
-  const inactiveMenuHtml = renderContextMenuSheet(pompes, false);
-  __assertOk(inactiveMenuHtml.includes(t('card.activate')) && !inactiveMenuHtml.includes(t('card.active') + '</button>'), 'un defi INACTIF doit proposer "Activer" dans le menu');
-  const activeMenuHtml = renderContextMenuSheet(pompes, true);
-  __assertOk(activeMenuHtml.includes(t('card.active')), 'un defi ACTIF doit proposer "Desactiver" (etat actif) dans le menu');
-  __assertOk(inactiveMenuHtml.includes('pickChallenge(' + pompes.id + ')'), 'le menu doit toujours proposer "Voir la fiche" (ouvre directement l execution, sans activer au prealable)');
-  console.log('OK: menu contextuel au long-press (Bibliotheque uniquement, "Voir la fiche" + raccourci Activer/Desactiver)');
-
   // Idee bonus (retour utilisateur, "app premium/native") : glisser
   // horizontalement pour passer d'un onglet a l'adjacent.
   __assertEq(computeTabSwipeTarget('today', -20, TAB_SWIPE_THRESHOLD_PX), null, 'sous le seuil, aucun changement d onglet ne doit etre declenche');
@@ -3655,7 +3633,6 @@ const cssText = __rawHtml + __cssSource;
   showProfileOnboarding = false;
   usernameSetupMode = null;
   onboardingTransitionPhase = null;
-  contextMenuOpen = false;
   __assertEq(isAtTabRoot(), true, 'a la racine d un onglet (rien d imbrique ouvert), le swipe entre onglets doit etre actif');
   currentChallengeId = pompes.id;
   __assertEq(isAtTabRoot(), false, 'sur la fiche d un exercice, le swipe entre onglets ne doit PAS etre actif (reserve au geste de retour)');

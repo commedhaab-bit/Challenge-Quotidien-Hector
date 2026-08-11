@@ -72,17 +72,27 @@
 <div id="pwaInstallGate" class="pwa-install-gate" style="display:none;"></div>
 
 <!-- Idee bonus (retour utilisateur, "app premium/native") : ecran de demarrage
-     avec Kilito (dessine en dur, voir le commentaire CSS dedie sur .app-splash
-     dans styles.css) - couvre le chargement des SDK Firebase/verification de
+     avec Kilito - couvre le chargement des SDK Firebase/verification de
      l'auth, masque par hideAppSplash() (voir plus bas dans ce fichier) des que
-     #loginScreen ou #app devient le contenu reellement affiche. -->
+     #loginScreen ou #app devient le contenu reellement affiche. Retour
+     utilisateur apres 1er test reel : la silhouette dessinee en dur ici (un
+     simple smiley, pas reconnaissable comme Kilito) est UNIQUEMENT un repli
+     pour le tout premier paint, avant que le gros script inline (renderKilo()/
+     KILO_STATE_SVG, definis tout en bas) n'ait fini de s'executer - des que
+     c'est le cas, upgradeSplashToRealKilito() (voir plus bas) remplace
+     IMMEDIATEMENT le contenu de #appSplashKiloSlot par le VRAI Kilito
+     (renderKilo('idle', ...), memes poses/animations que partout ailleurs
+     dans l'app) - ce repli generique ne reste donc visible qu'une fraction
+     de seconde dans les faits, jamais pendant toute l'attente Firebase. -->
 <div id="appSplash" class="app-splash">
-  <svg class="app-splash-kilo" width="96" height="96" viewBox="-60 -60 120 120" role="img" aria-label="Défi du Jour">
-    <circle cx="0" cy="8" r="34" fill="#0f120f" stroke="#39e97a" stroke-width="3"/>
-    <circle cx="-11" cy="0" r="5" fill="#39e97a"/>
-    <circle cx="11" cy="0" r="5" fill="#39e97a"/>
-    <path d="M -10 16 Q 0 24 10 16" stroke="#39e97a" stroke-width="3" fill="none" stroke-linecap="round"/>
-  </svg>
+  <div id="appSplashKiloSlot" class="app-splash-kilo-slot">
+    <svg width="96" height="96" viewBox="-60 -60 120 120" role="img" aria-label="Défi du Jour">
+      <circle cx="0" cy="8" r="34" fill="#0f120f" stroke="#39e97a" stroke-width="3"/>
+      <circle cx="-11" cy="0" r="5" fill="#39e97a"/>
+      <circle cx="11" cy="0" r="5" fill="#39e97a"/>
+      <path d="M -10 16 Q 0 24 10 16" stroke="#39e97a" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </svg>
+  </div>
   <div class="app-splash-title">Défi du Jour</div>
 </div>
 
@@ -1998,6 +2008,17 @@ function switchTab(tab) {
   }
   if (tab === 'groups') {
     refreshMyGroupsAndActiveChallenges();
+  }
+  if (tab === 'account') {
+    // Retour utilisateur : le radar par categorie (renderCategoryRadarChart())
+    // a besoin de historyEntries (28 derniers jours) - jusqu'ici seul le
+    // sous-onglet Journal declenchait ce chargement (switchProfileView('journal')),
+    // donc le radar restait invisible tant qu'on n'avait jamais ouvert le
+    // Journal une fois dans la session. Reutilise TELLE QUELLE loadHistoryEntries()
+    // (meme cache interne historyDayCache, aucune lecture dupliquee si le
+    // Journal a deja ete visite) - fire-and-forget comme les autres chargements
+    // par onglet ci-dessus, ne bloque jamais le premier rendu.
+    loadHistoryEntries().then(() => render()).catch((e) => console.error('history entries fetch for radar failed', e));
   }
 }
 
@@ -5164,15 +5185,28 @@ function getLifetimeSummary() {
   return { totalReps, totalSeconds, favCat };
 }
 
+// Retour utilisateur : le cumul A VIE (premiere version) melangeait toute
+// l'histoire du compte - un mois d'inactivite sur les jambes des annees plus
+// tot pesait autant qu'une semaine recente. Le radar utilise desormais la
+// MEME fenetre de 28 jours deja chargee par le Journal (historyEntries/
+// loadHistoryEntries(), chaque entree porte deja `cat` et `total`) - un vrai
+// "equilibre du dernier mois", pas un cumul depuis le debut du compte.
+// Fonction PURE separee (jamais la meme que computeCategoryVolumeBreakdown()
+// ci-dessus, qui reste utilisee par getLifetimeSummary() - 2 fenetres
+// temporelles differentes, 2 fonctions differentes).
+function computeCategoryVolumeBreakdownFromEntries(entries) {
+  const catVolume = {};
+  for (const e of entries) {
+    if (!e.cat) continue;
+    catVolume[e.cat] = (catVolume[e.cat] || 0) + e.total;
+  }
+  return catVolume;
+}
+
 // Idee bonus (retour utilisateur, "app premium/native") : graphique radar par
 // categorie musculaire - revele l'equilibre de l'entrainement d'un coup
 // d'oeil ("tu negliges tes jambes"), la ou la liste d'exercices ne le montre
-// pas. Scope volontairement simplifie par rapport a la proposition initiale
-// ("30 derniers jours") : utilise le cumul A VIE deja en memoire
-// (stats[id].lifetimeTotal, comme renderAthleteStatsBento()) plutot qu'une
-// fenetre glissante de 30 jours, qui aurait exige soit une nouvelle lecture
-// Firestore soit un etat de chargement asynchrone - zero cout supplementaire,
-// coherent avec le reste du bloc stats du Profil.
+// pas.
 const RADAR_CATEGORIES = ['Haut du corps', 'Bas du corps', 'Gainage / Core', 'Haltères'];
 const RADAR_CHART_RADIUS = 70;
 // Fonction PURE (catVolume en parametre) : angle standard d'un radar chart,
@@ -5189,9 +5223,9 @@ function computeRadarChartPoints(catVolume, radius) {
   });
 }
 function renderCategoryRadarChart() {
-  const catVolume = computeCategoryVolumeBreakdown();
+  const catVolume = computeCategoryVolumeBreakdownFromEntries(historyEntries);
   const total = RADAR_CATEGORIES.reduce((sum, c) => sum + (catVolume[c] || 0), 0);
-  if (total <= 0) return ''; // rien a montrer avant la toute 1ere serie loguee
+  if (total <= 0) return ''; // rien a montrer avant la 1ere serie loguee CE mois-ci (ou historyEntries pas encore charge)
   const radius = RADAR_CHART_RADIUS;
   const points = computeRadarChartPoints(catVolume, radius);
   const polygonPoints = points.map((p) => `${p.x},${p.y}`).join(' ');
@@ -5209,12 +5243,24 @@ function renderCategoryRadarChart() {
     const y = (radius * Math.sin(angle)).toFixed(1);
     return `<line x1="0" y1="0" x2="${x}" y2="${y}" class="radar-axis-line" />`;
   }).join('');
+  // Bug reel corrige (retour utilisateur, capture d'ecran) : "Haltères"/"Bas
+  // du corps" (labels gauche/droite) etaient tronques par le bord du SVG -
+  // text-anchor="middle" fixe faisait grandir le texte DANS LES 2 SENS
+  // depuis un point deja proche du bord (labelR=90 dans un viewBox de ±100),
+  // et un texte de plusieurs caracteres depassait alors la marge de 10
+  // unites. Ancrage desormais ADAPTE a la position : gauche/droite grandissent
+  // vers le CENTRE (jamais vers le bord), seuls haut/bas restent centres sur
+  // leur axe vertical (aucun risque de troncature verticale constate).
   const labels = RADAR_CATEGORIES.map((cat, i) => {
     const angle = -Math.PI / 2 + i * (2 * Math.PI / RADAR_CATEGORIES.length);
-    const labelR = radius + 20;
+    const labelR = radius + 14;
     const x = (labelR * Math.cos(angle)).toFixed(1);
     const y = (labelR * Math.sin(angle)).toFixed(1);
-    return `<text x="${x}" y="${y}" class="radar-axis-label" text-anchor="middle" dominant-baseline="middle">${escapeHtml(translateCategoryName(cat))}</text>`;
+    const cosAngle = Math.cos(angle);
+    let anchor = 'middle';
+    if (cosAngle > 0.3) anchor = 'end'; // axe a droite -> le texte grandit vers la gauche (le centre)
+    else if (cosAngle < -0.3) anchor = 'start'; // axe a gauche -> le texte grandit vers la droite (le centre)
+    return `<text x="${x}" y="${y}" class="radar-axis-label" text-anchor="${anchor}" dominant-baseline="middle">${escapeHtml(translateCategoryName(cat))}</text>`;
   }).join('');
   const dots = points.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="3" class="radar-data-dot" />`).join('');
   // Site d'appel UNIQUE dans toute l'appli (Profil) - aucun risque de collision
@@ -7527,13 +7573,8 @@ function renderChallengeCard(c, mode, index, animate = true) {
     ? `<span class="community-card-ribbon" title="${t('card.communityRibbonTitle', { n: communityCount })}">🌍 ${communityCount}</span>`
     : '';
 
-  // Idee bonus (retour utilisateur, "app premium/native") : menu contextuel
-  // au long-press - scope volontairement limite au mode 'library' (voir
-  // initLongPressMenu()/openContextMenu() plus bas) : c'est le seul mode ou
-  // "voir la fiche sans activer" comble une vraie friction actuelle.
-  const contextMenuAttr = mode === 'library' ? ` data-context-menu="challenge:${c.id}"` : '';
   return `
-    <div class="picker-item${noAnimClass}"${delayStyle}${contextMenuAttr} onclick="${onclick}">
+    <div class="picker-item${noAnimClass}"${delayStyle} onclick="${onclick}">
       ${renderExercisePicto(c)}
       <div class="picker-item-body">
         <span class="name">${escapeHtml(challengeDisplayName(c))}</span>
@@ -7560,7 +7601,6 @@ function renderLibraryScreen() {
     return renderChallengeForm();
   }
   let html = `
-    ${renderCollapsibleTitleBar(t('library.title'))}
     <div class="library-header-row">
       <div>
         <h1 class="title">${t('library.title')}</h1>
@@ -8528,7 +8568,6 @@ function renderCommunityScreen() {
     : '';
 
   return `
-    ${renderCollapsibleTitleBar(t('community.title'))}
     <div class="library-header-row">
       <div>
         <h1 class="title">${t('community.title')}</h1>
@@ -9862,7 +9901,6 @@ function renderAccountTabScreen() {
   const subtabAnimClass = profileSubtabJustEntered ? '' : ' no-anim';
   profileSubtabJustEntered = false;
   return `
-    ${renderCollapsibleTitleBar(isJournal ? t('history.title') : t('profileTab.title'))}
     <div class="library-header-row">
       <div>
         <h1 class="title">${isJournal ? t('history.title') : t('profileTab.title')}</h1>
@@ -10112,92 +10150,6 @@ function initSwipeableRows() {
   }, { passive: true });
 }
 
-// Idee bonus (retour utilisateur, "app premium/native") : menu contextuel
-// natif au LONG-PRESS (rester appuye ~500ms) sur une carte de la Bibliotheque
-// (voir data-context-menu, pose UNIQUEMENT en mode 'library' par
-// renderChallengeCard()) - action sheet qui glisse depuis le bas (reutilise
-// TEL QUEL attachSheetBehavior()/.level-roadmap-overlay/-sheet, memes classes
-// que le Parcours de niveau/la fiche d'ami/l'info groupe - AUCUN nouveau
-// mecanisme de glisser-pour-fermer a ecrire). 2 actions rapides, toutes 2
-// deja des fonctions existantes reutilisees telles quelles :
-// - "Voir la fiche" (pickChallenge()) : jusqu'ici IMPOSSIBLE d'ouvrir la
-//   fiche d'un exercice depuis la Bibliotheque sans d'abord l'activer PUIS
-//   aller le chercher sur Aujourd'hui - une vraie friction, comblee ici.
-// - "Activer"/"Desactiver" (toggleActiveToday()) : raccourci vers la meme
-//   action que le bouton deja visible sur la carte.
-// Delegation sur document (meme patron que initTiltCards()/initSwipeableRows()
-// juste au-dessus) : survit nativement a tous les re-renders. Distingue un
-// VRAI maintien (tolerance de mouvement 10px, sinon annule) d'un tap normal
-// ou d'un debut de scroll - et neutralise le clic qui suivrait immediatement
-// l'ouverture du menu (meme technique suppressClick que initSwipeableRows()).
-const LONG_PRESS_DURATION_MS = 500;
-const LONG_PRESS_MOVE_TOLERANCE_PX = 10;
-let contextMenuOpen = false;
-function initLongPressMenu() {
-  let timer = null, target = null, startX = 0, startY = 0;
-  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } target = null; };
-  document.addEventListener('touchstart', (e) => {
-    const el = e.target.closest && e.target.closest('[data-context-menu]');
-    cancel();
-    if (!el) return;
-    target = el;
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-    timer = setTimeout(() => {
-      timer = null;
-      if (navigator.vibrate) navigator.vibrate([15, 30, 15]); // motif distinct du simple tap, signale une action "differente"
-      const suppressClick = (ev) => { ev.stopPropagation(); ev.preventDefault(); target.removeEventListener('click', suppressClick, true); };
-      target.addEventListener('click', suppressClick, true);
-      openContextMenu(target.dataset.contextMenu);
-      target = null;
-    }, LONG_PRESS_DURATION_MS);
-  }, { passive: true });
-  document.addEventListener('touchmove', (e) => {
-    if (!timer) return;
-    const dx = Math.abs(e.touches[0].clientX - startX);
-    const dy = Math.abs(e.touches[0].clientY - startY);
-    if (dx > LONG_PRESS_MOVE_TOLERANCE_PX || dy > LONG_PRESS_MOVE_TOLERANCE_PX) cancel();
-  }, { passive: true });
-  document.addEventListener('touchend', cancel, { passive: true });
-  document.addEventListener('touchcancel', cancel, { passive: true });
-}
-
-// Extraite en fonction de rendu separee (meme convention que
-// renderLevelRoadmapSheet()/renderFriendProfileSheet() pour les 2 autres
-// bottom sheets) - rend openContextMenu() testable sans dependre de
-// document.createElement()/appendChild() (non modelises fidelement par le
-// mock DOM de test, memes limites deja documentees pour les 3 autres sheets).
-function renderContextMenuSheet(c, isActive) {
-  return `
-    <div class="level-roadmap-sheet context-menu-sheet">
-      <div class="sheet-drag-handle"></div>
-      <div class="context-menu-title">${escapeHtml(challengeDisplayName(c))}</div>
-      <button class="context-menu-action" onclick="closeContextMenu(); pickChallenge(${c.id});">🔍 ${t('card.contextMenuView')}</button>
-      <button class="context-menu-action" onclick="closeContextMenu(); toggleActiveToday(${c.id});">${isActive ? t('card.active') : t('card.activate')}</button>
-    </div>
-  `;
-}
-function openContextMenu(key) {
-  const [kind, idStr] = (key || '').split(':');
-  if (kind !== 'challenge') return;
-  const id = Number(idStr);
-  const c = CHALLENGE_LIBRARY.find((x) => x.id === id) || CHALLENGES.find((x) => x.id === id);
-  if (!c) return;
-  const el = document.createElement('div');
-  el.id = 'contextMenuOverlay';
-  el.className = 'level-roadmap-overlay context-menu-overlay';
-  el.innerHTML = renderContextMenuSheet(c, activeToday.has(id));
-  document.body.appendChild(el);
-  attachSheetBehavior(el, closeContextMenu);
-  contextMenuOpen = true;
-}
-
-function closeContextMenu() {
-  const el = document.getElementById('contextMenuOverlay');
-  if (el) el.remove();
-  contextMenuOpen = false;
-}
-
 // Idee bonus (retour utilisateur, "app premium/native") : glisser
 // horizontalement pour passer d'un onglet a l'adjacent, sans avoir a viser la
 // tab bar tout en bas - geste standard (Instagram, Gmail...). Fonction PURE
@@ -10211,8 +10163,7 @@ function closeContextMenu() {
 function isAtTabRoot() {
   return !currentChallengeId && editingChallengeId === null && !settingsScreenOpen
     && openGroupId === null && !creatingGroupChallenge && !friendsScreenOpen
-    && !showProfileOnboarding && !usernameSetupMode && !onboardingTransitionPhase
-    && !contextMenuOpen;
+    && !showProfileOnboarding && !usernameSetupMode && !onboardingTransitionPhase;
 }
 function computeTabSwipeTarget(currentTab, deltaX, thresholdPx) {
   if (Math.abs(deltaX) < thresholdPx) return null;
@@ -10328,37 +10279,6 @@ function initParallax() {
     const offset = Math.max(-15, Math.min(15, window.scrollY * 0.15));
     img.style.transform = `translateY(${offset}px)`;
   }, { passive: true });
-}
-
-// Idee bonus (retour utilisateur, "app premium/native") : grand titre qui se
-// retracte au scroll (Défis/Journal/Communauté - ecrans avec du contenu
-// scrollable, esprit iOS "large title"). Fonction PURE (seuil en dur,
-// extraite pour rester testable) : au-dela de COLLAPSE_TITLE_SCROLL_THRESHOLD,
-// une pilule fixe compacte (.compact-title-bar, verre depoli comme la tab
-// bar) apparait en haut avec le titre en petit - le grand titre original
-// reste inchange dans le flux, la pilule compacte est un 2e element qui
-// PREND LE RELAIS visuellement, pas une transformation du titre lui-meme
-// (plus simple/robuste que redimensionner le vrai h1 au pixel pres au fil du
-// scroll). Meme delegation qu'initParallax()/initTiltCards() juste au-dessus
-// (un seul listener global, jamais re-attache a chaque render() qui recree
-// tout le DOM) - non executee par le harnais de test (mock
-// document.addEventListener no-op, meme limite deja acceptee pour
-// initParallax()/initTiltCards() dans ce fichier).
-const COLLAPSE_TITLE_SCROLL_THRESHOLD = 48;
-function shouldShowCompactTitleBar(scrollY) {
-  return scrollY > COLLAPSE_TITLE_SCROLL_THRESHOLD;
-}
-function initCollapsingTitleBar() {
-  window.addEventListener('scroll', () => {
-    const bar = document.querySelector('.compact-title-bar');
-    if (!bar) return;
-    bar.classList.toggle('visible', shouldShowCompactTitleBar(window.scrollY));
-  }, { passive: true });
-}
-// Reutilisee par renderLibraryScreen()/renderCommunityScreen()/
-// renderAccountTabScreen() - un seul balisage, un seul CSS, 3 sites d'appel.
-function renderCollapsibleTitleBar(text) {
-  return `<div class="compact-title-bar"><div class="compact-title-bar-text">${escapeHtml(text)}</div></div>`;
 }
 
 async function refreshApp() {
@@ -10553,10 +10473,22 @@ initPullToRefresh();
 initTiltCards();
 initSwipeableRows();
 initParallax();
-initCollapsingTitleBar();
-initLongPressMenu();
 initTabSwipe();
 initEdgeSwipeBack();
+
+// Bug reel corrige (retour utilisateur, "juste un smiley, pas Kilito") :
+// upgrade l'ecran de demarrage vers le VRAI Kilito des que ce script a fini
+// de s'executer (renderKilo()/KILO_STATE_SVG sont desormais definis - ils ne
+// l'etaient pas au moment du tout premier paint, d'ou le repli statique dans
+// le HTML). Appelee ici, tout en bas du script (donc apres TOUTES les
+// definitions) : le splash reste visible jusqu'a ce que Firebase Auth
+// resolve (hideAppSplash()), ce qui laisse largement le temps a cet upgrade
+// de s'appliquer avant que l'utilisateur ne remarque quoi que ce soit.
+function upgradeSplashToRealKilito() {
+  const slot = document.getElementById('appSplashKiloSlot');
+  if (slot) slot.innerHTML = renderKilo('idle', { size: 110 });
+}
+upgradeSplashToRealKilito();
 
 </script>
 

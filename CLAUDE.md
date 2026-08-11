@@ -5612,3 +5612,103 @@ coexistent desormais sur les memes ecrans (pull-to-refresh, tilt 3D,
 swipe-to-reveal, glisser-pour-fermer une feuille, swipe entre onglets,
 edge-swipe retour, long-press). A confirmer integralement par l'utilisateur
 en conditions reelles.
+
+## Retours utilisateur apres 1er test reel du chantier "app premium/native" (2 annulations + 3 corrections)
+
+**Contexte** : premier passage reel sur l'app deployee, captures d'ecran a
+l'appui. 2 idees jugees pas concluantes, annulees entierement ; 3 bugs/
+ameliorations reels sur des idees conservees.
+
+**#2 (titre retractable au scroll) - ANNULEE.** Retour direct : "le resultat
+n'est pas interessant". Retire entierement : `renderCollapsibleTitleBar()`/
+`shouldShowCompactTitleBar()`/`initCollapsingTitleBar()`/`COLLAPSE_TITLE_SCROLL_THRESHOLD`,
+les 3 sites d'appel (Défis/Communauté/Profil), la regle CSS `.compact-title-bar`,
+l'appel d'initialisation, les tests dedies. Ne pas re-proposer sans demande
+explicite.
+
+**#7 (menu contextuel au long-press) - ANNULEE.** Meme verdict direct :
+"annule". Retire entierement : `initLongPressMenu()`/`openContextMenu()`/
+`closeContextMenu()`/`renderContextMenuSheet()`/`LONG_PRESS_DURATION_MS`/
+`LONG_PRESS_MOVE_TOLERANCE_PX`/`contextMenuOpen`, l'attribut
+`data-context-menu` sur les cartes de la Bibliotheque, les regles CSS
+`.context-menu-*`, la cle i18n `card.contextMenuView` (fr/en/es), les tests
+dedies. **`isAtTabRoot()` CONSERVEE** (partagee avec #6/#10, qui restent en
+place) - seule sa reference a `contextMenuOpen` (devenue orpheline) a ete
+retiree de sa condition.
+
+**#18 (radar par categorie) - 2 corrections reelles.**
+1. **Bug visuel** (capture d'ecran) : les labels lateraux "Haltères"
+   (gauche) et "Bas du corps" (droite) etaient tronques par le bord du SVG -
+   `text-anchor="middle"` fixe sur les 4 axes faisait grandir le texte DANS
+   LES 2 SENS depuis un point deja proche du bord (`labelR=90` dans un
+   viewBox `±100`), et un label de plusieurs caracteres depassait alors la
+   marge de 10 unites. Corrige en adaptant l'ancrage a la position de l'axe
+   (`Math.cos(angle)` du point) : les 2 axes LATERAUX grandissent desormais
+   VERS LE CENTRE (`start` a gauche, `end` a droite), seuls les 2 axes
+   verticaux (haut/bas) gardent `middle`. `labelR` legerement reduit (20 ->
+   14) en marge de securite supplementaire.
+2. **Fenetre temporelle clarifiee** (question posee par l'utilisateur,
+   "affiche les donnees de combien de temps ?", reponse retenue : "dernier
+   mois"). Le radar utilisait le cumul A VIE (`stats[id].lifetimeTotal`,
+   simplification assumee de la version initiale) - melangeait toute
+   l'histoire du compte, un desequilibre ancien pesant autant qu'un
+   desequilibre recent. Bascule sur une fenetre de **28 jours**
+   (`historyEntries`, deja chargee par le Journal - `computeCategoryVolumeBreakdownFromEntries()`,
+   nouvelle fonction PURE distincte de `computeCategoryVolumeBreakdown()` qui
+   reste utilisee par `getLifetimeSummary()`, 2 fenetres temporelles
+   differentes pour 2 usages differents). **Trou comble au passage** :
+   `historyEntries` n'etait jusqu'ici charge que par le sous-onglet Journal
+   (`switchProfileView('journal')`) - le radar (sous-onglet Profil) restait
+   donc invisible tant qu'on n'avait jamais ouvert le Journal une fois dans
+   la session. `switchTab('account')` declenche desormais aussi
+   `loadHistoryEntries()` (fire-and-forget, meme cache interne
+   `historyDayCache` - aucune lecture dupliquee si le Journal a deja ete
+   visite). Libelle mis a jour en consequence : "Équilibre par catégorie" ->
+   "Équilibre du dernier mois" (fr/en/es).
+
+**#19 (chiffres odometre) - bug reel corrige, l'idee la plus grave de ce
+retour (les chiffres n'apparaissaient pas du tout).** Cause racine :
+`.odo-strip span { background: inherit; ... }` cherchait a recuperer le
+degrade de `.progress-current` (2 niveaux plus haut dans le DOM), mais
+`background: inherit` ne remonte QUE jusqu'au parent DIRECT (`.odo-strip`,
+qui n'a lui-meme aucun `background` propre) - le degrade heritait donc de
+rien, laissant `background-clip:text` + `color:transparent` sans le moindre
+background reel a montrer : texte totalement invisible, silencieusement (ni
+erreur JS ni erreur CSS, juste un rendu vide). Corrige en redeclarant le
+MEME degrade directement sur `.odo-strip span` (duplique par rapport a
+`.progress-current`, mais correct quel que soit le niveau d'imbrication du
+DOM - `inherit` pour des proprietes non-heritees par defaut comme
+`background` est un piege CSS classique, desormais evite ici en dur plutot
+que suppose fonctionner par-dela un niveau de parente).
+
+**#33 (splash Kilito) - correction de fidelite visuelle.** Retour : "il n'y
+a pas Kilito qui apparait mais juste un smiley" - la silhouette simplifiee
+dessinee en dur (cercle + 2 yeux + sourire, necessaire car `renderKilo()`/
+`KILO_STATE_SVG` ne sont definis que tout en bas du script, apres le tout
+premier paint) ne se lisait pas comme "Kilito" pour l'utilisateur, juste
+comme un smiley generique. Corrige SANS renoncer a la contrainte technique
+d'origine (toujours pas de dependance a `renderKilo()` pour le tout premier
+paint) : `#appSplashKiloSlot` (nouveau conteneur enveloppant la silhouette
+de repli) est immediatement mis a jour par `upgradeSplashToRealKilito()`
+(nouvelle fonction, appelee tout en bas du script - donc APRES que
+`renderKilo()`/`KILO_STATE_SVG` ont fini d'etre definis) avec le VRAI Kilito
+(`renderKilo('idle', {size:110})`, memes poses/animations que partout
+ailleurs dans l'app). Le splash restant visible jusqu'a ce que Firebase Auth
+resolve (delai reseau/IndexedDB reel, presque toujours plus long que le
+temps d'evaluation synchrone du script), cet upgrade s'applique dans les
+faits quasi instantanement - le repli statique n'est plus qu'une garantie
+theorique pour un tout premier instant qui ne devrait, en pratique, jamais
+etre percu par l'utilisateur. L'animation de pulsation (`app-splash-pulse`)
+est deplacee du SVG lui-meme vers `#appSplashKiloSlot` (le conteneur) pour
+rester applicable a l'identique avant/apres l'upgrade, quel que soit son
+contenu.
+
+CACHE_NAME -> v122 (`index.html` + `styles.css` + les 3 `locale-*.js`
+modifies). Aucun changement de regles Firestore/Cloud Functions -
+modification 100% cote client, aucune touche a `functions/**`. Meme limite
+de verification que le reste des chantiers visuels : valide par tests
+structurels/comportementaux + lint, **pas confirme visuellement dans un
+vrai navigateur** - a reconfirmer par l'utilisateur sur l'app deployee,
+notamment le rendu reel du radar (labels non tronques) et du splash (vrai
+Kilito, pas juste la silhouette de repli si le timing s'avere different en
+conditions reelles).

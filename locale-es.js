@@ -2025,7 +2025,6 @@ const LOCALE_ES = {
     inProgress: '● En curso — {{current}}/{{target}}',
     activate: '+ Activar',
     active: '✓ Activo',
-    contextMenuView: 'Ver la ficha',
     communityRibbonTitle: 'Reto comunitario del día — {{n}} completado(s) hoy',
   },
   library: {
@@ -2358,7 +2357,7 @@ const LOCALE_ES = {
     xpProgress: '{{current}} / {{needed}} XP · toca para ver tu progreso',
     xpProgressPlain: '{{current}} / {{needed}} XP',
     trophiesLabel: 'Trofeos ({{unlocked}}/{{total}})',
-    radarLabel: 'Equilibrio por categoría',
+    radarLabel: 'Equilibrio del último mes',
     bento: {
       xp: 'XP total',
       streak: 'Días de racha',

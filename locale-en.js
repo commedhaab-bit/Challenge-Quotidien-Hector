@@ -2018,7 +2018,6 @@ const LOCALE_EN = {
     inProgress: '● In progress — {{current}}/{{target}}',
     activate: '+ Activate',
     active: '✓ Active',
-    contextMenuView: 'View details',
     communityRibbonTitle: "Community challenge of the day — {{n}} completed today",
   },
   library: {
@@ -2350,7 +2349,7 @@ const LOCALE_EN = {
     xpProgress: '{{current}} / {{needed}} XP · tap to see your progress',
     xpProgressPlain: '{{current}} / {{needed}} XP',
     trophiesLabel: 'Trophies ({{unlocked}}/{{total}})',
-    radarLabel: 'Balance by category',
+    radarLabel: 'Last month balance',
     bento: {
       xp: 'Total XP',
       streak: 'Day streak',

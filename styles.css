@@ -261,45 +261,6 @@
   @media (prefers-reduced-motion: reduce) {
     .tab-bar { transition: opacity 0.25s ease; }
   }
-  /* Idee bonus (retour utilisateur, "app premium/native") : grand titre qui
-     se retracte au scroll (esprit iOS "large title") sur Défis/Journal/
-     Communauté (voir renderCollapsibleTitleBar()/initCollapsingTitleBar()
-     dans index.html) - pilule fixe en verre depoli (meme langage visuel que
-     .tab-bar) qui n'apparait qu'au-dela d'un seuil de scroll, PREND LE
-     RELAIS du grand titre original (laisse inchange dans le flux) plutot que
-     de le redimensionner lui-meme au pixel pres. */
-  .compact-title-bar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 400;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 54px;
-    padding-top: env(safe-area-inset-top, 0px);
-    background: var(--glass-bg);
-    backdrop-filter: blur(20px) saturate(1.4);
-    -webkit-backdrop-filter: blur(20px) saturate(1.4);
-    border-bottom: 1px solid var(--glass-border);
-    opacity: 0;
-    transform: translateY(-12px);
-    pointer-events: none;
-    transition: opacity 0.25s ease, transform 0.25s var(--spring);
-  }
-  .compact-title-bar.visible {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  .compact-title-bar-text {
-    font-weight: 800;
-    font-size: 16px;
-    color: var(--chalk);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .compact-title-bar { transition: opacity 0.25s ease; }
-  }
   .tab-btn {
     position: relative;
     z-index: 0;
@@ -875,31 +836,6 @@
   @keyframes sheet-slide-up {
     from { transform: translateY(100%); }
   }
-  /* Idee bonus (retour utilisateur, "app premium/native") : menu contextuel
-     au long-press sur une carte de la Bibliotheque - reutilise TEL QUEL le
-     chrome de .level-roadmap-sheet (verre depoli, glisser-pour-fermer), juste
-     un titre + des actions en boutons pleine largeur. */
-  .context-menu-title {
-    font-size: 15px;
-    font-weight: 800;
-    text-align: center;
-    margin-bottom: 14px;
-  }
-  .context-menu-action {
-    display: block;
-    width: 100%;
-    background: var(--bg-card);
-    border: 1px solid var(--line);
-    color: var(--chalk);
-    font-size: 14.5px;
-    font-weight: 700;
-    text-align: left;
-    padding: 14px 16px;
-    border-radius: 12px;
-    margin-bottom: 8px;
-    cursor: pointer;
-  }
-  .context-menu-action:last-child { margin-bottom: 0; }
   @media (prefers-reduced-motion: reduce) {
     .level-roadmap-overlay, .level-roadmap-sheet { animation: none; }
   }
@@ -3246,11 +3182,10 @@
      d'installation PWA (99998) - si celui-ci doit s'afficher (navigateur non-
      standalone), il recouvre entierement le splash sans conflit, et sous le
      filet de securite fatal (99999) pour rester deboguable en cas de crash
-     precoce. Kilito est dessine ICI EN DUR (silhouette simplifiee), PAS via
-     renderKilo() : ce splash doit apparaitre DES le tout premier paint, avant
-     meme que le gros script inline (des centaines de Ko, ou renderKilo()/
-     KILO_STATE_SVG ne sont definis que tout en bas) n'ait fini de s'executer -
-     aucune dependance possible a ce script pour le contenu visuel initial. */
+     precoce. Le VRAI Kilito (renderKilo()) est injecte dans #appSplashKiloSlot
+     des que le script principal a fini de s'executer (voir
+     upgradeSplashToRealKilito() dans index.html) - la silhouette dessinee en
+     dur dans le HTML statique n'est qu'un repli pour le tout premier paint. */
   .app-splash {
     position: fixed;
     inset: 0;
@@ -3267,7 +3202,11 @@
     opacity: 0;
     pointer-events: none;
   }
-  .app-splash-kilo {
+  /* Anime le SLOT (pas le SVG lui-meme) : reste applicable a l'identique que
+     son contenu soit encore le repli statique ou deja le vrai Kilito
+     (renderKilo() anime aussi sa propre pose "idle" en interne - les 2
+     effets se combinent sans conflit, transform sur des elements differents). */
+  .app-splash-kilo-slot {
     animation: app-splash-pulse 1.6s ease-in-out infinite;
     filter: drop-shadow(0 0 18px rgba(57, 233, 122, 0.55));
   }
@@ -3284,7 +3223,7 @@
     opacity: 0.85;
   }
   @media (prefers-reduced-motion: reduce) {
-    .app-splash-kilo { animation: none; }
+    .app-splash-kilo-slot { animation: none; }
   }
 
   /* Verrou d'installation PWA plein écran ("PWA First" strict) : z-index au-dessus de
@@ -3622,12 +3561,18 @@
     line-height: 1;
     display: block;
     text-align: center;
-    /* Reprend le degrade du conteneur (voir .progress-current juste au-dessus)
-       plutot que de le redefinir en double - chaque colonne clippe sur SA
-       propre boite (leger effet de "reprise" du degrade par colonne plutot
-       qu'un seul balayage continu sur tout le nombre - compromis accepte,
-       les 2 teintes de la palette restent proches). */
-    background: inherit;
+    /* Bug reel corrige (retour utilisateur, "les chiffres ne s'affichent pas
+       du tout") : `background: inherit` remontait seulement au parent DIRECT
+       (.odo-strip, qui n'a lui-meme AUCUN background propre), pas jusqu'a
+       .progress-current 2 niveaux plus haut - le degrade heritait donc de
+       rien, laissant un texte totalement transparent (color:transparent +
+       background-clip:text sans le moindre background reel derriere).
+       Redeclare le MEME degrade directement ici (duplique, mais correct quel
+       que soit le niveau d'imbrication) - chaque colonne clippe sur SA propre
+       boite (leger effet de "reprise" du degrade par colonne plutot qu'un
+       seul balayage continu sur tout le nombre - compromis accepte, les 2
+       teintes de la palette restent proches). */
+    background: linear-gradient(100deg, var(--accent), var(--aurora-2) 130%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
