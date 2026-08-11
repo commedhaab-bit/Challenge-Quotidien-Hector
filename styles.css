@@ -183,6 +183,34 @@
   @keyframes app-view-transition-in {
     from { opacity: 0; transform: translateY(8px) scale(0.99); }
   }
+  /* Idee bonus (retour utilisateur, "app premium/native") : transition
+     DIRECTIONNELLE (glissement horizontal, esprit pile de navigation iOS) sur
+     l'ouverture/fermeture d'un ecran imbrique (fiche d'exercice, Parametres,
+     detail de groupe...) - remplace le fondu vertical generique ci-dessus
+     UNIQUEMENT pour ces 2 cas precis (voir navTransitionDirection/
+     pushNavState()/goBackOneLevel() dans index.html). Les bascules laterales
+     entre onglets (switchTab()) restent volontairement sur le fondu vertical
+     par defaut (aucune classe posee) : ce ne sont pas des ecrans "empiles",
+     un glissement directionnel n'y aurait pas de sens coherent. Selecteurs
+     avec classe (specificite plus elevee que les regles non scopees
+     ci-dessus) : dominent naturellement quand la classe est presente, repli
+     automatique sur le fondu generique sinon. */
+  :root.nav-forward::view-transition-old(root) { animation-name: app-view-transition-out-forward; }
+  :root.nav-forward::view-transition-new(root) { animation-name: app-view-transition-in-forward; }
+  :root.nav-back::view-transition-old(root) { animation-name: app-view-transition-out-back; }
+  :root.nav-back::view-transition-new(root) { animation-name: app-view-transition-in-back; }
+  @keyframes app-view-transition-out-forward {
+    to { opacity: 0; transform: translateX(-26px) scale(0.99); }
+  }
+  @keyframes app-view-transition-in-forward {
+    from { opacity: 0; transform: translateX(26px) scale(0.99); }
+  }
+  @keyframes app-view-transition-out-back {
+    to { opacity: 0; transform: translateX(26px) scale(0.99); }
+  }
+  @keyframes app-view-transition-in-back {
+    from { opacity: 0; transform: translateX(-26px) scale(0.99); }
+  }
   @media (prefers-reduced-motion: reduce) {
     ::view-transition-group(*),
     ::view-transition-old(*),

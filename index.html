@@ -1828,11 +1828,23 @@ function translateCategoryName(catName) {
   return slug ? t('categories.' + slug) : catName;
 }
 
+// Idee bonus (retour utilisateur, "app premium/native") : direction de la
+// prochaine transition View Transitions API (voir applyContent()) - 'forward'
+// (glissement depuis la droite) ou 'back' (glissement depuis la gauche),
+// jamais les 2 en meme temps. Posee UNIQUEMENT par pushNavState()/
+// goBackOneLevel() (les 2 SEULS chokepoints deja utilises par TOUTE
+// ouverture/fermeture d'ecran imbrique de l'appli, voir leurs commentaires) -
+// consommee UNE SEULE FOIS par applyContent(), remise a null juste apres
+// (meme principe que libraryAnimatingCat/profileSubtabJustEntered : un flag
+// qui ne doit influencer QUE le tout prochain rendu, jamais les suivants).
+let navTransitionDirection = null;
+
 // ==== NAVIGATION ARRIÈRE (bouton/geste retour Android) ====
 // Chaque écran/overlay ouvert pousse une entrée d'historique. Le bouton retour
 // du téléphone déclenche alors un popstate qu'on intercepte pour fermer
 // l'écran interne au lieu de quitter l'application.
 function pushNavState() {
+  navTransitionDirection = 'forward';
   history.pushState({ appNav: true }, '');
 }
 
@@ -1843,6 +1855,7 @@ function pushNavState() {
  * bouton retour du téléphone quitte l'application au lieu de le fermer.
  */
 function goBackOneLevel() {
+  navTransitionDirection = 'back';
   // Seul le mode 'rename' (déclenché depuis Paramètres) est dismissible — 'onboarding'
   // et 'gate' sont volontairement infranchissables (pseudo obligatoire, même principe
   // que le repli PWA).
@@ -1886,6 +1899,11 @@ function goBackOneLevel() {
   }
   // On est déjà à la racine d'un onglet : rien à fermer côté app, on laisse le
   // comportement par défaut du navigateur/de la PWA s'appliquer (quitter).
+  // Aucun render() ne sera declenche dans ce cas precis : annule la direction
+  // posee en tete de fonction, sinon elle resterait "collee" sur 'back' et
+  // fausserait a tort la PROCHAINE transition sans rapport (tabulation,
+  // rafraichissement...).
+  navTransitionDirection = null;
 }
 
 window.addEventListener('popstate', () => {
@@ -6570,6 +6588,15 @@ function applyContent(app, html, animate, afterRender) {
     && typeof document.startViewTransition === 'function'
     && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   if (canUseViewTransition) {
+    // Idee bonus (retour utilisateur, "app premium/native") : glissement
+    // horizontal DIRECTIONNEL (voir navTransitionDirection/pushNavState()/
+    // goBackOneLevel()) - consomme UNE SEULE FOIS ici, jamais rejoue sur le
+    // prochain rendu sans rapport (meme principe que libraryAnimatingCat).
+    const rootEl = document.documentElement;
+    rootEl.classList.remove('nav-forward', 'nav-back');
+    if (navTransitionDirection === 'forward') rootEl.classList.add('nav-forward');
+    else if (navTransitionDirection === 'back') rootEl.classList.add('nav-back');
+    navTransitionDirection = null;
     document.startViewTransition(() => {
       app.innerHTML = html;
       if (afterRender) afterRender();
@@ -6945,7 +6972,7 @@ function render(animate) {
     const activeNameFontSize = computeExerciseTitleFontSize(activeNameText);
     html += `
       <button class="nav-back-btn floating" onclick="history.back()" aria-label="${t('common.back')}">‹</button>
-      <div class="active-card${entry.done ? ' hardcore-engaged' : ''}${timedHeroClass}">
+      <div class="active-card${entry.done ? ' hardcore-engaged' : ''}${timedHeroClass}" style="view-transition-name: card-morph-${c.id};">
         ${heroImgHtml}
         <div class="active-header-row">
           <div class="active-header-text">
@@ -7474,7 +7501,19 @@ function renderChallengeCard(c, mode, index, animate = true) {
   // (par défaut true, comme avant) permet à renderLibraryScreen() de désactiver
   // l'animation quand un accordéon déjà ouvert se contente de re-render suite à un
   // toggle d'activation — seule une NOUVELLE ouverture de menu déroulant doit animer.
-  const delayStyle = index !== undefined ? ` style="animation-delay:${Math.min(index, 8) * 40}ms"` : '';
+  // Idee bonus (retour utilisateur, "app premium/native") : morph carte ->
+  // fiche d'exercice (shared element transition, meme mecanisme
+  // view-transition-name deja utilise pour le morph du FAB Groupes/l'indicateur
+  // d'onglet) - la carte cliquee "grandit" visuellement jusqu'a devenir le hero
+  // de la fiche d'exercice, au lieu d'un simple fondu generique. Scope
+  // volontairement limite a l'accueil ('today') : c'est le seul flux
+  // "parcourir -> ouvrir" vise par la demande initiale, et .active-card (voir
+  // plus bas) porte le MEME nom pour le meme id - le nom est deja unique par
+  // construction (1 seul id par carte), aucun risque de collision entre
+  // cartes differentes affichees simultanement sur cet ecran.
+  const viewTransitionNameRule = mode === 'today' ? `view-transition-name: card-morph-${c.id};` : '';
+  const delayStyleRule = index !== undefined ? `animation-delay:${Math.min(index, 8) * 40}ms;` : '';
+  const delayStyle = (delayStyleRule || viewTransitionNameRule) ? ` style="${delayStyleRule}${viewTransitionNameRule}"` : '';
   const noAnimClass = animate ? '' : ' no-anim';
 
   // Ruban + compteur "défi communautaire du jour" : garde le FOMO vivant même une

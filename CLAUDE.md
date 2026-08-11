@@ -5396,3 +5396,78 @@ visuels : valide par tests structurels/comportementaux + lint, **pas
 confirme visuellement dans un vrai navigateur** - a confirmer par
 l'utilisateur. Suite (idees #1, #5, #6, #7, #10, #23) a livrer dans un/des
 lot(s) suivant(s).
+
+## Passe "app premium/native" — lot 3/N (2 idees livrees : #5, #1)
+
+**#5 - Transition avant/arriere differenciee** : `navTransitionDirection`
+(nouvelle variable globale, `'forward' | 'back' | null`) posee UNIQUEMENT
+par `pushNavState()`/`goBackOneLevel()` (les 2 SEULS chokepoints deja
+utilises par TOUTE ouverture/fermeture d'ecran imbrique de l'appli, aucun
+nouveau site d'appel a modifier) - consommee UNE SEULE FOIS par
+`applyContent()` (pose `.nav-forward`/`.nav-back` sur `document.documentElement`
+juste avant `document.startViewTransition()`, remise a `null` immediatement
+apres, meme principe que `libraryAnimatingCat`). CSS : `:root.nav-forward`/
+`:root.nav-back` scopent des keyframes de glissement HORIZONTAL (esprit pile
+de navigation iOS - la nouvelle vue arrive depuis la droite en avancant,
+depuis la gauche en reculant) qui DOMINENT par specificite le fondu vertical
+generique existant (`::view-transition-old(root)`/`-new(root)` non scopees,
+conserve comme repli). Les bascules laterales entre onglets (`switchTab()`)
+restent volontairement SANS direction (aucune classe posee, fondu generique
+inchange) - ce ne sont pas des ecrans "empiles", un glissement directionnel
+n'y aurait pas de sens coherent.
+
+**Bug corrige en l'implementant** : `goBackOneLevel()` appelee a la racine
+d'un onglet (aucune des branches `if` ne correspond, donc AUCUN `render()`
+n'est declenche) laissait `navTransitionDirection` "colle" sur `'back'`
+indefiniment - la PROCHAINE transition sans rapport (changement d'onglet,
+rafraichissement...) heritait alors a tort d'un glissement "retour". Corrige
+en reinitialisant explicitement le flag a `null` juste avant la fin de la
+fonction (n'execute que si aucune branche n'a deja fait un `return` plus
+haut).
+
+**#1 - Morph carte -> fiche d'exercice (shared element transition)** : meme
+mecanisme `view-transition-name` deja utilise pour le morph du FAB Groupes/
+l'indicateur d'onglet (voir passe "effet waouh"). `renderChallengeCard(c,
+'today', ...)` pose `view-transition-name: card-morph-{{id}}` sur `.picker-item`
+UNIQUEMENT en mode `'today'` (jamais `'library'`/Hero Banner communautaire -
+scope volontairement limite au flux "parcourir l'accueil -> ouvrir un
+defi", celui vise par la demande initiale) ; `.active-card` (fiche
+d'exercice) porte le MEME nom pour le MEME id - le navigateur morphe alors
+automatiquement l'un dans l'autre au lieu du fondu generique. Nom deja
+unique par construction (1 seul id par carte, jamais 2 cartes avec le meme
+id simultanement affichees) : aucun risque de collision. Les 2 ecrans
+(liste et detail) ne coexistent d'ailleurs jamais dans le DOM en meme
+temps (branches mutuellement exclusives de `render()`), donc aucune
+collision possible non plus ENTRE la carte et le hero.
+
+**Piege de test decouvert et corrige (nouveau, distinct du piege backslash
+deja documente pour les regex)** : un template literal (backticks) ecrit
+DANS le code de test pour interpoler `pompes.id` a fait planter le parsing
+JS (`SyntaxError: Unexpected token`) - `testDriver` (le corps entier du
+harnais) est LUI-MEME un template literal, donc un backtick non echappe a
+l'INTERIEUR termine prematurement la chaine englobante. Aucune occurrence
+de backtick echappe (`` \` ``) n'existe nulle part ailleurs dans ce fichier -
+confirme que la convention etablie est d'eviter purement et simplement les
+template literals a l'interieur du code de test, en utilisant la
+concatenation `+` a la place. **A retenir pour tout futur code de test
+ecrit dans ce fichier : jamais de backtick ``` ` ``` dans le code de test
+lui-meme (contrairement au code applicatif source, hors de testDriver, qui
+en use abondamment) - utiliser la concatenation de chaines.**
+
+**Test pre-existant casse par l'ajout de l'attribut `style=` sur
+`.active-card`** : un test verifiait que le PNG de demonstration est le
+"tout premier element visuel" via une distance de caracteres fixe
+(`imgIdx - activeCardIdx < 60`) - le nouvel attribut `style="view-transition-name:
+card-morph-{{id}};"` ajoute une quarantaine de caracteres avant le PNG,
+depassant ce seuil fragile. Seuil releve a 160 (toujours largement assez
+strict pour detecter un VRAI contenu intercale, juste plus tolerant a la
+longueur d'un attribut).
+
+CACHE_NAME -> v119 (`index.html` + `styles.css` modifies). Aucun changement
+de regles Firestore/Cloud Functions - modification 100% cote client, aucune
+touche a `functions/**`. Meme limite de verification que le reste des
+chantiers visuels : valide par tests structurels/comportementaux + lint,
+**pas confirme visuellement dans un vrai navigateur** - le morph/glissement
+directionnel reel (fluidite, direction percue) ne peut pas etre confirme
+ici, a verifier par l'utilisateur. Suite (idees #6, #7, #10, #23) a livrer
+dans un/des lot(s) suivant(s).

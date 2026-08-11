@@ -64,7 +64,21 @@ function makeEl(id) {
       setProperty(k, v) { this._props[k] = v; this[k] = v; },
       getPropertyValue(k) { return this._props[k] || ''; },
     },
-    classList: { add(){}, remove(){}, contains(){ return false; }, toggle(){} },
+    // Reellement fonctionnel (un Set() en interne), pas de simples no-op -
+    // gap reel decouvert en testant la transition directionnelle (voir
+    // navTransitionDirection), qui a besoin de verifier quelle classe a ete
+    // reellement posee sur document.documentElement.
+    classList: {
+      _set: new Set(),
+      add(...names) { names.forEach((n) => this._set.add(n)); },
+      remove(...names) { names.forEach((n) => this._set.delete(n)); },
+      contains(n) { return this._set.has(n); },
+      toggle(n, force) {
+        const shouldHave = force === undefined ? !this._set.has(n) : force;
+        if (shouldHave) this._set.add(n); else this._set.delete(n);
+        return shouldHave;
+      },
+    },
     addEventListener(){}, removeEventListener(){},
     appendChild(){}, remove(){}, closest(){ return null; },
     _attrs: {},
@@ -980,7 +994,12 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!rendered.includes('class="header"'), 'le bandeau date/streak ne doit plus s afficher sur la fiche detail');
   const activeCardIdx = rendered.indexOf('active-card');
   const imgIdx = rendered.indexOf('exercise-hero-apng');
-  __assertOk(activeCardIdx !== -1 && imgIdx !== -1 && imgIdx - activeCardIdx < 60, 'le PNG doit etre le tout premier element visuel de .active-card');
+  // Seuil releve (60 -> 160) : .active-card porte desormais aussi un attribut
+  // style="view-transition-name: card-morph-{{id}};" (idee bonus "app
+  // premium/native", morph carte -> fiche) - une quarantaine de caracteres
+  // supplementaires avant le PNG, toujours le tout premier element VISUEL
+  // pour autant (aucun autre contenu intercale).
+  __assertOk(activeCardIdx !== -1 && imgIdx !== -1 && imgIdx - activeCardIdx < 160, 'le PNG doit etre le tout premier element visuel de .active-card');
   currentChallengeId = null;
   console.log('OK: fiche detail compacte (pas de header/back-btn, PNG en premier)');
 
@@ -3350,7 +3369,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v118'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v119'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -3536,8 +3555,67 @@ const cssText = __rawHtml + __cssSource;
   render(true);
   __assertEq(viewTransitionCalls, 1, 'quand document.startViewTransition existe, applyContent() doit l utiliser au lieu du fade CSS manuel');
   __assertOk(document.getElementById('app').innerHTML.length > 0, 'le contenu doit avoir ete applique de facon SYNCHRONE via le callback de startViewTransition (pas de setTimeout a attendre, contrairement au repli)');
-  delete document.startViewTransition;
   console.log('OK: View Transitions API (repli total si non supportee, utilisee en priorite sinon, callback synchrone)');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : transition
+  // DIRECTIONNELLE (glissement horizontal, esprit pile de navigation iOS) sur
+  // l ouverture/fermeture d un ecran imbrique - pushNavState() programme
+  // 'forward', goBackOneLevel() programme 'back', consomme une seule fois
+  // par applyContent() (classe posee sur document.documentElement).
+  document.documentElement.classList.remove('nav-forward', 'nav-back');
+  navTransitionDirection = null;
+  pushNavState();
+  __assertEq(navTransitionDirection, 'forward', 'pushNavState() doit programmer une transition "avant" (avant tout render - pushNavState() elle-meme ne rend jamais)');
+  activeTab = 'today';
+  currentChallengeId = null;
+  await pickChallenge(pompes.id); // pickChallenge() appelle pushNavState() puis render(true) en interne
+  __assertOk(document.documentElement.classList.contains('nav-forward'), 'ouvrir un ecran imbrique (fiche d exercice) doit poser la classe nav-forward (glissement depuis la droite)');
+  __assertOk(!document.documentElement.classList.contains('nav-back'), 'nav-back ne doit jamais etre pose en meme temps que nav-forward');
+  __assertEq(navTransitionDirection, null, 'la direction doit etre consommee (remise a null) apres avoir ete appliquee');
+  goBackOneLevel(); // ferme la fiche d exercice -> programme 'back' puis le consomme via son propre render(true)
+  __assertOk(document.documentElement.classList.contains('nav-back'), 'fermer un ecran imbrique doit poser la classe nav-back (glissement depuis la gauche)');
+  __assertOk(!document.documentElement.classList.contains('nav-forward'), 'nav-forward doit avoir ete retire au profit de nav-back');
+  // Cas limite corrige : goBackOneLevel() appele a la racine (aucun ecran a
+  // fermer) ne doit jamais laisser 'back' "colle" pour la PROCHAINE
+  // transition sans rapport (aucune des branches ne rend, donc rien ne
+  // consomme le flag autrement). Reinitialise explicitement TOUS les etats
+  // que goBackOneLevel() verifie (plutot que de supposer leur valeur a ce
+  // point avance du fichier de test, partage avec des centaines de tests
+  // precedents) pour garantir qu AUCUNE branche ne matche ici.
+  usernameSetupMode = null;
+  friendsScreenOpen = false;
+  creatingGroupChallenge = false;
+  openGroupId = null;
+  settingsScreenOpen = false;
+  editingChallengeId = null;
+  currentChallengeId = null;
+  navTransitionDirection = null;
+  goBackOneLevel();
+  __assertEq(navTransitionDirection, null, 'goBackOneLevel() a la racine (rien a fermer) ne doit jamais laisser une direction "collee" pour la prochaine transition');
+  document.documentElement.classList.remove('nav-forward', 'nav-back');
+  delete document.startViewTransition;
+  console.log('OK: transition directionnelle avant/arriere (glissement horizontal sur ouverture/fermeture d ecran imbrique, jamais sur les bascules d onglet)');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : morph carte ->
+  // fiche d'exercice (shared element transition, meme mecanisme
+  // view-transition-name deja utilise pour le FAB Groupes/l'indicateur
+  // d'onglet) - la carte d'accueil et le hero de la fiche d'exercice du MEME
+  // defi doivent porter le MEME nom, pour que le navigateur les morphe l'un
+  // dans l'autre.
+  activeToday = new Set([pompes.id]);
+  state = emptyDayState();
+  currentChallengeId = null;
+  render(false);
+  const todayCardHtmlForMorph = document.getElementById('app').innerHTML;
+  __assertOk(todayCardHtmlForMorph.includes('view-transition-name: card-morph-' + pompes.id + ';'), 'la carte de l accueil doit porter un view-transition-name unique base sur l id du defi');
+  const libraryCardHtmlForMorph = renderChallengeCard(pompes, 'library', 0);
+  __assertOk(!libraryCardHtmlForMorph.includes('view-transition-name'), 'les cartes de la Bibliotheque (mode library) ne doivent PAS porter de nom de transition (scope limite a l accueil)');
+  await pickChallenge(pompes.id);
+  render(false);
+  const exerciseDetailHtmlForMorph = document.getElementById('app').innerHTML;
+  __assertOk(exerciseDetailHtmlForMorph.includes('view-transition-name: card-morph-' + pompes.id + ';'), 'le hero de la fiche d exercice doit porter EXACTEMENT le meme nom que la carte d origine, pour le meme defi');
+  currentChallengeId = null;
+  console.log('OK: morph carte -> fiche d exercice (meme view-transition-name partage entre la carte accueil et le hero de la fiche, scope a l accueil uniquement)');
 
   // --- 94. Securite : escapeHtml/escapeJsAttr echappent correctement les caracteres
   // dangereux (protection XSS) ---
