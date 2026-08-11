@@ -5547,3 +5547,68 @@ a confirmer par l'utilisateur en conditions reelles, avec une attention
 particuliere aux zones de recouvrement (bord gauche d'une carte de la
 Bibliotheque avec un menu contextuel possible ET pas de geste de retour
 actif a cet endroit precis puisqu'on est a la racine de l'onglet Défis).
+
+## Passe "app premium/native" — lot 5/N (derniere idee : #23) — CHANTIER COMPLET (18/18)
+
+**#23 - Icones vectorielles maison sur la tab bar, a la place des emoji
+natifs.** Les emoji rendent differemment selon OS/version (aucune app
+native premium ne s'appuie dessus pour son chrome) et surtout **ne
+repondent pas a `color`** - le halo `filter:drop-shadow()` deja en place
+sur l'onglet actif ne faisait que simuler un contour lumineux autour d'une
+couleur FIGEE, plutot que de vraiment recolorer l'icone. `TAB_ICON_SVG`
+(nouvel objet, 5 entrees) : icones dessinees a la main en traits simples
+(`stroke="currentColor"`, epaisseur 2px uniforme, coins arrondis) dans
+l'esprit epure des formes de Kilito (cercles/rectangles arrondis, pas de
+chemins complexes) - haltere (Aujourd'hui, 2 rectangles imbriques + barre),
+cible concentrique (Défis), globe (cercle + ellipse + ligne, construction
+classique d'icone globe), 2 silhouettes superposees (Groupes), 1 silhouette
+(Profil). `currentColor` suit desormais NATIVEMENT la transition `color`
+deja definie sur `.tab-btn`/`.tab-btn.active` (gris discret -> vert accent)
+sans code supplementaire - le halo `drop-shadow` existant beneficie aussi
+d'un contour beaucoup plus net (suit exactement la silhouette SVG, plus
+l'ombre approximative d'un glyphe emoji).
+
+**4 tests pre-existants casses par le retrait des emoji, corriges** (pas
+des regressions - ces tests verifiaient litteralement la presence des
+ANCIENS emoji `🎯`/`🏋️‍♂️`/`👥` dans le HTML de la tab bar) : mis a jour
+pour verifier la presence des nouvelles chaines `TAB_ICON_SVG.library`/
+`.today`/`.groups` a la place, meme intention de test (identifier quel
+onglet correspond a quelle icone, verifier l'ordre affiche/actif) preservee
+a l'identique.
+
+CACHE_NAME -> v121 (`index.html` + `styles.css` modifies). Aucun changement
+de regles Firestore/Cloud Functions - modification 100% cote client, aucune
+touche a `functions/**`. Meme limite de verification que le reste des
+chantiers visuels : valide par tests structurels (presence des 5 SVG,
+absence de tout emoji residuel, `currentColor` sur chacun) + lint, **pas
+confirme visuellement dans un vrai navigateur** - le rendu reel (nettete
+des traits a 21px, alignement vertical dans `.tab-icon`, halo `drop-shadow`
+autour de la silhouette) reste a confirmer par l'utilisateur.
+
+---
+
+**Chantier "app premium/native" (2e liste de propositions, 18/18 idees
+choisies par l'utilisateur) - TERMINE**, livre en 5 lots :
+- **Lot 1** : #27 (badge natif), #20 (tick sonore), #13 (degrade ambiant),
+  #24 (poids de police variable anime), #3 (tab bar cachee pendant
+  l'effort), #8 (pull-to-refresh Kilito), #19 (chiffres odometre), #33+#4
+  (splash Kilito / cold start).
+- **Lot 2** : #2 (titre retractable au scroll), #16 (chemin de progression
+  en zigzag), #18 (radar par categorie musculaire).
+- **Lot 3** : #5 (transition avant/arriere directionnelle), #1 (morph
+  carte -> fiche d'exercice, shared element transition).
+- **Lot 4** : #7 (menu contextuel au long-press), #6 (swipe entre onglets),
+  #10 (geste de bord pour revenir en arriere).
+- **Lot 5** : #23 (icones vectorielles maison).
+
+Voir chaque section dediee ci-dessus pour le detail technique complet de
+chaque idee. Limite transversale a rappeler pour tout ce chantier : le
+harnais de test (mock DOM minimal, `document.addEventListener`/
+`querySelectorAll` non fonctionnels pour la plupart des cas) ne peut
+verifier que la logique PURE extraite (seuils, cibles, zones de detection)
+et la structure du HTML/CSS genere - jamais le ressenti tactile/visuel reel
+sur un vrai appareil, ni les interactions entre les nombreux gestes qui
+coexistent desormais sur les memes ecrans (pull-to-refresh, tilt 3D,
+swipe-to-reveal, glisser-pour-fermer une feuille, swipe entre onglets,
+edge-swipe retour, long-press). A confirmer integralement par l'utilisateur
+en conditions reelles.

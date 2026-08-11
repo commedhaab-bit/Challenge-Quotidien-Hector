@@ -335,7 +335,7 @@
     transform: none;
   }
   .tab-icon {
-    font-size: 21px;
+    display: inline-flex;
     line-height: 1;
     transition: transform 0.15s ease;
   }

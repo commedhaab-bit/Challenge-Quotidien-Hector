@@ -1009,8 +1009,8 @@ const cssText = __rawHtml + __cssSource;
   const idxDefis = tabBarHtml.indexOf('Défis');
   const idxProfilTab = tabBarHtml.indexOf('Profil');
   __assertOk(idxDefis !== -1 && idxProfilTab !== -1 && idxDefis < idxProfilTab, 'Défis doit apparaitre avant Profil dans la barre du bas');
-  __assertOk(tabBarHtml.includes('🎯'), 'icone cible 🎯 pour l onglet Défis');
-  __assertOk(tabBarHtml.includes('🏋️‍♂️'), 'icone haltere pour Aujourd hui');
+  __assertOk(tabBarHtml.includes(TAB_ICON_SVG.library), 'icone (cible SVG, idee bonus "app premium/native") pour l onglet Défis');
+  __assertOk(tabBarHtml.includes(TAB_ICON_SVG.today), 'icone (haltere SVG) pour Aujourd hui');
   __assertOk(!tabBarHtml.includes('Journal'), 'Journal ne doit plus apparaitre comme onglet separe dans la barre du bas (fusionne dans Profil)');
   __assertOk(!tabBarHtml.includes('📓'), 'l icone carnet ne doit plus apparaitre dans la barre du bas (fusionnee dans Profil)');
   __assertOk(!tabBarHtml.includes('📚'), 'ancienne icone livre 📚 ne doit plus apparaitre');
@@ -1030,11 +1030,11 @@ const cssText = __rawHtml + __cssSource;
   let indicatorHtml = renderTabBar();
   __assertOk(!indicatorHtml.includes('tab-active-indicator'), 'la barre glissante retiree ne doit plus jamais apparaitre dans le HTML');
   __assertEq((indicatorHtml.match(/class="tab-btn active"/g) || []).length, 1, 'un seul onglet doit porter la classe active a la fois');
-  __assertOk(indicatorHtml.indexOf('class="tab-btn active"') < indicatorHtml.indexOf('🏋️‍♂️'), 'l onglet actif doit etre celui d Aujourd hui');
+  __assertOk(indicatorHtml.indexOf('class="tab-btn active"') < indicatorHtml.indexOf(TAB_ICON_SVG.today), 'l onglet actif doit etre celui d Aujourd hui');
   activeTab = 'groups';
   indicatorHtml = renderTabBar();
   __assertEq((indicatorHtml.match(/class="tab-btn active"/g) || []).length, 1, 'un seul onglet actif a la fois, meme apres changement d onglet');
-  __assertOk(indicatorHtml.indexOf('class="tab-btn active"') < indicatorHtml.indexOf('👥'), 'l onglet actif doit avoir suivi le changement (Groupes)');
+  __assertOk(indicatorHtml.indexOf('class="tab-btn active"') < indicatorHtml.indexOf(TAB_ICON_SVG.groups), 'l onglet actif doit avoir suivi le changement (Groupes)');
   activeTab = activeTabBefore;
   console.log('OK: barre glissante retiree, un seul onglet actif a la fois (fond pilule + halo sur l icone)');
 
@@ -3369,7 +3369,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v120'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v121'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -3674,6 +3674,17 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(shouldTriggerEdgeSwipeBack(EDGE_SWIPE_THRESHOLD_PX - 5, 0, EDGE_SWIPE_THRESHOLD_PX), false, 'sous le seuil, le retour ne doit pas se declencher');
   __assertEq(shouldTriggerEdgeSwipeBack(EDGE_SWIPE_THRESHOLD_PX + 5, EDGE_SWIPE_THRESHOLD_PX + 20, EDGE_SWIPE_THRESHOLD_PX), false, 'un glissement majoritairement VERTICAL ne doit jamais declencher le retour, meme avec assez de distance horizontale');
   console.log('OK: geste de bord pour revenir en arriere (zone de detection stricte, seuil directionnel)');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : icones
+  // vectorielles maison sur la tab bar, a la place des emoji natifs - suivent
+  // nativement color (currentColor), contrairement a un emoji.
+  for (const tabId of TAB_ORDER) {
+    __assertOk(TAB_ICON_SVG[tabId] && TAB_ICON_SVG[tabId].includes('<svg') && TAB_ICON_SVG[tabId].includes('currentColor'), 'chaque onglet doit avoir une icone SVG utilisant currentColor : ' + tabId);
+  }
+  const tabBarHtmlForIcons = renderTabBar(false);
+  __assertOk(!tabBarHtmlForIcons.includes('🏋️') && !tabBarHtmlForIcons.includes('🎯') && !tabBarHtmlForIcons.includes('🌍') && !tabBarHtmlForIcons.includes('👥') && !tabBarHtmlForIcons.includes('👤'), 'la tab bar ne doit plus utiliser aucun des anciens emoji natifs');
+  __assertEq((tabBarHtmlForIcons.match(/<svg/g) || []).length, 5, 'la tab bar doit afficher exactement 5 icones SVG (une par onglet)');
+  console.log('OK: icones vectorielles maison sur la tab bar (currentColor, plus aucun emoji natif)');
 
   // --- 94. Securite : escapeHtml/escapeJsAttr echappent correctement les caracteres
   // dangereux (protection XSS) ---

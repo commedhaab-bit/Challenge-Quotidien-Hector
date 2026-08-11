@@ -9900,6 +9900,24 @@ function switchProfileView(view) {
 // (initTabSwipe()/computeTabSwipeTarget(), voir plus bas).
 const TAB_ORDER = ['today', 'library', 'community', 'groups', 'account'];
 
+// Idee bonus (retour utilisateur, "app premium/native") : icones vectorielles
+// maison a la place des emoji natifs sur la tab bar - les emoji rendent
+// differemment selon OS/version (aucune app native premium ne s'appuie
+// dessus pour son chrome) et surtout NE REPONDENT PAS a `color` (d'ou le
+// `filter:drop-shadow()` deja en place pour simuler un halo autour d'une
+// couleur figee). Traits simples (`stroke="currentColor"`, meme epaisseur
+// 2px partout, coins arrondis) dans l'esprit epure des formes de Kilito
+// (cercles/rectangles arrondis) - contrairement a l'emoji, `currentColor`
+// suit NATIVEMENT la transition `color` deja definie sur .tab-btn/.tab-btn.active
+// (gris discret -> vert accent), sans code supplementaire.
+const TAB_ICON_SVG = {
+  today: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="9" width="3" height="6" rx="1"/><rect x="4.2" y="7" width="2.3" height="10" rx="1"/><line x1="6.5" y1="12" x2="17.5" y2="12"/><rect x="17.5" y="7" width="2.3" height="10" rx="1"/><rect x="20" y="9" width="3" height="6" rx="1"/></svg>',
+  library: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></svg>',
+  community: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><line x1="3" y1="12" x2="21" y2="12"/></svg>',
+  groups: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.5 2.5-6 6-6s6 2.5 6 6"/><circle cx="17.5" cy="9" r="2.3"/><path d="M14.8 14.3c2.7 0.4 4.2 2.4 4.2 5.7"/></svg>',
+  account: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.5 3.5-8 8-8s8 3.5 8 8"/></svg>',
+};
+
 // Barre de navigation persistante en bas de l'écran (masquée pendant les
 // écrans plein écran : onboarding, connexion, mode focus).
 function renderTabBar(hidden) {
@@ -9907,11 +9925,11 @@ function renderTabBar(hidden) {
   // renderAccountTabScreen()/profileView) - 5 onglets au lieu de 6. Meme
   // ordre/ensemble d'ids que TAB_ORDER ci-dessus (voir son commentaire).
   const tabs = [
-    { id: 'today',   icon: '🏋️‍♂️', label: t('nav.today') },
-    { id: 'library',  icon: '🎯', label: t('nav.library') },
-    { id: 'community', icon: '🌍', label: t('nav.community') },
-    { id: 'groups',   icon: '👥', label: t('nav.groups') },
-    { id: 'account',  icon: '👤', label: t('nav.account') },
+    { id: 'today',   icon: TAB_ICON_SVG.today, label: t('nav.today') },
+    { id: 'library',  icon: TAB_ICON_SVG.library, label: t('nav.library') },
+    { id: 'community', icon: TAB_ICON_SVG.community, label: t('nav.community') },
+    { id: 'groups',   icon: TAB_ICON_SVG.groups, label: t('nav.groups') },
+    { id: 'account',  icon: TAB_ICON_SVG.account, label: t('nav.account') },
   ];
   return `
     <nav class="tab-bar${hidden ? ' tab-bar-hidden' : ''}" role="tablist">
