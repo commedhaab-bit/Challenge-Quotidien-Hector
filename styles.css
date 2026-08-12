@@ -3544,40 +3544,41 @@
      la hauteur PROPRE de la bande, jamais un pixel calcule en JS) positionne
      le bon chiffre, et glisse naturellement a travers les chiffres
      intermediaires pendant la transition, exactement comme un vrai odometre. */
-  /* Bug reel corrige DEUX FOIS de suite (retour utilisateur : "les chiffres
-     ne s'affichent toujours pas, sauf un 0 qui apparait une seconde") - la
-     1ere correction (redeclarer le degrade au lieu de `background: inherit`)
-     etait insuffisante. Plutot que de continuer a chasser une interaction
-     CSS exotique invisible sans navigateur reel sous la main, simplifie
-     RADICALEMENT vers la technique la plus classique/eprouvee possible :
-     - AUCUN flexbox nulle part (ni sur le conteneur ni sur les bandes) -
-       .odo-col (inline-block) + .odo-strip span (block) suffisent pour un
-       empilement vertical fiable, sans les subtilites de dimensionnement
-       d'un flex imbrique dans un flex (align-items:stretch, hauteur auto
-       d'un flex-column...).
-     - COULEUR PLEINE (var(--accent)) a la place du degrade en
-       background-clip:text - cette technique a deja echoue 2 fois dans ce
-       contexte precis (colonnes+overflow:hidden+transform), potentiellement
-       a cause d'un support inconsistant de background-clip:text combine a
-       un ancetre overflow:hidden/transform sur certains moteurs de rendu
-       mobiles. Le gain visuel du degrade ne justifie pas un 2e bug de
-       visibilite totale. */
+  /* Bug reel corrige TROIS FOIS de suite (retour utilisateur, avec capture
+     d'ecran cette fois) : apres les 2 premieres corrections (degrade puis
+     couleur pleine), le chiffre s'affiche et roule correctement, mais un
+     "fantome" du chiffre adjacent reste visible en haut/bas au moment de se
+     stabiliser (2 chiffres superposes, legerement decales verticalement).
+     Cause racine reelle, enfin identifiee grace a la capture : `height: 1em`
+     + `line-height: 1` est une unite RELATIVE AUX METRIQUES INTERNES de la
+     police (ascenders/descenders definis dans la table de la police), PAS a
+     la hauteur REELLEMENT dessinee du glyphe - pour Nunito (comme beaucoup
+     de polices), un chiffre peut deborder legerement de sa "boite 1em"
+     nominale. Comme .odo-col decoupe (overflow:hidden) exactement 1em, un
+     fragment du chiffre voisin (au-dessus ou en-dessous dans la bande)
+     restait visible a la marge - exactement le "flash a 2 chiffres decales"
+     rapporte. Corrige en abandonnant l'unite `em` pour la hauteur de ligne :
+     hauteur FIXE EN PIXELS (46px, calee sur les 40px de font-size + marge de
+     securite), IDENTIQUE entre la fenetre (.odo-col) et chaque chiffre
+     (.odo-strip span) - et chiffre CENTRE explicitement par flexbox dans sa
+     boite plutot que de compter sur line-height pour un centrage vertical
+     fiable. Garantit un decoupage pixel-perfect, independant des metriques
+     internes de la police. */
   .odo-col {
     display: inline-block;
-    height: 1em;
+    height: 46px;
     overflow: hidden;
     vertical-align: bottom;
-    line-height: 1;
   }
   .odo-strip {
     display: block;
     transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .odo-strip span {
-    display: block;
-    height: 1em;
-    line-height: 1;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 46px;
     color: var(--accent);
   }
   @media (prefers-reduced-motion: reduce) {

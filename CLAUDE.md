@@ -5793,3 +5793,59 @@ malgre des corrections qui semblaient correctes sur le papier - la
 simplification radicale de ce lot doit etre consideree comme "a l'essai",
 pas comme acquise, tant que l'utilisateur ne l'a pas confirmee sur l'app
 deployee.
+
+## #19 (odometre) - 3e correction, cause racine enfin identifiee grace a une capture d'ecran
+
+**Retour utilisateur avec capture d'ecran** : "le defilement marche bien
+mais juste apres mettre le bon chiffre il y a un bug... un flash avec deux
+chiffres decales". Contrairement aux 2 tentatives precedentes (invisibilite
+totale), cette fois le chiffre s'affiche ET roule correctement - le bug est
+plus subtil : au moment de se stabiliser, un FRAGMENT du chiffre voisin
+(dans la bande verticale des 10 chiffres) reste visible en haut ou en bas,
+superpose au bon chiffre.
+
+**Cause racine reelle** (identifiable seulement grace a la capture d'ecran,
+invisible en relisant le code) : `.odo-col`/`.odo-strip span` utilisaient
+`height: 1em` + `line-height: 1` pour decouper/positionner chaque chiffre.
+`1em` est une unite relative aux **metriques INTERNES de la police**
+(table `ascent`/`descent`/`line gap` embarquee dans le fichier de police),
+**pas** a la hauteur reellement dessinee du glyphe a l'ecran. Pour Nunito
+(comme beaucoup de polices), un chiffre peut deborder legerement de sa
+"boite 1em" nominale une fois rendu. Comme `.odo-col` decoupe
+(`overflow:hidden`) EXACTEMENT 1em, ce leger debordement du chiffre voisin
+(immediatement au-dessus ou en-dessous dans la bande) restait visible sur
+quelques pixels a la marge de la fenetre - exactement le "flash a 2
+chiffres decales" de la capture d'ecran.
+
+**Corrige en abandonnant `em` pour la hauteur de ligne** : hauteur FIXE EN
+PIXELS (`46px`, calee sur les `40px` de `font-size` de `.progress-current`
++ marge de securite), **identique** entre la fenetre (`.odo-col`) et
+chaque chiffre (`.odo-strip span`) - et chiffre desormais CENTRE
+explicitement via `display:flex; align-items:center; justify-content:center;`
+sur chaque `span` plutot que de compter sur `line-height` pour un centrage
+vertical fiable (qui s'est revele etre precisement la source du probleme).
+Le calcul JS (`translateY(-N*10%)`, relatif a la hauteur PROPRE de la bande)
+reste totalement inchange - la bande fait desormais `10 * 46px = 460px` au
+lieu de `10em`, mais le pourcentage continue de tomber pile sur chaque
+ligne, cette fois avec un decoupage pixel-perfect independant des
+metriques internes de la police.
+
+**Lecon retenue** : sur les 3 corrections successives de ce composant,
+c'est la toute PREMIERE capture d'ecran fournie par l'utilisateur qui a
+permis d'identifier la vraie cause - les 2 corrections precedentes
+(degrade -> couleur pleine, flex -> block) etaient des simplifications
+plausibles mais visaient le mauvais suspect (visibilite de la couleur,
+calcul de hauteur du CONTENEUR) plutot que la precision du decoupage
+(hauteur de CHAQUE ligne). Pour tout futur bug de rendu CSS fin sur ce
+projet (sans acces a un navigateur reel), une capture d'ecran reste le
+signal de diagnostic le plus fiable - bien plus qu'une relecture du code,
+qui ne revele pas les subtilites de metriques de police.
+
+CACHE_NAME -> v124 (`styles.css` modifie uniquement). Aucun changement de
+regles Firestore/Cloud Functions - modification 100% cote client, aucune
+touche a `functions/**`. Meme limite de verification que le reste des
+chantiers visuels : valide par tests structurels/lint, **pas confirme
+visuellement dans un vrai navigateur** - a reconfirmer par l'utilisateur,
+cette fois avec un niveau de confiance plus eleve puisque la cause racine
+est enfin clairement identifiee (contrairement aux 2 tentatives precedentes,
+plus incertaines).
