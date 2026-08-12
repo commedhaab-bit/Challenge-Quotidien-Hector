@@ -733,6 +733,7 @@ auth.onAuthStateChanged(user => {
     // Réinitialise la navigation pour que le prochain compte connecté reparte de l'accueil
     activeTab = 'today';
     currentChallengeId = null;
+    releaseWakeLock();
     editingChallengeId = null;
     libraryOpenCats = new Set();
     // Bug reel signale : `username` n'etait JAMAIS reinitialise ici - dans le
@@ -1916,6 +1917,7 @@ function goBackOneLevel() {
   if (currentChallengeId) {
     clearTimerState();
     currentChallengeId = null;
+    releaseWakeLock();
     render(true);
     return;
   }
@@ -1950,6 +1952,7 @@ function switchTab(tab) {
     if (tab === 'today' && currentChallengeId) {
       clearTimerState();
       currentChallengeId = null;
+      releaseWakeLock();
       hadNestedView = true;
     } else if (tab === 'library' && editingChallengeId !== null) {
       editingChallengeId = null;
@@ -1972,6 +1975,7 @@ function switchTab(tab) {
   if (activeTab === 'today') {
     clearTimerState();
     currentChallengeId = null;
+    releaseWakeLock();
   } else if (activeTab === 'library') {
     editingChallengeId = null;
     libraryOpenCats = new Set(); // referme tous les accordéons en quittant l'onglet Défis
@@ -2601,6 +2605,22 @@ let creatingGroupChallenge = false; // formulaire de creation de defi (dans le d
 let groupDetailView = 'challenge'; // 'challenge' | 'ledger' | 'hallOfFame'
 let groupDetailLedgerHistory = []; // Ardoise Globale : TOUTES les entrees ledger du groupe (pas juste le dernier defi)
 
+// ==== MODE SPECTATEUR (retour utilisateur) : fil live sur un defi de groupe actif ====
+// Chaque serie loguee par un membre ecrit deja un document dans
+// challenges/{id}/contributions/{id} (Cloud Function logGroupChallengeContribution,
+// voir Phase 3/Clutch Player) - jusqu'ici lu UNIQUEMENT par closeExpiredGroupChallenges,
+// jamais par un client. Ce listener l'exploite enfin cote client pour un fil "en
+// direct" (au lieu de rafraichir manuellement l'ecran) - present uniquement pendant
+// qu'un defi est ACTIF (voir loadGroupDetail()/closeGroupDetail()).
+let groupChallengeLiveFeed = []; // [{id, kind:'overtake'|'contribution', moverUid, overtakenUid?, amount?, at}], plus recent en tete
+let groupChallengeLiveFeedUnsub = null;
+// null tant que le tout 1er instantane (rattrapage de l'historique existant) n'est
+// pas arrive - meme garde deja etablie pour communityActivityFeedSeenIds (Kilo,
+// idee #9) : sans elle, ouvrir l'ecran annoncerait a tort des evenements anciens
+// comme s'ils venaient de se produire.
+let groupChallengeSeenContributionIds = null;
+let groupChallengeLastRankOrder = []; // [uid...], classement NET (handicap deduit) le plus recent connu
+
 // ==== FIL D'ACTIVITÉ GLOBAL (amis) ====
 // `activityFeed/{autoId}` : UN document PAR défi complété (pas par série, contrairement
 // à registerBossBattleContributionIfNeeded() qui compte chaque série pour la jauge
@@ -3120,6 +3140,9 @@ function closeGroupDetail() {
   groupDetailView = 'challenge';
   groupDetailLedgerHistory = [];
   pickingBouletTarget = false;
+  startGroupChallengeLiveFeedListener(null, null); // desabonne + reinitialise groupChallengeSeenContributionIds
+  groupChallengeLiveFeed = [];
+  groupChallengeLastRankOrder = [];
 }
 
 // Volontairement PAS de collection-group query / where('status','in',[...]) : les
@@ -3160,6 +3183,18 @@ async function loadGroupDetail(groupId) {
       // que rankForSettlement() cote Cloud Function, pas seulement le bilan apres coup).
       relevant.participants = participantsSnap.docs.map(d => ({ ...d.data() }))
         .sort((a, b) => computeGroupParticipantDisplayAmount(b) - computeGroupParticipantDisplayAmount(a));
+      // Mode spectateur (retour utilisateur) : le fil live n'a de sens que pendant
+      // qu'un defi est REELLEMENT actif (jamais sur un bilan deja regle) - le
+      // classement fraichement charge sert de point de depart pour le tout premier
+      // depassement eventuellement detecte par le listener.
+      if (relevant.status === 'active') {
+        groupChallengeLastRankOrder = relevant.participants.map((p) => p.uid);
+        startGroupChallengeLiveFeedListener(groupId, relevant.challengeId);
+      } else {
+        startGroupChallengeLiveFeedListener(null, null);
+        groupChallengeLiveFeed = [];
+        groupChallengeLastRankOrder = [];
+      }
       if (relevant.status === 'settled') {
         const ledgerSnap = await db.collection('groups').doc(groupId).collection('ledger')
           .where('challengeId', '==', relevant.challengeId).get();
@@ -3169,6 +3204,9 @@ async function loadGroupDetail(groupId) {
       }
     } else {
       groupDetailLedger = [];
+      startGroupChallengeLiveFeedListener(null, null);
+      groupChallengeLiveFeed = [];
+      groupChallengeLastRankOrder = [];
     }
     groupDetailChallenge = relevant;
   } catch (e) {
@@ -5671,7 +5709,17 @@ function armModeSentence(target, unit, armMode) {
   return t('exercise.armModeSentence', { target, unit: u });
 }
 
-// ==== WAKE LOCK (empêche l'écran de s'éteindre pendant un chrono) ====
+// ==== WAKE LOCK (empêche l'écran de s'éteindre pendant l'effort) ====
+// Idee bonus (retour utilisateur, "app premium/native") : a l'origine actif
+// UNIQUEMENT pendant qu'un chrono tourne (timerRunning) - etendu pour couvrir
+// TOUTE la duree ou une fiche d'exercice est affichee, reps ou chrono (un
+// enchainement de pompes sans toucher l'ecran finissait deja par l'eteindre,
+// exactement le meme desagrement que pour un exercice chronometre). Demande
+// et relache desormais decouplees de clearTimerState() (appelee aussi en
+// cours de fiche - stopTimer(), ou a l'OUVERTURE d'un nouvel exercice - donc
+// PAS un bon signal de "on quitte reellement la fiche") : voir pickChallenge()
+// pour la demande, et les 4 sites reels de sortie (goBackOneLevel(),
+// switchTab() x2, deconnexion) pour la relache explicite.
 let wakeLock = null;
 
 async function requestWakeLock() {
@@ -5694,9 +5742,10 @@ async function releaseWakeLock() {
 
 // Le Wake Lock est automatiquement relâché par le système quand l'onglet passe
 // en arrière-plan (écran verrouillé, changement d'appli...). On le redemande
-// dès que l'app redevient visible, tant que le chrono tourne toujours.
+// dès que l'app redevient visible, tant qu'une fiche d'exercice est toujours
+// affichée (plus seulement si le chrono tourne - voir commentaire ci-dessus).
 document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible' && timerRunning && !wakeLock) {
+  if (document.visibilityState === 'visible' && currentChallengeId && !wakeLock) {
     await requestWakeLock();
   }
 });
@@ -5709,7 +5758,6 @@ function clearTimerState() {
   lastBeepSecond = 0;
   lastVoiceCueSecond = null;
   clearPrepCountdown();
-  releaseWakeLock();
 }
 
 // ==== COMPTE À REBOURS (3... 2... 1...) ====
@@ -6080,23 +6128,45 @@ async function pickChallenge(id) {
     'kilo.exercise.opening.' + computeKiloExerciseProgressBucket(getTotal(), getTarget(), entry.done),
     { current: getTotal(), target: getTarget() }
   );
-  // Idees bonus #6/#7 (retour utilisateur) : un SEUL tirage partage decide si
-  // la replique de palier ci-dessus est remplacee par une variante "fun" -
-  // comparaison delirante du cumul a vie (#7, bande basse, ne se declenche
-  // que si un cumul existe deja - rien d'absurde a comparer sur un exercice
-  // jamais fait) OU reference explicite au jour de la semaine (#6, exemple
-  // fourni par l'utilisateur : "C'est dimanche mais pas de repos pour les
-  // abdos"). Un seul Math.random() (pas un tirage independant par idee) pour
-  // garder des probabilites simples/additives : 15% comparaison, 25% jour,
-  // 60% palier standard (par defaut, deja pose ci-dessus).
+  // Idees bonus #6/#7/"prevision de tendance" (retour utilisateur) : un SEUL
+  // tirage partage decide si la replique de palier ci-dessus est remplacee par
+  // une variante "fun" - comparaison delirante du cumul a vie (#7, ne se
+  // declenche que si un cumul existe deja - rien d'absurde a comparer sur un
+  // exercice jamais fait), prevision de tendance (nouvelle - "a ce rythme, tu
+  // franchis la barre des X le [date]", ne se declenche que si un rythme recent
+  // est mesurable, voir computeKiloTrendForecast()), OU reference explicite au
+  // jour de la semaine (#6, exemple fourni par l'utilisateur : "C'est dimanche
+  // mais pas de repos pour les abdos"). Un seul Math.random() (pas un tirage
+  // independant par idee) pour garder des probabilites simples/additives : 15%
+  // comparaison, 15% prevision, 25% jour, 45% palier standard (par defaut,
+  // deja pose ci-dessus) - si une condition prealable manque (pas de cumul,
+  // pas de rythme recent mesurable), on retombe simplement sur la tranche
+  // suivante plutot que de casser l'enchainement des probabilites.
   const kiloLifetimeTotal = c ? (stats[c.id]?.lifetimeTotal || 0) : 0;
   const kiloOpeningRoll = c ? Math.random() : 1;
+  // exerciseSparklineCache[id] : 7 totaux journaliers (voir loadExerciseSparkline()),
+  // peut ne pas encore etre en cache si CET exercice n'a jamais ete ouvert cette
+  // session (chargement asynchrone, fire-and-forget, en fin de cette fonction) -
+  // dans ce cas la prevision est simplement indisponible pour cette ouverture,
+  // elle redeviendra possible des la prochaine fois que l'exercice sera rouvert.
+  const kiloWeeklyTotal = (exerciseSparklineCache[id] || []).reduce((a, b) => a + b, 0);
+  const kiloTrendForecast = c ? computeKiloTrendForecast(kiloLifetimeTotal, kiloWeeklyTotal) : null;
   if (kiloLifetimeTotal > 0 && kiloOpeningRoll < 0.15) {
     exerciseKiloBubbleText = pickKiloLine('kilo.exercise.statComparison', {
       lifetime: kiloLifetimeTotal.toLocaleString(LOCALE_TO_INTL[currentLocale]),
       exercise: challengeDisplayName(c),
     });
-  } else if (kiloOpeningRoll < 0.4) {
+  } else if (kiloTrendForecast && kiloOpeningRoll < 0.3) {
+    const forecastDate = new Date(Date.now() + kiloTrendForecast.daysNeeded * 86400000);
+    const milestoneLabel = c.unit === 'sec'
+      ? formatSecToReadable(kiloTrendForecast.milestone)
+      : kiloTrendForecast.milestone.toLocaleString(LOCALE_TO_INTL[currentLocale]);
+    exerciseKiloBubbleText = pickKiloLine('kilo.exercise.trendForecast', {
+      milestone: milestoneLabel,
+      date: formatDateLabel(forecastDate),
+      exercise: challengeDisplayName(c),
+    });
+  } else if (kiloOpeningRoll < 0.55) {
     // t('dates.daysFull') est capitalise (reutilise ailleurs pour des libelles
     // de date autonomes, ex. formatDateLabel()) - le FR/ES ecrivent
     // conventionnellement les jours en minuscule en milieu de phrase (l'exemple
@@ -6110,6 +6180,12 @@ async function pickChallenge(id) {
   }
   pushNavState();
   render(true);
+  // Idee bonus (retour utilisateur, "app premium/native") : l'ecran reste
+  // desormais allume pendant TOUTE la duree ou une fiche d'exercice est
+  // affichee (reps ou chrono - avant ce correctif, seul un chrono EN COURS
+  // le garantissait, voir le commentaire dedie sur requestWakeLock()/
+  // releaseWakeLock()) - jamais bloquant, best-effort (voir son propre catch).
+  requestWakeLock();
   if (c && c.slug) loadActiveExerciseGroupChallenges(c.slug); // fire-and-forget : re-rend dès que prêt, jamais bloquant pour la navigation
   if (!Object.prototype.hasOwnProperty.call(exerciseSparklineCache, id)) loadExerciseSparkline(id); // idem, mis en cache par exercice pour la session
 }
@@ -9219,6 +9295,28 @@ function computeKiloExerciseFamily(id) {
   return null;
 }
 
+// Idee bonus (retour utilisateur, "prevision de tendance") : au lieu d'un
+// nouveau bloc de stats separe sur la fiche, Kilo annonce directement a quelle
+// echeance le prochain palier "rond" (100/1000/10000) sera franchi sur CET
+// exercice, extrapole depuis le rythme des 7 derniers jours (exerciseSparklineCache,
+// deja charge pour la sparkline - aucune nouvelle lecture Firestore). Fonction
+// PURE (aucune Date interne, contrairement a l'appelant qui calcule la vraie
+// date via `new Date()` - meme discipline que le reste du fichier, voir le
+// piege deja documente sur `today`/render() non mockable en test). Renvoie
+// `null` si aucun rythme recent n'est mesurable (semaine a 0) ou si l'echeance
+// deduite serait trop lointaine pour etre motivante (> 400 jours) - dans les
+// 2 cas, l'appelant retombe silencieusement sur une autre replique d'ouverture.
+function computeKiloTrendForecast(lifetimeTotal, weeklyTotal) {
+  if (!(lifetimeTotal > 0) || !(weeklyTotal > 0)) return null;
+  const dailyRate = weeklyTotal / 7;
+  const step = lifetimeTotal < 1000 ? 100 : (lifetimeTotal < 10000 ? 1000 : 10000);
+  const milestone = (Math.floor(lifetimeTotal / step) + 1) * step;
+  const remaining = milestone - lifetimeTotal;
+  const daysNeeded = Math.ceil(remaining / dailyRate);
+  if (daysNeeded < 1 || daysNeeded > 400) return null;
+  return { milestone, daysNeeded };
+}
+
 // Resout une cle i18n vers une replique DEJA interpolee, en piochant au hasard
 // si la cle resout vers un tableau de variantes (voir locale-fr.js/-en.js/-es.js,
 // namespaces kilo.exercise.*/kilo.home.*) - t() lui-meme ne fait l'interpolation
@@ -9334,6 +9432,90 @@ function computeGroupParticipantDisplayAmount(p) {
 // dupliquee : aucun import possible entre index.html et functions/index.js).
 function computeGroupTotalProgress(participants) {
   return participants.reduce((sum, p) => sum + Math.max(0, computeGroupParticipantDisplayAmount(p)), 0);
+}
+
+// Idee bonus (retour utilisateur, "mode spectateur") : detecte un VRAI
+// depassement de rang entre 2 classements REELS consecutifs (previousOrder AVANT
+// le dernier evenement, newOrder APRES) - jamais une reconstruction approximative
+// a partir du seul flux d'evenements (aurait ete fragile, voir le commentaire de
+// startGroupChallengeLiveFeedListener()). Fonction PURE : simples tableaux d'uid,
+// aucune dependance a Firestore. La personne "depassee" est toujours celle qui
+// etait JUSTE DEVANT le mover AVANT (previousOrder[oldIdx-1]) - y compris quand
+// le mover prend directement la 1ere place (fonctionne pour un saut de plusieurs
+// rangs d'un coup, annonce alors le dernier obstacle direct, pas tous les rangs
+// intermediaires franchis). Encore faut-il verifier que cette personne precise
+// est REELLEMENT repassee derriere dans newOrder - sinon ce n'est pas un vrai
+// depassement, juste un reclassement quelconque cause par un tiers.
+function computeGroupChallengeOvertake(previousOrder, newOrder, moverUid) {
+  if (!previousOrder || !newOrder || !moverUid) return null;
+  const oldIdx = previousOrder.indexOf(moverUid);
+  const newIdx = newOrder.indexOf(moverUid);
+  if (oldIdx <= 0 || newIdx === -1 || newIdx >= oldIdx) return null;
+  const overtakenUid = previousOrder[oldIdx - 1];
+  const overtakenNewIdx = newOrder.indexOf(overtakenUid);
+  if (overtakenNewIdx === -1 || overtakenNewIdx <= newIdx) return null;
+  return { moverUid, overtakenUid };
+}
+
+// Abonnement temps reel au fil des contributions d'un defi de groupe ACTIF -
+// present UNIQUEMENT pendant la duree du defi (voir loadGroupDetail()/
+// closeGroupDetail()), jamais sur un bilan deja regle. A CHAQUE nouvelle
+// contribution (jamais sur le rattrapage initial, voir groupChallengeSeenContributionIds) :
+// une seule relecture du classement (bornee a la taille du groupe, <=20 - cout
+// negligeable) permet de comparer un AVANT/APRES REEL et de detecter un vrai
+// depassement (computeGroupChallengeOvertake()) plutot que de tenter de
+// reconstruire un historique approximatif depuis le seul flux d'evenements
+// (fragile - aucune garantie que les totaux connus au moment de l'ouverture de
+// l'ecran soient encore a jour). Si aucun depassement n'est detecte, une ligne
+// generique de contribution est affichee a la place - meme esprit "FOMO en
+// direct" que le fil des contributions Boss Battle (startRecentContributionsListener()),
+// mais pour un defi de groupe et avec cette detection de rang en plus.
+// Extraite du callback onSnapshot pour rester testable independamment de lui
+// (meme raison que computeFriendBigMoveReaction() - Kilo idee #9 : le mock
+// Firestore generique de test ne re-declenche jamais onSnapshot() sur une
+// ecriture posterieure a l'abonnement, voir son commentaire dedie). Fonction
+// PURE : `freshDocsAsc` deja filtres/tries par l'appelant (plus anciens en
+// tete), `previousOrder`/`newOrder` deja calcules. Le "mover" annonce est
+// toujours le PLUS RECENT des nouveaux evenements du lot.
+function computeGroupChallengeLiveFeedEntry(previousOrder, newOrder, freshDocsAsc) {
+  const mover = freshDocsAsc[freshDocsAsc.length - 1];
+  const overtake = computeGroupChallengeOvertake(previousOrder, newOrder, mover.uid);
+  return overtake
+    ? { id: mover.id, kind: 'overtake', moverUid: overtake.moverUid, overtakenUid: overtake.overtakenUid, at: mover.at }
+    : { id: mover.id, kind: 'contribution', moverUid: mover.uid, amount: mover.amount, at: mover.at };
+}
+
+function startGroupChallengeLiveFeedListener(groupId, challengeId) {
+  if (groupChallengeLiveFeedUnsub) groupChallengeLiveFeedUnsub();
+  groupChallengeLiveFeedUnsub = null;
+  groupChallengeSeenContributionIds = null;
+  if (!groupId || !challengeId) return;
+  const challengeRef = db.collection('groups').doc(groupId).collection('challenges').doc(challengeId);
+  groupChallengeLiveFeedUnsub = challengeRef.collection('contributions')
+    .orderBy('at', 'desc').limit(15)
+    .onSnapshot(async (snap) => {
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (groupChallengeSeenContributionIds === null) {
+        groupChallengeSeenContributionIds = new Set(docs.map((d) => d.id));
+        return;
+      }
+      const freshDocs = docs.filter((d) => !groupChallengeSeenContributionIds.has(d.id)).sort((a, b) => a.at - b.at);
+      if (freshDocs.length === 0) return;
+      freshDocs.forEach((d) => groupChallengeSeenContributionIds.add(d.id));
+      let newOrder = groupChallengeLastRankOrder;
+      try {
+        const participantsSnap = await challengeRef.collection('participants').get();
+        const ranked = participantsSnap.docs.map((d) => d.data())
+          .sort((a, b) => computeGroupParticipantDisplayAmount(b) - computeGroupParticipantDisplayAmount(a));
+        newOrder = ranked.map((p) => p.uid);
+      } catch (e) {
+        console.error('group challenge live feed ranking refresh failed', e);
+      }
+      const entry = computeGroupChallengeLiveFeedEntry(groupChallengeLastRankOrder, newOrder, freshDocs);
+      groupChallengeLastRankOrder = newOrder;
+      groupChallengeLiveFeed = [entry, ...groupChallengeLiveFeed].slice(0, 15);
+      render();
+    });
 }
 
 // Ligne d'un participant a un defi de groupe (classement OU bilan) : PAS de bouton
@@ -9607,6 +9789,36 @@ function showGroupHallOfFameTitleModal(titleId, icon, memberName) {
   });
 }
 
+// Mode spectateur (retour utilisateur) : fil live minimaliste sous la carte hero
+// d'un defi actif ("Bob vient de passer devant Alice !") - reutilise TELLES
+// QUELLES les classes .boss-battle-feed/.boss-battle-feed-row (fil des
+// contributions Boss Battle, Communaute) : visuellement identique (petite
+// liste de lignes qui defile, meme esprit "FOMO en direct"), aucun nouveau CSS
+// necessaire pour ce composant. Noms resolus via groupDetailMembers (deja en
+// memoire, aucune lecture supplementaire) - repli '?' si un contributeur n'est
+// plus dans le roster charge (rare : membre ayant quitte le groupe entre-temps).
+function renderGroupChallengeLiveFeed() {
+  if (groupChallengeLiveFeed.length === 0) return '';
+  const nameById = {};
+  groupDetailMembers.forEach((m) => { nameById[m.uid] = m.displayName; });
+  const rowsHtml = groupChallengeLiveFeed.map((entry) => {
+    const text = entry.kind === 'overtake'
+      ? t('groups.liveFeed.overtake', {
+          mover: escapeHtml(nameById[entry.moverUid] || '?'),
+          overtaken: escapeHtml(nameById[entry.overtakenUid] || '?'),
+        })
+      : t('groups.liveFeed.contribution', {
+          name: escapeHtml(nameById[entry.moverUid] || '?'),
+          amount: entry.amount,
+        });
+    return `<div class="boss-battle-feed-row"><span>${text}</span></div>`;
+  }).join('');
+  return `
+    <div class="section-label">${t('groups.liveFeed.label')}</div>
+    <div class="boss-battle-feed">${rowsHtml}</div>
+  `;
+}
+
 function renderGroupDetailScreen() {
   if (groupDetailLoading || !groupDetailGroup) {
     return `
@@ -9669,6 +9881,7 @@ function renderGroupDetailScreen() {
         ${targetReachedHtml}
         ${groupDetailChallenge.exerciseSlug ? `<button class="friend-search-submit-btn" onclick="startGroupChallengeExercise('${escapeJsAttr(groupDetailChallenge.exerciseSlug)}')">${escapeHtml(t('groups.doExerciseBtn', { exercise: exerciseName }))}</button>` : ''}
       </div>
+      ${renderGroupChallengeLiveFeed()}
       <div class="leaderboard-list">
         ${groupDetailChallenge.participants.map((p, i) => renderGroupParticipantRow(p, i + 1, p.uid === currentUser.uid)).join('')}
       </div>

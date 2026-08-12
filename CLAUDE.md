@@ -5943,3 +5943,103 @@ compteur Hardcore via sa cle de cache dediee) + lint, **pas confirme
 visuellement dans un vrai navigateur** - a confirmer par l'utilisateur,
 notamment si 38px reste bien assez discret pour l objectif recherche
 ("invisible" mais suffisant pour degager la pastille).
+
+## 3 idees choisies dans la 3e liste de propositions (Wake Lock etendu, mode spectateur, prevision de tendance en punchline Kilito)
+
+**Ecran allume pendant toute la fiche d'exercice (ex-idee #7 de la liste).**
+Le Wake Lock existait deja (`requestWakeLock()`/`releaseWakeLock()`), mais
+scope UNIQUEMENT a la duree ou le chrono tourne (`startTimer()`) - un
+enchainement de pompes (aucun chrono) pouvait donc quand meme laisser
+l'ecran s'eteindre en pleine serie. Decouple : `pickChallenge()` demande
+desormais le Wake Lock des l'ouverture de N'IMPORTE QUEL exercice (reps ou
+chrono), `releaseWakeLock()` retire de `clearTimerState()` (appelee aussi en
+cours de fiche - `stopTimer()`, ou a l'ouverture d'un NOUVEL exercice - donc
+pas un bon signal de "on quitte la fiche") et deplace explicitement aux 4
+sites reels de sortie (`goBackOneLevel()`, les 2 branches de `switchTab()`,
+la deconnexion). Le listener `visibilitychange` (redemande le Wake Lock au
+retour au premier plan) teste desormais `currentChallengeId` au lieu de
+`timerRunning`. Verifie par un espion sur les 2 fonctions (le mock
+`navigator` de test n'expose pas l'API Wake Lock reelle, meme limite deja
+acceptee pour les autres API navigateur non mockees ici).
+
+**Mode spectateur sur un defi de groupe actif (ex-idee #11).** Chaque serie
+loguee par un membre ecrit deja un document dans
+`challenges/{id}/contributions/{id}` (Cloud Function
+`logGroupChallengeContribution`, Phase 3/Clutch Player) - jusqu'ici lu
+UNIQUEMENT par `closeExpiredGroupChallenges`, jamais par un client. Nouveau
+`startGroupChallengeLiveFeedListener(groupId, challengeId)` (`onSnapshot`,
+present UNIQUEMENT pendant qu'un defi est ACTIF - attache/detache dans
+`loadGroupDetail()`/`closeGroupDetail()`) exploite enfin ce flux cote
+client : a chaque NOUVELLE contribution (jamais sur le rattrapage initial,
+meme garde `null`->`Set` deja etablie pour `communityActivityFeedSeenIds`),
+une seule relecture du classement (bornee a la taille du groupe, <=20) permet
+de comparer un AVANT/APRES REEL et de detecter un vrai depassement de rang -
+plutot que de tenter une reconstruction approximative depuis le seul flux
+d'evenements (fragile, aucune garantie que les totaux connus a l'ouverture
+de l'ecran soient encore a jour).
+
+`computeGroupChallengeOvertake(previousOrder, newOrder, moverUid)` (fonction
+PURE, testee independamment de Firestore) : la personne "depassee" annoncee
+est toujours celle qui etait JUSTE DEVANT le mover AVANT
+(`previousOrder[oldIdx-1]`) - fonctionne meme pour un saut de plusieurs rangs
+d'un coup (ex: 3e -> 1ere place directement), qui annonce alors le dernier
+obstacle direct plutot que tous les rangs intermediaires franchis
+(simplification assumee, reste toujours factuellement vrai). Verifie
+ensuite que cette personne precise est REELLEMENT repassee derriere dans
+`newOrder` - sinon ce n'est pas un vrai depassement, juste un reclassement
+cause par la chute d'un tiers ailleurs dans le classement.
+`computeGroupChallengeLiveFeedEntry()` extrait la logique de construction de
+l'entree de fil (mover = le PLUS RECENT des nouveaux evenements du lot,
+repli sur une ligne de contribution generique si aucun depassement) pour
+rester testable independamment du callback `onSnapshot()` lui-meme - le mock
+Firestore generique de ce depot ne re-declenche jamais `onSnapshot()` sur une
+ecriture posterieure a l'abonnement (limite deja documentee, meme raison que
+`computeFriendBigMoveReaction()`).
+
+`renderGroupChallengeLiveFeed()` reutilise TELLES QUELLES les classes
+`.boss-battle-feed`/`.boss-battle-feed-row` (fil des contributions Boss
+Battle) - visuellement identique, aucun nouveau CSS necessaire. Noms
+resolus via `groupDetailMembers` (deja en memoire, aucune lecture
+supplementaire).
+
+**Bug reel corrige en cours d'implementation** : `groupChallengeLastRankOrder`
+etait recalcule INCONDITIONNELLEMENT dans `loadGroupDetail()` (y compris
+pour un defi deja REGLE), sans jamais etre vide dans la branche
+`else`/settled - repere par un test qui verifiait explicitement que ce
+classement est bien efface des qu'un defi n'est plus actif. Corrige en
+scopant le calcul a la seule branche `status === 'active'`.
+
+**Prevision de tendance, reformulee en punchline de Kilito (ex-idee #28,
+demande explicite de l'utilisateur : "je veux que ça apparaisse comme une
+punchline de Kilito... sur la fiche exercice avant de commencer").**
+`computeKiloTrendForecast(lifetimeTotal, weeklyTotal)` (fonction PURE) :
+extrapole depuis le rythme des 7 derniers jours
+(`exerciseSparklineCache[id]`, deja charge pour la sparkline - aucune
+nouvelle lecture Firestore) le prochain palier "rond" (multiple de
+100/1000/10000 selon l'ordre de grandeur du cumul a vie) et le nombre de
+jours necessaires pour l'atteindre. Renvoie `null` si aucun rythme recent
+n'est mesurable (semaine a 0 - rien a extrapoler) ou si l'echeance deduite
+serait trop lointaine pour etre motivante (> 400 jours).
+
+**Cablee dans le tirage aleatoire partage existant** de `pickChallenge()`
+(deja utilise pour les idees #6/#7 - jour de la semaine / comparaison
+delirante du cumul a vie) : nouvelle bande 15% (0.15-0.3, entre la
+comparaison delirante et le jour de la semaine, qui recule desormais a
+0.3-0.55) - si `exerciseSparklineCache[id]` n'est pas encore en cache pour
+CET exercice (jamais ouvert cette session, chargement asynchrone
+fire-and-forget) ou si le rythme recent est nul, la prevision est
+simplement indisponible pour cette ouverture et le tirage retombe sur la
+bande suivante. Nouveau namespace `kilo.exercise.trendForecast` (fr/en/es,
+6 variantes chacune) interpole avec `{{milestone}}` (deja formate -
+separateurs de milliers, ou `formatSecToReadable()` pour un exercice
+chronometre), `{{date}}` (deja formatee via `formatDateLabel()`, reutilisee
+telle quelle) et `{{exercise}}`.
+
+CACHE_NAME -> v127 (`index.html` + les 3 `locale-*.js` modifies). Aucun
+changement de regles Firestore/Cloud Functions - modification 100% cote
+client, aucune touche a `functions/**`. Meme limite de verification que le
+reste des chantiers de ce projet : valide par tests structurels/
+comportementaux + lint, **pas confirme visuellement dans un vrai
+navigateur** - a confirmer par l'utilisateur, en particulier le rendu reel
+du fil live (mode spectateur) et le comportement du Wake Lock sur un vrai
+appareil.

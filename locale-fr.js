@@ -1275,6 +1275,20 @@ const LOCALE_FR = {
         "{{lifetime}}. Accumulé, sans bruit.",
         "{{lifetime}} sur {{exercise}}. La répétition, encore et encore.",
       ],
+      // Idee bonus (retour utilisateur, "prevision de tendance") : remplace
+      // occasionnellement la bulle d'ouverture par une prevision extrapolee du
+      // rythme des 7 derniers jours (voir computeKiloTrendForecast()) - {{milestone}}
+      // deja formate (separateurs de milliers ou format lisible pour un exercice
+      // chronometre), {{date}} deja formatee (formatDateLabel()). Ne se declenche
+      // que si un rythme recent est mesurable (voir pickChallenge()).
+      trendForecast: [
+        "À ce rythme, tu franchis la barre des {{milestone}} {{exercise}} le {{date}} !",
+        "Prévision du jour : objectif {{milestone}} {{exercise}} atteint aux alentours du {{date}}, si tu gardes ce rythme.",
+        "Mon radar de coach dit : {{milestone}} {{exercise}} en vue pour le {{date}}.",
+        "À cette cadence, le cap des {{milestone}} {{exercise}} tombe le {{date}}. Note-le dans ton calendrier.",
+        "Petit calcul de Kilito : {{milestone}} {{exercise}}, ce sera pour le {{date}} environ.",
+        "J'ai fait le calcul : {{milestone}} {{exercise}} d'ici le {{date}}, si rien ne change.",
+      ],
     },
     // Moteur d'humeur global de l'accueil (chantier gamification Phase 2, voir
     // computeKiloMood()) - une cle par humeur possible ('idle'/'warning'/'hype'/
@@ -2181,6 +2195,13 @@ const LOCALE_FR = {
     challengeProgress: '{{current}} / {{target}}',
     doExerciseBtn: 'Faire des {{exercise}}',
     targetReachedAwaitingSettlement: '🎉 Objectif atteint ! Le règlement (Ardoise + Palmarès) se met à jour automatiquement d\'ici 15 minutes.',
+    // Mode spectateur (retour utilisateur) : fil live sous la carte hero d'un
+    // defi actif - voir renderGroupChallengeLiveFeed()/startGroupChallengeLiveFeedListener().
+    liveFeed: {
+      label: 'En direct',
+      overtake: '🔥 {{mover}} vient de passer devant {{overtaken}} !',
+      contribution: '{{name}} vient d\'ajouter {{amount}}',
+    },
     cancelChallengeBtn: 'Annuler ce défi',
     cancelChallengeConfirmTitle: 'Annuler ce défi ?',
     cancelChallengeConfirmSubtitle: 'Cette action est irréversible : aucun règlement (Ardoise, Palmarès) ne sera jamais calculé pour ce défi.',

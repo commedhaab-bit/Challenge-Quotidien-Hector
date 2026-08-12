@@ -3399,7 +3399,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v126'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v127'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -6298,17 +6298,80 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!exerciseKiloBubbleText.includes('1 234') && !exerciseKiloBubbleText.includes('1,234'), 'aucune comparaison delirante ne doit apparaitre sur un exercice au cumul a vie nul');
   console.log('OK: idee bonus #7 - jamais de comparaison delirante sur un cumul a vie nul');
 
+  // Idee bonus (retour utilisateur, "prevision de tendance") : computeKiloTrendForecast()
+  // - fonction pure, testee independamment du tirage aleatoire de pickChallenge().
+  __assertEq(computeKiloTrendForecast(0, 50), null, 'aucun cumul a vie -> pas de prevision (rien a extrapoler)');
+  __assertEq(computeKiloTrendForecast(500, 0), null, 'aucun rythme recent mesurable (semaine a 0) -> pas de prevision');
+  const forecast850 = computeKiloTrendForecast(850, 70); // etape 100 (< 1000), palier suivant 900, rythme 10/jour
+  __assertOk(forecast850 && forecast850.milestone === 900 && forecast850.daysNeeded === 5, 'palier "rond" le plus proche (900) et nombre de jours corrects (50 restants / 10 par jour), extrapoles depuis le rythme hebdomadaire');
+  __assertEq(computeKiloTrendForecast(1, 1), null, 'une echeance beaucoup trop lointaine (>400 jours) ne doit jamais etre proposee comme prevision');
+  console.log('OK: computeKiloTrendForecast() (palier "rond" le plus proche + jours necessaires, jamais de prevision non mesurable/absurde)');
+
+  // Cablage dans pickChallenge() : sous la 2e bande du tirage partage (0.15-0.3)
+  // ET un rythme hebdomadaire mesurable (exerciseSparklineCache, deja charge pour
+  // la sparkline - force ici explicitement pour un test deterministe, comme
+  // stats[pompes.id] ci-dessus), la bulle doit devenir la prevision de tendance.
+  stats[pompes.id] = { lifetimeTotal: 850, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  exerciseSparklineCache[pompes.id] = [10, 10, 10, 10, 10, 10, 10]; // 70/semaine -> 10/jour
+  Math.random = () => 0.2; // dans la bande 0.15-0.3 -> prevision de tendance
+  await pickChallenge(pompes.id);
+  const expectedForecastDate = formatDateLabel(new Date(Date.now() + 5 * 86400000));
+  const expectedForecastVariants = t('kilo.exercise.trendForecast').map((v) => interpolate(v, {
+    milestone: (900).toLocaleString(LOCALE_TO_INTL[currentLocale]),
+    date: expectedForecastDate,
+    exercise: challengeDisplayName(pompes),
+  }));
+  __assertOk(expectedForecastVariants.includes(exerciseKiloBubbleText), 'dans la bande "prevision de tendance" avec un rythme hebdomadaire mesurable, la bulle doit annoncer le prochain palier "rond" avec la date extrapolee');
+  console.log('OK: idee bonus "prevision de tendance" - Kilo annonce le prochain palier rond avec la date extrapolee du rythme des 7 derniers jours');
+
+  // Sans rythme recent mesurable (sparkline a 0), la bande "prevision de
+  // tendance" ne doit jamais se declencher, meme avec un tirage qui la
+  // ciblerait normalement - doit retomber sur la bande suivante (jour).
+  exerciseSparklineCache[pompes.id] = [0, 0, 0, 0, 0, 0, 0];
+  await pickChallenge(pompes.id);
+  __assertOk(!expectedForecastVariants.includes(exerciseKiloBubbleText), 'sans rythme hebdomadaire mesurable, aucune prevision de tendance ne doit apparaitre malgre un tirage dans sa bande');
+  console.log('OK: idee bonus "prevision de tendance" - jamais de prevision sans rythme recent mesurable');
+
   // Idee bonus #6 (retour utilisateur) : dans la bande "jour" du tirage
-  // partage (0.15-0.4), pickChallenge() doit remplacer la bulle par une
-  // replique qui nomme le jour ET l'exercice, quel que soit le palier de
-  // progression.
-  Math.random = () => 0.2; // dans la bande 0.15-0.4 -> jour de la semaine
+  // partage (0.3-0.55 depuis l'ajout de la bande "prevision de tendance" entre
+  // 0.15 et 0.3, voir pickChallenge()), pickChallenge() doit remplacer la
+  // bulle par une replique qui nomme le jour ET l'exercice, quel que soit le
+  // palier de progression. 0.45 choisi volontairement AU-DELA de 0.3 : reste
+  // dans la bande "jour" quel que soit l'etat (potentiellement pollue par des
+  // tests precedents) de exerciseSparklineCache[pompes.id], jamais ambigu avec
+  // la bande "prevision de tendance" juste avant.
+  Math.random = () => 0.45;
   await pickChallenge(pompes.id);
   const expectedDayName = t('dates.daysFull')[new Date().getDay()].toLowerCase();
   const expectedDayVariants = t('kilo.exercise.dayPunchline').map((v) => interpolate(v, { day: expectedDayName, exercise: challengeDisplayName(pompes) }));
   __assertOk(expectedDayVariants.includes(exerciseKiloBubbleText), 'dans la bande "jour" du tirage, la bulle doit nommer le jour (en minuscule en FR) et l exercice');
   Math.random = originalMathRandomKiloOpening;
   console.log('OK: idee bonus #6 - replique occasionnelle qui nomme explicitement le jour de la semaine et l exercice en cours');
+
+  // Idee bonus (retour utilisateur, "app premium/native") : l'ecran doit rester
+  // allume pendant TOUTE la duree ou une fiche d'exercice est affichee (reps ou
+  // chrono), pas seulement pendant qu'un chrono tourne comme avant ce correctif.
+  // Verifie via un espion sur requestWakeLock()/releaseWakeLock() (le mock
+  // navigator de ce harnais n'expose pas l'API Wake Lock reelle - meme limite
+  // deja acceptee pour les autres fonctionnalites basees sur des API navigateur
+  // non mockees ici, ex: visibilitychange). Les 4 sites de relache reels
+  // (goBackOneLevel(), les 2 branches de switchTab(), la deconnexion) suivent
+  // tous le meme patron a une ligne - seul le site le plus frequent (changer
+  // d'onglet) est exerce ici, les 3 autres verifies par relecture du code.
+  const originalRequestWakeLock = requestWakeLock;
+  const originalReleaseWakeLock = releaseWakeLock;
+  let wakeLockRequests = 0;
+  let wakeLockReleases = 0;
+  requestWakeLock = async () => { wakeLockRequests++; };
+  releaseWakeLock = async () => { wakeLockReleases++; };
+  await pickChallenge(pompes.id);
+  __assertEq(wakeLockRequests, 1, 'ouvrir une fiche d exercice (meme en repetitions, sans chrono) doit demander le Wake Lock');
+  switchTab('library');
+  __assertEq(wakeLockReleases, 1, 'quitter la fiche d exercice (changement d onglet) doit relacher le Wake Lock');
+  activeTab = 'today';
+  requestWakeLock = originalRequestWakeLock;
+  releaseWakeLock = originalReleaseWakeLock;
+  console.log('OK: Wake Lock etendu a toute la duree d une fiche d exercice, relache en quittant l onglet Aujourd hui');
 
   // --- A chaque tap (+5/+10/...), Kilo flashe en 'success' et la bulle se met a
   // jour avec une punchline dynamisee par le montant ajoute - independamment de
@@ -7254,6 +7317,70 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(groupDetailHtml.includes('#1') && groupDetailHtml.includes('#2'), 'le classement doit afficher un rang numerique exact pour chaque participant');
   console.log('OK: loadGroupDetail() (roster + defi actif classe par totalAmount decroissant, rang exact gratuit)');
 
+  // Idee bonus (retour utilisateur, "mode spectateur") : computeGroupChallengeOvertake()
+  // - fonction pure, testee independamment de tout abonnement Firestore.
+  const overtakeResult = computeGroupChallengeOvertake(['bob-uid', 'me-uid'], ['me-uid', 'bob-uid'], 'me-uid');
+  __assertOk(overtakeResult && overtakeResult.moverUid === 'me-uid' && overtakeResult.overtakenUid === 'bob-uid', 'un vrai depassement de rang doit etre detecte entre 2 classements reels consecutifs');
+  __assertEq(computeGroupChallengeOvertake(['bob-uid', 'me-uid'], ['bob-uid', 'me-uid'], 'me-uid'), null, 'aucun changement de rang -> pas de depassement');
+  // Saut de plusieurs rangs d'un coup (3e -> 1ere place) : la personne "depassee"
+  // annoncee est celle qui etait JUSTE DEVANT avant (y-uid, ex-2e), pas x-uid
+  // (ex-1er) - un choix de simplification assumee (le mover a bien depasse les 2,
+  // mais annoncer le dernier obstacle direct reste toujours factuellement vrai).
+  const topJumpOvertake = computeGroupChallengeOvertake(['x-uid', 'y-uid', 'me-uid'], ['me-uid', 'x-uid', 'y-uid'], 'me-uid');
+  __assertOk(topJumpOvertake && topJumpOvertake.moverUid === 'me-uid' && topJumpOvertake.overtakenUid === 'y-uid', 'meme en prenant directement la 1ere place, un depassement reel doit etre annonce (la personne qui etait juste devant avant)');
+  __assertEq(computeGroupChallengeOvertake(['bob-uid'], ['carla-uid', 'bob-uid'], 'carla-uid'), null, 'un tout nouveau participant (absent du classement precedent) ne peut pas avoir "depasse" quelqu un de mesurable');
+  __assertEq(computeGroupChallengeOvertake(['me-uid', 'bob-uid'], ['me-uid', 'bob-uid'], 'me-uid'), null, 'deja premier avant -> rien a depasser');
+  // La personne qui etait juste devant AVANT doit etre REELLEMENT repassee
+  // derriere maintenant - si un tiers a simplement chute (liberant une place),
+  // sans que le mover n ait vraiment double celui juste au-dessus, ce n est pas
+  // un vrai depassement.
+  __assertEq(computeGroupChallengeOvertake(['x-uid', 'bob-uid', 'me-uid'], ['bob-uid', 'me-uid', 'x-uid'], 'me-uid'), null, 'le mover a progresse uniquement parce qu un tiers a chute derriere lui, pas parce qu il a reellement double la personne juste devant (toujours devant)');
+  console.log('OK: computeGroupChallengeOvertake() (vrai depassement entre 2 classements reels, jamais de reconstruction approximative)');
+
+  // computeGroupChallengeLiveFeedEntry() : le "mover" annonce est toujours le
+  // PLUS RECENT des nouveaux evenements du lot, avec repli sur une ligne de
+  // contribution generique si aucun depassement n est detecte.
+  const overtakeEntry = computeGroupChallengeLiveFeedEntry(['bob-uid', 'me-uid'], ['me-uid', 'bob-uid'],
+    [{ id: 'c1', uid: 'me-uid', amount: 10, at: 100 }]);
+  __assertEq(overtakeEntry.kind, 'overtake');
+  __assertEq(overtakeEntry.moverUid, 'me-uid');
+  __assertEq(overtakeEntry.overtakenUid, 'bob-uid');
+  const contributionEntry = computeGroupChallengeLiveFeedEntry(['bob-uid', 'me-uid'], ['bob-uid', 'me-uid'],
+    [{ id: 'c2', uid: 'me-uid', amount: 3, at: 50 }, { id: 'c3', uid: 'bob-uid', amount: 5, at: 200 }]);
+  __assertEq(contributionEntry.kind, 'contribution', 'sans depassement, une ligne de contribution generique doit etre produite');
+  __assertEq(contributionEntry.moverUid, 'bob-uid', 'le mover annonce doit etre le PLUS RECENT des nouveaux evenements (c3, at:200), pas le premier du lot');
+  __assertEq(contributionEntry.amount, 5);
+  console.log('OK: computeGroupChallengeLiveFeedEntry() (annonce le plus recent evenement du lot, depassement ou contribution generique)');
+
+  // Cablage reel : loadGroupDetail() sur un defi ACTIF doit memoriser le
+  // classement net courant ET attacher le listener live (groupChallengeLiveFeedUnsub
+  // devient une fonction de desabonnement). Le tout 1er instantane (rattrapage,
+  // ici sans aucune contribution existante dans ce mock) ne doit jamais annoncer
+  // quoi que ce soit - voir le garde groupChallengeSeenContributionIds.
+  __assertEq(groupChallengeLastRankOrder, ['bob-uid', 'me-uid'], 'le classement net courant (Bob devant Moi) doit etre memorise pour le mode spectateur');
+  __assertEq(typeof groupChallengeLiveFeedUnsub, 'function', 'le listener du fil live doit etre attache tant que le defi est actif');
+  await new Promise((r) => setTimeout(r, 0)); // laisse le 1er instantane (microtask) du mock onSnapshot se resoudre
+  __assertOk(groupChallengeSeenContributionIds instanceof Set, 'le 1er instantane (rattrapage) doit avoir ete traite');
+  __assertEq(groupChallengeLiveFeed.length, 0, 'le rattrapage initial ne doit jamais generer d annonce dans le fil (aucune contribution reellement NOUVELLE)');
+
+  // Rendu : renderGroupChallengeLiveFeed() reutilise .boss-battle-feed/-row et
+  // resout les noms via groupDetailMembers (deja en memoire, aucune lecture
+  // supplementaire). Valeurs synthetiques temporaires, restaurees juste apres
+  // pour ne pas perturber la suite du scenario Groupes (qui s attend a un fil
+  // reellement vide a ce stade, voir assertion ci-dessus).
+  const meMemberName = groupDetailMembers.find((m) => m.uid === 'me-uid').displayName;
+  const bobMemberName = groupDetailMembers.find((m) => m.uid === 'bob-uid').displayName;
+  groupChallengeLiveFeed = [
+    { id: 'f1', kind: 'overtake', moverUid: 'me-uid', overtakenUid: 'bob-uid', at: Date.now() },
+    { id: 'f2', kind: 'contribution', moverUid: 'bob-uid', amount: 5, at: Date.now() },
+  ];
+  const liveFeedHtml = renderGroupChallengeLiveFeed();
+  __assertOk(liveFeedHtml.includes('boss-battle-feed') && liveFeedHtml.includes('boss-battle-feed-row'), 'le fil live doit reutiliser les classes deja existantes du fil Boss Battle');
+  __assertOk(liveFeedHtml.includes(escapeHtml(meMemberName)) && liveFeedHtml.includes(escapeHtml(bobMemberName)), 'les noms doivent etre resolus via groupDetailMembers');
+  groupChallengeLiveFeed = [];
+  __assertEq(renderGroupChallengeLiveFeed(), '', 'un fil vide ne doit rien afficher (aucune section residuelle)');
+  console.log('OK: renderGroupChallengeLiveFeed() (reutilise .boss-battle-feed, noms resolus via groupDetailMembers, vide si aucun evenement)');
+
   // Passe UX premium (retour utilisateur) : le defi ACTIF doit desormais dominer
   // l ecran (carte "hero", a l image de la Boss Battle en Communaute) - progression
   // en gros, temps restant affiche. La liste des membres/invitations, elle,
@@ -7546,6 +7673,13 @@ const cssText = __rawHtml + __cssSource;
   await loadGroupDetail(createdGroupId);
   __assertEq(groupDetailChallenge.status, 'settled');
   __assertEq(groupDetailLedger.length, 1, 'l entree ledger du defi regle doit etre chargee');
+  // Mode spectateur (retour utilisateur) : le fil live n a de sens que pendant
+  // qu un defi est REELLEMENT actif - une fois regle, le listener doit etre
+  // detache et le fil vide (jamais d annonce sur un bilan deja clos).
+  __assertEq(groupChallengeLiveFeedUnsub, null, 'le listener du fil live doit etre detache des que le defi n est plus actif (regle)');
+  __assertEq(groupChallengeLiveFeed.length, 0, 'le fil live doit etre vide des que le defi n est plus actif (regle)');
+  __assertEq(groupChallengeLastRankOrder.length, 0, 'le classement memorise pour le mode spectateur doit etre efface des que le defi n est plus actif');
+  console.log('OK: le fil live du mode spectateur se detache automatiquement des qu un defi de groupe n est plus actif (regle)');
   const bilanHtml = renderGroupDetailScreen();
   __assertOk(bilanHtml.includes('Offre une biere'), 'le gage doit etre affiche dans le bilan');
   __assertOk(bilanHtml.includes(t('groups.honorBtn')), 'le bouton "Gage honore !" doit etre propose tant que non honore');

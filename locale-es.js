@@ -1273,6 +1273,20 @@ const LOCALE_ES = {
         "{{lifetime}}. Acumulado, sin ruido.",
         "{{lifetime}} en {{exercise}}. La repetición, una y otra vez.",
       ],
+      // Idea adicional (retroalimentación del usuario, "previsión de tendencia"):
+      // reemplaza ocasionalmente la burbuja de apertura con una previsión
+      // extrapolada del ritmo de los últimos 7 días (ver computeKiloTrendForecast()) -
+      // {{milestone}} ya formateado (separador de miles, o formato legible para un
+      // ejercicio cronometrado), {{date}} ya formateada (formatDateLabel()). Solo
+      // se activa si hay un ritmo reciente realmente medible (ver pickChallenge()).
+      trendForecast: [
+        "A este ritmo, superarás la barrera de {{milestone}} {{exercise}} sobre el {{date}}.",
+        "Pronóstico del día: {{milestone}} {{exercise}} sobre el {{date}}, si mantienes el ritmo.",
+        "Mi radar de coach dice: {{milestone}} {{exercise}} a la vista para el {{date}}.",
+        "A este ritmo, alcanzas los {{milestone}} {{exercise}} el {{date}}. Apúntalo.",
+        "Cálculo rápido de Kilito: {{milestone}} {{exercise}} sobre el {{date}}.",
+        "Hice el cálculo: {{milestone}} {{exercise}} para el {{date}}, si nada cambia.",
+      ],
     },
     // Motor de humor global de la pantalla de inicio (Fase 2 de gamificacion,
     // ver computeKiloMood()) - una clave por humor ('idle'/'warning'/'hype'/
@@ -2179,6 +2193,13 @@ const LOCALE_ES = {
     challengeProgress: '{{current}} / {{target}}',
     doExerciseBtn: 'Hacer {{exercise}}',
     targetReachedAwaitingSettlement: '🎉 ¡Objetivo alcanzado! El ajuste (Cuenta + Salón de la Fama) se actualizará automáticamente en menos de 15 minutos.',
+    // Modo espectador (retroalimentación del usuario) : fil en directo bajo la
+    // tarjeta hero de un reto activo - ver renderGroupChallengeLiveFeed()/startGroupChallengeLiveFeedListener().
+    liveFeed: {
+      label: 'En directo',
+      overtake: '🔥 ¡{{mover}} acaba de adelantar a {{overtaken}}!',
+      contribution: '{{name}} acaba de añadir {{amount}}',
+    },
     cancelChallengeBtn: 'Cancelar este reto',
     cancelChallengeConfirmTitle: '¿Cancelar este reto?',
     cancelChallengeConfirmSubtitle: 'Esta acción es irreversible: nunca se calculará ningún ajuste (Cuenta, Salón de la Fama) para este reto.',

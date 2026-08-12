@@ -1268,6 +1268,20 @@ const LOCALE_EN = {
         "{{lifetime}}. Accumulated, quietly.",
         "{{lifetime}} on {{exercise}}. The rep, again and again.",
       ],
+      // Bonus idea (user feedback, "trend forecast") : occasionally replaces the
+      // opening bubble with a forecast extrapolated from the last 7 days' pace
+      // (see computeKiloTrendForecast()) - {{milestone}} already formatted
+      // (thousands separator, or readable format for a timed exercise), {{date}}
+      // already formatted (formatDateLabel()). Only fires if a recent pace is
+      // actually measurable (see pickChallenge()).
+      trendForecast: [
+        "At this pace, you'll cross the {{milestone}} {{exercise}} mark around {{date}}!",
+        "Today's forecast: {{milestone}} {{exercise}} should land around {{date}} at this rate.",
+        "My coach radar says: {{milestone}} {{exercise}} incoming for {{date}}.",
+        "Keep this pace and you'll hit {{milestone}} {{exercise}} by {{date}}.",
+        "Quick math from Kilito: {{milestone}} {{exercise}}, around {{date}}.",
+        "I did the math: {{milestone}} {{exercise}} by {{date}}, if nothing changes.",
+      ],
     },
     // Global home-screen mood engine (gamification Phase 2, see computeKiloMood()) -
     // one key per mood ('idle'/'warning'/'hype'/'teasing'), each an ARRAY of
@@ -2172,6 +2186,13 @@ const LOCALE_EN = {
     challengeProgress: '{{current}} / {{target}}',
     doExerciseBtn: 'Do {{exercise}}',
     targetReachedAwaitingSettlement: '🎉 Target reached! The settlement (Ledger + Hall of Fame) will update automatically within 15 minutes.',
+    // Spectator mode (user feedback) : live feed under the hero card of an
+    // active challenge - see renderGroupChallengeLiveFeed()/startGroupChallengeLiveFeedListener().
+    liveFeed: {
+      label: 'Live',
+      overtake: '🔥 {{mover}} just overtook {{overtaken}}!',
+      contribution: '{{name}} just added {{amount}}',
+    },
     cancelChallengeBtn: 'Cancel this challenge',
     cancelChallengeConfirmTitle: 'Cancel this challenge?',
     cancelChallengeConfirmSubtitle: 'This is irreversible: no settlement (Ledger, Hall of Fame) will ever be computed for this challenge.',
