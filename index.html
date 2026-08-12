@@ -6794,15 +6794,22 @@ function animateOdometer(containerId, key, targetValue) {
   strips.forEach((strip, i) => {
     strip.style.transform = `translateY(-${Number(newDigitsStr[i]) * 10}%)`;
   });
-  // Meme "boing" que animateCountUp() une fois le roulement termine (0.5s,
-  // voir .odo-strip dans styles.css) - applique sur le CONTENEUR entier
-  // (toutes les colonnes flexent ensemble), pas colonne par colonne.
-  setTimeout(() => {
-    if (document.getElementById(containerId) !== container) return; // noeud remplace par un re-render entre-temps
-    container.classList.remove('num-pop');
-    void container.offsetWidth;
-    container.classList.add('num-pop');
-  }, 520);
+  // Bug reel corrige (retour utilisateur, avec capture d'ecran) : le "boing"
+  // d'echelle (.num-pop, voir animateCountUp()) etait applique ici sur le
+  // CONTENEUR (parent de toutes les colonnes .odo-col, chacune en
+  // overflow:hidden) juste apres la fin du roulement - l'utilisateur a
+  // identifie precisement que le glitch (fragment de chiffre voisin visible)
+  // survient au moment EXACT ou le chiffre "grandit". Animer `transform:
+  // scale()` sur un ANCETRE d'elements `overflow:hidden` qui ont eux-memes
+  // leur PROPRE transform en cours de transition est une combinaison connue
+  // pour produire des glitches de recadrage intermittents sur certains
+  // moteurs de rendu mobiles (les 2 animations se disputent la meme portion
+  // d'ecran au meme moment) - explique aussi le caractere ALEATOIRE du bug
+  // (~1 fois sur 2), cote de la course entre 2 animations plutot qu'une
+  // erreur de calcul deterministe. Retire entierement plutot que retente une
+  // 4e fois une correction de timing/layering invisible sans navigateur reel
+  // sous la main : le roulement lui-meme (confirme fonctionnel par
+  // l'utilisateur) reste la seule animation de ce composant desormais.
 }
 
 function render(animate) {

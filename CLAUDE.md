@@ -5849,3 +5849,53 @@ visuellement dans un vrai navigateur** - a reconfirmer par l'utilisateur,
 cette fois avec un niveau de confiance plus eleve puisque la cause racine
 est enfin clairement identifiee (contrairement aux 2 tentatives precedentes,
 plus incertaines).
+
+## #19 (odometre) - 4e correction : retire le "boing" plutot que d'insister sur son timing
+
+**Retour utilisateur, tres precis** : "le defilement marche bien" (confirme
+la 3e correction efficace pour la partie roulement/decoupage), mais "la
+moitie du temps" un glitch identique a la capture d'ecran precedente
+reapparait, et **"c'est au moment ou il grandit un peu"** - c'est-a-dire
+precisement quand le "boing" d'echelle (`.num-pop`, applique par
+`animateOdometer()` 520ms apres le tap) se declenche.
+
+**Cause racine reelle (cette fois deductible avec certitude du symptome
+decrit, sans avoir besoin d'une nouvelle capture)** : ce boing appliquait
+`transform: scale(...)` sur le CONTENEUR - l'ANCETRE direct de toutes les
+colonnes `.odo-col`, chacune `overflow:hidden` avec sa PROPRE transition
+`transform: translateY(...)` encore potentiellement en cours (500ms) au
+moment ou le boing demarre (520ms - a peine 20ms d'ecart, un timing JS qui
+ne garantit rien sur le rendu REEL, notamment sous charge). Animer
+`transform` sur un ancetre d'elements `overflow:hidden` qui ont eux-memes
+leur propre transform en cours est une combinaison connue pour produire des
+glitches de recadrage intermittents sur certains moteurs de rendu mobiles
+(les 2 animations se disputent la meme portion d'ecran au meme instant) -
+**explique directement le caractere ALEATOIRE du bug ("la moitie du
+temps")**, signature typique d'une course entre 2 animations plutot que
+d'une erreur de calcul deterministe (qui echouerait 100% du temps, pas 50%).
+
+**Corrige en retirant ENTIEREMENT le boing de `animateOdometer()`** (le
+bloc `setTimeout(...) => classList num-pop`) plutot que de tenter un 4e
+reglage de timing/layering invisible sans navigateur reel sous la main - le
+roulement lui-meme (confirme fonctionnel) reste desormais la SEULE
+animation de ce composant. `animateCountUp()` et sa propre gestion de
+`.num-pop` restent totalement INCHANGEES (fonction distincte, jamais
+concernee par ce bug - elle anime le TEXTE d'un `<span>` simple, aucun
+`overflow:hidden` imbrique).
+
+**Lecon retenue pour ce composant precis** : apres 4 corrections
+successives (invisibilite totale x2, decoupage/metriques de police, course
+entre 2 animations), l'odometre est passe d'un "effet premium avec boing"
+a un "roulement fonctionnel sans fioriture supplementaire" - une
+simplification progressive plutot qu'un seul gros changement, chaque etape
+guidee par un symptome utilisateur precis. Si un probleme visuel persiste
+malgre ce retrait (peu probable, plus aucune 2e animation ne peut entrer en
+conflit), la piste suivante serait d'abandonner l'odometre entierement au
+profit d'`animateCountUp()` (deja fonctionnel, disponible, jamais concerne
+par aucun de ces bugs).
+
+CACHE_NAME -> v125 (`index.html` modifie uniquement). Aucun changement de
+regles Firestore/Cloud Functions - modification 100% cote client, aucune
+touche a `functions/**`. Meme limite de verification que le reste des
+chantiers visuels : valide par tests structurels/lint, **pas confirme
+visuellement dans un vrai navigateur** - a reconfirmer par l'utilisateur.
