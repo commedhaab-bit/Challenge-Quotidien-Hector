@@ -6043,3 +6043,182 @@ comportementaux + lint, **pas confirme visuellement dans un vrai
 navigateur** - a confirmer par l'utilisateur, en particulier le rendu reel
 du fil live (mode spectateur) et le comportement du Wake Lock sur un vrai
 appareil.
+
+## Passe esthetique (14 idees + idee 61) - lumiere/matiere, couleur, typographie, iconographie, forme, mouvement
+
+**Demande explicite de l'utilisateur** : liste de propositions purement
+esthetiques (pas fonctionnelles), 14 choisies (#68-72, #74-82) + l'idee #61
+("uniformiser les ecrans squelettes") deja en attente. Chantier le plus
+dense en nombre d'idees distinctes livrees en un seul lot de ce projet -
+chaque idee verifiee contre le CSS/JS EXISTANT avant d'ecrire quoi que ce
+soit (plusieurs idees se sont revelees deja PARTIELLEMENT satisfaites, voir
+plus bas - honnete plutot que de fabriquer un changement inutile).
+
+**#61 - Ecrans squelettes uniformises, mais PAS sur la Bibliotheque comme
+propose initialement.** Verification prealable : `CHALLENGE_LIBRARY` est une
+constante statique (aucun chargement reseau), et `customChallenges`/
+`activeToday` sont deja resolus par `loadAppData()` AVANT le tout premier
+`render()` de l'app - la Bibliotheque n'a donc, dans les faits, **aucun etat
+de chargement reel** a squeletiser. Reoriente vers 2 cibles ou un vrai trou
+existait :
+- **Liste "Mes groupes"** (`renderGroupsScreen()`) : nouveau drapeau
+  `myGroupsLoading` (`true` par defaut, jamais reinitialise ensuite - un seul
+  chargement reel par session) mis a `false` a la fin de
+  `refreshMyGroupsAndActiveChallenges()` (succes ET erreur, avec un `render()`
+  ajoute dans le `catch` - absent avant, le squelette serait sinon reste
+  bloque indefiniment en cas d'echec reseau). **Bug reel corrige au
+  passage** : sans ce drapeau, un utilisateur ayant deja des groupes voyait
+  un flash de "Aucun groupe" (etat vide FAUX) le temps que la lecture
+  Firestore asynchrone (appelee au demarrage, jamais attendue) ne resolve.
+- **Journal** (`historyLoading`, deja existant) : remplace le simple texte
+  "Chargement…" par le meme ecran squelette (shimmer) que la fiche d'un
+  ami/le classement - `history.loading` devenu inutilise, retire des 3
+  `locale-*.js` (code mort).
+
+**#68 - Vibrance sur le verre depoli, deja PARTIELLEMENT en place.**
+Verification : `saturate()` existait deja sur les 3 surfaces en verre (tab
+bar 1.5, popup 1.3, feuille 1.3) - pousse plus loin (1.65/1.45/1.45) + ajout
+de `brightness()` (1.08/1.06/1.06), la vraie "vibrancy" iOS combinant les 2
+effets, jamais juste la saturation seule. Sans risque sur la lisibilite : ces
+filtres s'appliquent au FOND floute, pas au texte/icones peints par-dessus.
+
+**#69 - Ombre de contact sous Kilito.** Nouvelle petite ellipse floue
+(`::after` sur `.kilo-home-slot`/`.kilo-exercise-slot`, `position:relative`
+ajoutee aux 2) qui respire en boucle (2s, grandit/s'assombrit puis
+inversement) - volontairement PAS synchronisee image par image avec
+l'animation propre de chaque humeur (`kilo-idle-bounce`, `kilo-hype-shiver`...),
+un simple pouls independant au meme tempo approximatif suffit a lire comme
+"vivant" sans dependance CSS fragile entre 2 elements distincts.
+
+**#70 - Une seule source de lumiere implicite, via les tokens d'elevation
+deja centralises.** Plutot que d'auditer chaque ombre individuellement
+(risque de regression bien plus eleve que le benefice), `--shadow-elevated`/
+`--shadow-hero` (deja reutilises par la quasi-totalite des cartes/surfaces
+de l'app) recoivent chacun un liseré interieur clair sur le bord SUPERIEUR
+(`inset 0 1px 0`) en plus de l'ombre portee vers le bas - un seul changement
+centralise propage la convention lumiere-du-haut/ombre-vers-le-bas partout
+sans toucher chaque composant.
+
+**#71 - Grain etendu aux popups/feuilles.** Meme texture SVG `feTurbulence`
+que `body::after` (fond general), dupliquee sur `.app-popup-card::before`/
+`.level-roadmap-sheet::before` (`border-radius:inherit`, pas besoin
+d'`overflow:hidden` sur le parent). **Piege reel evite en l'implementant** :
+une 1ere version forcait `position:relative; z-index:1` sur TOUS les enfants
+directs de `.app-popup-card` (`> *`) pour les faire peindre au-dessus du
+grain - aurait casse `.app-popup-close-x` (enfant direct, lui-meme
+`position:absolute` pour se positionner en haut a droite) en lui imposant
+`position:relative`. Corrige avant meme d'etre teste : aucun `z-index`
+force sur les enfants n'est necessaire, `::before` s'insere naturellement
+comme 1er enfant, les vrais enfants (non positionnes) peignent deja
+par-dessus dans l'ordre du DOM.
+
+**#72 + #74 - Dégradé aurora qui derive lentement + formes organiques
+(blobs), livrees ENSEMBLE plutot qu'en modifiant le degrade radial
+existant.** Le degrade `body` actuel (2 taches ellipse + teinte horaire) a
+deja ete explicitement valide sur une maquette lors d'un chantier precedent -
+trop risque d'y toucher directement. 2 NOUVELLES couches decoratives
+ajoutees par-dessus (`body::before` vert, `html::before` bleu) : forme
+"blob" (border-radius asymetrique animé, PAS un cercle/ellipse parfait) +
+derive lente de position/echelle (cycles 44-48s, `ease-in-out infinite
+alternate`) - tres flouees (`blur(46px)`) et tres faible opacite,
+resolument en dessous des 2 taches principales en intensite.
+
+**#75 - Police variable davantage exploitee.** Nunito est embarquee en
+variable (200-1000) mais seulement 2-3 graisses fixes etaient reellement
+utilisees. `.subtitle` (sous-titre sous quasiment chaque titre d'ecran, tres
+visible) passe a `font-weight: 300` (explicitement leger, contre ~400 par
+defaut du navigateur) - renforce la hierarchie titre/sous-titre sans toucher
+au titre lui-meme.
+
+**#76 - Chiffres heros avec ombre portee coloree, qui a revele un vrai bug
+jamais remarque.** `text-shadow` teinte ajoutee sur `.odo-strip span` (les
+VRAIS chiffres de l'odometre). En verifiant l'equivalent pour le compteur
+Hardcore (`.progress-row.hardcore-primary .progress-current`, deja
+`color:var(--hardcore)` + son propre `text-shadow` orange), decouverte que
+cette regle **ne s'applique plus visuellement depuis l'introduction de
+l'odometre** (idee anterieure #19) : `.odo-strip span` (imbriquee DANS
+`.progress-current`) declare sa PROPRE couleur (`var(--accent)`, vert) - une
+declaration directe sur un element bat toujours une valeur simplement
+HERITEE d'un ancetre, quelle que soit la specificite de la regle ancetre.
+Le compteur Hardcore affichait donc ses chiffres en VERT au lieu de l'orange
+prevu, sans que personne ne s'en aperçoive. Corrige par une regle dediee
+`.progress-row.hardcore-primary .odo-strip span` (couleur + lueur orange).
+
+**#77 - Echelle d'espacement formalisee (`--space-1` a `--space-6`, 4 a
+32px).** La quasi-totalite des marges/paddings existants reste en dur
+(des dizaines de composants deja finement ajustes au fil de nombreux
+retours utilisateur - les reecrire tous aurait ete un risque de regression
+bien plus grand que le benefice). En revanche, les **34 declarations `gap:`
+a valeur EXACTE** (4px/8px/12px, `flex`/`grid` - jamais de collision de
+marge possible, contrairement a `margin`) ont ete mecaniquement remplacees
+par les tokens correspondants (`replace_all` sur 3 valeurs exactes) : **zero
+changement visuel** (memes valeurs pixel resolues), juste une centralisation
+qui sert de reference pour tout nouvel espacement.
+
+**#78 - Emoji vs icones SVG maison, scope aux CONTROLES fonctionnels
+repetes.** `TAB_ICON_SVG` (tab bar, chantier precedent) avait deja etabli le
+langage visuel (`viewBox 24x24`, trait `currentColor`) - etendu a 2 nouvelles
+icones reutilisables, `ICON_EDIT_SVG` (crayon, style Feather `edit-2`) et
+`ICON_SEARCH_SVG` (loupe) : remplacent l'emoji ✏️ a ses **5 sites** (poids,
+objectif du jour, defi personnalise, pseudo) et 🔍 sur le bouton "rejoindre
+un groupe". **Volontairement PAS applique aux emoji "de personnalite"**
+(🍺, 🏆, 🔥, 🎉...) - contrairement a un glyphe emoji pour une ACTION
+SYSTEME (rendu different selon OS/version, exactement ce qui a motive les
+icones de la tab bar a l'origine), un emoji decoratif porte une intention
+volontairement chaleureuse/humaine qu'une icone trait unique ne reproduirait
+pas aussi bien.
+
+**#79 - Etats vides illustres par Kilito, scope aux 2 plus generiques.**
+`renderGroupsEmptyState()` gagne un 4e parametre optionnel `kiloState` -
+remplace l'icone emoji par `renderKilo(kiloState, {size:56})` uniquement
+quand fourni. Applique a "aucun groupe" et "aucun defi actif" (`idle` dans
+les 2 cas - volontairement neutre/accueillant plutot que d'inventer une
+nuance emotionnelle non verifiable visuellement ici). **Volontairement PAS
+applique aux 4 autres sites** (🎯 cible du Boulet, 🧾 aucun gage, 🎉 tout le
+monde est quitte, 🏆 palmares vide) - deja contextuels/thematiquement
+adaptes, les montrer avec Kilito diluerait son caractere special a force de
+le voir partout (meme principe deja applique a la reserve de l'etat
+"epique" aux moments reellement rares).
+
+**#80 - Rayon d'angle par palier d'elevation, deja EN PLACE dans les
+faits, jamais formalise.** Verification : les cartes de contenu utilisaient
+deja `14px` (`.picker-item` et 18 autres sites EXACTEMENT identiques) et les
+2 surfaces flottantes principales (popup, feuille) deja `22px` - une
+hierarchie coherente existait, juste repetee en dur partout. Formalisee en
+`--radius-content`/`--radius-floating`, remplacee mecaniquement partout ou
+la valeur correspondait EXACTEMENT (meme technique/meme garantie "zero
+changement visuel" que #77) - 19 sites `14px` + 3 sites `22px`(-based)
+tokenises.
+
+**#81 - Choreographie d'entree au 1er lancement du jour, reutilise le
+mecanisme deja etabli plutot qu'un nouvel etat dedie.** `kiloHomeIntroUntil`
+(idee bonus #16, deja posee UNE SEULE FOIS par jour CALENDAIRE via
+`lastKiloIntroDate` PERSISTE) sert desormais aussi de fenetre pour
+`homeEntranceActive` (variable locale calculee une fois dans `render()`) -
+les 3 sections principales de l'accueil (en-tete, titre, contenu/etat vide)
+recoivent chacune une classe `.home-entrance-{1,2,3}` (delai `0/0.1/0.2s`,
+meme courbe `--spring`) UNIQUEMENT pendant cette fenetre partagee. Le
+contenu/etat vide (2 branches mutuellement exclusives : liste de defis OU
+Hero Banner communautaire) est enveloppe dans un `<div class="home-entrance-3">`
+ajoute **seulement quand actif** (`if (homeEntranceActive) html += ...`) -
+zero octet de sortie different sur tout render() normal, donc zero risque
+sur le flux existant.
+
+**#82 - Particules d'ambiance ultra-discretes, 4 points fixes (jamais
+`Math.random()`, meme discipline que `CONFETTI_PRESETS`).** Nouvelle couche
+`html::after` (dernier emplacement de pseudo-element encore libre sur
+`html`/`body`, les 2 autres etant deja pris par le grain et les 2 blobs de
+#72/#74) - 4 `radial-gradient` minuscules (2-3px) a positions fixes,
+opacite/position pulsant tres lentement (70s) en boucle fermee
+(`0%,100% -> 50% -> 0%,100%`, jamais de `translateY` + `linear infinite`
+qui aurait produit un saut visible au bouclage).
+
+CACHE_NAME -> v128 (`index.html` + `styles.css` + les 3 `locale-*.js`
+modifies). Aucun changement de regles Firestore/Cloud Functions -
+modification 100% cote client, aucune touche a `functions/**`. Meme limite
+de verification que le reste des chantiers visuels de ce projet : valide
+par tests structurels/comportementaux (dont un nouveau bloc dedie qui
+verifie la presence de chaque regle/token CSS ajoute) + lint, **pas
+confirme visuellement dans un vrai navigateur** - a confirmer par
+l'utilisateur, en particulier le rendu reel des 2 nouvelles couches
+decoratives (blobs/particules) et le liseré superieur des ombres.

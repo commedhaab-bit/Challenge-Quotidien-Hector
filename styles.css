@@ -49,9 +49,43 @@
 
     /* Système d'élévation à 2 paliers : "élevé" (cartes/panneaux au-dessus du
        fond) et "hero" (surfaces flottantes/premier plan : popups, feuilles,
-       carte athlète légendaire). */
-    --shadow-elevated: 0 16px 32px -18px rgba(0, 0, 0, 0.6);
-    --shadow-hero: 0 30px 60px -20px rgba(0, 0, 0, 0.7), 0 0 40px -14px var(--accent-glow);
+       carte athlète légendaire). Idée esthétique (retour utilisateur, "une
+       seule source de lumière implicite partout") : chaque token ajoute
+       désormais un léger liseré intérieur clair sur le bord SUPÉRIEUR
+       (inset 0 1px 0) en plus de l'ombre portée vers le BAS — la même
+       convention lumière-du-haut/ombre-vers-le-bas partout où ces 2 tokens
+       sont utilisés (déjà la quasi-totalité des cartes/surfaces de l'app),
+       un seul changement centralisé propage la cohérence sans toucher
+       chaque composant un par un. */
+    --shadow-elevated: 0 16px 32px -18px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    --shadow-hero: 0 30px 60px -20px rgba(0, 0, 0, 0.7), 0 0 40px -14px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+    /* Échelle d'espacement formalisée (retour utilisateur, "rythme vertical") :
+       la plupart des marges/paddings existants restent en dur (des dizaines
+       de composants déjà finement ajustés au fil de nombreux retours
+       utilisateur — les réécrire tous serait un risque de régression bien
+       plus grand que le bénéfice) ; ces tokens servent de référence pour
+       tout nouvel espacement ajouté à partir de maintenant, et sont déjà
+       appliqués aux quelques `gap` génériques ci-dessous les moins risqués
+       à faire varier. */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+
+    /* Idée esthétique (retour utilisateur, "coin arrondi variable selon
+       l'élévation") : en relisant le CSS existant, cette hiérarchie était
+       DÉJÀ appliquée de façon cohérente dans les faits (14px sur la quasi-
+       totalité des cartes de contenu, 22px sur les 2 surfaces flottantes
+       principales - popup plein écran, bottom sheet) mais jamais formalisée
+       en tokens partagés - juste répétée en dur partout. Les valeurs ci-
+       dessous reprennent EXACTEMENT les valeurs déjà en place (zéro
+       changement visuel), remplacées mécaniquement partout où elles
+       correspondaient exactement. */
+    --radius-content: 14px;
+    --radius-floating: 22px;
 
     /* Verre dépoli — réservé aux surfaces FLOTTANTES (tab bar, popups, feuilles,
        bulles de Kilito), jamais aux cartes de contenu (garde la hiérarchie
@@ -149,6 +183,95 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
 
+  /* Idée esthétique (retour utilisateur, "dégradé aurora qui dérive lentement" +
+     "formes organiques plutôt que radiales pures") : 2 nouvelles couches
+     décoratives EN PLUS du dégradé de fond existant (jamais en remplacement -
+     déjà validé sur la maquette, trop risqué d'y toucher directement) - une
+     forme "blob" (border-radius irrégulier, PAS un cercle/ellipse parfait) par
+     teinte de marque, chacune dérivant très lentement en position/forme sur un
+     cycle long (40-48s) pour ne jamais être consciemment perçue comme une
+     animation, juste un fond "vivant". Fortement flouées + très faible
+     opacité : restent toujours nettement en dessous des 2 taches radiales
+     principales en intensité. z-index:0, sous le grain (body::after, z-index:1)
+     et sous tout le contenu réel de l'app. */
+  body::before {
+    content: '';
+    position: fixed;
+    top: -12%;
+    left: -18%;
+    width: 58vw;
+    height: 58vw;
+    max-width: 600px;
+    max-height: 600px;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(57, 233, 122, 0.14), transparent 70%);
+    filter: blur(46px);
+    border-radius: 42% 58% 65% 35% / 45% 40% 60% 55%;
+    animation: aurora-blob-drift-a 44s ease-in-out infinite alternate;
+  }
+  html::before {
+    content: '';
+    position: fixed;
+    top: -8%;
+    right: -20%;
+    width: 52vw;
+    height: 52vw;
+    max-width: 560px;
+    max-height: 560px;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(circle, rgba(58, 168, 255, 0.11), transparent 70%);
+    filter: blur(46px);
+    border-radius: 55% 45% 40% 60% / 50% 55% 45% 50%;
+    animation: aurora-blob-drift-b 48s ease-in-out infinite alternate;
+  }
+  @keyframes aurora-blob-drift-a {
+    0% { border-radius: 42% 58% 65% 35% / 45% 40% 60% 55%; transform: translate(0, 0) scale(1); }
+    50% { border-radius: 58% 42% 38% 62% / 55% 65% 35% 45%; transform: translate(3%, 2%) scale(1.06); }
+    100% { border-radius: 48% 52% 55% 45% / 40% 55% 45% 60%; transform: translate(-2%, 3%) scale(0.97); }
+  }
+  @keyframes aurora-blob-drift-b {
+    0% { border-radius: 55% 45% 40% 60% / 50% 55% 45% 50%; transform: translate(0, 0) scale(1); }
+    50% { border-radius: 40% 60% 55% 45% / 60% 45% 55% 40%; transform: translate(-3%, 3%) scale(1.05); }
+    100% { border-radius: 50% 50% 48% 52% / 45% 50% 50% 55%; transform: translate(2%, -2%) scale(0.98); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body::before, html::before { animation: none; }
+  }
+
+  /* Idée esthétique (retour utilisateur, "particules d'ambiance ultra-
+     discrètes") : 4 points lumineux fixes (jamais plus, jamais Math.random()
+     - déterministe comme le reste des décors de cette app, ex: CONFETTI_PRESETS)
+     qui dérivent très lentement en opacité/position - signature discrète
+     plutôt que décor voyant. html::after (dernier emplacement de pseudo-
+     élément encore libre sur html/body) - z-index:0, sous le grain et tout
+     le contenu réel. */
+  html::after {
+    content: '';
+    position: fixed;
+    inset: -10% 0 0 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.4;
+    background-image:
+      radial-gradient(circle, rgba(57, 233, 122, 0.6), transparent 70%),
+      radial-gradient(circle, rgba(58, 168, 255, 0.55), transparent 70%),
+      radial-gradient(circle, rgba(255, 255, 255, 0.45), transparent 70%),
+      radial-gradient(circle, rgba(57, 233, 122, 0.4), transparent 70%);
+    background-size: 3px 3px, 2px 2px, 2px 2px, 3px 3px;
+    background-repeat: no-repeat;
+    background-position: 15% 20%, 78% 14%, 42% 58%, 85% 70%;
+    animation: ambient-particles-drift 70s ease-in-out infinite;
+  }
+  @keyframes ambient-particles-drift {
+    0%, 100% { transform: translateY(0); opacity: 0.32; }
+    50% { transform: translateY(-18px); opacity: 0.52; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html::after { animation: none; }
+  }
+
   .app {
     max-width: 480px;
     margin: 0 auto;
@@ -237,8 +360,13 @@
     margin: 0 auto;
     display: flex;
     background: var(--glass-bg);
-    backdrop-filter: blur(24px) saturate(1.5);
-    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    /* Idée esthétique (retour utilisateur, "vibrance sur le verre dépoli") :
+       saturate() déjà présent, poussé plus loin + léger brightness() en plus
+       (la vraie "vibrancy" iOS combine les deux, pas juste la saturation) -
+       sans risque sur la lisibilité du texte/des icônes, qui sont peints
+       PAR-DESSUS ce fond flouté, pas affectés par son filtre. */
+    backdrop-filter: blur(24px) saturate(1.65) brightness(1.08);
+    -webkit-backdrop-filter: blur(24px) saturate(1.65) brightness(1.08);
     border: 1px solid var(--glass-border);
     border-radius: 26px;
     padding: 8px 4px;
@@ -379,7 +507,7 @@
   /* Kilo "presente" chaque carte du tour (retour utilisateur : la mascotte doit
      accompagner aussi cette phase, pas seulement le questionnaire de profil) -
      avatar a gauche, titre/texte a droite, meme lecture qu'une bulle de chat. */
-  .tour-bubble-head { display: flex; align-items: flex-start; gap: 12px; }
+  .tour-bubble-head { display: flex; align-items: flex-start; gap: var(--space-3); }
   .tour-bubble-avatar { flex-shrink: 0; margin-top: -4px; }
   .tour-bubble-head-text { flex: 1; min-width: 0; }
   .tour-bubble-title {
@@ -397,7 +525,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--space-3);
   }
   .tour-dots { display: flex; gap: 5px; }
   .tour-dot {
@@ -473,16 +601,38 @@
   .app-popup-card {
     position: relative;
     background: var(--glass-bg);
-    backdrop-filter: blur(24px) saturate(1.3);
-    -webkit-backdrop-filter: blur(24px) saturate(1.3);
+    backdrop-filter: blur(24px) saturate(1.45) brightness(1.06);
+    -webkit-backdrop-filter: blur(24px) saturate(1.45) brightness(1.06);
     border: 1px solid var(--accent-dim);
-    border-radius: 22px;
+    border-radius: var(--radius-floating);
     padding: 40px 28px 28px;
     text-align: center;
     max-width: 340px;
     width: 100%;
     box-shadow: var(--shadow-hero);
     animation: app-popup-pop-in 0.4s var(--spring);
+  }
+  /* Idée esthétique (retour utilisateur, "grain étendu aux cartes/popups") :
+     le bruit SVG discret n'existait jusqu'ici que sur body::after (fond
+     général) - étendu ici à cette surface flottante précise pour casser le
+     même effet "aplat plastique" du verre dépoli. border-radius:inherit (pas
+     besoin d'overflow:hidden sur le parent, qui n'en a pas) - le pseudo-
+     élément epouse directement la forme arrondie de la carte. z-index NON
+     force sur les enfants (piege evite : .app-popup-close-x, enfant direct de
+     .app-popup-card, est lui-meme position:absolute - lui imposer
+     position:relative via un selecteur `> *` aurait casse son propre
+     positionnement) - le pseudo ::before s'insere naturellement comme 1er
+     enfant, les vrais enfants (non positionnes) peignent deja par-dessus
+     dans l'ordre du DOM, sans le moindre besoin de z-index explicite. */
+  .app-popup-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0.035;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
   .app-popup-close-x {
     position: absolute;
@@ -613,7 +763,7 @@
   .app-popup-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-2);
     justify-content: center;
     margin-top: 18px;
   }
@@ -635,7 +785,7 @@
     font-weight: 800;
     font-size: 15px;
     padding: 14px;
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     cursor: pointer;
     margin-top: 22px;
   }
@@ -658,7 +808,7 @@
     font-weight: 700;
     font-size: 15px;
     padding: 14px;
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     cursor: pointer;
   }
   .app-popup-btn-cancel:active { transform: scale(0.97); }
@@ -756,7 +906,7 @@
   .stats-bento {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    gap: var(--space-2);
     margin-top: 16px;
   }
   .bento-cell {
@@ -815,13 +965,28 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     background: var(--glass-bg);
-    backdrop-filter: blur(26px) saturate(1.3);
-    -webkit-backdrop-filter: blur(26px) saturate(1.3);
+    backdrop-filter: blur(26px) saturate(1.45) brightness(1.06);
+    -webkit-backdrop-filter: blur(26px) saturate(1.45) brightness(1.06);
     border-top: 1px solid var(--glass-border);
-    border-radius: 22px 22px 0 0;
+    border-radius: var(--radius-floating) var(--radius-floating) 0 0;
     padding: 8px 20px calc(24px + env(safe-area-inset-bottom, 0px));
     position: relative;
     animation: sheet-slide-up 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  /* Idée esthétique (retour utilisateur, "grain étendu aux cartes/popups") :
+     meme texture que .app-popup-card::before, meme raisonnement (surface
+     flottante en verre depoli). Fait partie du contenu scrollable de la
+     feuille (defile legerement avec lui) - texture bien trop discrete
+     (opacite 0.035) pour que ce detail se remarque en pratique. */
+  .level-roadmap-sheet::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0.035;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
   .sheet-drag-handle {
     width: 40px;
@@ -949,7 +1114,7 @@
   .settings-card {
     background: var(--bg-card);
     border: 1px solid var(--line);
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     padding: 4px 16px;
     margin-bottom: 26px;
   }
@@ -1137,7 +1302,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: var(--space-2);
     width: 100%;
     background: linear-gradient(135deg, var(--accent-dim), var(--accent));
     color: #0a0d0b;
@@ -1164,7 +1329,7 @@
   }
   .leaderboard-tabs {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
     margin-bottom: 16px;
   }
   /* Passe "premium" (retour utilisateur) : navigation en pilule generalisee -
@@ -1320,7 +1485,7 @@
     padding: 8px 16px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
     z-index: 480;
   }
   .rank-bar-row { padding: 6px 10px; }
@@ -1346,7 +1511,7 @@
     flex-wrap: wrap;
     background: rgba(255, 255, 255, 0.04);
     border: 1px dashed rgba(255, 255, 255, 0.15);
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     padding: 14px;
     margin-top: 10px;
   }
@@ -1415,7 +1580,7 @@
   .boss-battle-feed {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--space-1);
     margin-top: 10px;
     max-height: 130px;
     overflow-y: auto;
@@ -1424,7 +1589,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--space-2);
     font-size: 11.5px;
     color: var(--chalk-dim);
     padding: 4px 0;
@@ -1492,7 +1657,7 @@
     text-align: center;
     background: rgba(255, 255, 255, 0.03);
     border: 1px dashed rgba(255, 255, 255, 0.15);
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     padding: 20px 16px;
     margin-bottom: 18px;
   }
@@ -1651,7 +1816,7 @@
   .heat-legend {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     justify-content: flex-end;
     font-size: 10px;
     color: var(--chalk-dim);
@@ -1660,7 +1825,7 @@
   .heat-legend-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .heat-legend .heat-cell { width: 10px; height: 10px; }
 
@@ -1708,7 +1873,7 @@
   .trophy-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    gap: var(--space-2);
     margin-bottom: 26px;
   }
   .trophy-item {
@@ -1772,7 +1937,7 @@
   .account-info {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     margin-bottom: 16px;
   }
   .account-avatar {
@@ -1881,7 +2046,7 @@
   .next-trophy-card {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     background: var(--bg-card);
     border: 1px solid var(--line);
     border-radius: 12px;
@@ -1927,7 +2092,7 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
+    gap: var(--space-3);
   }
   .add-custom-fab {
     flex-shrink: 0;
@@ -2079,7 +2244,7 @@
        (.wheel-picker-highlight, accent vert néon) et du fondu ci-dessous — plus
        proche d'un vrai picker natif iOS/Android. */
     background: rgba(255, 255, 255, 0.03);
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     margin-bottom: 20px;
     scrollbar-width: none;
     -webkit-mask-image: linear-gradient(to bottom, transparent, black 25%, black 75%, transparent);
@@ -2133,7 +2298,7 @@
   .pf-two-inputs {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: var(--space-3);
     width: 100%;
     margin-bottom: 22px;
   }
@@ -2155,7 +2320,7 @@
     background: var(--accent);
     color: #0a0d0b;
     border: none;
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     font-size: 1rem;
     font-weight: 700;
     cursor: pointer;
@@ -2176,7 +2341,7 @@
   .pf-choice {
     background: var(--bg-card);
     border: 1.5px solid var(--line);
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     padding: 16px;
     display: flex;
     align-items: center;
@@ -2202,7 +2367,7 @@
   .pf-level-card {
     background: var(--bg-card);
     border: 1.5px solid var(--line);
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     padding: 18px;
     text-align: left;
     cursor: pointer;
@@ -2220,7 +2385,7 @@
   .pf-welcome-badge {
     width: 76px;
     height: 76px;
-    border-radius: 22px;
+    border-radius: var(--radius-floating);
     background: linear-gradient(145deg, var(--accent), var(--accent-dim));
     display: flex;
     align-items: center;
@@ -2271,7 +2436,7 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--space-3);
     margin-top: 24px;
   }
   .feature-item {
@@ -2309,7 +2474,7 @@
   .coach-badge {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     background: rgba(57, 233, 122, 0.12);
     border: 1px solid rgba(57, 233, 122, 0.25);
     color: var(--accent);
@@ -2421,7 +2586,7 @@
     gap: 10px;
     background: var(--bg-card);
     border: 1px solid var(--line);
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     padding: 14px 16px;
     color: var(--chalk);
     font-family: inherit;
@@ -2457,7 +2622,7 @@
   .accordion-body {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--space-2);
     padding: 8px 2px 4px;
   }
 
@@ -2646,7 +2811,7 @@
   .username-input-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     background: var(--bg-raised);
     border: 1px solid var(--line);
     border-radius: 10px;
@@ -2675,7 +2840,7 @@
   .form-row-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: var(--space-3);
   }
   .save-challenge-btn {
     display: block;
@@ -2758,9 +2923,17 @@
   h1.title.community-title-tight {
     font-size: 38px;
   }
+  /* Idée esthétique (retour utilisateur, "exploiter davantage la police
+     variable") : Nunito est embarquée en variable (200-1000, voir le
+     @font-face plus haut) mais l'app n'exploitait en pratique que 2-3
+     graisses fixes - un poids explicitement LÉGER (300, contre ~400 par
+     défaut du navigateur) sur ce texte secondaire très visible (sous
+     quasiment chaque titre d'écran) renforce la hiérarchie titre/sous-titre
+     sans toucher au poids du titre lui-même. */
   .subtitle {
     color: var(--chalk-dim);
     font-size: 14px;
+    font-weight: 300;
     margin-bottom: 26px;
   }
 
@@ -2768,7 +2941,7 @@
   .picker-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: var(--space-2);
   }
   /* Passe "premium" (retour utilisateur) : palier d'elevation "carte" - ombre
      ambiante douce au repos (--shadow-elevated), qui se renforce legerement au
@@ -2777,10 +2950,10 @@
   .picker-item {
     background: var(--bg-card);
     border: 1px solid var(--line);
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     padding: 2px 16px;
     display: flex;
-    gap: 12px;
+    gap: var(--space-3);
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
@@ -2889,7 +3062,7 @@
       l'espace avant même que l'image (souvent volumineuse) ait fini de charger,
       pour ne jamais provoquer de saut de mise en page (CLS). */
     object-fit: contain;
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     background: var(--bg-card);
     margin-bottom: 10px;
     opacity: 0;
@@ -2996,6 +3169,28 @@
     flex-direction: column;
     min-height: calc(100vh - 320px);
   }
+  /* Idée esthétique (retour utilisateur, "chorégraphie d'entrée au 1er
+     lancement du jour") : les 3 sections principales de l'accueil (en-tête,
+     titre, contenu) apparaissent l'une après l'autre au lieu de toutes en
+     même temps - classes posées UNIQUEMENT au tout premier rendu de la
+     journée calendaire (voir kiloHomeIntroUntil/homeEntranceActive dans
+     index.html, réutilise TEL QUEL le même drapeau que le "pop" d'intro de
+     Kilo, jamais un nouvel état dédié). fill-mode:backwards - chaque section
+     reste invisible (opacity:0 de la 1ère frame) pendant son propre délai,
+     au lieu d'apparaître instantanément avant que son tour n'arrive. */
+  .home-entrance-1, .home-entrance-2, .home-entrance-3 {
+    animation: home-entrance-reveal 0.45s var(--spring) backwards;
+  }
+  .home-entrance-1 { animation-delay: 0s; }
+  .home-entrance-2 { animation-delay: 0.1s; }
+  .home-entrance-3 { animation-delay: 0.2s; }
+  @keyframes home-entrance-reveal {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .home-entrance-1, .home-entrance-2, .home-entrance-3 { animation: none; }
+  }
   .home-trophies-slot {
     margin-top: auto;
     padding-top: 28px; /* espace vertical accru entre la liste des défis et les trophées */
@@ -3033,7 +3228,7 @@
   .weight-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     margin: -8px 0 18px;
     flex-wrap: wrap;
   }
@@ -3081,7 +3276,7 @@
   }
   .stats-row {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
     margin: -6px 0 18px;
     flex-wrap: wrap;
   }
@@ -3256,7 +3451,7 @@
     padding: 32px 24px;
     padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
-    gap: 4px;
+    gap: var(--space-1);
   }
   .gate-logo-img {
     width: 72px;
@@ -3289,10 +3484,10 @@
   .gate-step {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     padding: 12px 14px;
   }
   .gate-step-num {
@@ -3330,7 +3525,7 @@
     font-weight: 800;
     font-size: 16px;
     padding: 16px;
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     cursor: pointer;
     box-shadow: 0 0 20px var(--accent-glow);
   }
@@ -3441,7 +3636,7 @@
   .active-header-row {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
+    gap: var(--space-3);
     margin-bottom: 4px;
   }
   .active-header-text {
@@ -3468,9 +3663,38 @@
     align-items: center;
     justify-content: center;
     overflow: visible;
+    position: relative;
   }
   .kilo-exercise-slot .kilo-svg {
     margin: -16px 0;
+  }
+  /* Idée esthétique (retour utilisateur, "ombre de contact sous Kilito") : une
+     petite ellipse floue sous Kilo pour l'ancrer visuellement au sol au lieu
+     de sembler flotter sans repère - respire en boucle (grandit/s'assombrit
+     légèrement puis inversement), volontairement PAS synchronisée image par
+     image avec l'animation propre de chaque humeur (kilo-idle-bounce,
+     kilo-hype-shiver...) - un simple pouls indépendant au même tempo
+     approximatif (2s) suffit à lire comme "vivant" sans exiger une
+     dépendance CSS fragile entre 2 éléments distincts. */
+  .kilo-home-slot::after, .kilo-exercise-slot::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: -2px;
+    width: 30px;
+    height: 7px;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.4), transparent 72%);
+    border-radius: 50%;
+    pointer-events: none;
+    animation: kilo-ground-shadow-pulse 2s ease-in-out infinite;
+  }
+  @keyframes kilo-ground-shadow-pulse {
+    0%, 100% { transform: translateX(-50%) scale(1.1); opacity: 0.55; }
+    50% { transform: translateX(-50%) scale(0.82); opacity: 0.85; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .kilo-home-slot::after, .kilo-exercise-slot::after { animation: none; }
   }
   .kilo-exercise-bubble {
     position: relative;
@@ -3583,12 +3807,17 @@
     display: block;
     transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
   }
+  /* Idée esthétique (retour utilisateur, "chiffres héros avec ombre portée
+     colorée") : lueur teintée (pas juste un text-shadow gris) derrière le
+     compteur de progression le plus vu de toute l'app - un vrai "poids"
+     visuel néon plutôt qu'un simple aplat de couleur pleine. */
   .odo-strip span {
     display: flex;
     align-items: center;
     justify-content: center;
     height: 46px;
     color: var(--accent);
+    text-shadow: 0 0 4px rgba(57, 233, 122, 0.65), 0 0 16px var(--accent-glow);
   }
   @media (prefers-reduced-motion: reduce) {
     .odo-strip { transition: none; }
@@ -3712,6 +3941,20 @@
     font-size: 46px;
     color: var(--hardcore);
     text-shadow: 0 0 16px rgba(255, 107, 53, 0.5);
+  }
+  /* Bug reel corrige en implementant l'idee "chiffres heros avec ombre
+     portee coloree" : .odo-strip span (les VRAIS chiffres affiches, imbriques
+     DANS .progress-current depuis l'introduction de l'odometre) declare sa
+     PROPRE couleur (var(--accent), vert) - une declaration directe sur un
+     element bat toujours une valeur simplement HERITEE d'un ancetre, quelle
+     que soit la specificite de la regle ancetre. Consequence jamais remarquee
+     jusqu'ici : le compteur Hardcore ci-dessus affichait ses chiffres en VERT
+     au lieu de l'orange Hardcore prevu (seul .progress-target/.progress-unit,
+     qui n'ont pas ce probleme, recevaient bien la couleur). Corrige en ciblant
+     directement .odo-strip span dans ce contexte precis. */
+  .progress-row.hardcore-primary .odo-strip span {
+    color: var(--hardcore);
+    text-shadow: 0 0 4px rgba(255, 107, 53, 0.7), 0 0 16px rgba(255, 107, 53, 0.5);
   }
   .progress-row.hardcore-primary .progress-target,
   .progress-row.hardcore-primary .progress-unit,
@@ -3912,7 +4155,7 @@
 
   .custom-add-row {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
   }
   /* Saisie personnalisée : action SECONDAIRE (style ghost), volontairement bien
      moins visible que les boutons +5/+10 ci-dessus — sans ça, le fond plein
@@ -3960,7 +4203,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: var(--space-2);
     text-align: center;
     padding: 16px;
     background: rgba(127, 176, 105, 0.12);
@@ -4134,9 +4377,9 @@
   .joker-card {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     padding: 12px 14px;
-    border-radius: 14px;
+    border-radius: var(--radius-content);
     background: var(--bg-card);
     border: 1px solid var(--line);
     margin-bottom: 8px;
@@ -4177,6 +4420,13 @@
     margin: 10px 0;
   }
   .groups-empty-icon { font-size: 36px; margin-bottom: 10px; }
+  /* Idee esthetique (retour utilisateur, "etats vides illustres par Kilito") :
+     variante avec une vraie illustration de Kilo (renderKilo()) au lieu du
+     glyphe emoji - centree via flex, aucun font-size a lui appliquer. */
+  .groups-empty-icon-kilo {
+    display: flex;
+    justify-content: center;
+  }
   .groups-empty-text {
     font-size: 13.5px;
     color: var(--chalk-dim);
@@ -4220,7 +4470,7 @@
      leaderboard - entree en cascade (meme stagger que les cartes Defis/Aujourd'hui).
      Bug reel signale : .group-card-list n'avait jamais eu de regle CSS - avec
      plusieurs groupes, les cartes se retrouvaient completement collees. */
-  .group-card-list { display: flex; flex-direction: column; gap: 12px; }
+  .group-card-list { display: flex; flex-direction: column; gap: var(--space-3); }
   .group-card {
     display: flex;
     align-items: center;
@@ -4243,7 +4493,7 @@
     align-items: center;
     justify-content: center;
     background: rgba(255, 255, 255, 0.05);
-    border-radius: 14px;
+    border-radius: var(--radius-content);
   }
   .group-card-body { flex: 1; min-width: 0; }
   .group-card-name {
@@ -4273,7 +4523,7 @@
      moment (retour utilisateur : liste des membres/invitations reléguée derrière
      le bouton "⋯" du détail groupe (voir .level-roadmap-overlay, réutilisé tel
      quel) — le défi actif doit au contraire dominer visuellement l'écran). */
-  .groups-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .groups-header-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
 
   .group-challenge-hero {
     background: linear-gradient(155deg, var(--bg-card), var(--bg-raised));
@@ -4360,7 +4610,7 @@
   .groups-checkbox-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     font-size: 13px;
     font-weight: 600;
     color: var(--chalk);
@@ -4593,6 +4843,7 @@
     justify-content: center;
     overflow: visible;
     cursor: pointer;
+    position: relative;
   }
   .kilo-home-slot .kilo-svg { margin: -18px 0; }
   /* Rebond au tap (chantier gamification Phase 2, "effet Tamagotchi") - piloté

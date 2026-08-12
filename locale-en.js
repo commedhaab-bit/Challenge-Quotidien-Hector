@@ -2074,7 +2074,6 @@ const LOCALE_EN = {
     heatmapLegendOne: '1 challenge',
     heatmapLegendMany: '2+ challenges',
     listLabel: 'Completed challenges',
-    loading: 'Loading…',
     empty: 'No history yet',
     today: 'Today',
     deletedChallenge: 'Deleted challenge',

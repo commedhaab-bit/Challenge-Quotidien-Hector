@@ -1072,6 +1072,10 @@ const cssText = __rawHtml + __cssSource;
   switchProfileView('journal');
   __assertEq(profileView, 'journal', 'switchProfileView doit basculer sur le sous-onglet Journal');
   __assertOk(historyLoading, 'le Journal doit passer en chargement des le declenchement du switch, avant resolution de loadHistoryEntries()');
+  // Idee esthetique (retour utilisateur, "ecrans squelettes uniformises") :
+  // meme ecran squelette (shimmer) que la fiche d un ami/le classement, plus
+  // le simple texte "Chargement..." d avant.
+  __assertOk(document.getElementById('app').innerHTML.includes('skeleton-block skeleton-row'), 'le Journal en chargement doit afficher un ecran squelette, plus le texte "Chargement..."');
   // Bug reel corrige (retour utilisateur) : ouvrir Journal faisait clignoter tout
   // l ecran - .groups-subtab-content rejouait son entree en fondu 2 FOIS de suite
   // (1x pour l etat "chargement" rendu ici, 1x de plus une fois les donnees
@@ -2025,6 +2029,11 @@ const cssText = __rawHtml + __cssSource;
   let kiloIntroAppHtml = document.getElementById('app').innerHTML;
   let kiloIntroSlotIdx = kiloIntroAppHtml.indexOf('kilo-home-slot');
   __assertOk(kiloIntroAppHtml.slice(kiloIntroSlotIdx, kiloIntroSlotIdx + 80).includes('intro'), 'la classe .intro doit apparaitre pendant la fenetre d intro');
+  // Idee esthetique (retour utilisateur, "choreographie d'entree au 1er
+  // lancement du jour") : reutilise LA MEME fenetre (kiloHomeIntroUntil) -
+  // les 3 sections principales de l'accueil doivent porter leur classe
+  // d'entree echelonnee pendant cette meme fenetre.
+  __assertOk(kiloIntroAppHtml.includes('home-entrance-1') && kiloIntroAppHtml.includes('home-entrance-2') && kiloIntroAppHtml.includes('home-entrance-3'), 'les 3 sections de l accueil doivent porter leur classe de choreographie d entree pendant la fenetre d intro de Kilo');
 
   // Un 2e appel le MEME jour ne doit RIEN refaire - deja traite pour aujourd'hui.
   kiloHomeIntroUntil = 0; // simule l expiration (sans attendre reellement 700ms)
@@ -2036,6 +2045,7 @@ const cssText = __rawHtml + __cssSource;
   kiloIntroAppHtml = document.getElementById('app').innerHTML;
   kiloIntroSlotIdx = kiloIntroAppHtml.indexOf('kilo-home-slot');
   __assertOk(!kiloIntroAppHtml.slice(kiloIntroSlotIdx, kiloIntroSlotIdx + 80).includes('intro'), 'la classe .intro ne doit plus apparaitre une fois la fenetre expiree');
+  __assertOk(!kiloIntroAppHtml.includes('home-entrance-1'), 'la choreographie d entree ne doit plus se rejouer une fois la fenetre expiree (un simple re-rendu ulterieur ne doit jamais la redeclencher)');
   console.log('OK: idee bonus #16 - petite intro au premier lancement du jour (une seule fois par jour calendaire, jamais redeclenche)');
 
   // --- 35. Compte a rebours de preparation : 3, 2, 1, puis "C'est parti !" et demarrage reel du chrono ---
@@ -3131,7 +3141,7 @@ const cssText = __rawHtml + __cssSource;
   render(false);
   const detailForTargetHtml = document.getElementById('app').innerHTML;
   __assertOk(detailForTargetHtml.includes('class="target-edit"'), 'le bouton d edition de l objectif doit toujours exister');
-  __assertOk(detailForTargetHtml.includes('✏️'), 'le bouton d edition doit afficher une icône crayon');
+  __assertOk(detailForTargetHtml.includes(ICON_EDIT_SVG), 'le bouton d edition doit afficher l icone crayon SVG maison (idee esthetique "unifier emoji et icones SVG")');
   __assertOk(!detailForTargetHtml.includes('>modifier<'), 'le mot "modifier" ne doit plus apparaitre comme texte du bouton, coince dans les reps');
   currentChallengeId = null;
   console.log('OK: bouton "modifier" remplacé par une icône crayon à côté de l objectif');
@@ -3176,10 +3186,66 @@ const cssText = __rawHtml + __cssSource;
   render(false);
   const weightDetailHtml = document.getElementById('app').innerHTML;
   __assertOk(weightDetailHtml.includes('class="weight-pill"'), 'la pastille de poids doit toujours exister');
-  __assertOk(weightDetailHtml.includes('✏️'), 'le bouton de modification du poids doit afficher une icone crayon');
+  __assertOk(weightDetailHtml.includes(ICON_EDIT_SVG), 'le bouton de modification du poids doit afficher l icone crayon SVG maison');
   __assertOk(!weightDetailHtml.includes('>modifier<'), 'le mot "modifier" ne doit plus apparaitre comme texte du bouton de poids');
   currentChallengeId = null;
   console.log('OK: bouton "modifier" du poids remplacé par une icône crayon');
+
+  // Idee esthetique (retour utilisateur, "unifier emoji et icones SVG maison") :
+  // ICON_EDIT_SVG/ICON_SEARCH_SVG reutilises aux 2 sites restants (bibliotheque,
+  // rejoindre un groupe) qui n avaient pas de test dedie a leur ancien emoji.
+  // Le bouton crayon de la bibliotheque n apparait QUE pour un defi personnalise
+  // (mode === 'library' && c.isCustom) - jamais sur un defi de la bibliotheque
+  // standard comme Pompes.
+  const customForIcon = { id: 9301, cat: 'Test', name: 'Defi perso icone', target: 20, unit: 'reps', hardcoreTarget: 40, isCustom: true };
+  const pickerEditHtml = renderChallengeCard(customForIcon, 'library', 0, false);
+  __assertOk(pickerEditHtml.includes(ICON_EDIT_SVG) && !pickerEditHtml.includes('✏️'), 'la carte d un defi personnalise doit utiliser l icone crayon SVG, plus aucun emoji crayon');
+  const myGroupsLoadingBefore = myGroupsLoading;
+  // Idee esthetique (retour utilisateur, "ecrans squelettes uniformises") :
+  // myGroupsLoading (nouveau drapeau) doit afficher un ecran squelette, jamais
+  // le flash "Aucun groupe" (etat vide FAUX) le temps que
+  // refreshMyGroupsAndActiveChallenges() resolve.
+  myGroupsLoading = true;
+  myGroups = [];
+  const groupsLoadingHtml = renderGroupsScreen();
+  __assertOk(groupsLoadingHtml.includes('skeleton-block skeleton-row'), 'l ecran Groupes en chargement doit afficher un ecran squelette');
+  __assertOk(!groupsLoadingHtml.includes(t('groups.noGroups')), 'l ecran Groupes en chargement ne doit JAMAIS afficher a tort l etat vide "Aucun groupe"');
+  myGroupsLoading = false; // teste le rendu REEL (le bouton loupe n apparait pas sur l ecran squelette)
+  const groupsScreenHtml = renderGroupsScreen();
+  myGroupsLoading = myGroupsLoadingBefore;
+  __assertOk(groupsScreenHtml.includes(ICON_SEARCH_SVG) && !groupsScreenHtml.includes('🔍'), 'le bouton "rejoindre un groupe" doit utiliser l icone loupe SVG, plus l emoji 🔍');
+  console.log('OK: emoji crayon/loupe remplaces par des icones SVG maison sur les 6 sites (coherence avec la tab bar, idee #23)');
+
+  // Idee esthetique (retour utilisateur, "etats vides illustres par Kilito") :
+  // renderGroupsEmptyState() teste directement (independamment d un ecran
+  // complet) - le 4e parametre kiloState remplace l icone emoji par une
+  // illustration de Kilo, SEULEMENT quand il est fourni.
+  const emptyStateWithKilo = renderGroupsEmptyState('👥', 'texte test', null, 'idle');
+  __assertOk(emptyStateWithKilo.includes('groups-empty-icon-kilo') && emptyStateWithKilo.includes('kilo-svg kilo-idle') && !emptyStateWithKilo.includes('👥'), 'avec kiloState fourni, une illustration de Kilo doit remplacer l icone emoji');
+  const emptyStateWithoutKilo = renderGroupsEmptyState('🎯', 'texte test');
+  __assertOk(emptyStateWithoutKilo.includes('🎯') && !emptyStateWithoutKilo.includes('groups-empty-icon-kilo'), 'sans kiloState (autres etats vides deja contextuels), l icone emoji reste inchangee');
+  console.log('OK: renderGroupsEmptyState() illustre par Kilo sur demande (icone kiloState), sans jamais toucher les etats vides deja contextuels');
+
+  // Lot d idees esthetiques (retour utilisateur) - verifications structurelles
+  // (presence des regles/tokens CSS) : le harnais de test ne peut pas verifier
+  // le rendu visuel reel (couleurs percues, flou, animation), seulement que
+  // les regles existent bel et bien dans la feuille de style, comme pour tous
+  // les autres chantiers visuels de ce projet.
+  __assertOk(cssText.includes('--space-1: 4px;') && cssText.includes('--space-6: 32px;'), 'idee 77 : l echelle d espacement formalisee doit exister (tokens --space-1 a --space-6)');
+  __assertOk((cssText.match(/gap: var\\(--space-/g) || []).length > 20, 'idee 77 : la majorite des gap generiques doivent etre tokenises (meme valeur exacte, aucun changement visuel)');
+  __assertOk(cssText.includes('--radius-content: 14px;') && cssText.includes('--radius-floating: 22px;'), 'idee 80 : les rayons d angle par palier d elevation doivent etre formalises en tokens');
+  __assertOk((cssText.match(/border-radius: var\\(--radius-content\\)/g) || []).length > 10, 'idee 80 : la majorite des cartes de contenu doivent utiliser le token --radius-content');
+  __assertOk(cssText.includes('inset 0 1px 0 rgba(255, 255, 255, 0.04)') && cssText.includes('inset 0 1px 0 rgba(255, 255, 255, 0.06)'), 'idee 70 : les tokens d elevation doivent inclure un liseré supérieur clair (une seule source de lumière implicite)');
+  __assertOk(cssText.includes('saturate(1.65)') && cssText.includes('saturate(1.45)'), 'idee 68 : la vibrance (saturate) du verre depoli doit avoir ete rehaussee');
+  __assertOk(cssText.includes('.app-popup-card::before') && cssText.includes('.level-roadmap-sheet::before'), 'idee 71 : le grain doit etre etendu aux popups/feuilles, pas seulement au fond general');
+  __assertOk(cssText.includes('@keyframes aurora-blob-drift-a') && cssText.includes('@keyframes aurora-blob-drift-b'), 'idee 72/74 : 2 formes "blob" organiques qui derivent lentement doivent exister');
+  __assertOk(cssText.includes('@keyframes ambient-particles-drift'), 'idee 82 : la couche de particules d ambiance doit exister');
+  __assertOk(cssText.includes('@keyframes kilo-ground-shadow-pulse') && cssText.includes('.kilo-home-slot::after, .kilo-exercise-slot::after'), 'idee 69 : l ombre de contact sous Kilo doit exister sur l accueil ET la fiche d exercice');
+  __assertOk(cssText.includes('font-weight: 300;') && cssText.includes('.subtitle {'), 'idee 75 : le sous-titre doit exploiter un poids de police explicitement leger (police variable)');
+  __assertOk(cssText.includes('text-shadow: 0 0 4px rgba(57, 233, 122, 0.65)'), 'idee 76 : le compteur de progression (chiffres odometre) doit avoir une lueur coloree');
+  __assertOk(cssText.includes('.progress-row.hardcore-primary .odo-strip span'), 'idee 76 (bug corrige au passage) : le compteur Hardcore doit colorer ses VRAIS chiffres (odo-strip span), pas seulement le conteneur .progress-current dont la couleur n a plus d effet visuel depuis l odometre');
+  __assertOk(cssText.includes('@keyframes home-entrance-reveal') && cssText.includes('.home-entrance-1, .home-entrance-2, .home-entrance-3'), 'idee 81 : les classes/keyframe de choreographie d entree doivent exister');
+  console.log('OK: lot d idees esthetiques (verre depoli, ombre de Kilo, grain etendu, aurora/blobs, particules, espacement/rayons formalises, chiffres colores + bug Hardcore corrige, choreographie d entree)');
 
   // --- 76. Journal : le calendrier doit afficher TOUS les jours du mois en cours (bug
   // corrigé : l ancienne fenêtre glissante de 28 jours faisait disparaitre les 1ers
@@ -3399,7 +3465,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v127'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v128'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');

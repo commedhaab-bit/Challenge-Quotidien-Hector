@@ -2083,7 +2083,6 @@ const LOCALE_FR = {
     heatmapLegendOne: '1 défi',
     heatmapLegendMany: '2+ défis',
     listLabel: 'Défis effectués',
-    loading: 'Chargement…',
     empty: "Pas encore d'historique",
     today: "Aujourd'hui",
     deletedChallenge: 'Défi supprimé',

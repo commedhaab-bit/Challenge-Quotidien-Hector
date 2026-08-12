@@ -2562,6 +2562,15 @@ let lastAppBadgeCount = -1;
 // (et la config d'index qu'elle exigerait) pour retrouver "mes groupes".
 const GROUP_MEMBER_CAP = 20;
 let myGroups = []; // [{ groupId, name, emoji, joinedAt }]
+// Idee esthetique (retour utilisateur, "ecrans squelettes uniformises") :
+// myGroups demarre vide et n'est peuple qu'apres la resolution asynchrone de
+// refreshMyGroupsAndActiveChallenges() (appelee au demarrage) - sans ce
+// drapeau, un utilisateur qui a deja des groupes voyait un bref flash de
+// "Aucun groupe" (etat vide, FAUX) avant que les vraies donnees n'arrivent.
+// true par defaut (on suppose un chargement en cours tant que le premier
+// appel n'a pas resolu), jamais reinitialise a true ensuite (un seul
+// chargement reel par session, comme historyLoading pour le Journal).
+let myGroupsLoading = true;
 // Alimente registerGroupChallengeContributionsIfNeeded() : seulement les defis actifs
 // dont JE fais partie, pour associer chaque serie loguee (n'importe quel onglet) au(x)
 // bon(s) defi(s) de groupe sans avoir a rouvrir l'onglet Groupes.
@@ -3117,9 +3126,12 @@ async function refreshMyGroupsAndActiveChallenges() {
       return { groupId: g.groupId, challengeId: c.id, exerciseSlug: c.data().exerciseSlug, targetTotal: c.data().targetTotal, endDate: c.data().endDate, currentTotal };
     }));
     myActiveGroupChallenges = activeLists.filter(Boolean);
+    myGroupsLoading = false;
     render();
   } catch (e) {
+    myGroupsLoading = false;
     reportSaveError('refresh my groups failed', e);
+    render();
   }
 }
 
@@ -7009,8 +7021,18 @@ function render(animate) {
     // styles.css) : le texte varie en longueur (1-3 lignes selon la replique
     // piochee) sans jamais faire varier la hauteur reelle de la bulle, donc
     // sans jamais decaler les cartes de defis en dessous ("effet cascade").
+    // Idee esthetique (retour utilisateur, "choreographie d'entree au 1er
+    // lancement du jour") : reutilise TEL QUEL le meme drapeau/la meme fenetre
+    // que le "pop" d'intro de Kilo (idee bonus #16, kiloHomeIntroUntil - deja
+    // pose une seule fois par jour CALENDAIRE, voir maybeShowKiloDailyIntro())
+    // plutot que d'introduire un nouvel etat/une nouvelle persistance dediee -
+    // les 3 sections principales de l'accueil (en-tete, titre, contenu)
+    // entrent l'une apres l'autre (voir .home-entrance-* dans styles.css) SEULEMENT
+    // ce tout premier rendu de la journee, jamais sur un simple tap/re-render
+    // ulterieur (meme discipline que .no-anim ailleurs sur cet ecran).
+    const homeEntranceActive = Date.now() < kiloHomeIntroUntil;
     html += `
-      <div class="header today-header">
+      <div class="header today-header${homeEntranceActive ? ' home-entrance-1' : ''}">
         <div class="date">${formatDateLabel(today)}</div>
         <div class="kilo-home-wrap">
           <div class="kilo-home-slot${Date.now() < kiloHomeTapBounceUntil ? ' tapped' : ''}${Date.now() < kiloHomeFidgetUntil ? ' fidgeting' : ''}${Date.now() < kiloHomeIntroUntil ? ' intro' : ''}" onclick="kiloHomeTap()">${renderKilo(kiloHomeMoodDisplay, { size: 72, accessories: kiloHomeAccessories })}</div>
@@ -7018,7 +7040,7 @@ function render(animate) {
         </div>
         <button class="streak" onclick="showStreakInfoModal()">${t('community.streakValue', { n: computeStreak() })}${hasShield ? ' 🛡️' : ''}</button>
       </div>
-      <h1 class="title">${t('today.title')}</h1>
+      <h1 class="title${homeEntranceActive ? ' home-entrance-2' : ''}">${t('today.title')}</h1>
     `;
     // Défis BRUTS (non résolus) : renderChallengeCard() appelle déjà resolveChallenge()
     // en interne. Les pré-résoudre ici aussi provoquait une DOUBLE application des
@@ -7028,6 +7050,7 @@ function render(animate) {
     // objectif n'ait pourtant été modifié manuellement (bug de prod signalé : 120 vs 110
     // sur Pompes).
     const activeChallenges = CHALLENGES.filter(c => activeToday.has(c.id));
+    if (homeEntranceActive) html += `<div class="home-entrance-3">`;
     if (activeChallenges.length === 0) {
       html += renderCommunityHeroBanner();
     } else {
@@ -7061,6 +7084,7 @@ function render(animate) {
     html += `<div class="home-trophies-slot">${renderBadgesStrip()}</div>`;
     html += `</div>`;
     }
+    if (homeEntranceActive) html += `</div>`;
   } else {
     const c = getChallenge();
     const entry = getEntry(currentChallengeId);
@@ -7123,7 +7147,7 @@ function render(animate) {
               <div class="weight-row">
                 <div class="weight-pill">
                   🏋️ ${weights[c.id] ?? 8} kg
-                  <button onclick="editWeight()" aria-label="${t('exercise.editWeightAria')}">✏️</button>
+                  <button onclick="editWeight()" aria-label="${t('exercise.editWeightAria')}">${ICON_EDIT_SVG}</button>
                 </div>
               </div>
               ${armModeSentence(target, c.unit, c.armMode) ? `<div class="arm-mode-sentence"><span class="arm-mode-sentence-icon">💪</span><span>${armModeSentence(target, c.unit, c.armMode)}</span></div>` : ''}
@@ -7146,7 +7170,7 @@ function render(animate) {
               <span class="progress-current odometer" id="exerciseProgressCurrent">${renderOdometerDigitsHtml(total)}</span><span class="progress-target"> / ${target}</span>
               <span class="progress-unit"> ${unitDisplay}</span>
               ${c.unit === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(target)})</span>` : ''}
-              <button class="target-edit" onclick="editTarget()" aria-label="${t('exercise.editTargetAria')}">✏️</button>
+              <button class="target-edit" onclick="editTarget()" aria-label="${t('exercise.editTargetAria')}">${ICON_EDIT_SVG}</button>
             </div>
             <div class="progress-pct">${pct}%</div>
           </div>
@@ -7695,7 +7719,7 @@ function renderChallengeCard(c, mode, index, animate = true) {
       ${activateBtn}
       ${mode === 'library' && c.isCustom ? `
         <div class="manage-actions">
-          <button class="icon-btn" onclick="event.stopPropagation(); openEditChallengeForm(${c.id})">✏️</button>
+          <button class="icon-btn" onclick="event.stopPropagation(); openEditChallengeForm(${c.id})">${ICON_EDIT_SVG}</button>
           <button class="icon-btn danger" onclick="event.stopPropagation(); deleteChallenge(${c.id})">🗑️</button>
         </div>
       ` : ''}
@@ -7917,7 +7941,11 @@ function renderJournalSection() {
   let listHtml = `<div class="history-list-label">${t('history.listLabel')}</div>`;
   const withChallenge = historyEntries.filter(e => e.challengeName);
   if (historyLoading) {
-    listHtml += `<div class="history-empty">${t('history.loading')}</div>`;
+    // Idee esthetique (retour utilisateur, "ecrans squelettes uniformises") :
+    // remplace le simple texte "Chargement..." par le meme ecran squelette
+    // (shimmer) deja utilise pour la fiche d'un ami/le classement, plutot que
+    // ce Journal reste le dernier ecran a async loading a ne pas en avoir.
+    listHtml += Array.from({ length: 5 }).map(() => '<div class="skeleton-block skeleton-row"></div>').join('');
   } else if (withChallenge.length === 0) {
     listHtml += `<div class="history-empty">${t('history.empty')}</div>`;
   } else {
@@ -8222,7 +8250,7 @@ function renderSettingsSection() {
         <div class="settings-row-label">🏷️ ${t('settings.username.label', { username: escapeHtml(username || '') })}
           <div class="settings-row-desc">${t('settings.username.desc')}</div>
         </div>
-        <button class="icon-btn" onclick="openUsernameRename()" aria-label="${t('settings.username.editAria')}">✏️</button>
+        <button class="icon-btn" onclick="openUsernameRename()" aria-label="${t('settings.username.editAria')}">${ICON_EDIT_SVG}</button>
       </div>
       <div class="settings-row">
         <div class="settings-row-label">🔊 ${t('settings.voiceCoach.label')}
@@ -8818,10 +8846,19 @@ function toggleJoiningGroupOpen() { joiningGroupOpen = !joiningGroupOpen; if (jo
 // Etat vide "premium" reutilisable (icone + texte + CTA optionnel) - remplace le
 // simple texte .history-empty pour les etats vides de l'onglet Groupes (retour UX :
 // l'onglet reutilisait trop de composants generiques, effet "page web plate").
-function renderGroupsEmptyState(icon, text, ctaHtml) {
+// Idee esthetique (retour utilisateur, "etats vides illustres par Kilito") :
+// 5e parametre optionnel kiloState - si fourni, remplace l'icone emoji par une
+// petite illustration de Kilo (renderKilo()) plutot que le glyphe generique.
+// Scope volontairement limite aux 2 etats les plus generiques/frequents
+// (aucun groupe, aucun defi actif) - les autres (🎯/🧾/🎉/🏆, deja
+// contextuels/thematiquement adaptes - cible du Boulet, gage, celebration,
+// palmares) restent en emoji, pour ne jamais diluer le caractere special de
+// Kilo a force de le montrer partout.
+function renderGroupsEmptyState(icon, text, ctaHtml, kiloState) {
+  const iconHtml = kiloState ? renderKilo(kiloState, { size: 56 }) : icon;
   return `
     <div class="groups-empty-state">
-      <div class="groups-empty-icon">${icon}</div>
+      <div class="groups-empty-icon${kiloState ? ' groups-empty-icon-kilo' : ''}">${iconHtml}</div>
       <div class="groups-empty-text">${text}</div>
       ${ctaHtml || ''}
     </div>
@@ -9335,6 +9372,24 @@ function pickKiloLine(key, params) {
 function renderGroupsScreen() {
   if (openGroupId !== null) return renderGroupDetailScreen();
 
+  // Idee esthetique (retour utilisateur, "ecrans squelettes uniformises") :
+  // meme classes/keyframe que renderFriendProfileSheet()/le classement
+  // communautaire - remplace le flash "Aucun groupe" (etat vide FAUX) qui
+  // pouvait apparaitre brievement avant que refreshMyGroupsAndActiveChallenges()
+  // n'ait fini de resoudre.
+  if (myGroupsLoading) {
+    return `
+      <div class="library-header-row">
+        <div>
+          <h1 class="title">${t('nav.groups')}</h1>
+          <div class="subtitle">${t('groups.subtitle')}</div>
+        </div>
+      </div>
+      <div class="section-label">${t('groups.myGroupsLabel')}</div>
+      ${Array.from({ length: 3 }).map(() => '<div class="skeleton-block skeleton-row"></div>').join('')}
+    `;
+  }
+
   // Cartes plutot que de simples lignes de leaderboard (retour UX) - un badge
   // "Defi en cours" apparait si myActiveGroupChallenges contient deja ce groupe
   // (deja charge, aucune lecture Firestore supplementaire).
@@ -9354,7 +9409,7 @@ function renderGroupsScreen() {
         `;
       }).join('')}
     </div>
-  ` : renderGroupsEmptyState('👥', t('groups.noGroups'));
+  ` : renderGroupsEmptyState('👥', t('groups.noGroups'), null, 'idle');
 
   const joinErrorHtml = groupJoinError === 'not-found' ? `<div class="history-empty">${t('groups.joinNotFound')}</div>`
     : groupJoinError === 'full' ? `<div class="history-empty">${t('groups.joinFull')}</div>` : '';
@@ -9395,7 +9450,7 @@ function renderGroupsScreen() {
         <div class="subtitle">${t('groups.subtitle')}</div>
       </div>
       <div class="groups-header-actions">
-        <button class="add-custom-fab"${joiningGroupOpen ? '' : ' style="view-transition-name:group-join-fab"'} onclick="toggleJoiningGroupOpen()" title="${t('groups.joinAria')}" aria-label="${t('groups.joinAria')}">🔍</button>
+        <button class="add-custom-fab"${joiningGroupOpen ? '' : ' style="view-transition-name:group-join-fab"'} onclick="toggleJoiningGroupOpen()" title="${t('groups.joinAria')}" aria-label="${t('groups.joinAria')}">${ICON_SEARCH_SVG}</button>
         <button class="add-custom-fab"${creatingGroupOpen ? '' : ' style="view-transition-name:group-create-fab"'} onclick="toggleCreatingGroupOpen()" title="${t('groups.createAria')}" aria-label="${t('groups.createAria')}">+</button>
       </div>
     </div>
@@ -9835,7 +9890,7 @@ function renderGroupDetailScreen() {
     challengeHtml = renderGroupHallOfFameSection();
   } else if (!groupDetailChallenge) {
     challengeHtml = renderGroupsEmptyState('🏁', t('groups.noChallenge'),
-      `<button class="groups-empty-btn" onclick="creatingGroupChallenge = true; render(true);">${t('groups.createChallengeBtn')}</button>`);
+      `<button class="groups-empty-btn" onclick="creatingGroupChallenge = true; render(true);">${t('groups.createChallengeBtn')}</button>`, 'idle');
   } else if (groupDetailChallenge.status === 'active') {
     // Bug reel signale (2e ronde) : le total plafonnait deja au net du handicap
     // (voir computeGroupParticipantDisplayAmount()), mais un handicap non
@@ -10199,6 +10254,19 @@ const TAB_ICON_SVG = {
   groups: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.5 2.5-6 6-6s6 2.5 6 6"/><circle cx="17.5" cy="9" r="2.3"/><path d="M14.8 14.3c2.7 0.4 4.2 2.4 4.2 5.7"/></svg>',
   account: '<svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.5 3.5-8 8-8s8 3.5 8 8"/></svg>',
 };
+
+// Idee esthetique (retour utilisateur, "unifier emoji et icones SVG maison") :
+// le crayon (5 sites : poids, objectif du jour, defi personnalise, pseudo) et
+// la loupe (rejoindre un groupe) sont des CONTROLES fonctionnels repetes -
+// contrairement aux emoji "de personnalite" (🍺, 🏆, 🔥...) laisses tels
+// quels, un glyphe emoji pour une action systeme rend differemment selon
+// OS/version, l'exact defaut qui a motive les icones de la tab bar (idee
+// #23). Meme style que TAB_ICON_SVG (viewBox 24x24, trait simple
+// currentColor) pour un langage visuel unique, `vertical-align:-2px` inline
+// pour s'aligner correctement avec le texte/padding environnant sans
+// nouvelle classe CSS.
+const ICON_EDIT_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+const ICON_SEARCH_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
 
 // Barre de navigation persistante en bas de l'écran (masquée pendant les
 // écrans plein écran : onboarding, connexion, mode focus).

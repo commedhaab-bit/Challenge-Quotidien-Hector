@@ -2081,7 +2081,6 @@ const LOCALE_ES = {
     heatmapLegendOne: '1 reto',
     heatmapLegendMany: '2+ retos',
     listLabel: 'Retos completados',
-    loading: 'Cargando…',
     empty: 'Todavía no hay historial',
     today: 'Hoy',
     deletedChallenge: 'Reto eliminado',
