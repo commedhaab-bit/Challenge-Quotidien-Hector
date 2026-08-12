@@ -7120,7 +7120,7 @@ function render(animate) {
             <div class="hardcore-tag">${t('exercise.hardcoreTag')}</div>
             <div class="progress-row hardcore-primary">
               <div class="progress-numbers">
-                <span class="progress-current">${hcCurrent}</span><span class="progress-target"> / ${hcTarget}</span>
+                <span class="progress-current odometer" id="exerciseHardcoreProgressCurrent">${renderOdometerDigitsHtml(hcCurrent)}</span><span class="progress-target"> / ${hcTarget}</span>
                 <span class="progress-unit"> ${unitDisplay}</span>
                 ${unitLabel === 'sec' ? `<span class="progress-readable-inline">(${formatSecToReadable(hcTarget)})</span>` : ''}
               </div>
@@ -7213,6 +7213,18 @@ function render(animate) {
     // animateOdometer() - remplace l'ancien animateCountUp() sur ce nombre precis.
     if (currentChallengeId !== null) {
       animateOdometer('exerciseProgressCurrent', 'exercise:' + currentChallengeId, getTotal());
+      // Meme traitement odometre pour le compteur Mode Hardcore (retour
+      // utilisateur : "il n'y a pas le defilement des chiffres... en mode
+      // hardcore") - le conteneur n'existe dans le DOM que si entry.done est
+      // vrai (voir plus haut), animateOdometer() gere deja l'absence via son
+      // garde `if (!container) return;`. Cle de cache DISTINCTE de l'entree
+      // normale ('exercise:'+id) pour ne jamais melanger les 2 compteurs.
+      const hcEntry = getEntry(currentChallengeId);
+      if (hcEntry.done) {
+        const c = getChallenge();
+        const hcTarget = getHardcoreTarget(c);
+        animateOdometer('exerciseHardcoreProgressCurrent', 'exercise-hardcore:' + currentChallengeId, Math.min(getTotal(), hcTarget));
+      }
     }
   });
 }
@@ -8589,7 +8601,7 @@ function renderCommunityScreen() {
   return `
     <div class="library-header-row">
       <div>
-        <h1 class="title">${t('community.title')}</h1>
+        <h1 class="title community-title-tight">${t('community.title')}</h1>
         <div class="subtitle">${t('community.subtitle')}</div>
       </div>
       <button class="friends-btn" onclick="openFriendsScreen()">${t('community.friendsBtn')}${incomingFriendRequests.length > 0 ? `<span class="friends-badge">${incomingFriendRequests.length}</span>` : ''}</button>

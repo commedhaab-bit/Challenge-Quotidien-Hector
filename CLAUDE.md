@@ -5899,3 +5899,47 @@ regles Firestore/Cloud Functions - modification 100% cote client, aucune
 touche a `functions/**`. Meme limite de verification que le reste des
 chantiers visuels : valide par tests structurels/lint, **pas confirme
 visuellement dans un vrai navigateur** - a reconfirmer par l'utilisateur.
+
+## Odometre en mode Hardcore + titre "Communaute" retouche a nouveau (2 petites demandes)
+
+**1. Le compteur Mode Hardcore n avait jamais recu le traitement odometre.**
+`<span class="progress-current">${hcCurrent}</span>` (le 2e site d affichage
+de `.progress-current`, visible uniquement une fois l objectif normal
+atteint - voir "Hierarchie Hardcore" plus haut) etait reste un simple texte
+statique depuis le tout debut de l idee #19 - seul le compteur NORMAL
+(`#exerciseProgressCurrent`) avait ete cable a `renderOdometerDigitsHtml()`/
+`animateOdometer()`. Corrige a l identique : nouvel `id="exerciseHardcoreProgressCurrent"`
++ `renderOdometerDigitsHtml(hcCurrent)`, et un 2e appel `animateOdometer(...)`
+dans le MEME callback `afterRender` que le compteur normal (fin de `render()`),
+avec une **cle de cache DISTINCTE** (`'exercise-hardcore:'+id`, jamais
+`'exercise:'+id`) dans `odometerLastValues` - sinon les 2 compteurs
+partageraient a tort le meme historique "valeur precedente", faussant le
+roulement de l un ou l autre selon lequel est rendu en dernier. Le garde
+`if (!container) return;` deja present dans `animateOdometer()` couvre
+naturellement le cas ou le bloc Hardcore n est pas encore affiche
+(`entry.done` faux) - aucune garde supplementaire necessaire cote appelant
+au-dela d un simple `if (hcEntry.done)`.
+
+**2. Titre "Communaute" a nouveau retouche (3e ronde sur ce meme titre).**
+La reduction dediee (33px) avait ete retiree lors du passage a Nunito
+("Communaute n occupe plus assez de largeur... n a plus lieu d etre") - un
+nouveau test reel montre que la pastille "Amis" est de nouveau trop pres du
+bord. Contrairement aux 2 fois precedentes (33px, jugee "trop"), demande
+explicite d une reduction **quasi invisible** - nouvelle classe
+`h1.title.community-title-tight` (**38px**, contre 42px pour tous les
+autres titres d ecran, soit ~9.5% de reduction contre ~21% pour l ancien
+33px) : juste assez pour degager de la place a cote du bouton Amis, sans
+etre perceptible comme "plus petit" a l oeil nu. Nom de classe
+volontairement DIFFERENT de l ancien `.community-title` (retire, jamais
+reintroduit tel quel) pour eviter toute confusion avec la version
+precedente, plus marquee.
+
+CACHE_NAME -> v126 (`index.html` + `styles.css` modifies). Aucun changement
+de regles Firestore/Cloud Functions - modification 100% cote client, aucune
+touche a `functions/**`. Meme limite de verification que le reste des
+chantiers visuels de ce projet : valide par tests structurels/lint (dont un
+nouveau test qui verifie que `animateOdometer()` est bien invoque pour le
+compteur Hardcore via sa cle de cache dediee) + lint, **pas confirme
+visuellement dans un vrai navigateur** - a confirmer par l'utilisateur,
+notamment si 38px reste bien assez discret pour l objectif recherche
+("invisible" mais suffisant pour degager la pastille).

@@ -2978,9 +2978,25 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(detail63Html.includes('hardcore-tag'), 'une etiquette Hardcore doit accompagner le nouveau compteur principal');
   __assertOk(detail63Html.includes('progress-row hardcore-primary'), 'le compteur Hardcore doit utiliser la mise en forme "primaire" (grande, orange)');
   const hcTarget63 = getHardcoreTarget(cFor63);
-  __assertOk(detail63Html.includes('<span class="progress-current">' + cFor63.target + '</span><span class="progress-target"> / ' + hcTarget63 + '</span>'), 'le grand compteur mis en avant doit afficher la progression VERS l objectif Hardcore, pas l objectif normal');
+  __assertOk(detail63Html.includes('<span class="progress-current odometer" id="exerciseHardcoreProgressCurrent">' + renderOdometerDigitsHtml(cFor63.target) + '</span><span class="progress-target"> / ' + hcTarget63 + '</span>'), 'le grand compteur mis en avant doit afficher la progression VERS l objectif Hardcore, pas l objectif normal');
   currentChallengeId = null;
   console.log('OK: une fois l objectif normal atteint, le compteur Hardcore devient principal (objectif normal relegue en mention discrete)');
+
+  // Retour utilisateur : "il n y a pas le defilement des chiffres... en mode
+  // hardcore" - le compteur Hardcore doit desormais etre cable au meme
+  // mecanisme animateOdometer() que le compteur normal, via une cle de cache
+  // DISTINCTE ('exercise-hardcore:'+id, jamais 'exercise:'+id) pour ne jamais
+  // melanger les 2 compteurs dans odometerLastValues.
+  delete odometerLastValues['exercise-hardcore:' + pompes.id];
+  await pickChallenge(pompes.id);
+  const entryHc = getEntry(pompes.id);
+  entryHc.sets = [cFor63.target];
+  entryHc.done = true;
+  entryHc.hardcoreDone = false;
+  render(false);
+  __assertEq(odometerLastValues['exercise-hardcore:' + pompes.id], Math.min(getTotal(), getHardcoreTarget(cFor63)), 'render() doit appeler animateOdometer() pour le compteur Hardcore (cle de cache distincte alimentee)');
+  currentChallengeId = null;
+  console.log('OK: le compteur Hardcore beneficie desormais du defilement odometre, comme le compteur normal');
 
   // --- 64. Wheel picker : calcul de l index actif (base de la mise en valeur du chiffre centre) ---
   const elAge64 = document.getElementById('pfAge');
@@ -3383,7 +3399,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v125'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v126'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -4954,8 +4970,13 @@ const cssText = __rawHtml + __cssSource;
   // bouton Amis a cote - la reduction de taille dediee (33px vs 42px) n a
   // plus lieu d etre et a ete retiree, le titre partage desormais la meme
   // taille que tous les autres titres de l app.
-  __assertOk(communityHeaderHtml.includes('<h1 class="title">') && !communityHeaderHtml.includes('community-title'), 'le titre "Communaute" ne doit plus porter de classe dediee, meme taille que les autres titres');
-  __assertOk(!cssText.includes('community-title'), 'la regle CSS de reduction de taille du titre Communaute doit avoir ete retiree (code mort)');
+  __assertOk(!cssText.includes('.community-title {'), 'l ancienne regle CSS de reduction de taille (33px) doit rester retiree (code mort)');
+  // Retour utilisateur (v3) : la pastille "Amis" est de nouveau trop pres du
+  // bord - reduction TRES legere et quasi invisible (38px vs 42px, bien
+  // moins marquee que l ancien 33px explicitement juge "trop") pour degager
+  // un peu de place, sans redevenir une taille de titre visiblement differente.
+  __assertOk(communityHeaderHtml.includes('<h1 class="title community-title-tight">'), 'le titre "Communaute" doit porter une classe de reduction tres legere');
+  __assertOk(cssText.includes('h1.title.community-title-tight') && /h1\\.title\\.community-title-tight\\s*\\{[^}]*font-size: 38px/.test(cssText), 'la reduction doit etre tres legere (38px, pas un retour au 33px juge trop marque)');
   __assertOk(cssText.includes('.friends-btn {') && /\\.friends-btn\\s*\\{[^}]*flex-shrink: 0/.test(cssText), 'le bouton Amis ne doit jamais se comprimer (flex-shrink:0) meme a cote d un titre long');
   __assertOk(/\\.streak\\s*\\{[^}]*flex-shrink: 0/.test(cssText), 'la pastille de serie ne doit jamais se comprimer (flex-shrink:0) meme a cote d un titre');
   console.log('OK: pastille (Amis/serie) alignee a la meme hauteur que le titre sur Communaute/Profil, comme sur l onglet Défis');

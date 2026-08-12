@@ -2749,6 +2749,15 @@
     margin: 0 0 4px;
     line-height: 0.95;
   }
+  /* Retour utilisateur : le titre "Communaute" pousse la pastille "Amis" au
+     bord de l'ecran (le mot le plus long des titres d'ecran) - reduction TRES
+     legere et scopee a ce seul titre, volontairement bien plus discrete que
+     l'ancien modificateur .community-title (33px, retire precedemment car
+     juge "trop" par l'utilisateur) : juste assez pour degager de la place,
+     sans etre perceptible comme "plus petit" a premiere vue. */
+  h1.title.community-title-tight {
+    font-size: 38px;
+  }
   .subtitle {
     color: var(--chalk-dim);
     font-size: 14px;
