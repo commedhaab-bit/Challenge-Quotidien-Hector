@@ -5713,13 +5713,15 @@ const cssText = __rawHtml + __cssSource;
   activeTab = 'today';
   console.log('OK: empty state du classement (carte d invitation a partager si moins de 3 membres)');
 
-  // --- 146quater. Cache TTL 15 min sur le classement : une nouvelle visite/
-  // changement de vue REUTILISE le document leaderboardCache deja lu (1 seule
-  // lecture reelle, meme apres plusieurs visites dans la fenetre de fraicheur), MAIS
-  // (a) ma propre ligne dans le Top N reste TOUJOURS a jour (patch cote client, voir
-  // 146 ci-dessus, independant du TTL) et (b) mon rang (getMyRank) est recalcule
-  // immediatement des que MES propres donnees changent (invalidateLeaderboardCache()
-  // dans syncLeaderboardEntry()), pour ne jamais servir un rang perime. ---
+  // --- 146quater. Cache TTL cote client (LEADERBOARD_CACHE_TTL_MS, 1h depuis l audit
+  // quota - aggregateLeaderboard ne rafraichit plus la source qu 1x/jour) sur le
+  // classement : une nouvelle visite/changement de vue REUTILISE le document
+  // leaderboardCache deja lu (1 seule lecture reelle, meme apres plusieurs visites
+  // dans la fenetre de fraicheur), MAIS (a) ma propre ligne dans le Top N reste
+  // TOUJOURS a jour (patch cote client, voir 146 ci-dessus, independant du TTL) et
+  // (b) mon rang (getMyRank) est recalcule immediatement des que MES propres
+  // donnees changent (invalidateLeaderboardCache() dans syncLeaderboardEntry()),
+  // pour ne jamais servir un rang perime. ---
   __resetCommunityMocks();
   currentUser = { uid: 'test-uid', displayName: 'Moi', email: 'a@test.com', photoURL: '' };
   xpTotal = 150;
@@ -5730,7 +5732,7 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(__leaderboardCacheGetCallCount, 1, 'le 1er appel doit bien lire le document leaderboardCache');
   __assertEq(__mockGetMyRankCallCount, 1, 'le 1er appel doit bien appeler getMyRank (je ne suis pas dans le Top N mis en cache)');
   await loadCommunityLeaderboard('alltime');
-  __assertEq(__leaderboardCacheGetCallCount, 1, 'tant que le cache TTL (15 min) cote client est frais, une 2e visite ne doit PAS relire le document leaderboardCache');
+  __assertEq(__leaderboardCacheGetCallCount, 1, 'tant que le cache TTL cote client est frais, une 2e visite ne doit PAS relire le document leaderboardCache');
   __assertEq(__mockGetMyRankCallCount, 1, 'tant que le cache TTL est frais, une 2e visite ne doit PAS rappeler getMyRank non plus');
   // DES QUE MON PROPRE score change, le rang doit etre recalcule immediatement, sans
   // attendre le TTL de 15 min (invalidateLeaderboardCache() vide aussi le cache du
@@ -5739,10 +5741,10 @@ const cssText = __rawHtml + __cssSource;
   __setMockGetMyRank({ rank: 3, value: 999 });
   await syncLeaderboardEntry();
   await loadCommunityLeaderboard('alltime');
-  __assertEq(__mockGetMyRankCallCount, 2, 'apres syncLeaderboardEntry() (mon propre score qui change), getMyRank doit etre rappelee immediatement, sans attendre le TTL de 15 min');
+  __assertEq(__mockGetMyRankCallCount, 2, 'apres syncLeaderboardEntry() (mon propre score qui change), getMyRank doit etre rappelee immediatement, sans attendre le TTL du cache');
   __assertOk(communityLeaderboardMyRank.rank === 3, 'mon nouveau rang (3) doit etre reflete immediatement');
   xpTotal = 150;
-  console.log('OK: cache TTL 15 min sur le classement (document + rang), invalide immediatement des que mon propre score change');
+  console.log('OK: cache TTL cote client sur le classement (document + rang), invalide immediatement des que mon propre score change');
 
   // --- 146quater-bis. Optimisation quota Firestore : le Journal met en cache les jours
   // PASSES (immuables une fois le jour termine) - une 2e ouverture dans la meme session

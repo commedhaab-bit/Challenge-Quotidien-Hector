@@ -6222,3 +6222,104 @@ verifie la presence de chaque regle/token CSS ajoute) + lint, **pas
 confirme visuellement dans un vrai navigateur** - a confirmer par
 l'utilisateur, en particulier le rendu reel des 2 nouvelles couches
 decoratives (blobs/particules) et le liseré superieur des ombres.
+
+## Audit quota Firebase (Blaze) + decouplage du cout de la taille de la communaute
+
+**Demande explicite de l'utilisateur** : audit approfondi de l'usage Firebase
+actuel pour estimer combien d'utilisateurs actifs/jour l'app peut supporter
+sans jamais depasser le palier gratuit du plan Blaze (identique au quota
+Spark : 50k lectures/20k ecritures/20k suppressions par jour cote
+Firestore). **Trouvaille principale de l'audit** (avant tout code) :
+`aggregateLeaderboard` lisait l'INTEGRALITE de la collection `leaderboard`
+96 fois par jour (toutes les 15 min) - un cout qui grandit avec le nombre
+TOTAL de comptes ayant deja synchronise une entree classement (quasi tous
+les comptes crees, actifs ou non), PAS avec le nombre d'utilisateurs actifs
+du jour. A ~500 comptes, cette seule fonction planifiee depasse a elle
+seule le quota gratuit journalier, meme a 0 utilisateur actif ce jour-la.
+`closeExpiredGroupChallenges` avait le meme travers a plus petite echelle
+(relisait TOUS les defis de groupe actifs a chaque passage, quelle que soit
+leur echeance).
+
+**Decision produit actee avec l'utilisateur** (2 questions distinctes,
+2 reponses differentes) : le classement communautaire GLOBAL importe moins
+qu'un defi de groupe en cours - une fraicheur QUOTIDIENNE lui suffit
+largement. La progression d'un defi de groupe, elle, doit rester reactive -
+`closeExpiredGroupChallenges` reste a 15 min. Les 2 fonctions recoivent
+neanmoins toutes les 2 une meme correction structurelle : ne plus jamais
+lire un volume de documents proportionnel a la taille TOTALE d'une
+collection, mais un volume BORNE (constant, ou proportionnel a ce qui
+compte reellement - les defis proches de leur echeance).
+
+**`aggregateLeaderboard`** : passe de `every 15 minutes` a `'0 4 * * *'`
+(1x/jour, 4h UTC - avant le reveil en France/Espagne, meme convention que
+`sendDailyReminderPush` a 19h UTC, cron nu sans timeZone explicite = UTC
+par defaut). Remplace l'ancien `db.collection('leaderboard').get()` (cout
+= taille totale de la collection) par 3 requetes BORNEES
+(`orderBy(champ).limit(100)`, une par vue) + 2 agregations `.count()` (1
+lecture chacune, quel que soit le nombre de documents concernes, pour les
+totaux affiches "sur N participants") - **cout desormais CONSTANT pour
+toujours (~302 lectures/passage), que la communaute fasse 20 ou 20 000
+comptes**. Vue hebdomadaire : `orderBy('xpWeekly','asc').limitToLast(100)`
+(PAS `'desc'`) - astuce qui reutilise l'index composite EXISTANT
+(`xpWeekStart` ASC + `xpWeekly` ASC, deja dans `firestore.indexes.json`)
+sans avoir a en deployer un nouveau en sens descendant (Firestore exige un
+index dont le sens correspond EXACTEMENT a celui demande par `orderBy`) -
+`limitToLast()` renvoie les N plus GRANDES valeurs tout en restant sur
+l'index ascendant existant, seul l'ordre du tableau renvoye est inverse
+manuellement (`.reverse()`) pour l'affichage. **Aucun nouvel index
+Firestore necessaire** grace a cette astuce. `computeLeaderboardCaches()`
+(fonction pure) renommee `buildLeaderboardCaches()` et simplifiee : ne fait
+plus le tri/filtrage/plafonnage en memoire (deja fait par les 3 requetes
+Firestore), seulement la projection des champs + l'association du bon
+`totalCount`/`weeklyCount` (issus des `.count()`, jamais de `docs.length` -
+qui ne refleterait que le plafond 100). Tests reecrits en consequence
+(`functions/test/leaderboard.test.js`).
+
+**`closeExpiredGroupChallenges`** : 2 corrections, cadence 15 min
+INCHANGEE (decision explicite). (1) Nouveau filtre
+`.where('endDate','<=', maintenant+25h)` en plus du `status=='active'`
+deja existant (servi par le PREFIXE de l'index composite `status`+`endDate`
+deja deploye, aucun nouvel index necessaire) - ce balayage planifie n'est
+qu'un FILET DE SECURITE (le reglement "objectif atteint" est deja
+instantane via `logGroupChallengeContribution`), il n'a de role reel QUE
+pour le reglement par expiration et les rappels 24h/3h, qui ne concernent
+par definition que les defis proches de leur fin - **le cout ne depend
+plus du nombre total de defis actifs dans toute l'app, seulement de ceux
+qui vont vraiment bientot en avoir besoin**. Marge de 25h (pas 24h pile) :
+garantit qu'un defi franchissant tout juste le seuil "24h avant echeance"
+entre 2 passages (15 min d'ecart) ne soit jamais manque a la frontiere
+exacte. (2) `settleChallengeIfNeeded(db, challengeRef, prefetchedChallengeData)`
+gagne un 3e parametre optionnel : le balayage planifie lui transmet
+desormais le document DEJA lu par sa propre requete, evitant une
+re-lecture immediate et redondante (`challengeRef.get()` juste apres avoir
+obtenu exactement la meme donnee) - la VRAIE protection anti double-
+reglement reste la re-verification DANS la transaction (`freshChallenge`),
+inchangee, donc utiliser une donnee de quelques millisecondes plus ancienne
+ICI (pour decider si un reglement doit seulement etre TENTE) est sans
+risque. `logGroupChallengeContribution()` (l'autre appelant, qui n'a pas de
+donnee fraiche sous la main a cet endroit) continue de relire normalement
+en omettant ce parametre - comportement inchange pour ce chemin.
+
+**Cote client** : `LEADERBOARD_CACHE_TTL_MS` passe de 15 min a 1h (aucun
+interet a rafraichir plus vite que la source elle-meme, qui ne change plus
+qu'1x/jour) - `fetchLeaderboardTop()`/`invalidateLeaderboardCache()`
+inchanges dans leur mecanisme, seule la duree change. Ma propre ligne dans
+le Top N reste patchee avec ma valeur EN MEMOIRE a jour (inchange, voir
+`loadCommunityLeaderboard()`) et mon rang exact (`getMyRank`) reste calcule
+EN LIVE a chaque appel (jamais depuis le cache quotidien) - aucune
+degradation de fraicheur pour MES PROPRES donnees, seulement pour
+l'affichage des AUTRES membres.
+
+**Non deploye a ce stade** : modification de `functions/**`, deploiement
+(`deploy-functions.yml`) a confirmer explicitement avec l'utilisateur avant
+tout push, conformement a la politique d'autonomie du projet (voir memoire
+dediee) qui exclut ce dossier de la zone de confiance automatique.
+
+Verifie par : `npm test` (client, 3 executions repetees) + `npm run lint`
+(client) + `npm test`/`npm run lint` (functions, 53 tests) - tous verts.
+**Limite de verification non contournable** : comme `aggregateLeaderboard`/
+`getMyRank` avant elles, ces 2 fonctions planifiees ne sont testées qu'au
+niveau de leur logique PURE (aucun émulateur Firestore branché sur ce
+projet) - le comportement réel des requêtes bornées/`limitToLast()`
+(notamment la confirmation qu'aucun nouvel index n'est réellement requis
+en production) ne pourra être confirmé qu'après déploiement.

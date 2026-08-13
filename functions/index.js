@@ -63,41 +63,80 @@ function mondayOfWeekUTC(d) {
   return dateKeyUTC(date);
 }
 
-// Pure (aucun acces Firestore) : calcule les 3 payloads de cache a partir d'un
-// tableau simple de documents leaderboard deja lus - testable directement avec de
-// simples tableaux JS, sans emulateur Firestore. `docs` : [{ uid, displayName,
-// photoURL, streakCount, xpTotal, xpWeekly, xpWeekStart }, ...].
-function computeLeaderboardCaches(docs, weekStart) {
-  const caches = {};
-  for (const [view, field] of Object.entries(LEADERBOARD_VIEWS)) {
-    const pool = view === 'weekly' ? docs.filter((d) => d.xpWeekStart === weekStart) : docs;
-    const sorted = [...pool].sort((a, b) => (b[field] || 0) - (a[field] || 0)).slice(0, LEADERBOARD_TOP_N);
-    caches[view] = {
-      entries: sorted.map((d) => ({
-        uid: d.uid,
-        displayName: d.displayName || '',
-        photoURL: d.photoURL || '',
-        value: d[field] || 0,
-        kudosTotal: d.kudosTotal || 0,
-      })),
-      totalCount: pool.length,
-    };
-  }
-  return caches;
+// Pure (aucun acces Firestore) : projette 3 tableaux de documents DEJA
+// tries/plafonnes a 100 par des requetes bornees separees (voir
+// aggregateLeaderboard) vers le payload de cache attendu par le client -
+// remplace l'ancienne version qui recevait TOUTE la collection et faisait le
+// tri/plafonnage/comptage EN MEMOIRE ici (cout alors proportionnel a la
+// taille TOTALE de `leaderboard`, voir CLAUDE.md "audit quota"). Chaque
+// tableau `*Docs` est deja dans le bon ordre (requete Firestore
+// orderBy+limit), cette fonction ne fait plus que projeter les champs +
+// associer le bon totalCount (issu d'une agregation .count() separee,
+// JAMAIS `docs.length` - qui refleterait le plafond 100, pas le nombre reel
+// de participants).
+function buildLeaderboardCaches({ streaksDocs, xpDocs, weeklyDocs, totalCount, weeklyCount }) {
+  const project = (docs, field) => docs.map((d) => ({
+    uid: d.uid,
+    displayName: d.displayName || '',
+    photoURL: d.photoURL || '',
+    value: d[field] || 0,
+    kudosTotal: d.kudosTotal || 0,
+  }));
+  return {
+    streaks: { entries: project(streaksDocs, 'streakCount'), totalCount },
+    alltime: { entries: project(xpDocs, 'xpTotal'), totalCount },
+    weekly: { entries: project(weeklyDocs, 'xpWeekly'), totalCount: weeklyCount },
+  };
 }
 
-// Scheduled Function (15 min) : LA SEULE fonction a lire l'integralite de la
-// collection leaderboard. N'ECRIT JAMAIS sur les documents individuels
-// leaderboard/{uid} (ecrire un rang sur chaque utilisateur a chaque passage aurait
-// fait exploser le quota gratuit d'ecritures des quelques centaines d'utilisateurs,
-// voir CLAUDE.md) : seulement 3 documents leaderboardCache/{view} par execution,
-// quelle que soit la taille de la communaute.
-exports.aggregateLeaderboard = onSchedule('every 15 minutes', async () => {
+// Scheduled Function (1x/jour, 4h UTC - avant le reveil en France/Espagne) :
+// N'ECRIT JAMAIS sur les documents individuels leaderboard/{uid} (ecrire un
+// rang sur chaque utilisateur a chaque passage aurait fait exploser le quota
+// gratuit d'ecritures, voir CLAUDE.md) : seulement 3 documents
+// leaderboardCache/{view} par execution.
+//
+// Retour utilisateur explicite (2 decisions actees ensemble) : (1) le
+// classement communautaire GLOBAL importe moins que les defis de groupe -
+// une fraicheur quotidienne suffit largement, contrairement a
+// closeExpiredGroupChallenges (groupes) qui reste a 15 min ; (2) au-dela de
+// la frequence, le cout par PASSAGE ne doit plus jamais dependre de la
+// taille totale de `leaderboard` - remplace l'ancien `.get()` integral
+// (cout = taille de la collection, grandissait indefiniment avec la
+// communaute meme a frequence reduite) par 3 requetes BORNEES
+// (orderBy+limit(100), cout FIXE quelle que soit la taille reelle) + 2
+// agregations .count() (1 lecture chacune, quel que soit le nombre de
+// documents concernes) pour les totaux affiches ("sur N participants").
+// Cout desormais CONSTANT pour toujours (~302 lectures/passage), que la
+// communaute fasse 20 ou 20 000 comptes.
+//
+// Vue hebdomadaire : `orderBy('xpWeekly','asc').limitToLast(100)` (PAS
+// 'desc') - astuce qui reutilise l'index composite EXISTANT
+// (xpWeekStart ASC + xpWeekly ASC, voir firestore.indexes.json) sans avoir a
+// en deployer un nouveau en sens DESCENDANT (Firestore exige un index dont
+// le sens correspond EXACTEMENT a celui demande par orderBy) - limitToLast()
+// renvoie les N plus GRANDES valeurs tout en restant sur l'index ASCENDANT
+// existant, seul l'ordre du tableau renvoye doit etre inverse manuellement
+// pour l'affichage (croissant -> decroissant).
+exports.aggregateLeaderboard = onSchedule('0 4 * * *', async () => {
   const db = admin.firestore();
-  const snap = await db.collection('leaderboard').get();
-  const docs = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
   const weekStart = mondayOfWeekUTC(new Date());
-  const caches = computeLeaderboardCaches(docs, weekStart);
+
+  const [streaksSnap, xpSnap, weeklySnap, totalCountSnap, weeklyCountSnap] = await Promise.all([
+    db.collection('leaderboard').orderBy('streakCount', 'desc').limit(LEADERBOARD_TOP_N).get(),
+    db.collection('leaderboard').orderBy('xpTotal', 'desc').limit(LEADERBOARD_TOP_N).get(),
+    db.collection('leaderboard').where('xpWeekStart', '==', weekStart).orderBy('xpWeekly', 'asc').limitToLast(LEADERBOARD_TOP_N).get(),
+    db.collection('leaderboard').count().get(),
+    db.collection('leaderboard').where('xpWeekStart', '==', weekStart).count().get(),
+  ]);
+
+  const toDoc = (d) => ({ uid: d.id, ...d.data() });
+  const caches = buildLeaderboardCaches({
+    streaksDocs: streaksSnap.docs.map(toDoc),
+    xpDocs: xpSnap.docs.map(toDoc),
+    weeklyDocs: weeklySnap.docs.map(toDoc).reverse(), // limitToLast() renvoie l'ordre croissant
+    totalCount: totalCountSnap.data().count,
+    weeklyCount: weeklyCountSnap.data().count,
+  });
 
   const batch = db.batch();
   for (const [view, payload] of Object.entries(caches)) {
@@ -260,10 +299,23 @@ function rankForSettlement(ranked) {
 // si le defi n'est pas eligible, ou si une transaction concurrente l'a deja
 // regle entre-temps) - utilise par closeExpiredGroupChallenges() pour savoir
 // si un rappel d'echeance a encore un sens juste apres (voir plus bas).
-async function settleChallengeIfNeeded(db, challengeRef) {
-  const challengeSnap = await challengeRef.get();
-  if (!challengeSnap.exists || challengeSnap.data().status !== 'active') return false;
-  const challenge = challengeSnap.data();
+// `prefetchedChallengeData` (optionnel) : evite une re-lecture immediate et
+// redondante quand l'appelant vient DEJA de lire ce document (le balayage
+// planifie closeExpiredGroupChallenges() l'a par construction) - la VRAIE
+// protection anti double-reglement reste la re-verification DANS la
+// transaction plus bas (freshChallenge), inchangee, donc utiliser une donnee
+// legerement moins fraiche ICI (pour decider si un reglement doit seulement
+// etre TENTE) est sans risque. logGroupChallengeContribution() n'a lui aucune
+// donnee fraiche sous la main a cet endroit (appelee APRES sa propre
+// transaction) : continue de relire normalement en omettant ce parametre.
+async function settleChallengeIfNeeded(db, challengeRef, prefetchedChallengeData) {
+  let challenge = prefetchedChallengeData;
+  if (!challenge) {
+    const challengeSnap = await challengeRef.get();
+    if (!challengeSnap.exists) return false;
+    challenge = challengeSnap.data();
+  }
+  if (challenge.status !== 'active') return false;
   const groupRef = challengeRef.parent.parent; // groups/{groupId}/challenges/{id} -> groups/{groupId}
   const now = Date.now();
 
@@ -423,12 +475,42 @@ async function maybeRemindChallengeDeadline(db, challengeDoc, now) {
   await batch.commit();
 }
 
+// Marge au-dela du plus large des 2 seuils de rappel (24h) : garantit qu'un
+// defi qui vient tout juste de franchir la fenetre "24h avant echeance" entre
+// une PASSE et la suivante (15 min plus tard) ne soit jamais manque a la
+// frontiere exacte.
+const CLOSE_SWEEP_LOOKAHEAD_MS = 25 * 3600 * 1000;
+
+// Retour utilisateur (audit quota, "decoupler le cout de la taille de la
+// communaute") : AVANT, tous les defis actifs etaient relus a CHAQUE passage
+// (15 min), quelle que soit leur echeance - un defi qui se termine dans 3
+// semaines coutait autant qu'un qui se termine dans 1h. Le cout grandissait
+// donc avec le nombre TOTAL de defis actifs en simultane dans toute l'app.
+// Or ce balayage n'est qu'un FILET DE SECURITE : le reglement "objectif
+// atteint" est deja instantane (logGroupChallengeContribution, voir plus
+// haut) - ce sweep n'a de role reel QUE pour le reglement par expiration
+// d'echeance et les rappels 24h/3h, qui ne concernent par definition QUE les
+// defis proches de leur fin. Le filtre endDate<=maintenant+25h ne touche
+// donc plus que les defis qui vont VRAIMENT bientot en avoir besoin, quel
+// que soit le nombre de defis actifs ailleurs (deja servi par le PREFIXE de
+// l'index composite existant status+endDate, aucun nouvel index necessaire).
+// Reste a 15 min (contrairement a aggregateLeaderboard, passe a 1x/jour) :
+// decision explicite de l'utilisateur - voir la progression d'un defi de
+// groupe reste importante a suivre en direct, contrairement au classement
+// communautaire global.
 exports.closeExpiredGroupChallenges = onSchedule('every 15 minutes', async () => {
   const db = admin.firestore();
   const now = Date.now();
-  const activeSnap = await db.collectionGroup('challenges').where('status', '==', 'active').get();
+  const soon = now + CLOSE_SWEEP_LOOKAHEAD_MS;
+  const activeSnap = await db.collectionGroup('challenges')
+    .where('status', '==', 'active')
+    .where('endDate', '<=', soon)
+    .get();
   for (const challengeDoc of activeSnap.docs) {
-    const justSettled = await settleChallengeIfNeeded(db, challengeDoc.ref);
+    // Le document vient d'etre lu par la requete ci-dessus : le transmettre
+    // evite une re-lecture immediate et redondante (voir le commentaire de
+    // settleChallengeIfNeeded()).
+    const justSettled = await settleChallengeIfNeeded(db, challengeDoc.ref, challengeDoc.data());
     if (justSettled) continue; // vient d'etre regle - un rappel n'a plus de sens
     await maybeRemindChallengeDeadline(db, challengeDoc, now);
   }
@@ -874,7 +956,7 @@ exports.sendDailyReminderPush = onSchedule('0 19 * * *', async () => {
 // Exposees uniquement pour les tests unitaires (logique pure, sans Firestore) -
 // voir functions/test/leaderboard.test.js et functions/test/groups.test.js.
 module.exports.__testables = {
-  computeLeaderboardCaches,
+  buildLeaderboardCaches,
   leaderboardFieldForView,
   mondayOfWeekUTC,
   dateKeyUTC,

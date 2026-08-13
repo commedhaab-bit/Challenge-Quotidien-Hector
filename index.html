@@ -2004,8 +2004,8 @@ function switchTab(tab) {
   activeTab = tab;
   render(true);
   if (tab === 'community') {
-    // Pas d'invalidation systématique à l'entrée : le cache (TTL 15 min, voir
-    // fetchLeaderboardTop()/fetchMyRank()) est volontairement réutilisé d'une visite à
+    // Pas d'invalidation systématique à l'entrée : le cache (TTL LEADERBOARD_CACHE_TTL_MS,
+    // voir fetchLeaderboardTop()/fetchMyRank()) est volontairement réutilisé d'une visite à
     // l'autre tant qu'il est frais — seul mon PROPRE score invalide immédiatement (voir
     // syncLeaderboardEntry()), décision explicite pour réduire les lectures (voir
     // CLAUDE.md).
@@ -3935,10 +3935,12 @@ async function loadCommunityLeaderboard(view) {
   try {
     const cache = await fetchLeaderboardTop(view);
     // Patch ma PROPRE ligne (si présente) avec ma valeur EN MÉMOIRE, à jour : le
-    // document leaderboardCache n'est rafraîchi que toutes les 15 min côté serveur
-    // (aggregateLeaderboard), donc pourrait ne pas encore refléter un changement que
-    // je viens de faire moi-même (ex: je viens de gagner de l'XP) — garantit que je
-    // vois toujours mon propre score à jour, même si celui des autres reste à J-15min
+    // document leaderboardCache n'est rafraîchi qu'1 FOIS PAR JOUR côté serveur
+    // (aggregateLeaderboard — retour utilisateur explicite : le classement communautaire
+    // GLOBAL importe moins qu'un défi de groupe en cours, une fraîcheur quotidienne
+    // suffit largement), donc pourrait ne pas encore refléter un changement que je
+    // viens de faire moi-même (ex: je viens de gagner de l'XP) — garantit que je vois
+    // toujours mon propre score à jour, même si celui des autres reste à J-1
     // (même garantie que l'ancien mécanisme 100% client, voir syncLeaderboardEntry()).
     const myUid = currentUser && currentUser.uid;
     const myFreshValue = view === 'streaks' ? streakCount : (view === 'weekly' ? xpWeekly : xpTotal);
@@ -4545,11 +4547,11 @@ async function syncLeaderboardEntry() {
       xpTotal,
       lastActiveDate: todayKey,
     }, { merge: true });
-    // Sans ça, un cache classement déjà valide (TTL 15 min, voir fetchLeaderboardTop()/
-    // fetchMyRank()) afficherait NOTRE PROPRE rang/valeur obsolète après une action qui
-    // vient de le changer (ex: on vient de gagner de l'XP mais l'onglet Communauté
-    // montre encore l'ancien total) — règle explicitement demandée : le cache TTL ne
-    // doit jamais retarder l'affichage de MON PROPRE score.
+    // Sans ça, un cache classement déjà valide (TTL LEADERBOARD_CACHE_TTL_MS, voir
+    // fetchLeaderboardTop()/fetchMyRank()) afficherait NOTRE PROPRE rang/valeur obsolète
+    // après une action qui vient de le changer (ex: on vient de gagner de l'XP mais
+    // l'onglet Communauté montre encore l'ancien total) — règle explicitement demandée :
+    // le cache TTL ne doit jamais retarder l'affichage de MON PROPRE score.
     invalidateLeaderboardCache();
   } catch (e) {
     reportSaveError('leaderboard sync failed', e);
@@ -4574,20 +4576,26 @@ async function toggleLeaderboardOptOut() {
 // pour approximer la position hors Top 50, sans jamais afficher de rang exact —
 // .count() indisponible sur le SDK compat client) abandonnée au profit d'une
 // agrégation planifiée côté serveur (`aggregateLeaderboard`, Scheduled Function,
-// 15 min) : le client se contente désormais de lire UN SEUL document déjà calculé
-// (`leaderboardCache/{view}`) au lieu de scanner/interroger `leaderboard` lui-même.
-// Le rang exact redevient bon marché pour tout le monde : gratuit pour le Top 100
-// (simple index dans le tableau déjà en cache), et via un Callable dédié
-// (`getMyRank`, `.count()` côté Admin SDK — fonctionnel, contrairement au SDK compat
-// client) pour tous les autres, appelé uniquement quand je regarde réellement mon
-// propre rang (jamais un balayage proactif de toute la communauté).
+// 1x/jour — voir plus bas) : le client se contente désormais de lire UN SEUL
+// document déjà calculé (`leaderboardCache/{view}`) au lieu de scanner/interroger
+// `leaderboard` lui-même. Le rang exact redevient bon marché pour tout le monde :
+// gratuit pour le Top 100 (simple index dans le tableau déjà en cache), et via un
+// Callable dédié (`getMyRank`, `.count()` côté Admin SDK — fonctionnel, contrairement
+// au SDK compat client) pour tous les autres, appelé uniquement quand je regarde
+// réellement mon propre rang (jamais un balayage proactif de toute la communauté) —
+// TOUJOURS calculé en LIVE (jamais depuis le cache quotidien), donc jamais périmé.
 //
-// Cache CLIENT par vue (streaks/hebdo/all-time), TTL 15 minutes (même compromis
-// qu'avant : les données des AUTRES membres peuvent avoir jusqu'à 15 min de retard,
-// en échange de moins de lectures) — MAIS invalidé IMMÉDIATEMENT dès que MES propres
-// données changent (voir l'appel dans syncLeaderboardEntry()), pour que je voie
-// toujours mon propre score à jour tout de suite après une séance.
-const LEADERBOARD_CACHE_TTL_MS = 15 * 60 * 1000;
+// Retour utilisateur (audit quota) : le classement communautaire GLOBAL importe
+// moins qu'un défi de groupe en cours (celui-ci reste rafraîchi toutes les 15 min,
+// voir closeExpiredGroupChallenges côté Cloud Function) — une fraîcheur quotidienne
+// suffit largement ici. aggregateLeaderboard est donc passée de 15 min à 1x/jour,
+// et le cache CLIENT (TTL ci-dessous) suit la même logique : les données des AUTRES
+// membres peuvent avoir jusqu'à 1h de retard d'AFFICHAGE (au-delà, ça n'apporterait
+// plus rien puisque la source elle-même ne change qu'1x/jour) — MAIS invalidé
+// IMMÉDIATEMENT dès que MES propres données changent (voir l'appel dans
+// syncLeaderboardEntry()), pour que je voie toujours mon propre score à jour tout
+// de suite après une séance.
+const LEADERBOARD_CACHE_TTL_MS = 60 * 60 * 1000;
 let leaderboardTopCache = {}; // { [view]: { at, data: { entries, totalCount } } }
 let leaderboardRankCache = {}; // { [view]: { at, data: { rank, value } } }
 
