@@ -6323,3 +6323,105 @@ niveau de leur logique PURE (aucun émulateur Firestore branché sur ce
 projet) - le comportement réel des requêtes bornées/`limitToLast()`
 (notamment la confirmation qu'aucun nouvel index n'est réellement requis
 en production) ne pourra être confirmé qu'après déploiement.
+
+## Audit quota Firebase (suite) — 4 optimisations complementaires
+
+**Demande explicite de l'utilisateur** apres le deploiement du chantier
+ci-dessus : refaire l'estimation de capacite DAU avec les nouveaux couts
+constants/bornes, puis proposer de nouvelles pistes d'optimisation. Nouvel
+audit : la capacite (auparavant "s'effondre vers 0 quand la communaute
+grandit") devient une capacite STABLE d'environ 1 500 a 3 300 DAU quelle que
+soit la taille de la communaute — les ECRITURES (pas les lectures) deviennent
+le facteur limitant dans les scenarios d'usage intense. 4 idees proposees et
+implementees ensemble ("implemente les 4 idees") :
+
+**1. Debounce des ecritures Boss Battle** (meme famille que
+`WORKOUT_WRITE_DEBOUNCE_MS`/`scheduleWorkoutWriteFlush()` deja en place pour
+les series normales, jamais etendu au Boss Battle jusqu'ici) —
+`registerBossBattleContributionIfNeeded()` accumule desormais en memoire
+(`pendingBossBattleWeekStart`/`pendingBossBattleAmount`) et differe l'ecriture
+reseau via `BOSS_BATTLE_WRITE_DEBOUNCE_MS` (1500ms, meme duree que le
+debounce des series) — plusieurs taps rapproches sur un exercice contribuant
+au Boss Battle de la semaine ne produisent plus qu'UNE seule ecriture
+(`currentProgress` + `dailyContributors` + `contributions`) au lieu d'une par
+tap. **Mecanisme INDEPENDANT du debounce des series** (2 timers separes,
+`flushBossBattleWrite()` distincte de `flushWorkoutWrites()`) — un exercice
+peut tres bien ne PAS contribuer au Boss Battle de la semaine (voir
+`getWeeklyBossBattleTarget()`), les 2 flux d'ecriture n'ont donc aucune raison
+d'etre couples. **Flush force identique** : `visibilitychange`(hidden)/
+`pagehide` (les memes 2 handlers deja en place pour le debounce des series,
+etendus pour appeler aussi `flushBossBattleWrite()`) — memes garanties de
+non-perte que le mecanisme original.
+
+**2. Denormalisation de `preferredLanguage` sur `pushTokens`** — jusqu'ici,
+`sendPushToUser()` (la Cloud Function la plus frequemment declenchee : kudos,
+demandes d'ami, invitations/reglements/rappels de groupe, attaques Boulet,
+rappel quotidien) faisait une lecture SEPAREE de `users/{uid}/kv/appData`
+juste pour connaitre la langue preferee, en plus de la lecture deja
+necessaire de `pushTokens`. Le champ `preferredLanguage` (+ `lastRefreshedAt`,
+voir idee 3) est desormais ecrit DIRECTEMENT sur chaque doc `pushTokens/{token}`
+a l'activation du push (`enablePushNotifications()`) et tenu a jour a chaque
+changement de langue (`setPreferredLanguage()` appelle desormais
+`updatePushTokensPreferredLanguage(code)`, un batch sur TOUS les tokens de
+l'utilisateur courant, au lieu de l'ancien `saveAppField('preferredLanguage', ...)`
+— **ce dernier ecrivait un champ qui n'etait plus lu QUE par
+`sendPushToUser()`, jamais par le client lui-meme** : supprime entierement
+plutot que laisse en ecriture morte). `sendPushToUser()` lit desormais la
+langue depuis `tokensSnap.docs[0].data().preferredLanguage` (repli `'fr'` si
+absent) — **1 lecture Firestore de moins par notification envoyee**, sur la
+fonction la plus chaude de tout le systeme de notifications.
+
+**3. Exclusion des tokens push dormants dans `sendDailyReminderPush`** — la
+requete candidate (`collectionGroup('pushTokens')`) filtre desormais aussi
+`.where('lastRefreshedAt', '>=', Date.now() - STALE_PUSH_TOKEN_CUTOFF_MS)`
+(nouvelle constante, **180 jours** — volontairement genereux). Raisonnement
+explicite retenu (options plus agressives, ex. 90 jours, ecartees) :
+`lastRefreshedAt` reflete la derniere fois que l'app a ete OUVERTE, pas la
+derniere seance loguee — et le but meme de ce rappel quotidien est de
+re-engager des comptes dormants ; un seuil trop court exclurait exactement la
+population qu'il est cense atteindre. Aucune suppression active de token
+ajoutee ici (aurait exige de LIRE les tokens juste pour les supprimer, un
+cout evitable) — la vraie garantie de nettoyage reste le mecanisme deja
+existant (suppression du token a la premiere reponse FCM en echec dans
+`sendPushToUser()`), un token perime-mais-encore-valide ne coute simplement
+plus rien une fois exclu de cette requete.
+
+**4. Suspension de `startCommunityDailyListener()` hors de 'today'/'library'**
+— meme famille d'optimisation que la suspension deja en place pour
+`startActivityFeedListener()`/`startRecentContributionsListener()` hors de
+l'onglet Communaute (voir plus haut, "8 mesures livrees"). `communityDailyCounts`
+(compteur de participants + validations du jour, `community/dailyChallenge_{date}`)
+n'est affiche que sur 2 ecrans precis : le Hero Banner (`'today'`) et le
+ruban `.community-card-ribbon` (`getCommunityDailySlot()`, plus restreint a
+`mode==='today'` depuis un correctif anterieur — visible aussi sur
+`'library'`) — le listener temps reel n'a donc aucune utilite sur les 3
+autres onglets (Communaute, Groupes, Profil), ou chaque validation d'un
+AUTRE utilisateur facturait pourtant deja une lecture a toute session
+ouverte, quel que soit l'ecran regarde. `startCommunityDailyListener()`
+gagne le meme garde-fou interne que les 2 fonctions ci-dessus
+(`if (activeTab !== 'today' && activeTab !== 'library') return;`, apres
+avoir desabonne l'ancien listener) ; `switchTab()` suspend explicitement en
+quittant les 2 onglets vers un onglet tiers et rattache en y revenant —
+**jamais desabonne/reabonne en passant de 'today' a 'library'** (les 2 en
+ont besoin), via une garde `wasDailySlotTab`/`willBeDailySlotTab` dediee,
+distincte de celle deja en place pour 'community'. **Idee initialement
+proposee comme un "debounce leger"** (meme famille de risque que le Boss
+Battle) — s'est revelee ne rien avoir a debouncer une fois creusee :
+`registerCommunityParticipantIfNeeded()`/`registerCommunityCompletionIfNeeded()`
+sont deja bornees a 1 ecriture/utilisateur/jour (`state.communityJoined`/
+`state.communityCounted`), contrairement au Boss Battle qui n'avait aucune
+borne par tap avant l'idee 1 — pivotee vers la suspension du listener,
+seule optimisation reellement applicable ici.
+
+Verifie par : `npm run extract-script && node -c .extracted-script.js &&
+npm run lint && npm test` (client, plusieurs executions pour ecarter le test
+flaky deja documente, sans rapport) + `npm run lint && npm test` (functions,
+53 tests). CACHE_NAME -> v129 (`index.html`/`tests/app.test.js` modifies).
+
+**Changement touchant `functions/**` (idees 2 et 3 : `sendPushToUser()`
+reecrite, `STALE_PUSH_TOKEN_CUTOFF_MS` + filtre ajoutes a
+`sendDailyReminderPush`) — deploiement `deploy-functions.yml` a confirmer
+explicitement avec l'utilisateur avant tout push**, conformement a la
+politique d'autonomie du projet (voir memoire dediee) qui exclut ce dossier
+de la zone de confiance automatique — memes exigences que pour le chantier
+precedent de cette meme section.

@@ -836,10 +836,9 @@ const PUSH_MESSAGES = {
 
 // Envoie un push a TOUS les appareils d'un utilisateur (users/{uid}/pushTokens,
 // un doc par token) pour un type de notification donne, dans sa langue
-// preferee (users/{uid}/kv/appData.preferredLanguage, repli 'fr' si absent -
-// voir setPreferredLanguage() cote client). Nettoie les tokens invalides
-// (appareil desinstalle/permission revoquee) retournes par la reponse FCM -
-// evite l'accumulation silencieuse de tokens morts.
+// preferee. Nettoie les tokens invalides (appareil desinstalle/permission
+// revoquee) retournes par la reponse FCM - evite l'accumulation silencieuse
+// de tokens morts.
 // Logs explicites a chaque etape (console.log/console.error, visibles dans
 // Cloud Functions > Journaux) : un 200 HTTP sur cette fonction ne prouve PAS
 // qu'un push a reellement ete envoye (les 2 sorties anticipees ci-dessous
@@ -853,10 +852,19 @@ async function sendPushToUser(db, uid, type, data) {
     return;
   }
 
+  // Retour utilisateur (audit quota) : la langue est desormais denormalisee
+  // DIRECTEMENT sur chaque doc pushTokens (voir enablePushNotifications()/
+  // setPreferredLanguage() cote client) - evite la lecture SEPAREE de
+  // users/{uid}/kv/appData faite ICI auparavant, a CHAQUE notification (le
+  // point d'envoi le plus frequemment declenche de toute l'app - kudos,
+  // demandes d'ami, invitations...). Tous les tokens d'un meme compte
+  // partagent la meme langue (mis a jour ensemble par setPreferredLanguage()),
+  // le premier suffit. Repli 'fr' si absent (tokens crees avant ce champ, ou
+  // jamais synchronise) - identique au repli deja en place avant ce correctif.
   let locale = 'fr';
-  const appDataDoc = await db.collection('users').doc(uid).collection('kv').doc('appData').get();
-  if (appDataDoc.exists && PUSH_MESSAGES[appDataDoc.data().preferredLanguage]) {
-    locale = appDataDoc.data().preferredLanguage;
+  const firstTokenData = tokensSnap.docs[0].data();
+  if (firstTokenData.preferredLanguage && PUSH_MESSAGES[firstTokenData.preferredLanguage]) {
+    locale = firstTokenData.preferredLanguage;
   }
   const buildMessage = PUSH_MESSAGES[locale][type] || PUSH_MESSAGES.fr[type];
   if (!buildMessage) {
@@ -919,6 +927,20 @@ function computeUidsNeedingDailyReminder(uids, appDataByUid, todayKey) {
   });
 }
 
+// Retour utilisateur (audit quota, "elaguer les tokens obsoletes") : au-dela
+// de ce delai sans le moindre rafraichissement (voir enablePushNotifications()/
+// lastRefreshedAt cote client, rafraichi a CHAQUE demarrage d'app tant que la
+// permission est accordee), un token est considere abandonne (app desinstallee,
+// donnees navigateur effacees sans desabonnement propre...). Volontairement
+// GENEREUX (6 mois, pas quelques semaines) : le but de ce rappel est
+// precisement de re-engager des utilisateurs qui n'ont PAS ouvert l'app
+// recemment - un seuil trop court exclurait a tort exactement le public vise.
+// Ne supprime PAS activement les tokens plus vieux que ce seuil (resteraient
+// silencieusement ignores par cette requete pour toujours, sans cout recurrent -
+// le vrai nettoyage actif reste le mecanisme deja en place sur echec FCM reel
+// dans sendPushToUser(), signal plus fiable qu'une simple date).
+const STALE_PUSH_TOKEN_CUTOFF_MS = 180 * 24 * 3600 * 1000;
+
 // Scheduled Function (1x/jour, 19h UTC - environ 20h/21h en France/Espagne
 // selon la saison, voir le commentaire de region en tete de fichier).
 // **Simplification assumee et documentee** (meme famille que la tolerance
@@ -929,14 +951,18 @@ function computeUidsNeedingDailyReminder(uids, appDataByUid, todayKey) {
 // (quelques dizaines de minutes a 1-2h) de la cle LOCALE ecrite cote client
 // dans dailyActivity - marge negligeable pour la base d'utilisateurs actuelle
 // (France/Espagne, UTC+1/+2). Bornee a la population ayant deja active le
-// push (collectionGroup('pushTokens')) - jamais un balayage de tous les
-// comptes, meme raisonnement deja applique a aggregateLeaderboard/
-// closeExpiredGroupChallenges (cout borne par une population pertinente, pas
-// par la taille totale de la base).
+// push ET rafraichi son token recemment (collectionGroup('pushTokens'), filtre
+// lastRefreshedAt) - jamais un balayage de tous les comptes, meme raisonnement
+// deja applique a aggregateLeaderboard/closeExpiredGroupChallenges (cout borne
+// par une population pertinente, pas par la taille totale de la base) - et
+// desormais borne aussi dans le TEMPS (les tokens vraiment abandonnes ne sont
+// plus jamais relus).
 exports.sendDailyReminderPush = onSchedule('0 19 * * *', async () => {
   const db = admin.firestore();
   const todayKey = dateKeyUTC(new Date());
-  const tokensSnap = await db.collectionGroup('pushTokens').get();
+  const tokensSnap = await db.collectionGroup('pushTokens')
+    .where('lastRefreshedAt', '>=', Date.now() - STALE_PUSH_TOKEN_CUTOFF_MS)
+    .get();
   const uids = [...new Set(tokensSnap.docs.map((d) => d.ref.parent.parent.id))];
   if (uids.length === 0) return;
 

@@ -780,20 +780,30 @@ const cssText = __rawHtml + __cssSource;
   activeToday = new Set();
   activeTab = 'today';
   currentChallengeId = null;
+  // Idee (retour utilisateur, audit quota) : la langue preferee n est plus
+  // synchronisee sur appData (ancien mecanisme, plus aucun lecteur depuis que
+  // sendPushToUser() lit desormais directement pushTokens) mais DIRECTEMENT sur
+  // chaque doc pushTokens deja enregistre pour ce compte (voir
+  // updatePushTokensPreferredLanguage()) - seed un token existant pour verifier
+  // la propagation.
+  await db.collection('users').doc('test-uid').collection('pushTokens').doc('tok-1').set({ token: 'tok-1', preferredLanguage: 'fr' });
   setPreferredLanguage('en');
   __assertEq(currentLocale, 'en', 'setPreferredLanguage doit mettre a jour currentLocale');
   __assertEq(__mockLocalStorageStore.get('preferredLanguage'), 'en', 'doit persister la preference sur cet appareil');
   __assertEq(document.documentElement.lang, 'en', "doit mettre a jour l'attribut lang du document (accessibilite)");
   // Synchronisation Firestore (Phase A notifications push) : localStorage reste
   // la source de verite pour l UI (inchange), mais la preference est AUSSI
-  // ecrite cote serveur - c est la seule facon pour une Cloud Function de
-  // localiser le texte d une notification push (voir sendPushToUser()).
+  // propagee sur CHAQUE token deja enregistre - c est la seule facon pour une
+  // Cloud Function de localiser le texte d une notification push (voir
+  // sendPushToUser() dans functions/index.js, qui lit desormais directement le
+  // 1er doc pushTokens plutot que appData).
   await new Promise(r => setTimeout(r, 10));
-  const appDataAfterLangChange = await appDataDocRef().get();
-  __assertEq(appDataAfterLangChange.data().preferredLanguage, 'en', 'la langue preferee doit aussi etre synchronisee sur le document appData consolide (lisible cote serveur)');
+  const pushTokenAfterLangChange = await db.collection('users').doc('test-uid').collection('pushTokens').doc('tok-1').get();
+  __assertEq(pushTokenAfterLangChange.data().preferredLanguage, 'en', 'la langue preferee doit etre propagee sur les tokens push deja enregistres (lisibles cote serveur)');
   setPreferredLanguage('xx'); // langue non supportee
   __assertEq(currentLocale, 'en', 'une langue non supportee ne doit rien changer a la langue active');
   setPreferredLanguage('fr'); // restaure avant la suite des tests
+  await new Promise(r => setTimeout(r, 10));
   __mockLocalStorageStore.clear();
   console.log('OK: i18n - moteur t()/tn(), detection/persistance de la langue (fondations, aucun ecran encore migre)');
 
@@ -3465,7 +3475,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v128'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v129'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -5821,6 +5831,36 @@ const cssText = __rawHtml + __cssSource;
   activeTab = 'today';
   console.log('OK: les listeners fil d activite/contributions Boss Battle sont suspendus hors de l onglet Communaute');
 
+  // --- 146quater-quater-bis. Idee 4 (audit quota, meme famille que le point
+  // precedent) : startCommunityDailyListener() ne s attache que sur 'today'/
+  // 'library' (les 2 seuls onglets qui affichent communityDailyCounts - Hero
+  // Banner et ruban .community-card-ribbon), suspendu/rattache par switchTab().
+  communityDailyUnsub = null;
+  activeTab = 'community';
+  startCommunityDailyListener();
+  __assertOk(communityDailyUnsub === null, 'le listener du defi quotidien communautaire ne doit PAS s attacher hors de today/library');
+  activeTab = 'today';
+  startCommunityDailyListener();
+  __assertOk(typeof communityDailyUnsub === 'function', 'le listener du defi quotidien communautaire doit s attacher sur today');
+  communityDailyUnsub(); communityDailyUnsub = null;
+  activeTab = 'library';
+  startCommunityDailyListener();
+  __assertOk(typeof communityDailyUnsub === 'function', 'le listener du defi quotidien communautaire doit aussi s attacher sur library');
+  communityDailyUnsub(); communityDailyUnsub = null;
+
+  activeTab = 'today';
+  startCommunityDailyListener();
+  switchTab('community');
+  __assertOk(communityDailyUnsub === null, 'switchTab() doit suspendre le listener du defi quotidien en quittant today/library vers un autre onglet');
+  switchTab('library');
+  __assertOk(typeof communityDailyUnsub === 'function', 'switchTab() doit rattacher le listener du defi quotidien en entrant sur library depuis un autre onglet');
+  const communityDailyUnsubBeforeLibraryTodaySwitch = communityDailyUnsub;
+  switchTab('today');
+  __assertOk(communityDailyUnsub === communityDailyUnsubBeforeLibraryTodaySwitch, 'switchTab() ne doit pas desabonner/reabonner en passant de library a today (les 2 onglets en ont besoin)');
+  communityDailyUnsub(); communityDailyUnsub = null;
+  activeTab = 'today';
+  console.log('OK: startCommunityDailyListener() est suspendu hors de today/library, rattache par switchTab()');
+
   // --- 146quater-sexies. Optimisation quota Firestore : addSet() regroupe (debounce)
   // les ecritures Firestore (appData + day:{date}) de plusieurs taps rapproches en une
   // SEULE paire d ecritures, sans jamais retarder la mise a jour LOCALE (deja verifiee
@@ -5883,13 +5923,17 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = bossChallenge147.id;
   stats[bossChallenge147.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   await addSet(10); // serie partielle, ne complete pas le defi (sauf objectif tres bas)
-  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  // Optimisation quota Firestore : force le flush des 2 debounces distincts (ecritures
+  // d entrainement ET contribution Boss Battle, voir BOSS_BATTLE_WRITE_DEBOUNCE_MS dans
+  // index.html), pour que la suite du test voie les ecritures Firestore comme si les
+  // debounces avaient expire.
   await flushWorkoutWrites();
+  await flushBossBattleWrite();
   let bossDoc = await bossBattleDocRef().get();
   __assertOk(bossDoc.exists && bossDoc.data().currentProgress === 10, 'une simple serie (pas forcement la completion) doit deja contribuer a la jauge collective');
   await addSet(5);
-  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
   await flushWorkoutWrites();
+  await flushBossBattleWrite();
   bossDoc = await bossBattleDocRef().get();
   __assertEq(bossDoc.data().currentProgress, 15, 'les contributions doivent s additionner au fil des series');
   const contributorDoc = await bossBattleDocRef().collection('dailyContributors').doc(todayKey + '_test-uid').get();
@@ -5901,13 +5945,42 @@ const cssText = __rawHtml + __cssSource;
   activeToday = new Set([otherChallenge147.id]);
   stats[otherChallenge147.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   await addSet(999);
-  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
   await flushWorkoutWrites();
+  await flushBossBattleWrite();
   bossDoc = await bossBattleDocRef().get();
   __assertEq(bossDoc.data().currentProgress, 15, 'un defi different de la cible hebdomadaire ne doit jamais contribuer a la jauge collective');
   currentChallengeId = null;
   activeToday = new Set();
   console.log('OK: contributions a la jauge collective (chaque serie compte, uniquement sur le defi cible de la semaine)');
+
+  // Idee (retour utilisateur, audit quota) : les contributions Boss Battle
+  // rapprochees (rafale de taps) doivent etre REGROUPEES en une seule ecriture
+  // reseau, comme les ecritures d entrainement - le doc partage n est ecrit qu UNE
+  // FOIS pour toute la rafale, jamais une fois par tap.
+  __resetCommunityMocks();
+  communityBossBattleTargetCache = null;
+  await refreshWeeklyBossBattleTargetCache();
+  const bossTargetDebounce = getWeeklyBossBattleTarget();
+  const bossChallengeDebounce = CHALLENGE_LIBRARY.find(c => c.id === bossTargetDebounce.targetChallengeId);
+  activeToday = new Set([bossChallengeDebounce.id]);
+  state = emptyDayState();
+  currentChallengeId = bossChallengeDebounce.id;
+  stats[bossChallengeDebounce.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
+  await addSet(5);
+  await addSet(10);
+  await addSet(5);
+  const bossDocMidBurst = await bossBattleDocRef().get();
+  __assertOk(!bossDocMidBurst.exists || !bossDocMidBurst.data().currentProgress, 'tant que le debounce (1.5s) n a pas expire, aucune ecriture reelle ne doit encore avoir atteint Firestore');
+  await flushWorkoutWrites();
+  await flushBossBattleWrite();
+  const bossDocAfterBurst = await bossBattleDocRef().get();
+  __assertEq(bossDocAfterBurst.data().currentProgress, 20, 'les 3 taps rapproches (5+10+5) doivent s additionner en UNE SEULE ecriture groupee, pas 3 ecritures separees');
+  const feedAfterBurst = await bossBattleDocRef().collection('contributions').orderBy('at', 'desc').limit(5).get();
+  __assertEq(feedAfterBurst.size, 1, 'le fil "en direct" ne doit recevoir QU UNE SEULE entree pour toute la rafale (montant cumule), pas une par tap');
+  __assertEq(feedAfterBurst.docs[0].data().amount, 20, 'l entree groupee du fil doit porter le montant CUMULE de la rafale');
+  currentChallengeId = null;
+  activeToday = new Set();
+  console.log('OK: contributions Boss Battle debouncees (regroupees en une seule ecriture par rafale, meme principe que les ecritures d entrainement)');
 
   // --- 148. Victoire du Boss Battle : detection du franchissement + archive create-only ---
   __resetCommunityMocks();
@@ -5989,8 +6062,9 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = feedChallenge.id;
   stats[feedChallenge.id] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   await addSet(40);
-  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  // Optimisation quota Firestore : force le flush des 2 debounces distincts (voir plus haut).
   await flushWorkoutWrites();
+  await flushBossBattleWrite();
   const contribSnap = await bossBattleDocRef().collection('contributions').orderBy('at', 'desc').limit(20).get();
   __assertEq(contribSnap.size, 1, 'chaque contribution doit creer un nouveau document (pas fusionne, contrairement a dailyContributors)');
   __assertEq(contribSnap.docs[0].data().displayName, 'Julie', 'le document de contribution doit garder le nom affiche de l auteur');
@@ -6111,8 +6185,9 @@ const cssText = __rawHtml + __cssSource;
   currentChallengeId = privacyTarget.targetChallengeId;
   stats[privacyTarget.targetChallengeId] = { lifetimeTotal: 0, bestDay: { total: 0, date: null }, recordStreak: 0 };
   await addSet(10);
-  // Optimisation quota Firestore : force le flush du debounce (voir scheduleWorkoutWriteFlush()/flushWorkoutWrites() dans index.html), pour que la suite du test voie l ecriture Firestore comme si le debounce avait expire.
+  // Optimisation quota Firestore : force le flush des 2 debounces distincts (voir plus haut).
   await flushWorkoutWrites();
+  await flushBossBattleWrite();
   const privacyContribDoc = await bossBattleDocRef().collection('dailyContributors').doc(todayKey + '_test-uid').get();
   __assertEq(privacyContribDoc.data().displayName, 'Jean D.', 'l agregat dailyContributors (badge Contributeur du jour) ne doit jamais garder le nom complet');
   const privacyFeedSnap = await bossBattleDocRef().collection('contributions').orderBy('at', 'desc').limit(1).get();

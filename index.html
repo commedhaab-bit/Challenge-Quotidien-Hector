@@ -287,14 +287,35 @@ function setPreferredLanguage(code) {
   currentLocale = code;
   try { localStorage.setItem(PREFERRED_LANGUAGE_KEY, code); } catch (e) { /* navigation privee : tant pis, retombera sur la detection navigateur au prochain chargement */ }
   document.documentElement.lang = code;
-  // Synchronise vers Firestore (en plus de localStorage, source de verite pour
-  // l'UI elle-meme, inchangee) : permet aux Cloud Functions de localiser le
-  // texte des notifications push (voir sendPushToUser() dans functions/index.js) -
+  // Synchronise vers Firestore : permet aux Cloud Functions de localiser le texte
+  // des notifications push (voir sendPushToUser() dans functions/index.js) -
   // localStorage n'est jamais lisible cote serveur. currentUser peut etre absent
   // si jamais appelee avant connexion (aucun appelant actuel dans ce cas, mais
-  // defensif).
-  if (currentUser) saveAppField('preferredLanguage', code);
+  // defensif). Ecrit directement sur CHAQUE doc pushTokens de ce compte (voir
+  // updatePushTokensPreferredLanguage()) - PLUS sur appData (retour utilisateur,
+  // audit quota : ce champ appData n'etait lu que par l'ancienne version de
+  // sendPushToUser(), qui lit desormais la langue directement depuis pushTokens -
+  // le garder en plus aurait ete une ecriture sans plus aucun lecteur).
+  if (currentUser) updatePushTokensPreferredLanguage(code);
   render();
+}
+
+// Propage un changement de langue a TOUS les appareils deja enregistres pour le
+// push de ce compte (potentiellement plusieurs, un doc par token) - sans ca, un
+// appareil qui ne rafraichit pas son token avant le prochain evenement notifiable
+// recevrait un push dans l'ancienne langue jusqu'a son prochain demarrage d'app.
+// Rare en pratique (changer de langue n'arrive pas souvent) : borne au nombre de
+// TOKENS de CE seul compte, jamais un balayage plus large.
+async function updatePushTokensPreferredLanguage(code) {
+  try {
+    const tokensSnap = await db.collection('users').doc(currentUser.uid).collection('pushTokens').get();
+    if (tokensSnap.empty) return;
+    const batch = db.batch();
+    tokensSnap.docs.forEach((d) => batch.update(d.ref, { preferredLanguage: code }));
+    await batch.commit();
+  } catch (e) {
+    reportSaveError('update push tokens preferred language failed', e);
+  }
 }
 
 /**
@@ -434,9 +455,9 @@ async function flushWorkoutWrites() {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') flushWorkoutWrites();
+  if (document.visibilityState === 'hidden') { flushWorkoutWrites(); flushBossBattleWrite(); }
 });
-window.addEventListener('pagehide', () => { flushWorkoutWrites(); });
+window.addEventListener('pagehide', () => { flushWorkoutWrites(); flushBossBattleWrite(); });
 
 // Retour haptique gradue (Vibration API) - 3 paliers d'intensite, du plus leger
 // au plus festif. Regroupes ici en constantes nommees plutot que des tableaux
@@ -2000,9 +2021,22 @@ function switchTab(tab) {
     // cette fonction ("chaque onglet repart de son ecran racine").
     profileView = 'profile';
   }
+  // Idee 4 (audit quota) : startCommunityDailyListener() n'est utile que sur
+  // 'today'/'library' (voir son propre commentaire) — suspendu en quittant les 2
+  // vers un onglet tiers, jamais désabonné/réabonné en passant de l'un à l'autre
+  // (les 2 en ont besoin, cf. wasDailySlotTab/willBeDailySlotTab ci-dessous).
+  const wasDailySlotTab = activeTab === 'today' || activeTab === 'library';
+  const willBeDailySlotTab = tab === 'today' || tab === 'library';
+  if (wasDailySlotTab && !willBeDailySlotTab && communityDailyUnsub) {
+    communityDailyUnsub();
+    communityDailyUnsub = null;
+  }
   if (navigator.vibrate) navigator.vibrate(8);
   activeTab = tab;
   render(true);
+  if (willBeDailySlotTab && !communityDailyUnsub) {
+    startCommunityDailyListener();
+  }
   if (tab === 'community') {
     // Pas d'invalidation systématique à l'entrée : le cache (TTL LEADERBOARD_CACHE_TTL_MS,
     // voir fetchLeaderboardTop()/fetchMyRank()) est volontairement réutilisé d'une visite à
@@ -2385,11 +2419,20 @@ function communityDailyChallengeDocRef(dateStr = todayKey) {
   return db.collection('community').doc('dailyChallenge_' + dateStr);
 }
 
-// Appelé une seule fois au démarrage (continueStartApp()) : s'abonne au doc du jour,
-// re-render à chaque changement (un autre utilisateur qui valide le défi du jour doit
-// faire bouger le compteur affiché, sans recharger la page — effet "ça bouge en direct").
+// Appelé au démarrage (continueStartApp()) et à chaque (ré-)entrée sur 'today'/
+// 'library' (voir switchTab()) : s'abonne au doc du jour, re-render à chaque
+// changement (un autre utilisateur qui valide le défi du jour doit faire bouger le
+// compteur affiché, sans recharger la page — effet "ça bouge en direct").
 function startCommunityDailyListener() {
-  if (communityDailyUnsub) communityDailyUnsub();
+  if (communityDailyUnsub) { communityDailyUnsub(); communityDailyUnsub = null; }
+  // Suspendu hors des 2 seuls onglets qui affichent réellement communityDailyCounts
+  // (Hero Banner sur 'today', ruban .community-card-ribbon sur 'library' — voir
+  // getCommunityDailySlot(), plus restreint à mode==='today') : même optimisation
+  // quota/même raisonnement que startActivityFeedListener()/
+  // startRecentContributionsListener() pour l'onglet Communauté (voir CLAUDE.md,
+  // audit quota Firebase). Rattaché explicitement à la ré-entrée sur l'un des 2
+  // onglets (switchTab()).
+  if (activeTab !== 'today' && activeTab !== 'library') return;
   communityDailyUnsub = communityDailyChallengeDocRef().onSnapshot((snap) => {
     const d = snap.exists ? snap.data() : null;
     communityDailyCounts = {
@@ -4060,10 +4103,45 @@ async function handleBossBattleVictory(weekStart, target, finalProgress) {
 // loggée compte pour la jauge collective) si le défi en cours est la cible de la
 // semaine. Incrémente à la fois le compteur partagé ET l'agrégat "par jour/par
 // utilisateur" (dailyContributors), qui sert uniquement au badge Contributeur du jour.
+// Debounce des contributions Boss Battle (retour utilisateur, audit quota Firebase) :
+// AVANT, chaque serie loguee ecrivait IMMEDIATEMENT sur le document collectif
+// partage (bossBattleDocRef) - or TOUS les utilisateurs connectes ont un listener
+// temps reel actif en PERMANENCE sur CE MEME document (startBossBattleListener(),
+// jamais suspendu comme les listeners Communaute) : chaque ecriture etait donc
+// facturee en LECTURE chez chacun d'eux (fan-out), potentiellement plusieurs fois
+// par seconde en cas d'usage concurrent (ex: defi d'entreprise, tout le monde a la
+// pause dejeuner). Meme principe de regroupement que WORKOUT_WRITE_DEBOUNCE_MS
+// (voir plus haut) : accumule le montant EN MEMOIRE, un seul aller-retour Firestore
+// par rafale de taps rapproches (1.5s) au lieu d'un par tap - jamais de perte
+// (memes filets de secours visibilitychange/pagehide que les ecritures d'entrainement,
+// voir plus bas). weekStart est capture AU DEBUT de la rafale (pas recalcule au
+// flush) : evite qu'une rafale a cheval sur un changement de semaine (edge case
+// improbable, ~1.5s de fenetre) ne credite la mauvaise semaine.
+const BOSS_BATTLE_WRITE_DEBOUNCE_MS = 1500;
+let bossBattleWriteDebounceTimer = null;
+let pendingBossBattleWeekStart = null;
+let pendingBossBattleAmount = 0;
+
 async function registerBossBattleContributionIfNeeded(challengeId, amount) {
   const weekStart = mondayOfWeek(new Date());
   const target = getWeeklyBossBattleTarget(weekStart);
   if (!target || target.targetChallengeId !== challengeId) return;
+  if (pendingBossBattleWeekStart && pendingBossBattleWeekStart !== weekStart) {
+    await flushBossBattleWrite(); // rafale precedente encore en attente pour une AUTRE semaine - jamais melanger 2 semaines dans le meme total
+  }
+  pendingBossBattleWeekStart = weekStart;
+  pendingBossBattleAmount += amount;
+  if (bossBattleWriteDebounceTimer) clearTimeout(bossBattleWriteDebounceTimer);
+  bossBattleWriteDebounceTimer = setTimeout(() => { flushBossBattleWrite(); }, BOSS_BATTLE_WRITE_DEBOUNCE_MS);
+}
+
+async function flushBossBattleWrite() {
+  if (bossBattleWriteDebounceTimer) { clearTimeout(bossBattleWriteDebounceTimer); bossBattleWriteDebounceTimer = null; }
+  if (!pendingBossBattleWeekStart || pendingBossBattleAmount <= 0) return;
+  const weekStart = pendingBossBattleWeekStart;
+  const amount = pendingBossBattleAmount;
+  pendingBossBattleWeekStart = null;
+  pendingBossBattleAmount = 0;
   try {
     await bossBattleDocRef(weekStart).set(
       { currentProgress: firebase.firestore.FieldValue.increment(amount) },
@@ -4076,6 +4154,8 @@ async function registerBossBattleContributionIfNeeded(challengeId, amount) {
     // Fil des contributions individuelles (contrairement à dailyContributors, un
     // document PAR évènement, jamais fusionné) : sert uniquement au flux temps réel
     // "Untel vient d'ajouter X" affiché sur l'écran Communauté, pour le FOMO en direct.
+    // Un evenement REGROUPE (montant cumule d'une rafale) plutot qu'un par tap brut -
+    // coherent avec l'esprit du fil (annoncer un ajout notable, pas chaque frappe).
     await bossBattleDocRef(weekStart).collection('contributions').add({
       uid: currentUser.uid,
       displayName: formatDisplayName(currentUser.displayName),
@@ -4871,8 +4951,16 @@ async function enablePushNotifications() {
     messaging.onMessage(() => {});
     const token = await messaging.getToken({ vapidKey: VAPID_PUBLIC_KEY, serviceWorkerRegistration: registration });
     if (!token) { render(); return; }
+    // preferredLanguage (retour utilisateur, audit quota) : denormalisee ICI plutot
+    // que lue separement depuis appData cote Cloud Function a CHAQUE notification -
+    // voir sendPushToUser() dans functions/index.js. lastRefreshedAt : reecrit a
+    // CHAQUE appel (cette fonction tourne a chaque demarrage d'app tant que la
+    // permission est deja accordee, voir maybePromptPushNotificationsOnStartup()/
+    // shouldRefreshPushToken()) - sert a exclure les tokens vraiment abandonnes du
+    // rappel du soir planifie (sendDailyReminderPush), sans jamais les supprimer.
     await db.collection('users').doc(currentUser.uid).collection('pushTokens').doc(token).set({
       token, createdAt: Date.now(), userAgent: navigator.userAgent,
+      preferredLanguage: currentLocale, lastRefreshedAt: Date.now(),
     });
     if (navigator.vibrate) navigator.vibrate(10);
     render();
