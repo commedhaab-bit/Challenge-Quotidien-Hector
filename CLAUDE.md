@@ -6425,3 +6425,85 @@ explicitement avec l'utilisateur avant tout push**, conformement a la
 politique d'autonomie du projet (voir memoire dediee) qui exclut ce dossier
 de la zone de confiance automatique — memes exigences que pour le chantier
 precedent de cette meme section.
+
+## Refonte de l'image "Partager mes stats" + tour guide etendu aux 5 onglets
+
+**Demande explicite de l'utilisateur**, deux volets independants livres ensemble :
+(1) l'image generee par `shareStatsImage()` ne montrait que serie/defis
+completes/repetitions/minutes chronometrees, sans niveau/titre d'athlete ni
+trophees ni temps de gainage specifique ; (2) le tour guide (`GUIDED_TOUR_STEPS`)
+ne presentait que 3 des 5 onglets (Aujourd'hui/Défis/Profil) - Communaute et
+Groupes, tous les deux ajoutes bien apres la 1ere version du tour, n'avaient
+jamais ete rattrapes.
+
+**Image de partage** (`shareStatsImage()`) - contenu entierement redessine, sans
+toucher au mecanisme de partage lui-meme (`navigator.share()`/telechargement,
+inchange) :
+- **Niveau + titre d'athlete**, mis en avant juste sous l'en-tete
+  (`t('profileTab.levelLabel', {n})` + `athleteTitle(level)`, 2 fonctions/cles
+  DEJA existantes - reutilisees telles quelles, aucune nouvelle cle i18n pour ce
+  bloc) - stat qui manquait entierement avant cette refonte.
+- **Grille 2x2** : serie / defis completes / repetitions / **temps de gainage
+  cumule** (nouveau, remplace l'ancienne "minutes chronometrees" generique).
+- **Trophees** : compteur global (`{{unlocked}}/{{total}}`, cle deja existante,
+  degrade OR) + une rangee des icones des trophees reellement debloques.
+- **Categorie favorite** : inchangee (derniere ligne).
+
+**Temps de gainage = `sumLifetime(CORE_TIME_FAMILY_IDS)`, jamais une nouvelle
+somme par categorie** : reutilise EXACTEMENT la meme source de verite deja
+utilisee par les 4 trophees `core_15min/1h/6h/24h` (voir `BADGE_DEFS`) plutot
+que d'inventer un calcul base sur `computeCategoryVolumeBreakdown()` (qui
+melangerait a tort des exercices de "Gainage / Core" comptes en REPETITIONS
+- crunchs, leg raises... - avec ceux comptes en SECONDES) - un seul calcul,
+deja teste indirectement via les trophees, jamais duplique. Remplace
+l'ancienne stat generique "minutes chronometrees" (`summary.totalSeconds`,
+TOUS les exercices en secondes de l'app, tres proche dans les faits de ce
+nouveau calcul : sur les 4 seuls exercices `unit:'sec'` du catalogue, 3
+appartiennent deja a `CORE_TIME_FAMILY_IDS`, seule "Chaise (wall sit)" -Bas du
+corps- en est distincte) - jugee redondante/moins parlante une fois la version
+specifique disponible, cle `minutesLabel` retiree (code mort) des 3
+`locale-*.js`, remplacee par `coreTimeLabel`.
+
+**2 nouvelles fonctions PURES, testees en isolation (le canevas 2D lui-meme
+reste hors de portee du harnais, mock minimal - meme limite deja documentee
+partout ailleurs dans ce fichier pour tout rendu visuel)** :
+- `formatShareStatsDuration(totalSeconds)` : "3 h 25 min"/"45 min"/"1 h" - pas
+  de nouvelle cle i18n pour les unites "h"/"min" elles-memes, deja utilisees
+  telles quelles sans traduction ailleurs (`formatSecToReadable()`,
+  `exercise-data.js`), meme convention reprise ici.
+- `computeShareStatsTrophyIcons(unlockedIds)` : icones des trophees deja
+  debloques (`badges.unlocked`, deja dans l'ordre de deblocage), plafonnees aux
+  8 plus recents - le compteur global, lui, reste exact quel que soit le
+  nombre reel de trophees.
+
+**Degrades canevas fixes plutot que mesures (`ctx.measureText()`)** : les gros
+chiffres/le compteur trophees utilisent le meme degrade "premium" deja etabli
+ailleurs dans l'app (vert->bleu `--accent`/`--aurora-2` pour les stats, or
+`--gold`/`--gold-2` reserve aux trophees - memes couleurs que
+`.bento-num`/`.trophy-item.unlocked`) via `ctx.createLinearGradient()` sur une
+largeur FIXE (pas mesuree via `ctx.measureText()`, que le mock canevas du
+harnais de test ne simule pas) - un choix delibere pour eviter une dependance
+a une API canevas non mockee, au prix d'un degrade legerement moins ajuste au
+texte exact sur les valeurs tres courtes/tres longues (compromis visuel
+mineur, invisible en pratique).
+
+**Tour guide : 2 nouvelles cartes, Communaute et Groupes**, inserees dans le
+MEME ordre que `TAB_ORDER` (today, library, community, groups, account) entre
+"Défis" et "Profil" - `GUIDED_TOUR_STEPS` passe de 4 a 6 cartes (bienvenue +
+5 onglets). Textes courts, meme ton que les cartes existantes : Communaute
+mentionne le classement/la Boss Battle collective, Groupes mentionne les defis
+collectifs avec gage ("le perdant paie sa tournee 🍺", reprend l'esprit du
+gage "beer" deja etabli dans l'onglet Groupes). Aucun changement de mecanisme
+(`guidedTourNext()`/`switchTab()`/`renderGuidedTourOverlay()` inchanges) -
+switcher vers ces 2 onglets pendant le tour reutilise exactement les memes
+chemins de code qu'une navigation normale (Hero Banner communautaire/etat vide
+"aucun groupe" pour un compte tout juste onboarde, deja geres partout
+ailleurs).
+
+CACHE_NAME -> v130 (`index.html` + les 3 `locale-*.js` modifies). Aucun
+changement de regles Firestore/Cloud Functions - modification 100% cote
+client, aucune touche a `functions/**`. Meme limite de verification que le
+reste des chantiers visuels de ce projet : logique pure et structure testees,
+**le rendu reel de l'image generee (mise en page/lisibilite des degrades) et
+le parcours visuel du tour guide etendu ne sont pas confirmes dans un vrai
+navigateur** - a confirmer par l'utilisateur.

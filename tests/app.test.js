@@ -1332,13 +1332,17 @@ const cssText = __rawHtml + __cssSource;
   console.log('OK: pseudo public obligatoire (sanitisation, verrous nouveau/compte-existant, disponibilite en direct, renommage, dismissible seulement en mode rename)');
 
   // --- 25. Tour guidé : carte 0 = bienvenue neutre (meme onglet que la carte 1),
-  // puis visite des 4 onglets, se marque comme vu ---
+  // puis visite des 5 onglets (Communaute/Groupes desormais couverts, retour
+  // utilisateur : le tour restait jusque-la silencieux sur ces 2 onglets), se
+  // marque comme vu ---
   __store.delete('hasSeenTour');
   hasSeenTour = false;
   activeTab = 'today';
   await finishOnboardingTransition();
   __assertEq(guidedTourStep, 0, 'le tour doit demarrer a l etape 0 (carte de bienvenue) si jamais vu');
-  __assertEq(GUIDED_TOUR_STEPS.length, 4, 'le tour doit desormais compter 4 cartes (bienvenue + 3 onglets - Journal fusionne dans Profil, plus d etape dediee)');
+  __assertEq(GUIDED_TOUR_STEPS.length, 6, 'le tour doit desormais compter 6 cartes (bienvenue + 5 onglets - Journal fusionne dans Profil, plus d etape dediee)');
+  const expectedTourTabs = ['today', ...TAB_ORDER]; // bienvenue (today) devant, puis les 5 onglets dans l ordre reel de la barre du bas
+  __assertEq(GUIDED_TOUR_STEPS.map((s) => s.tab).join(','), expectedTourTabs.join(','), 'les onglets presentes doivent suivre le MEME ordre que TAB_ORDER (barre du bas), bienvenue en plus sur today');
   let overlay = renderGuidedTourOverlay();
   __assertOk(overlay.includes('Bienvenue dans Kilito !'), 'la carte 0 doit etre une bienvenue neutre dediee');
   __assertOk(overlay.includes('tour-overlay intro'), 'la carte 0 doit avoir le fond assombri/floute (intro)');
@@ -1353,7 +1357,18 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(activeTab, 'library', 'l etape suivante doit basculer sur l onglet Défis');
   __assertEq(guidedTourStep, 2);
   guidedTourNext();
+  __assertEq(activeTab, 'community', "l etape suivante doit desormais presenter l onglet Communaute (retour utilisateur, n etait pas couvert avant)");
+  __assertEq(guidedTourStep, 3);
+  overlay = renderGuidedTourOverlay();
+  __assertOk(overlay.includes('Communauté') && overlay.includes('Boss Battle'), 'la carte Communaute doit mentionner le classement/la Boss Battle');
+  guidedTourNext();
+  __assertEq(activeTab, 'groups', "l etape suivante doit desormais presenter l onglet Groupes (retour utilisateur, n etait pas couvert avant)");
+  __assertEq(guidedTourStep, 4);
+  overlay = renderGuidedTourOverlay();
+  __assertOk(overlay.includes('Groupes') && overlay.includes('collectifs'), 'la carte Groupes doit mentionner les defis collectifs');
+  guidedTourNext();
   __assertEq(activeTab, 'account', 'puis directement sur Profil (plus d etape Journal separee, fusionnee en sous-onglet)');
+  __assertEq(guidedTourStep, 5);
   overlay = renderGuidedTourOverlay();
   __assertOk(overlay.includes('Terminer'), 'le dernier bouton doit dire Terminer');
   guidedTourNext(); // termine le tour (endGuidedTour() est async : on laisse la chaine se resoudre)
@@ -1363,7 +1378,7 @@ const cssText = __rawHtml + __cssSource;
   __assertEq(__appDataStore.data.hasSeenTour, true, 'hasSeenTour doit etre persiste dans le document consolide appData');
   __assertEq(activeTab, 'today', 'le tour termine doit ramener sur Aujourd hui');
   __assertEq(renderGuidedTourOverlay(), '', 'aucune bulle ne doit plus s afficher apres la fin du tour');
-  console.log('OK: tour guidé (4 cartes dont bienvenue dediee, marqué vu, ne se relance pas)');
+  console.log('OK: tour guidé (6 cartes dont bienvenue dediee, couvre desormais les 5 onglets, marqué vu, ne se relance pas)');
 
   // --- 26. Un utilisateur qui a déjà vu le tour ne le revoit pas après l'onboarding ---
   onboardingTransitionPhase = 'confirm';
@@ -3475,7 +3490,7 @@ const cssText = __rawHtml + __cssSource;
   // (avant, le repli cache-first pour icones/manifest/IMAGES ne populait jamais le
   // cache : aucun gain, ni hors-ligne, pour les assets les plus lourds de l appli) ---
   __assertOk(__swSource.length > 0, 'service-worker.js doit etre lisible pour ce test');
-  __assertOk(__swSource.includes("'defi-du-jour-v129'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
+  __assertOk(__swSource.includes("'defi-du-jour-v130'"), 'la version du cache doit avoir ete incrementee suite au changement de logique');
   __assertOk(__swSource.includes("'./assets/sounds/success.mp3'"), 'le fichier audio de reussite doit etre precache pour rester disponible hors ligne des le 1er lancement');
   const cachePutCount = __swSource.split('cache.put(event.request, clone)').length - 1;
   __assertEq(cachePutCount, 2, 'cache.put doit alimenter le cache a la fois pour le HTML et pour le repli icones/manifest/images');
@@ -8337,6 +8352,26 @@ const cssText = __rawHtml + __cssSource;
   __assertOk(!cssText.includes('system-condensed') && !cssText.includes('Arial Narrow'), 'l ancien repli "Arial Narrow"/system-condensed doit avoir ete retire (code mort, remplace par Nunito)');
   __assertOk(__swSource.includes("'./assets/fonts/nunito-var.woff2'"), 'le fichier de police doit etre precache pour un rendu identique des le 1er lancement, y compris hors ligne');
   console.log('OK: police Nunito reellement embarquee (fichier variable precache), plus aucune dependance a une police systeme/Apple');
+
+  // --- Refonte de l image "Partager mes stats" (demande utilisateur : inclure
+  // niveau/titre, trophees, repetitions, temps de gainage cumule...) - le canevas
+  // 2D lui-meme (shareStatsImage()) n est pas verifiable par ce harnais (mock
+  // canvas minimal, meme limite deja documentee pour tout rendu visuel de ce
+  // projet), mais les 2 nouvelles fonctions PURES qu il utilise le sont. ---
+  __assertEq(formatShareStatsDuration(0), '0 min', 'aucun gainage -> 0 min, jamais "0 h"');
+  __assertEq(formatShareStatsDuration(45 * 60), '45 min', 'sous 1h -> minutes seules');
+  __assertEq(formatShareStatsDuration(3600), '1 h', 'exactement 1h -> pas de "0 min" a la suite');
+  __assertEq(formatShareStatsDuration(3600 * 3 + 60 * 25), '3 h 25 min', 'heures ET minutes -> les 2 dans le libelle');
+  __assertEq(formatShareStatsDuration(29), '0 min', 'arrondi a la minute la plus proche (29s -> 0 min, pas 1 min)');
+  console.log('OK: formatShareStatsDuration() (temps de gainage cumule, meme source CORE_TIME_FAMILY_IDS que les trophees core_*)');
+
+  __assertEq(computeShareStatsTrophyIcons([]), [], 'aucun trophee debloque -> aucune icone');
+  __assertEq(computeShareStatsTrophyIcons(['streak_3', 'comp_10']), ['🔥', '🏅'], 'les icones doivent venir de BADGE_DEFS, dans l ordre de deblocage fourni');
+  __assertEq(computeShareStatsTrophyIcons(['id_inconnu', 'streak_3']), ['🔥'], 'un id inconnu (BADGE_DEFS modifie entre-temps) ne doit jamais planter, juste etre ignore');
+  const manyUnlocked = BADGE_DEFS.map((b) => b.id); // tous les 20 trophees actuels
+  __assertEq(computeShareStatsTrophyIcons(manyUnlocked).length, 8, 'plafonne aux 8 PLUS RECENTS (derniers de la liste), jamais plus - le compteur global reste exact a cote');
+  __assertEq(computeShareStatsTrophyIcons(manyUnlocked), manyUnlocked.slice(-8).map((id) => BADGE_DEFS.find((b) => b.id === id).icon), 'doit garder les 8 DERNIERS elements (les plus recemment debloques), pas les 8 premiers');
+  console.log('OK: computeShareStatsTrophyIcons() (icones des trophees debloques, plafonnees a 8, jamais de crash sur un id inconnu)');
 
   activeTab = 'today';
 

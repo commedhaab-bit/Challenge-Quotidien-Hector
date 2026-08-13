@@ -1201,10 +1201,17 @@ let hasSeenTour = false;
 // (decoratif, langue-agnostique).
 // Plus d'etape dediee au Journal (fusionne en sous-onglet de Profil, voir
 // profileView) - la carte "account" mentionne desormais le Journal au passage.
+// Retour utilisateur : le tour ne presentait que 3 des 5 onglets (Aujourd'hui/
+// Défis/Profil), silencieux sur Communaute et Groupes - deux etapes ajoutees,
+// dans le MEME ordre que TAB_ORDER (voir plus bas, swipe entre onglets), pour
+// qu'un nouvel utilisateur decouvre les 5 onglets dans l'ordre ou ils
+// apparaissent reellement dans la barre du bas.
 const GUIDED_TOUR_STEPS = [
   { tab: 'today', key: 'welcome', emoji: '👋' },
   { tab: 'today', key: 'today', emoji: "🏋️‍♂️" },
   { tab: 'library', key: 'library', emoji: '🎯' },
+  { tab: 'community', key: 'community', emoji: '🌍' },
+  { tab: 'groups', key: 'groups', emoji: '🤝' },
   { tab: 'account', key: 'account', emoji: '👤' },
 ];
 
@@ -5444,12 +5451,50 @@ function renderCategoryRadarChart() {
   `;
 }
 
+// Pure : secondes de gainage/core (CORE_TIME_FAMILY_IDS, MEME source de verite
+// que les trophees core_15min/1h/6h/24h - voir BADGE_DEFS, sumLifetime()) mises
+// en forme "3 h 25 min"/"45 min" pour l'image de partage. Pas de cle i18n dediee
+// necessaire pour les unites elles-memes : "h"/"min" sont deja utilisees telles
+// quelles sans traduction ailleurs dans l'app (formatSecToReadable(),
+// exercise-data.js) - meme convention reprise ici.
+function formatShareStatsDuration(totalSeconds) {
+  const totalMinutes = Math.round(totalSeconds / 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
+}
+
+// Pure : icones des trophees DEJA debloques (badges.unlocked, deja dans l'ordre
+// de deblocage), pour la rangee "trophees" de l'image de partage - plafonnee aux
+// 8 plus recents (le compteur global juste au-dessus reste, lui, exact quel que
+// soit le nombre reel ; une rangee illimitee deborderait du canevas).
+function computeShareStatsTrophyIcons(unlockedIds) {
+  return unlockedIds
+    .map((id) => { const b = BADGE_DEFS.find((def) => def.id === id); return b ? b.icon : null; })
+    .filter(Boolean)
+    .slice(-8);
+}
+
+// Image de partage ("Partager mes stats") : refonte demandee par l'utilisateur
+// pour montrer TOUT ce qui compte (niveau/titre d'athlete, trophees debloques,
+// repetitions, temps de gainage cumule...), pas seulement serie/completions/
+// repetitions/minutes chronometrees comme avant. Toujours 100% cote client
+// (aucune lecture Firestore supplementaire, toutes les donnees sont deja en
+// memoire), dessine sur un <canvas> puis partage via navigator.share() (fichier)
+// ou telecharge en repli - mecanisme de partage inchange, seul le contenu dessine
+// change.
 async function shareStatsImage() {
   showToast(t('popups.shareStats.generating'), 1500);
   const summary = getLifetimeSummary();
   const streak = computeStreak();
   const completions = badges.totalCompletions;
   const unlockedCount = badges.unlocked.length;
+  const level = xpProgress(xpTotal).level;
+  const titleText = athleteTitle(level); // ex: "Athlète 🥇" (icone deja incluse)
+  const gainageLabel = formatShareStatsDuration(sumLifetime(CORE_TIME_FAMILY_IDS));
+  const trophyIcons = computeShareStatsTrophyIcons(badges.unlocked);
 
   const W = 1080, H = 1350;
   const canvas = document.createElement('canvas');
@@ -5483,33 +5528,61 @@ async function shareStatsImage() {
   ctx.lineWidth = 2;
   ctx.beginPath(); ctx.moveTo(64, 250); ctx.lineTo(W - 64, 250); ctx.stroke();
 
-  function drawStat(y, label, value, color) {
-    ctx.fillStyle = color || '#39e97a';
-    ctx.font = '900 92px sans-serif';
-    ctx.fillText(value, 64, y);
+  // Degrade vert -> bleu (meme paire --accent/--aurora-2 que .bento-num/
+  // .progress-current dans styles.css, deja le "gros chiffre premium" etabli
+  // ailleurs dans l'app) et degrade or (--gold/--gold-2, deja reserve aux
+  // trophees/au statut legendaire - voir .trophy-item.unlocked/.athlete-title.holo)
+  // - largeur de degrade FIXE plutot que mesuree via ctx.measureText(), pour ne
+  // pas dependre d'un canevas 2D fidele en environnement de test (le mock du
+  // harnais ne simule pas measureText()).
+  function fillGradientText(text, x, y, font, span, gold) {
+    ctx.font = font;
+    const g = ctx.createLinearGradient(x, 0, x + span, 0);
+    if (gold) { g.addColorStop(0, '#ffd76a'); g.addColorStop(1, '#f5a623'); }
+    else { g.addColorStop(0, '#39e97a'); g.addColorStop(1, '#3aa8ff'); }
+    ctx.fillStyle = g;
+    ctx.fillText(text, x, y);
+  }
+
+  // ---- Niveau + titre d'athlete, mis en avant au-dessus de la grille de stats ----
+  fillGradientText(t('profileTab.levelLabel', { n: level }), 64, 340, '900 68px sans-serif', 320, false);
+  ctx.fillStyle = '#eef2ef';
+  ctx.font = '700 32px sans-serif';
+  ctx.fillText(titleText, 64, 382);
+
+  ctx.strokeStyle = 'rgba(238,242,239,0.12)';
+  ctx.beginPath(); ctx.moveTo(64, 420); ctx.lineTo(W - 64, 420); ctx.stroke();
+
+  // ---- Grille 2x2 : serie / defis completes / repetitions / temps de gainage ----
+  const colX = [64, 556];
+  function drawGridCell(col, y, label, value) {
+    fillGradientText(value, colX[col], y, '900 58px sans-serif', 260, false);
     ctx.fillStyle = '#8a958e';
-    ctx.font = '600 27px sans-serif';
-    ctx.fillText(label, 64, y + 38);
+    ctx.font = '650 24px sans-serif';
+    ctx.fillText(label, colX[col], y + 34);
+  }
+  drawGridCell(0, 548, t('popups.shareStats.streakLabel'), `🔥 ${streak}`);
+  drawGridCell(1, 548, t('popups.shareStats.completionsLabel'), String(completions));
+  drawGridCell(0, 718, t('popups.shareStats.repsLabel'), summary.totalReps.toLocaleString(LOCALE_TO_INTL[currentLocale]));
+  drawGridCell(1, 718, t('popups.shareStats.coreTimeLabel'), gainageLabel);
+
+  // ---- Trophees : compteur global (degrade or) + rangee des icones debloquees ----
+  let y = 890;
+  fillGradientText(t('popups.shareStats.trophiesUnlocked', { unlocked: unlockedCount, total: BADGE_DEFS.length }), 64, y, '700 36px sans-serif', 520, true);
+  if (trophyIcons.length > 0) {
+    y += 60;
+    ctx.font = '44px sans-serif';
+    ctx.fillStyle = '#eef2ef';
+    trophyIcons.forEach((icon, i) => ctx.fillText(icon, 64 + i * 56, y));
   }
 
-  let y = 380;
-  drawStat(y, t('popups.shareStats.streakLabel'), String(streak)); y += 160;
-  drawStat(y, t('popups.shareStats.completionsLabel'), String(completions)); y += 160;
-  drawStat(y, t('popups.shareStats.repsLabel'), summary.totalReps.toLocaleString(LOCALE_TO_INTL[currentLocale])); y += 160;
-  if (summary.totalSeconds > 0) {
-    drawStat(y, t('popups.shareStats.minutesLabel'), String(Math.round(summary.totalSeconds / 60)));
-    y += 160;
-  }
-
+  // ---- Categorie favorite ----
   if (summary.favCat) {
+    y += 90;
     ctx.fillStyle = '#5fbf7a';
     ctx.font = '700 30px sans-serif';
-    ctx.fillText(t('popups.shareStats.favCategory', { category: translateCategoryName(summary.favCat) }), 64, y + 10);
+    ctx.fillText(t('popups.shareStats.favCategory', { category: translateCategoryName(summary.favCat) }), 64, y);
   }
-
-  ctx.fillStyle = '#eef2ef';
-  ctx.font = '600 26px sans-serif';
-  ctx.fillText(t('popups.shareStats.trophiesUnlocked', { unlocked: unlockedCount, total: BADGE_DEFS.length }), 64, H - 70);
 
   canvas.toBlob(async (blob) => {
     if (!blob) return;
